@@ -117,6 +117,30 @@ check(
 )
 check("  naming the file", any("install.sh" in e for e in said["evidence"]), said["evidence"])
 
+# The builder itself changed: the installed builder cannot judge the new tree, so this is held as
+# its own widening, not reported as a mismatch.
+(T / "code" / "irate_box" / "root").mkdir(parents=True, exist_ok=True)
+(CODE_BUILDER := T / "code" / "irate_box" / "root" / "secmanifest.py").write_text(
+    (REPO / "irate_box" / "root" / "secmanifest.py").read_text()
+)
+tree = code_tree()
+(tree / "irate_box" / "root" / "secmanifest.py").unlink()
+(tree / "irate_box" / "root" / "secmanifest.py").write_text(
+    (REPO / "irate_box" / "root" / "secmanifest.py").read_text() + "\n# the builder changed\n"
+)
+written(tree)
+said = H._security_check(with_install(tree), None)
+check(
+    "a changed builder is held as its own widening, not a mismatch",
+    not said["ok"] and not said["warn"] and said["detail"]["id"] == "update.verify.security.widens",
+    said,
+)
+check(
+    "  and says so",
+    any("how its security is checked" in e for e in said["evidence"]),
+    said["evidence"],
+)
+
 check(
     "the fetched code was not imported: the tree has no __pycache__ under its copied root",
     not (tree / "irate_box" / "root" / "__pycache__").exists(),

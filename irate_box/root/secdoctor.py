@@ -7894,10 +7894,28 @@ def step_manifest(ctx):
         "ProtectProc",
         "PrivateDevices",
         "DynamicUser",
+        "ReadWritePaths",
+        "CapabilityBoundingSet",
+        "RestrictAddressFamilies",
     )
+    list_checks = {"ReadWritePaths", "CapabilityBoundingSet", "RestrictAddressFamilies"}
+    hub_user = os.environ.get("HUB_USER", "hub")
     bad = []
     for name, entry in manifest.get("units", {}).items():
-        props = _show(name, "LoadState", "User", *checks)
+        if ".d/" in name:
+            # A drop-in is not a unit: systemd knows it only through the unit it belongs to.
+            unit, _, _ = name.partition(".d/")
+            unit = unit.replace("$HUB_USER", hub_user)
+            path = name.replace("$HUB_USER", hub_user)
+            props = _show(unit, "LoadState", "DropInPaths")
+            if not props or props.get("LoadState") in ("not-found", "masked", ""):
+                bad.append(f"{name}: its unit {unit} is not on the box, so the drop-in is not checked")
+            elif not any(
+                item == path or item.endswith("/" + path) for item in (props.get("DropInPaths") or "").split()
+            ):
+                bad.append(f"{name}: the drop-in is not loaded by {unit}")
+            continue
+        props = _show(name.replace("$HUB_USER", hub_user), "LoadState", "User", *checks)
         if not props or props.get("LoadState") in ("not-found", "masked", ""):
             continue
         if props.get("DynamicUser") != "yes" and entry.get("DynamicUser") != "yes":
@@ -7908,7 +7926,16 @@ def step_manifest(ctx):
             wanted = entry.get(key)
             if wanted is None:
                 continue
-            got = props.get(key) or "no"
+            got = props.get(key) or ""
+            if key in list_checks:
+                want = [
+                    str(v).replace("$STATE", str(STATE)).replace("$ETC", str(ETC)).replace("$HUB_USER", hub_user)
+                    for v in wanted
+                ]
+                if sorted(want) != sorted(got.split()):
+                    bad.append(f"{name}: {key} differs (manifest {want}, now {got.split()})")
+                continue
+            got = got or "no"
             if got != wanted:
                 bad.append(f"{name}: {key}={got} (manifest {wanted})")
     if bad:

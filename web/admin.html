@@ -4884,6 +4884,11 @@
                   <p class="setting-desc" data-i18n="admin.updates.security-changes-desc">
                     An update that widens what root or the hub can reach is held at the level you select for each kind of change.
                   </p>
+                  <p class="setting-desc" data-i18n="admin.updates.security-changes-limits">
+                    The manifest catches changes made in the expected way. Signing is what guarantees the update is
+                    yours. An update with no manifest (one from before it, a fork, or a rollback) is held until you
+                    select Install anyway. Flag installs whatever the update changes. Console needs SSH for every widening.
+                  </p>
                   <form id="security-changes-form" class="library-form">
                     <label class="inline" data-i18n="admin.updates.security-console-only">
                       <input type="checkbox" name="console_only" />

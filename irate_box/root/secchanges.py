@@ -34,6 +34,7 @@ READ_FILE = ROOT / "security-record-read.json"
 TOGGLES = security_levels.TOGGLES
 LEVELS = security_levels.LEVELS
 DEFAULTS = security_levels.DEFAULTS
+RANK = {level: n for n, level in enumerate(LEVELS)}
 
 
 def load():
@@ -75,13 +76,41 @@ def _check_toggle(name, level):
         )
 
 
-def save(req, write=durable.write_checked):
+def save(req, how=None, write=durable.write_checked):
+    """Save the owner's levels. A lowering needs the level it lowers from: console can only lower at the
+    console, and while the console switch is on nothing lowers from the page. Each save is recorded."""
     data = load()
+    before = dict(data["toggles"])
+    how = how or req.get("over") or "https"
     toggles = req.get("toggles", {})
     if not isinstance(toggles, dict):
         raise Refused(M("security.changes.invalid", "The security changes are not valid."))
     for name, level in toggles.items():
         _check_toggle(name, level)
+        old = data["toggles"][name]
+        if RANK[level] < RANK[old] and how != "console":
+            if data["console_only"]:
+                raise Refused(
+                    M(
+                        "security.changes.console-only-lower",
+                        "The console switch is on, so a level cannot be lowered from the page. Run "
+                        "sudo /opt/irate-box/irate-box hub_control security-level {kind} {level} at the console "
+                        "or over SSH.",
+                        kind=name,
+                        level=level,
+                    )
+                )
+            if old == "console":
+                raise Refused(
+                    M(
+                        "security.changes.console-lower",
+                        "A level set to Console only cannot be lowered from the page. Run "
+                        "sudo /opt/irate-box/irate-box hub_control security-level {kind} {level} at the console "
+                        "or over SSH.",
+                        kind=name,
+                        level=level,
+                    )
+                )
         data["toggles"][name] = level
     want = req.get("console_only")
     if want is not None:
@@ -98,6 +127,16 @@ def save(req, write=durable.write_checked):
         data["console_only"] = want
     write(FILE, json.dumps(data, indent=2, sort_keys=True), 0o600)
     publish(data)
+    _record(
+        {
+            "event": "levels",
+            "how": how,
+            "before": before,
+            "after": dict(data["toggles"]),
+            "console_only": data["console_only"],
+            "at": time.time(),
+        }
+    )
     if data["console_only"]:
         return M(
             "security.changes.saved-console",
@@ -108,9 +147,20 @@ def save(req, write=durable.write_checked):
 
 def console_only_off(write=durable.write_checked):
     data = load()
+    before = dict(data["toggles"])
     data["console_only"] = False
     write(FILE, json.dumps(data, indent=2, sort_keys=True), 0o600)
     publish(data)
+    _record(
+        {
+            "event": "levels",
+            "how": "console",
+            "before": before,
+            "after": dict(data["toggles"]),
+            "console_only": False,
+            "at": time.time(),
+        }
+    )
     return M("security.changes.console-off", "Approvals over HTTPS work again.")
 
 

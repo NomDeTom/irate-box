@@ -109,6 +109,65 @@ check(
     said["manifest-hub"],
 )
 
+# A drop-in is checked through its unit, and the directives that widen a unit are compared too.
+manifest["units"] = {
+    "caddy.service.d/irate-box.conf": {"ReadWritePaths": ["/etc/hub"]},
+    "irate-box.service": {
+        "User": "hub",
+        "ReadWritePaths": ["/var/lib/hub"],
+        "CapabilityBoundingSet": [],
+        "RestrictAddressFamilies": ["AF_UNIX"],
+    },
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+dropin = T / "etc/systemd/system/caddy.service.d/irate-box.conf"
+
+
+def show(name, *props):
+    if name == "caddy.service":
+        return {"LoadState": "loaded", "DropInPaths": str(dropin)}
+    return {
+        "LoadState": "loaded",
+        "User": "hub",
+        "ReadWritePaths": "/var/lib/hub",
+        "CapabilityBoundingSet": "",
+        "RestrictAddressFamilies": "AF_UNIX",
+    }
+
+
+with mock.patch.object(sd, "_show", show):
+    with mock.patch.object(sd.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "hub\n"})()):
+        said = {f["id"]: f for f in sd.step_manifest({})}
+check(
+    "a loaded drop-in and the widening directives match: fine",
+    said["manifest-units"]["status"] == "ok",
+    said["manifest-units"],
+)
+
+
+def show_bad(name, *props):
+    if name == "caddy.service":
+        return {"LoadState": "loaded", "DropInPaths": "/elsewhere"}
+    return {
+        "LoadState": "loaded",
+        "User": "hub",
+        "ReadWritePaths": "/var/lib/hub /etc",
+        "CapabilityBoundingSet": "",
+        "RestrictAddressFamilies": "AF_UNIX",
+    }
+
+
+with mock.patch.object(sd, "_show", show_bad):
+    with mock.patch.object(sd.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "hub\n"})()):
+        said = {f["id"]: f for f in sd.step_manifest({})}
+check(
+    "an unloaded drop-in and a wider ReadWritePaths are named",
+    said["manifest-units"]["status"] == "problem"
+    and any("drop-in" in e for e in said["manifest-units"]["evidence"])
+    and any("ReadWritePaths" in e for e in said["manifest-units"]["evidence"]),
+    said["manifest-units"],
+)
+
 (T / "code" / "security.json").unlink()
 said = sd.step_manifest({})
 check(

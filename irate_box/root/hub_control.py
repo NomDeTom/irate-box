@@ -2773,25 +2773,61 @@ def _no_changes():
     return {"widenings": [], "narrowings": [], "neutral": []}
 
 
+def _builder_changed(src):
+    """Whether the fetched security manifest builder differs from the installed one. The installed builder
+    is what reads the fetched tree; a change to it is a change in how the update is checked."""
+    try:
+        return (Path(CODE) / "irate_box/root/secmanifest.py").read_bytes() != (
+            Path(src) / "irate_box/root/secmanifest.py"
+        ).read_bytes()
+    except OSError:
+        return False  # not comparable: keep the old, strict check
+
+
+def _strictest_level(levels):
+    return max(levels, key=lambda name: secchanges.RANK.get(levels[name], 0)) if levels else "root_code"
+
+
 def security_report(src, installed):
     """What the fetched tree's manifest says, how it differs from the installed one, and which
-    widenings the owner's levels hold. Read statically: the fetched code is never imported."""
+    widenings the owner's levels hold. Read statically: the fetched code is never imported. When the
+    builder itself changed, it is not used on the new tree: the change is held as its own widening."""
     empty = {
         "manifest": False,
         "problems": [],
         "changes": _no_changes(),
         "levels": secchanges.levels(),
         "held": [],
+        "builder_changed": False,
     }
     try:
         manifest = secmanifest.load(src)
         if manifest is None:
             return {**empty, "problems": ["the update has no security.json"]}
-        problems = secmanifest.mismatches(manifest, secmanifest.build(src))
+        builder_changed = _builder_changed(src)
+        problems = [] if builder_changed else secmanifest.mismatches(manifest, secmanifest.build(src))
         changes = secmanifest.compare(secmanifest.load(CODE), manifest, _changed_files(src, installed))
         levels = secchanges.levels()
+        if builder_changed:
+            changes["widenings"] = [
+                item for item in changes["widenings"] if "secmanifest.py" not in item.get("text", "")
+            ]
+            changes["widenings"].append(
+                {
+                    "kind": "widening",
+                    "toggle": _strictest_level(levels),
+                    "text": "this update changes how its security is checked",
+                }
+            )
         held = [item for item in changes["widenings"] if levels.get(item["toggle"], "authorise") != "flag"]
-        return {"manifest": True, "problems": problems, "changes": changes, "levels": levels, "held": held}
+        return {
+            "manifest": True,
+            "problems": problems,
+            "changes": changes,
+            "levels": levels,
+            "held": held,
+            "builder_changed": builder_changed,
+        }
     except (OSError, ValueError, KeyError, SyntaxError) as exc:
         return {**empty, "problems": [str(exc)[:300]]}
 
@@ -4754,6 +4790,35 @@ def updates_doctor_findings():
     return findings
 
 
+def _record_item(entry):
+    if entry.get("event") == "levels":
+        before, after = entry.get("before") or {}, entry.get("after") or {}
+        changed = [
+            f"{name}: {before.get(name)} to {after.get(name)}"
+            for name in sorted(set(before) | set(after))
+            if before.get(name) != after.get(name)
+        ]
+        return M(
+            "update.security.record.levels",
+            "Levels set ({how}): {changes}.",
+            how=entry.get("how", "?"),
+            changes=", ".join(changed) or "the console switch",
+        )
+    return M(
+        "update.security.record.item",
+        "{event}: {changes} ({how}{forced}).",
+        event=entry.get("event", "?"),
+        changes=", ".join(
+            entry.get("changes", {}).get("widenings", [])
+            if isinstance(entry.get("changes"), dict)
+            else entry.get("changes", [])
+        )
+        or "no widening",
+        how=entry.get("how", "?"),
+        forced=", forced" if entry.get("forced") else "",
+    )
+
+
 def _security_record_finding():
     unread = secchanges.unread()
     title = M("update.security.record.title", "The security record")
@@ -4774,8 +4839,8 @@ def _security_record_finding():
             M(
                 "update.security.record.unread",
                 {
-                    "one": "{n} security change has been approved or installed since the record was last marked read.",
-                    "other": "{n} security changes have been approved or installed since the record was last marked read.",
+                    "one": "{n} security change has been approved, installed or set since the record was last marked read.",
+                    "other": "{n} security changes have been approved, installed or set since the record was last marked read.",
                 },
                 n=len(unread),
             ),
@@ -4783,22 +4848,7 @@ def _security_record_finding():
                 "update.security.record.why",
                 "An approval at the flag level is still seen by a person. This is where the record of it waits.",
             ),
-            notes=[
-                M(
-                    "update.security.record.item",
-                    "{event}: {changes} ({how}{forced}).",
-                    event=entry.get("event", "?"),
-                    changes=", ".join(
-                        entry.get("changes", {}).get("widenings", [])
-                        if isinstance(entry.get("changes"), dict)
-                        else entry.get("changes", [])
-                    )
-                    or "no widening",
-                    how=entry.get("how", "?"),
-                    forced=", forced" if entry.get("forced") else "",
-                )
-                for entry in unread[-3:]
-            ],
+            notes=[_record_item(entry) for entry in unread[-3:]],
             evidence=[str(entry.get("commit") or "?") for entry in unread[-6:]],
             actions=[
                 finding_action(
@@ -8139,6 +8189,14 @@ if __name__ == "__main__":
             print(render(update_force_install({"over": "console"})))
         except (ValueError, OSError) as exc:
             sys.exit(f"update-force-install: {exc}")
+        sys.exit(0)
+    if len(sys.argv) == 4 and sys.argv[1] == "security-level":
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo ./irate-box hub_control security-level KIND LEVEL")
+        try:
+            print(render(secchanges.save({"toggles": {sys.argv[2]: sys.argv[3]}}, how="console")))
+        except (ValueError, OSError) as exc:
+            sys.exit(f"security-level: {exc}")
         sys.exit(0)
     if sys.argv[1:2] == ["security-console"] and sys.argv[2:] == ["off"]:
         if os.geteuid() != 0:
