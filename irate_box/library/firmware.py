@@ -557,6 +557,7 @@ def _extract_extra(asset, dest, log):
         librarian._download(asset["url"], tmp, name=f"build cache {dest.name}", expected=asset["size"], resume=True)
     digest = asset.get("sha256") or asset.get("digest") or ""
     if not digest:
+        tmp.unlink(missing_ok=True)
         raise LibrarianError(
             M(
                 "firmware.cache.unverified",
