@@ -11,7 +11,7 @@ build's.
 
 On the box, under the state folder (usually `/var/lib/hub`):
 
-```
+```text
 /var/lib/hub/rk-bootloaders/nand-uboot/idbloader.img
 /var/lib/hub/rk-bootloaders/nand-uboot/u-boot.itb
 /var/lib/hub/rk-bootloaders/nand-uboot/SHA256SUMS

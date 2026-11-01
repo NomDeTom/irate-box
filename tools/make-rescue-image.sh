@@ -6,7 +6,6 @@
 # initramfs and extlinux.conf, a raw squashfs partition, and an empty ext4 data partition. The same layout the
 # tested USB stick used. It needs root (losetup, mount) and refuses to overwrite an image that is not its own.
 set -euo pipefail
-here=$(cd "$(dirname "$0")" && pwd)
 kernel="" dtb="" initramfs="" squashfs="" out="$PWD/alpine-rescue.img"
 size_mib=512 rootdev="/dev/sda2" dry=0
 console="console=ttyS2,115200n8 console=tty1 console=ttyFIQ0,1500000 earlyprintk rootwait"
@@ -50,7 +49,7 @@ p1=$((128 * 1024 * 1024 / 512))
 p2=$((256 * 1024 * 1024 / 512))
 p2_start=$((first + p1))
 p3_start=$((p2_start + p2))
-last=$((${size_mib} * 1024 * 1024 / 512 - 1))
+last=$((size_mib * 1024 * 1024 / 512 - 1))
 say() { echo "make-rescue-image: $*"; }
 say "kernel $kernel; dtb $dtb_name; initramfs $initramfs_name; squashfs $squashfs"
 say "image $out (${size_mib} MiB); rescue.root $rootdev"
