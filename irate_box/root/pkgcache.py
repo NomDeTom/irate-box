@@ -44,7 +44,7 @@ def installed():
         raise OSError((out.stderr or out.stdout or "dpkg-query failed").strip()[-200:])
     versions = {}
     for line in out.stdout.splitlines():
-        name, _, version = line.partition("\\t")
+        name, _, version = line.partition("\t")
         if name:
             versions[name.split(":")[0]] = version
     return versions

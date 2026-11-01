@@ -104,9 +104,11 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
   # keeps them at libdeps/<lib> or libdeps/native-tft/<lib>. Only a cache with the family's
   # libraries seeds its packages too; otherwise the family's tools are not on this box.
   libs=
-  if [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV" ]; then
+  if ! [[ "$PIO_ENV" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]]; then
+    echo "PIO_ENV is not a plain name; not seeding the libraries" >&2
+  elif [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV" ]; then
     libs="$CI_PIO_DEPS/libdeps/$PIO_ENV"
-  elif [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY" ]; then
+  elif [[ "$PIO_ENV_FAMILY" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] && [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY" ]; then
     libs="$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY"
   elif [ "$PIO_ENV_FAMILY" = native ]; then
     libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
@@ -374,10 +376,15 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
     return 0
 
 
+PIO_PATH_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")  # a family or env that may name a folder
+
+
 def _pio_deps(family=None, env=None):
     """The build cache the librarian carries (firmware.py), or None: PlatformIO's libraries and
     packages for the newest kept Meshtastic release, so a build can run with no internet. A
     per-family cache sits at pio-deps/<family>; without one, the release's native-tft cache."""
+    family = family if family and PIO_PATH_RE.fullmatch(family) else None
+    env = env if env and PIO_PATH_RE.fullmatch(env) else None
     root = Path(os.environ.get("HUB_FIRMWARE_ROOT", "/var/lib/hub/firmware"))
     try:
         cache = json.loads((root / "status.json").read_text()).get("cache") or {}
