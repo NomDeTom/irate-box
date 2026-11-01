@@ -22,8 +22,8 @@ const map = (at) => ({
   board: 'lyra',
   note: '',
   header: [
-    { pin: 'gpiochip0:6', gpio: 6, name: 'unnamed', consumer: 'ff120000.spi', used: true },
-    { pin: 'gpiochip0:2', gpio: 2, name: 'unnamed', consumer: '', used: false },
+    { pin: 'gpiochip0:6', type: 'gpio', gpio: 6, name: 'unnamed', consumer: 'ff120000.spi', used: true },
+    { pin: 'gpiochip0:2', type: 'gpio', gpio: 2, name: 'unnamed', consumer: '', used: false },
   ],
   lines: [
     { chip: 'gpiochip0', line: 6, name: 'unnamed', consumer: 'ff120000.spi', used: true },
@@ -75,6 +75,26 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     pins.map((p) => [p.className, p.textContent]),
   );
   check('  the claims list names the function', /gpiochip0 line 6: ff120000\.spi/.test(text('pins-claims')), text('pins-claims'));
+  // A known 40-pin header: left/right rows, then the table and the copyable text.
+  const lyra = map(Date.now() / 1000);
+  lyra.model = 'Luckfox Lyra Zero W';
+  lyra.header = [
+    { pin: 1, type: '3v3', name: '3V3_OUT', gpio: null, rmio: null, role: '', consumer: '', used: false },
+    { pin: 2, type: '5v', name: 'VSYS', gpio: null, rmio: null, role: '', consumer: '', used: false },
+    { pin: 3, type: 'gpio', name: 'GPIO0_A0', gpio: 0, rmio: 0, role: 'TP+RTC', consumer: 'ff060000.i2c', used: true },
+    { pin: 4, type: '5v', name: 'VSYS', gpio: null, rmio: null, role: '', consumer: '', used: false },
+  ];
+  state = { pins: lyra, pending: 0, results: [] };
+  w.rkRenderPins(state);
+  check(
+    'a known header: two pins a row, the used one red and the free/power ones said',
+    d.querySelectorAll('#pins-map .pinrow').length === 2
+      && d.querySelectorAll('#pins-map .pin.used').length === 1
+      && /GPIO0_A0/.test(text('pins-map')) && /RM_IO0 · TP\+RTC · GPIO 0 · ff060000\.i2c/.test(text('pins-map')),
+    text('pins-map'),
+  );
+  check('  every pin is in the table', d.querySelectorAll('#pins-table tbody tr').length === 4 && /GPIO0_A0/.test(text('pins-table')), text('pins-table'));
+  check('  copy is offered once a map is drawn', !d.getElementById('pins-copy').disabled);
   state = { ...state, pending: 1, results: [] };
   d.getElementById('pins-scan').click();
   await wait(100);

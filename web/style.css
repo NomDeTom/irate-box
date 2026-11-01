@@ -6092,3 +6092,58 @@ label > .aw-onoff-box ~ .chip-group,
 .pin small {
   color: var(--muted);
 }
+
+/* --- Pin map: the header drawing --- */
+.pinheader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.8rem 0;
+  max-width: 64rem;
+}
+.pinrow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.8rem;
+}
+.pinrow::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 50%;
+  border-left: 1px solid var(--border);
+}
+.pin {
+  border-left-color: var(--ok);
+}
+.pin.used {
+  border-left-color: var(--bad);
+}
+.pin.power {
+  border-left-color: var(--muted);
+}
+.pin small {
+  display: block;
+}
+.pin-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  margin: 0.6rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.pin-key {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
+  border-radius: 3px;
+}
+.pin-key.used {
+  border-left-color: var(--bad);
+}
+.pin-key.power {
+  border-left-color: var(--muted);
+}
