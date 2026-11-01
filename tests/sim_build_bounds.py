@@ -119,11 +119,8 @@ check(
     and "WatchdogSec=30" in inst,
 )
 check(
-    "the watchdogs are tied to systemd (Type=notify, WatchdogSec, reboot-force)",
-    "Type=notify" in inst
-    and "WatchdogSec=120" in inst
-    and "WatchdogSec=360" in inst
-    and "FailureAction=reboot-force" in inst,
+    "the watchdogs are tied to systemd (Type=notify, WatchdogSec; no never-firing FailureAction)",
+    "Type=notify" in inst and "WatchdogSec=120" in inst and "WatchdogSec=360" in inst and "FailureAction=" not in inst,
 )
 check(
     "uninstall.sh takes the guard, slice and wrapper away",

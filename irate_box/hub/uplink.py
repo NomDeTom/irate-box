@@ -2548,8 +2548,10 @@ class Link:
 
     def act(self, now, actions, status):
         """The steps the watchdog decided on, taken; status(): this link's report, written before a reboot."""
+        notify.watchdog()
         w, _i = self.w, self.iface
         if self.up and self.answers:
+            notify.watchdog()
             self.actor.remember()
             self.ssids_known = None
             # The hotspot down while the link is up: started again. After a driver's own reset seen during an
@@ -2572,6 +2574,7 @@ class Link:
                 if said:
                     w.log(now, "result", said)
         for step in actions:
+            notify.watchdog()  # a step can take minutes; the watchdog round is between steps, not per loop
             if step == "pin":
                 result = self.actor.pin()
                 if "locked to" in result:
@@ -2583,6 +2586,7 @@ class Link:
                 self.pinned = None if step in ("reconnect", "restart", "radio") else self.pinned
                 if step == "radio":
                     self.reset_at = time.time()
+            notify.watchdog()
             if result:
                 w.log(time.time(), "result", str(result)[:300])
 
@@ -2773,7 +2777,9 @@ def serve(dry=False):
             nap(wake, effective(chosen)["check"], mtime)
             continue
         for lk in links.values():
+            notify.watchdog()
             lk.look(now, chosen, watcher)
+            notify.watchdog()
         # What else works now: the links a whole-box step would cut off (box_steps).
         works = {i for i, lk in links.items() if lk.healthy()}
         works |= {i for i in cands if i not in links and inv.get(i, {}).get("up") and gateway_of(i)}

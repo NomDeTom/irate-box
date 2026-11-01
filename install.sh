@@ -2832,7 +2832,6 @@ ExecStartPre=$CODE/irate-box crashwatch boot
 ExecStart=$CODE/irate-box crashwatch run
 ExecStopPost=$CODE/irate-box crashwatch shutdown
 WatchdogSec=120
-FailureAction=reboot-force
 Restart=always
 RestartSec=10
 Nice=-5
@@ -2879,7 +2878,6 @@ Type=notify
 Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1 HUB_MEMGUARD_STATUS=/run/irate-box-memguard/status.json
 ExecStart=$CODE/irate-box memguard run
 WatchdogSec=30
-FailureAction=reboot-force
 Restart=always
 RestartSec=5
 Nice=-10
@@ -2966,7 +2964,6 @@ Type=notify
 Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
 ExecStart=$CODE/irate-box uplink run
 WatchdogSec=360
-FailureAction=reboot-force
 Restart=always
 RestartSec=10
 Nice=5

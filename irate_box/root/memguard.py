@@ -11,8 +11,7 @@ and watches the box's headroom from a process that is itself protected:
   memguard run     the guard: writes low-memory events, and kills only build.slice when it must
 
 The guard never reboots on memory pressure. It records the state first, then stops the builder; the
-watchdog liveness rule (WatchdogSec/FailureAction) is what may restart the box, and only through
-systemd. Stdlib only.
+service's watchdog restarts it, never the box. Stdlib only.
 """
 
 import json
@@ -123,6 +122,14 @@ def headroom():
     return {"at": time.time(), **m, "slice_events": events, "level": level}
 
 
+def build_pids():
+    """The pids in build.slice, from its own cgroup file (the kernel's answer, not a process walk)."""
+    try:
+        return [int(pid) for pid in (BUILD_SLICE / "cgroup.procs").read_text().split() if pid.isdigit()]
+    except OSError:
+        return []
+
+
 def _cgroup(pid):
     try:
         for line in (PROC / str(pid) / "cgroup").read_text().splitlines():
@@ -172,7 +179,7 @@ def bounds():
                 values[key.strip()] = value.strip()
     except OSError:
         pass
-    missing = [k for k, v in LIMITS.items() if values.get(k) != v]
+    missing = [k for k in LIMITS if k not in values]
     return {
         "slice": str(BUILD_SLICE),
         "supported": slice_supported(),
@@ -232,6 +239,9 @@ def record(kind, data, now=None):
         (BUILD_SLICE / "cgroup.procs", "cgroup.procs"),
     ):
         _copy(path, folder, name)
+    out = _run("dmesg", timeout=5)
+    if out.stdout:
+        safeio.write(folder / "dmesg", out.stdout, mode=0o600)
     return folder
 
 
@@ -262,6 +272,8 @@ def d_tasks():
 
 def kill_builds():
     """Kill only build.slice, through the kernel's cgroup file; systemd is the fallback."""
+    if not build_pids():
+        return "build.slice is empty"
     try:
         (BUILD_SLICE / "cgroup.kill").write_text("1")
         return "build.slice killed"
@@ -294,15 +306,16 @@ def _write_status(data):
 def run(once=False):
     notify.ready()
     warn_since = act_since = None
-    warned = False
-    last_kill = last_status = 0.0
+    warned = acted = critical = noted = False
+    acted_at = last_status = 0.0
     while True:
         h = headroom()
         now = h["at"]
         level = h["level"]
         if level == "ok":
             warn_since = act_since = None
-            warned = False
+            warned = acted = critical = noted = False
+            acted_at = 0.0
         elif level == "warn":
             warn_since = warn_since or now
             act_since = None
@@ -310,19 +323,32 @@ def run(once=False):
             act_since = act_since or now
             warn_since = None
         action = None
+        # Walk /proc only when there is pressure, or when the act state needs the build list.
+        extra = {}
+        if level != "ok":
+            extra = {"unbounded": unbounded_builds(), "d_tasks": d_tasks()}
+        pids = build_pids() if level == "act" else []
         if level == "warn" and now - (warn_since or now) >= WARN_AFTER and not warned:
             warned = True
-            folder = record("warn", h)
+            folder = record("warn", {**h, **extra, "build_pids": pids})
             action = f"warned: {folder}"
-        if level == "act" and now - (act_since or now) >= ACT_AFTER and now - last_kill >= KILL_EVERY:
-            folder = record("act", {**h, "d_tasks": d_tasks(), "unbounded": unbounded_builds()})
-            _sysrq("m")
-            _sysrq("w")
-            if d_tasks():
-                _sysrq("t")
-            action = f"{kill_builds()}: {folder}"
-            last_kill = now
-        st = {**h, "action": action, "bounds": bounds(), "unbounded": unbounded_builds(), "d_tasks": d_tasks()}
+        if level == "act":
+            if not acted and pids and now - (act_since or now) >= ACT_AFTER:
+                folder = record("act", {**h, **extra, "build_pids": pids})
+                _sysrq("m")
+                _sysrq("w")
+                action = f"{kill_builds()}: {folder}"
+                acted, acted_at = True, now
+            elif not acted and not noted and not pids and now - (act_since or now) >= ACT_AFTER:
+                # Nothing bounded to stop: record the pressure once, but never touch an empty slice.
+                folder = record("pressure", {**h, **extra, "build_pids": []})
+                action = f"pressure without a bounded build: {folder}"
+                noted = True
+            elif acted and not critical and now - acted_at >= 60:
+                folder = record("critical", {**h, **extra, "build_pids": pids})
+                action = f"still low after the kill: {folder}"
+                critical = True
+        st = {**h, **extra, "action": action, "build_pids": pids, "bounds": bounds()}
         if action or now - last_status >= STATUS_EVERY:
             _write_status(st)
             last_status = now

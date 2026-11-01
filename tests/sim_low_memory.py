@@ -70,6 +70,7 @@ proc(100, "make", "/system.slice/apt.service", "D")
 proc(101, "gcc", "/build.slice/dkms-build.scope", "S")
 proc(102, "python3", "/system.slice/hub.service", "S")
 (T / "cgroup" / "build.slice" / "memory.events").write_text("low 0\nhigh 2\nmax 1\noom 1\noom_kill 1\n")
+(T / "cgroup" / "build.slice" / "cgroup.procs").write_text("101\n")
 (T / "cgroup" / "build.slice" / "cgroup.kill").write_text("")
 
 check("no NOTIFY_SOCKET: notify is a no-op", notify.ready() is False)
@@ -91,6 +92,9 @@ check(
 check(
     "the drop-in is the shape systemd reads", "[Slice]" in (T / "units" / "build.slice.d" / "limits.conf").read_text()
 )
+dropin = T / "units" / "build.slice.d" / "limits.conf"
+dropin.write_text(dropin.read_text().replace("MemoryMax=220M", "MemoryMax=300M"))
+check("a raised limit is not called missing", memguard.bounds()["ok"], memguard.bounds())
 
 u = memguard.unbounded_builds()
 check("only the build outside the slice is named", [x["pid"] for x in u] == [100], u)
@@ -107,8 +111,20 @@ check(
 )
 events = list((T / "logs").glob("*/event.json"))
 check("the event is written before the action", len(events) == 1 and (events[0].parent / "meminfo").is_file(), events)
+dmesg_files = list((T / "logs").glob("*/dmesg"))
+check("the event keeps dmesg too", bool(dmesg_files), dmesg_files)
 check("the status file is written for the Box doctor", (T / "run" / "status.json").is_file())
 check("a D-state task is named in the status", any(t["pid"] == 100 for t in st["d_tasks"]), st["d_tasks"])
+
+# Pressure with no build in the slice is recorded once and never touches the empty slice.
+(T / "cgroup" / "build.slice" / "cgroup.procs").write_text("")
+(T / "cgroup" / "build.slice" / "cgroup.kill").write_text("")
+st = memguard.run(once=True)
+check(
+    "pressure with no bounded build is recorded, not killed",
+    st["action"].startswith("pressure") and (T / "cgroup" / "build.slice" / "cgroup.kill").read_text() == "",
+    st,
+)
 
 mem(available=300, swap_free=200)
 memguard.WARN_MB, memguard.ACT_MB = 96, 64
