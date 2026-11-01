@@ -3156,8 +3156,13 @@ elif [ -e "$STATE/git/.git-add-on-removed" ]; then
 fi
 
 # --- start -----------------------------------------------------------------------
-say "Starting services"
+# The security manifest's sandboxes for the units written above, before any of them start, so a wrong
+# one is caught by this run's check rather than at the next restart (security.json).
+if ! HUB_CODE_DIR="$CODE" HUB_SYSTEMD_ETC=/etc/systemd "$CODE/irate-box" secmanifest apply-units >/dev/null; then
+	problem "could not apply the security manifest's unit sandboxes"
+fi
 systemctl daemon-reload
+say "Starting services"
 units=(irate-box "$WEB")
 [ "$NO_GIT" = 1 ] || units+=(irate-box-git.socket)
 [ "$WITH_NOTES" = 1 ] && units+=(silverbullet irate-box-notebooks.path)
@@ -3343,12 +3348,7 @@ if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
 		problem "could not apply the recommended settings (Box doctor offers them)"
 fi
 
-# The security manifest's sandboxes for the units this installer wrote, and its owners and modes
-# for the secrets that exist now (security.json).
-if ! HUB_CODE_DIR="$CODE" HUB_SYSTEMD_ETC=/etc/systemd "$CODE/irate-box" secmanifest apply-units >/dev/null; then
-	problem "could not apply the security manifest's unit sandboxes"
-fi
-systemctl daemon-reload >/dev/null 2>&1 || true
+# The security manifest's owners and modes for the secrets that exist now (security.json).
 if ! HUB_CODE_DIR="$CODE" "$CODE/irate-box" secmanifest apply-secrets >/dev/null; then
 	problem "could not apply the security manifest's secret modes"
 fi

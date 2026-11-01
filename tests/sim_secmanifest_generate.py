@@ -180,5 +180,39 @@ check(
     (changed, dropin.read_text()),
 )
 
+# A unit that carried $ROOT_SANDBOX: its five lines came from that variable, and the manifest now holds
+# them (security.json's irate-box-led.service). Applying the units must not remove them.
+root_unit = systemd / "root-unit.service"
+root_unit.write_text(
+    "[Unit]\nDescription=Root unit\n\n[Service]\nUser=root\nProtectSystem=strict\nNoNewPrivileges=yes\n"
+    "PrivateTmp=yes\nProtectHome=yes\nProtectProc=invisible\nExecStart=/bin/true\n"
+)
+manifest["units"]["root-unit.service"] = json.loads((REPO / "security.json").read_text())["units"][
+    "irate-box-led.service"
+]
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+secmanifest.apply_units(systemd=T / "systemd")
+text = root_unit.read_text()
+check(
+    "a $ROOT_SANDBOX unit keeps its five lines through apply_units",
+    all(
+        line in text
+        for line in (
+            "ProtectSystem=strict\n",
+            "NoNewPrivileges=yes\n",
+            "PrivateTmp=yes\n",
+            "ProtectHome=yes\n",
+            "ProtectProc=invisible\n",
+        )
+    ),
+    text,
+)
+install = (REPO / "install.sh").read_text()
+check(
+    "install.sh applies the units before it starts them",
+    install.index("secmanifest apply-units") < install.index('say "Starting services"'),
+    install.index("secmanifest apply-units"),
+)
+
 print(f"{fails} failure(s)" if fails else "ok")
 sys.exit(1 if fails else 0)
