@@ -7894,9 +7894,7 @@ def step_manifest(ctx):
                 continue
             if not (SYSTEMD_ETC / "system" / path).is_file():
                 continue
-            if not any(
-                item == path or item.endswith("/" + path) for item in (props.get("DropInPaths") or "").split()
-            ):
+            if not any(item == path or item.endswith("/" + path) for item in (props.get("DropInPaths") or "").split()):
                 bad.append(f"{name}: the drop-in is not loaded by {unit}")
             continue
         props = _show(name.replace("$HUB_USER", hub_user), "LoadState", "User", *checks)
