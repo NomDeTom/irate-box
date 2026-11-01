@@ -2031,7 +2031,10 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                     outcome = update_book(src, cand, entry, mode, policy, log)
                 entry.pop("error", None)
                 entry.pop("error_message", None)
+                entry.pop("error_since", None)
+                entry["last_ok"] = now_iso()
             except (LibrarianError, OSError) as exc:
+                entry.setdefault("error_since", now_iso())
                 entry["error"] = str(exc)
                 if is_message(getattr(exc, "message", None)):
                     entry["error_message"] = exc.message

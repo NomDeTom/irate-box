@@ -150,7 +150,13 @@ def from_bytes(target, data, mode=None, expect=None, keep=True, owner=None, keep
             try:
                 os.link(target, kept, follow_symlinks=False)
             except OSError:
-                shutil.copy2(target, kept)
+                # Another filesystem (the box's state on its own partition): a copy instead. A file the storage will
+                # not read back (btrfs's EIO for a failed checksum) cannot be copied either: keep nothing, and mend it.
+                try:
+                    shutil.copy2(target, kept)
+                except OSError:
+                    kept.unlink(missing_ok=True)
+                    kept = None
         os.replace(tmp, target.name, src_dir_fd=dfd, dst_dir_fd=dfd)
         os.fsync(dfd)
     except BaseException:
@@ -226,11 +232,19 @@ def from_package(target, package=None):
     if conffile and target.exists():
         kept = _damaged(target)
         os.replace(target, kept)
-    args = ["apt-get", "install", "--reinstall", "-y", package]
-    if conffile:
-        args.insert(3, "-o")
-        args.insert(4, "Dpkg::Options::=--force-confmiss")
-    said = run(*args, timeout=3600)
+    from irate_box.root import pkgcache
+
+    def args_with(cached):
+        out = ["apt-get", "install", "--reinstall", "-y"]
+        if cached:
+            out += ["--no-download", "-o", f"Dir::Cache::archives={pkgcache.CACHE}"]
+        if conffile:
+            out += ["-o", "Dpkg::Options::=--force-confmiss"]
+        return [*out, package]
+
+    said = run(*args_with(pkgcache.CACHE.is_dir()), timeout=3600)
+    if said.returncode:
+        said = run(*args_with(False), timeout=3600)
     if said.returncode:
         if kept is not None and not target.exists():
             os.replace(kept, target)  # offline, say: the damaged conffile back, rather than none at all

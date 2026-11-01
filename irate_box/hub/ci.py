@@ -100,14 +100,25 @@ _PIO_SEED = """if [ -n "${CI_PIO_DEPS:-}" ]; then
   for f in "$CI_PIO_DEPS"/core/.cache/downloads/*; do
     [ "${f##*/}" = usage.db ] || [ -e "$HOME/.platformio/.cache/downloads/${f##*/}" ] || cp "$f" "$HOME/.platformio/.cache/downloads/"
   done
-  # The cache's packages and libraries are the native build's: only a native build takes them.
-  if [ "$PIO_ENV_FAMILY" = native ]; then
+  # A per-family cache keeps its libraries under libdeps/<family>. The release's native-tft zip
+  # keeps them at libdeps/<lib> or libdeps/native-tft/<lib>. Only a cache with the family's
+  # libraries seeds its packages too; otherwise the family's tools are not on this box.
+  libs=
+  if ! [[ "$PIO_ENV" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]]; then
+    echo "PIO_ENV is not a plain name; not seeding the libraries" >&2
+  elif [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV" ]; then
+    libs="$CI_PIO_DEPS/libdeps/$PIO_ENV"
+  elif [[ "$PIO_ENV_FAMILY" =~ ^[a-z0-9][a-z0-9_-]{0,63}$ ]] && [ -d "$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY" ]; then
+    libs="$CI_PIO_DEPS/libdeps/$PIO_ENV_FAMILY"
+  elif [ "$PIO_ENV_FAMILY" = native ]; then
+    libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
+  fi
+  if [ -n "$libs" ]; then
     LIBDEPS="${PLATFORMIO_WORKSPACE_DIR:-.pio}/libdeps/$PIO_ENV"
     mkdir -p "$HOME/.platformio/packages" "$LIBDEPS"
     for d in "$CI_PIO_DEPS"/packages/*/; do
       [ -e "$HOME/.platformio/packages/$(basename "$d")" ] || cp -r "$d" "$HOME/.platformio/packages/"
     done
-    libs="$CI_PIO_DEPS/libdeps"; [ -d "$libs/native-tft" ] && libs="$libs/native-tft"
     for d in "$libs"/*/; do
       # Not the touchscreen build's libraries (the cache is native-tft's): PlatformIO's finder
       # compiles any library it sees, and meshtastic-device-ui needs headers native lacks (an
@@ -365,16 +376,34 @@ def enqueue(stdin=sys.stdin, repo_dir=None):
     return 0
 
 
-def _pio_deps():
+PIO_PATH_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")  # a family or env that may name a folder
+
+
+def _pio_deps(family=None, env=None):
     """The build cache the librarian carries (firmware.py), or None: PlatformIO's libraries and
-    packages for the newest kept Meshtastic release, so a build can run with no internet."""
+    packages for the newest kept Meshtastic release, so a build can run with no internet. A
+    per-family cache sits at pio-deps/<family>; without one, the release's native-tft cache."""
+    family = family if family and PIO_PATH_RE.fullmatch(family) else None
+    env = env if env and PIO_PATH_RE.fullmatch(env) else None
     root = Path(os.environ.get("HUB_FIRMWARE_ROOT", "/var/lib/hub/firmware"))
     try:
         cache = json.loads((root / "status.json").read_text()).get("cache") or {}
     except (OSError, ValueError):
         return None
-    path = root / str(cache.get("version", "")) / "pio-deps"
-    return path if cache.get("version") and path.is_dir() else None
+    if not cache.get("version"):
+        return None
+    base = root / str(cache["version"]) / "pio-deps"
+    if env and (base / env).is_dir():
+        return base / env
+    if family and (base / family).is_dir():
+        return base / family
+    if base.is_dir():
+        return base
+    return next((p for p in sorted(base.glob("*")) if p.is_dir()), None)
+
+
+def _pio_deps_tag(path):
+    return path.parent.name if path.name == "pio-deps" else path.parent.parent.name
 
 
 def _wheelhouse():
@@ -549,7 +578,7 @@ def build(job):
             deps = _pio_deps()
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
-                env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
+                env["CI_PIO_DEPS_TAG"] = "v" + _pio_deps_tag(deps)
                 say(f"CI_PIO_DEPS={deps} (the librarian's build cache, for v{deps.parent.name})")
             wheelhouse = _wheelhouse()
             if wheelhouse:
@@ -927,10 +956,10 @@ def build_firmware(job):
             elif not keep["tools_only"]:
                 build_cache().mkdir(parents=True, exist_ok=True)
                 env["PLATFORMIO_BUILD_CACHE_DIR"] = str(build_cache())
-            deps = _pio_deps()
+            deps = _pio_deps(family, env_name)
             if deps:
                 env["CI_PIO_DEPS"] = str(deps)
-                env["CI_PIO_DEPS_TAG"] = "v" + deps.parent.name
+                env["CI_PIO_DEPS_TAG"] = "v" + _pio_deps_tag(deps)
             wheelhouse = _wheelhouse()
             if wheelhouse:
                 # Fetching tools is going online on purpose: the wheelhouse first, and PyPI for what

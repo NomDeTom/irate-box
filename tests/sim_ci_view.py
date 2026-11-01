@@ -274,6 +274,42 @@ check(
     and not (fwd / ".pio").exists(),
     r.stderr,
 )
+# A per-family cache (what a release-side bundle would carry): packages and libdeps/<family>.
+cache = T / "cache-esp-family"
+(cache / "packages/framework-arduinoespressif32").mkdir(parents=True)
+(cache / "packages/framework-arduinoespressif32/package.json").write_text("new")
+(cache / "libdeps/esp32s3/RadioLib").mkdir(parents=True)
+(cache / "libdeps/esp32s3/RadioLib/library.json").write_text("new")
+(cache / "libdeps/esp32s3/lvgl").mkdir(parents=True)
+(cache / "libdeps/esp32s3/lvgl/library.json").write_text("ui")
+(cache / "core/.cache/downloads").mkdir(parents=True)
+(cache / "core/.cache/downloads/eb76").write_text("new")
+home, fwd = T / "home-esp-family", T / "fw-esp-family"
+fwd.mkdir()
+r = subprocess.run(
+    ["bash", "-euc", seed],
+    cwd=fwd,
+    env=dict(
+        os.environ,
+        HOME=str(home),
+        CI_PIO_DEPS=str(cache),
+        CI_PIO_DEPS_TAG="v2.8.1.8e6a88d",
+        PIO_ENV="heltec-v3",
+        PIO_ENV_FAMILY="esp32s3",
+    ),
+    capture_output=True,
+    text=True,
+)
+check(
+    "a per-family cache seeds its packages and libdeps/<family>, not the touchscreen libraries",
+    r.returncode == 0
+    and (home / ".platformio/packages/framework-arduinoespressif32/package.json").read_text() == "new"
+    and (home / ".platformio/.cache/downloads/eb76").exists()
+    and (fwd / ".pio/libdeps/heltec-v3/RadioLib/library.json").read_text() == "new"
+    and not (fwd / ".pio/libdeps/heltec-v3/lvgl").exists(),
+    r.stderr,
+)
+
 # Which PlatformIO: Debian's by default; the wheelhouse's in a venv that sees Debian's
 # protobuf when Debian's has none, is asked for, or stops before compiling; never a second build
 # after one that compiled and failed.

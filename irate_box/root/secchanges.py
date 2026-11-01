@@ -81,7 +81,10 @@ def save(req, how=None, write=durable.write_checked):
     console, and while the console switch is on nothing lowers from the page. Each save is recorded."""
     data = load()
     before = dict(data["toggles"])
-    how = how or req.get("over") or "https"
+    # "console" only from root's own command line, which passes how itself. A request's `over` is written by the
+    # hub, so it says how a page's request came (https, http, ...) and never stands for the console.
+    if how is None:
+        how = req.get("over") if req.get("over") in ("https", "http", "loopback", "hub") else "https"
     toggles = req.get("toggles", {})
     if not isinstance(toggles, dict):
         raise Refused(M("security.changes.invalid", "The security changes are not valid."))

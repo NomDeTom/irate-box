@@ -417,6 +417,23 @@ check(
     and "script-src 'self' 'unsafe-inline' blob:;" in local_csp,
     local_csp,
 )
+# Through the hub's own form of an added add-on, as the web server's map is built from it (found on box 181: JS
+# Paint's autosave failed after a reload because manifests.local() dropped capabilities.local).
+from irate_box.hub import manifests
+
+jspaint = json.loads((REPO / "addons" / "jspaint.json").read_text())
+added_csp = access.addon_csp(manifests.local(jspaint))
+check(
+    "an added add-on keeps capabilities.local on its way to the policy (JS Paint, from the catalogue)",
+    "connect-src 'self' data: blob:;" in added_csp,
+    added_csp,
+)
+check(
+    "  and capabilities.local is part of what adding it agrees to",
+    manifests.agreed_part(jspaint).get("local") is True
+    and manifests.agreed_part(dict(jspaint, capabilities={"storage": True})).get("local") is False,
+    manifests.agreed_part(jspaint),
+)
 # The hub's public routes: /certificate.json says only public facts, /certificate/ca.crt is
 # the CA's certificate as a download, never a key.
 tls.front(True)

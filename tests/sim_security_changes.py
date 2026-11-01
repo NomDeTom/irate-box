@@ -95,6 +95,16 @@ check(
     lower and lower["id"] == "security.changes.console-lower",
     lower,
 )
+try:
+    secchanges.save({"toggles": {"root_actions": "flag"}, "over": "console"})
+    forged = None
+except Refused as exc:
+    forged = exc.message
+check(
+    "  a request that says it came over the console is still the page: the hub writes over",
+    forged and forged["id"] == "security.changes.console-lower",
+    forged,
+)
 said = secchanges.save({"toggles": {"root_actions": "flag"}}, how="console")
 check("  the console command can lower it", said["id"] == "security.changes.saved", said)
 said = secchanges.save({"toggles": {"outbound": "flag"}})

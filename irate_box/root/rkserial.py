@@ -34,16 +34,19 @@ INITRAMFS_RE = re.compile(r"\(initramfs\)\s*$")
 # Armbian 26.11's first login on an autologin console waits for an Enter before its first question
 # (armbian-firstlogin: `until read -r -t 1 _`, which Ctrl-C does not end). Only this line asks for it.
 ENTER_RE = re.compile(r"Press Enter to start the first login setup")
+# Each question by a few of its own words, not the whole line: a USB adapter at 1.5 Mbaud drops characters (a Lyra Zero
+# W on a CH340, 2026-10-30, gave "Creating a n provide a username (eg. your first name): " and a buffer ending at
+# "your first nam"). The board waits for the answer, so one sent as the question arrives is still read.
 FIRST = {
-    "root1": re.compile(r"Create root password: "),
-    "root2": re.compile(r"Repeat root password: "),
+    "root1": re.compile(r"Create root pass"),
+    "root2": re.compile(r"Repeat root pass"),
     "shell": re.compile(r"Choose default system command shell:[\s\S]*?(\d+)\) bash"),
-    "wifi": re.compile(r"Connect via wireless\? \[Y/n\] "),
+    "wifi": re.compile(r"Connect via wireless\?"),
     "locale": re.compile(r"Please enter your choice:"),
-    "user": re.compile(r"Please provide a username \(eg\. your first name\): "),
-    "user1": re.compile(r"Create user \([^)]*\) password: "),
-    "user2": re.compile(r"Repeat user \([^)]*\) password: "),
-    "realname": re.compile(r"Please provide your real name: "),
+    "user": re.compile(r"provide a username"),
+    "user1": re.compile(r"Create user \("),
+    "user2": re.compile(r"Repeat user \("),
+    "realname": re.compile(r"your real name"),
     "mismatch": re.compile(r"passwords do not match"),
     "illegal": re.compile(r"illegal characters in username"),
     "shellprompt": SHELL_RE,
@@ -330,8 +333,10 @@ def configure(console, choices):
             timeout=300,
         )
         said.append(f"locale {loc}")
+    keys = choices.get("keys") or []
+    keys = [keys] if isinstance(keys, str) else keys  # one key given as a string is one key, not one per character
     for mark, who, home in (("keyroot", "root", "/root"), ("keyuser", choices["user"], f"/home/{choices['user']}")):
-        for key in choices.get("keys", []):
+        for key in keys:
             do(
                 f'mkdir -p {home}/.ssh && grep -qxF "{key}" {home}/.ssh/authorized_keys 2>/dev/null '
                 f'|| echo "{key}" >> {home}/.ssh/authorized_keys; chown -R "{who}:" {home}/.ssh; chmod 700 {home}/.ssh; '

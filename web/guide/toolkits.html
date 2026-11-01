@@ -22,8 +22,10 @@
 
   <p class="help-note">A toolkit is a set of Debian packages for one kind of job. The toolkits are Building, Capture, Debugging, Driver resources, GPS time, Network, Radio, Recovery, Rockchip boards, Security, Debug symbols and System.</p>
   <p class="help-note">While the box is online, it downloads the packages of each toolkit into a local cache. When the cache of a toolkit is complete, you can install the toolkit without an internet connection. After an installation, the services of the toolkit stay stopped. The exceptions are on the card of each toolkit.</p>
+  <p class="help-note"><strong>Check for updates</strong> first asks apt what a download would bring, using the same package set and cache as a download, and downloads nothing. It says whether the cache is up to date, which packages are newer, and how much is still to download. <strong>Download</strong> then fetches only what is new.</p>
   <p class="help-note">On the card of each toolkit:</p>
-  <ul><li><strong>Install</strong> installs the toolkit.</li><li><strong>Remove after</strong> removes it after an hour, a day, a week or never. This is the default removal period.</li><li><strong>Keep current</strong> refreshes the cache automatically.</li><li><strong>Roll back</strong> returns to an earlier copy.</li></ul>
+  <ul><li><strong>Check for updates</strong> says what a download would bring, without downloading.</li><li><strong>Download</strong> fetches the packages the cache does not have.</li><li><strong>Install</strong> installs the toolkit.</li><li><strong>Remove after</strong> removes it after an hour, a day, a week or never. This is the default removal period.</li><li><strong>Keep current</strong> downloads updates to the cache automatically.</li><li><strong>Roll back</strong> returns to an earlier copy.</li></ul>
+  <p class="help-note"><strong>Check all now</strong> checks every toolkit the same way; <strong>Download all</strong> downloads what each needs.</p>
   <p class="help-note">Select <strong>+ Custom toolkit</strong> to make your own toolkit from a list of packages.</p>
   <h2>USB drive transfer</h2>
   <p class="help-note">To move toolkits to a box that has no internet connection:</p>

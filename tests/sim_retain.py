@@ -6,6 +6,7 @@ outside the include globs, a removed file left removed, a change the owner made 
 sweep, a copy and its .prev both bad as a problem, an empty file not treated as damage, Box doctor's finding and the
 two-boot verdict, and the units. python3 tests/sim_retain.py"""
 
+import errno
 import json
 import os
 import stat
@@ -151,6 +152,62 @@ check(
 retain.STREAK.write_text(json.dumps({"boot": "boot-two", "streak": 0, "repaired": False}))
 retain.FINDINGS.write_text("[]")
 check("a boot with no repairs clears the finding", health.check_protected() == [])
+
+# What the boot check did is read from the record's kind, not from its English: a file made again or reinstalled
+# is a repair like any other, and the card verdict names it.
+for kind, said in (
+    ("made again", "The server key and chain were made again from the CA."),
+    ("package", "The package was installed again."),
+):
+    retain.FINDINGS.write_text(
+        json.dumps([{"path": str(server_key), "action": said, "kind": kind, "boot": "boot-two", "at": time.time()}])
+    )
+    found = {f["id"]: f for f in health.check_protected()}
+    check(
+        f"a boot check that {kind} a file: Box doctor says so, naming it",
+        found["protected-files"]["status"] == "warn" and str(server_key) in found["protected-files"]["evidence"],
+        found.get("protected-files"),
+    )
+retain.FINDINGS.write_text(
+    json.dumps(
+        [
+            {
+                "path": str(server_key),
+                "action": "The server key was made again.",
+                "kind": "made again",
+                "boot": "boot-two",
+                "at": time.time(),
+            },
+            {
+                "path": str(hub_env),
+                "action": "The package was installed again.",
+                "kind": "package",
+                "boot": "boot-two",
+                "at": time.time(),
+            },
+        ]
+    )
+)
+retain.STREAK.write_text(json.dumps({"boot": "boot-two", "streak": 2, "repaired": True}))
+found = {f["id"]: f for f in health.check_protected()}
+check(
+    "  the card verdict at two boots names the files it repaired, whatever put them back",
+    found["protected-files"]["status"] == "problem"
+    and "protected.twice" in message_ids(found["protected-files"])
+    and {str(server_key), str(hub_env)} <= set(found["protected-files"]["evidence"]),
+    found.get("protected-files"),
+)
+retain.FINDINGS.write_text(
+    json.dumps([{"path": str(hub_env), "action": "lost and no way back", "boot": "boot-two", "at": time.time()}])
+)
+found = {f["id"]: f for f in health.check_protected()}
+check(
+    "  a record with no kind at all is still said, as a repair, not dropped",
+    found["protected-files"]["status"] == "problem" and str(hub_env) in found["protected-files"]["evidence"],
+    found.get("protected-files"),
+)
+retain.STREAK.write_text(json.dumps({"boot": "boot-two", "streak": 0, "repaired": False}))
+retain.FINDINGS.write_text("[]")
 
 calls = []
 
@@ -554,6 +611,39 @@ check(
 )
 retain.set_keys("encrypt")
 retain.sweep()
+# A key changed: its old version is kept as <ident>.prev, and that is a key too (found on box 181: the hotspot's
+# previous connection file was copied to a USB drive as plain text).
+ca_ident = retain._ident(ca_key)
+ca_key.write_text("CA, renewed\n")
+os.utime(ca_key, ns=(time.time_ns() + 10**9, time.time_ns() + 10**9))
+retain.sweep()
+check(
+    "  a key's previous version goes to the drive encrypted, never as plain text",
+    retain._prev(ca_key).is_file()
+    and (usb_enc_store / (ca_ident + ".prev.enc")).is_file()
+    and not (usb_enc_store / (ca_ident + ".prev")).exists(),
+    sorted(p.name for p in usb_enc_store.iterdir()),
+)
+# A card copy damaged to 0xFF is reported, and the drive's good copy is kept.
+good = (usb_enc_store / (ca_ident + ".prev.enc")).read_bytes()
+retain._prev(ca_key).write_bytes(b"\xff" * 12)
+bad = retain.sweep()
+check(
+    "  a damaged copy on the card is not copied over the drive's good one",
+    (usb_enc_store / (ca_ident + ".prev.enc")).read_bytes() == good
+    and any(r["path"] == str(retain._prev(ca_key)) for r in bad),
+    bad,
+)
+retain._prev(ca_key).unlink()
+retain.set_keys("leave-out")
+retain.sweep()
+check(
+    "  leave-out removes the previous version's copy too",
+    not any(p.name.startswith(ca_ident) for p in usb_enc_store.iterdir()),
+    sorted(p.name for p in usb_enc_store.iterdir()),
+)
+retain.set_keys("encrypt")
+ca_key.write_text("CA\n")
 health.fix(f"retain-store:off:{retain.encode_store(usb_enc_store)}")
 retain.set_keys("leave-out")
 retain.store_candidates = real_candidates
@@ -592,7 +682,9 @@ real_tls.make_cert = real_tls_make
 retain.extra_stores = real_stores
 check(
     "a server key that can be made again is, before the copy",
-    (etc / "tls" / "server.key").read_text() == "MADE\n" and any("made again" in r["action"] for r in repairs),
+    (etc / "tls" / "server.key").read_text() == "MADE\n"
+    and any("made again" in r["action"] for r in repairs)
+    and any(r["path"] == str(etc / "tls" / "server.key") and r["kind"] == "made again" for r in repairs),
     repairs,
 )
 
@@ -627,7 +719,8 @@ check(
     "an nginx file tls.initialise does not write is restored from its copy, not called regenerated",
     htpasswd.read_text() == "admin:hash\n"
     and any("restored" in r["action"] for r in repairs)
-    and not any("rendered" in r["action"] for r in repairs),
+    and not any("rendered" in r["action"] for r in repairs)
+    and any(r["path"] == str(htpasswd) and r["kind"] == "copy" for r in repairs),
     repairs,
 )
 site = put(nginx / "conf.d" / "irate-box.conf", "server {}\n", 0o644)
@@ -669,7 +762,46 @@ repairs = retain.boot_check()
 retain._package_owned, retain.restore.from_package, retain.extra_stores = real_owned, real_package, real_stores
 check(
     "a package conffile with no good copy is reinstalled",
-    journald.read_text().startswith("[Journal]") and any("package" in r["action"] for r in repairs),
+    journald.read_text().startswith("[Journal]")
+    and any("package" in r["action"] for r in repairs)
+    and any(r["path"] == str(journald) and r["kind"] == "package" for r in repairs),
+    repairs,
+)
+
+# A file the storage will not read back: on a Lyra with /var/lib/hub on btrfs (2026-10-30), a block of 0xFF written
+# under a protected file made every read fail with EIO ("csum failed"). The boot check took that for a file removed,
+# and the restore's keeping copy (no hard link from another filesystem) failed on the same EIO.
+
+retain.sweep()
+real_read, real_link, real_copy = retain._read, os.link, retain.restore.shutil.copy2
+retain._read = lambda path, **kw: (
+    (_ for _ in ()).throw(OSError(errno.EIO, "Input/output error")) if Path(path) == settings else real_read(path, **kw)
+)
+os.link = lambda *a, **kw: (_ for _ in ()).throw(OSError(errno.EXDEV, "Invalid cross-device link"))
+retain.restore.shutil.copy2 = lambda src, dst, **kw: (
+    (_ for _ in ()).throw(OSError(errno.EIO, "Input/output error")) if Path(src) == settings else real_copy(src, dst)
+)
+try:
+    repairs = retain.boot_check()
+finally:
+    retain._read, os.link, retain.restore.shutil.copy2 = real_read, real_link, real_copy
+check(
+    "an unreadable file (EIO) is damage: restored from its copy, though the damaged one cannot be kept",
+    any(r["path"] == str(settings) and r["action"].startswith("restored from") for r in repairs)
+    and settings.read_text() == '{"hub_title": "Box"}\n',
+    repairs,
+)
+real_read = retain._read
+retain._read = lambda path, **kw: (
+    (_ for _ in ()).throw(OSError(errno.ENOENT, "No such file")) if Path(path) == settings else real_read(path, **kw)
+)
+try:
+    repairs = retain.boot_check()
+finally:
+    retain._read = real_read
+check(
+    "  a missing file is still the owner's removal, not damage",
+    not any(r["path"] == str(settings) for r in repairs),
     repairs,
 )
 

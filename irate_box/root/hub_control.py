@@ -110,14 +110,19 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       option file, which a netplan handover also writes. Only a code from tzdata's ISO 3166 table.
   {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
       The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
-  {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-read", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null, "confirm": "<token>"|null}
+  {"id": ..., "action": "rk-install", "bootloader": "nand-uboot", "loader": null, "confirm": "<token>"|null,
+   "rescue": {"image": "alpine-rescue.img", "sha256": "<64 hex>", "card": "sda", "size": <bytes>, "serial": "..."}|null}
   {"id": ..., "action": "rk-write", "image": "<name>.img.xz", "sha256": "<64 hex>", "loader": "rk3506b"|null}
   {"id": ..., "action": "rk-serial-setup", "console": "<by-id name>", "choices": {...}}
   {"id": ..., "action": "rk-card-check"|"rk-card-genuine", "card": "sda", "size": <bytes>, "serial": "..."}
   {"id": ..., "action": "rk-card-flash", "card": "sda", "size": <bytes>, "serial": "...", "image": "...", "sha256": "..."}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
-      the board's onboard flash erased (in Maskrom mode, the named loader sent first), refused when its loader
-      shows the SD card; or an image from <state>/rk-images written to that card, read back as it goes. A new board
+      the board's onboard flash read, erased (in Maskrom mode, the named loader sent first), refused when its loader
+      shows the SD card; a bootloader from <state>/rk-bootloaders written to the onboard flash, with the Alpine
+      rescue optionally written to a card in a reader; or an image from <state>/rk-images written to the card the
+      loader shows, read back as it goes. A new board
       set up over its serial console (rkserial.py). A board's SD card in a reader (rkcard.py): read and checked,
       tested as genuine (f3probe, erasing it), or an image written to it and read back.
       control/rkboard.json after.
@@ -191,11 +196,13 @@ from irate_box import setup_code
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
 from irate_box.hub import access, gitrepos, manifests, netinv, transport, uplink
+from irate_box.library import librarian
 from irate_box.msg import (
     M,
     Refused,
     duration,
     is_message,
+    named,
     render,
     sentences,
     when,
@@ -2805,7 +2812,10 @@ def security_report(src, installed):
         if manifest is None:
             return {**empty, "problems": ["the update has no security.json"]}
         builder_changed = _builder_changed(src)
-        problems = [] if builder_changed else secmanifest.mismatches(manifest, secmanifest.build(src))
+        seen = secmanifest.mismatches(manifest, secmanifest.build(src))
+        # A changed builder reads the tree differently, so what the installed one sees cannot hold the update. It is
+        # still shown: the approval of "how security is checked" then says what the installed checker found.
+        problems, differences = ([], seen) if builder_changed else (seen, [])
         changes = secmanifest.compare(secmanifest.load(CODE), manifest, _changed_files(src, installed))
         levels = secchanges.levels()
         if builder_changed:
@@ -2816,7 +2826,13 @@ def security_report(src, installed):
                 {
                     "kind": "widening",
                     "toggle": _strictest_level(levels),
-                    "text": "this update changes how its security is checked",
+                    "text": "this update changes how its security is checked"
+                    + (
+                        f" (the installed checker sees {len(differences)} difference"
+                        f"{'' if len(differences) == 1 else 's'} between the update and its manifest)"
+                        if differences
+                        else ""
+                    ),
                 }
             )
         held = [item for item in changes["widenings"] if levels.get(item["toggle"], "authorise") != "flag"]
@@ -2827,6 +2843,7 @@ def security_report(src, installed):
             "levels": levels,
             "held": held,
             "builder_changed": builder_changed,
+            "builder_differences": differences[:20],
         }
     except (OSError, ValueError, KeyError, SyntaxError) as exc:
         return {**empty, "problems": [str(exc)[:300]]}
@@ -2887,7 +2904,7 @@ def _security_check(src, installed):
                 "update.verify.security.widens.fix",
                 "Approve the changes on Updates, or use Install anyway only if you meant them.",
             ),
-            evidence=[item["text"] for item in held],
+            evidence=[item["text"] for item in held] + list(report.get("builder_differences") or [])[:8],
         )
     if widenings:
         return _check(
@@ -3977,6 +3994,7 @@ GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access
 GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
 GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
+GO_SECURITY = _go("security", M("go.security", "Security"))
 GO_APPSTORE = _go("appstore", M("go.appstore", "App store"))
 
 # One failed attempt says what happened, not why.
@@ -4927,6 +4945,227 @@ def _said_check(c):
     return f"{c.get('name', '')}: {c.get('detail', '')}"
 
 
+def _hours_since(stamp, now):
+    if not stamp:
+        return None
+    try:
+        then = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+    return (now - then.timestamp()) / 3600
+
+
+def addons_findings(now=None):
+    """Each add-on source and each packaged add-on that is not fine, one finding each: a source's error,
+    a source with no successful check for three intervals, a newer release under a policy that would
+    install it, and a packaged add-on's waiting packages. One ok line when all are fine."""
+    now = now or time.time()
+    title = M("update.addons.title", "Add-ons and sources")
+    try:
+        cfg = librarian.load_config()
+        status = librarian.load_status()
+    except (OSError, ValueError):
+        return [
+            finding(
+                "addons-sources",
+                title,
+                "warn",
+                M("update.addons.unreadable", "The librarian's sources could not be read."),
+            )
+        ]
+    policy = cfg["policy"]
+    interval = policy.get("check_every_hours") or 0
+    # The last run's errors, for a box updated to this doctor before its librarian has run with
+    # last_ok/error_since: a source that failed then is not invisible until the next check.
+    run_errors = {}
+    try:
+        last_run = json.loads((STATE / "library" / "last-run.json").read_text())
+    except (OSError, ValueError, AttributeError):
+        last_run = {}
+    for record in (last_run.get("last_scheduled") or {}, last_run.get("last") or {}, last_run):
+        for line in record.get("errors") or []:
+            name, _, rest = str(line).partition(":")
+            if name and rest:
+                run_errors.setdefault(name, str(line).strip())
+    out = []
+    for src in cfg["sources"]:
+        name = src["name"]
+        if not src.get("enabled", True):
+            continue
+        entry = status.get(name) or {}
+        if entry.get("deferred"):
+            continue
+        failed = entry.get("error") or (entry.get("latest_failed") or {}).get("error")
+        if not failed and name in run_errors:
+            failed, _from_run = run_errors[name], True
+        if failed:
+            since = _hours_since(entry.get("error_since"), now)
+            out.append(
+                finding(
+                    f"source-{name}-error",
+                    named(name, M("update.addons.role-source", "source")),
+                    "problem" if interval and since is not None and since >= 3 * interval else "warn",
+                    M("update.addons.error", "The source {name} failed its last check or install.", name=name),
+                    M(
+                        "update.addons.error.why",
+                        "Until it succeeds, the add-on or book it carries stays at the version the box has.",
+                    ),
+                    M(
+                        "update.addons.error.fix",
+                        "Read the librarian's log. If the source is no longer wanted, switch it off on the Librarian page.",
+                    ),
+                    notes=(
+                        [M("update.addons.error.since", "It has failed since {time}.", time=when(entry["error_since"]))]
+                        if entry.get("error_since")
+                        else []
+                    ),
+                    evidence=[str(failed)[:300]],
+                    go=GO_LIBRARIAN,
+                )
+            )
+            continue
+        if interval:
+            last_ok = _hours_since(entry.get("last_ok"), now)
+            last_check = _hours_since(entry.get("last_check"), now)
+            since = last_ok if last_ok is not None else last_check
+            if since is not None and since >= 3 * interval:
+                out.append(
+                    finding(
+                        f"source-{name}-stale",
+                        named(name, M("update.addons.role-source", "source")),
+                        "warn",
+                        M(
+                            "update.addons.stale",
+                            "The source {name} has not checked successfully for three intervals.",
+                            name=name,
+                        ),
+                        M(
+                            "update.addons.stale.why",
+                            "A source that stops answering is not noticed while the box says its updates are fine.",
+                        ),
+                        M("update.addons.stale.fix", "Read the librarian's log, then check now on the Librarian page."),
+                        go=GO_LIBRARIAN,
+                    )
+                )
+        latest = entry.get("latest") or {}
+        current = entry.get("current") or {}
+        waiting = (
+            latest.get("version")
+            and current.get("version")
+            and latest["version"] != current["version"]
+            and policy.get("auto_install") == 2
+            and (src.get("kind") != "app" or librarian._follow(src) == "latest")
+        )
+        if waiting:
+            out.append(
+                finding(
+                    f"source-{name}-waiting",
+                    named(name, M("update.addons.role-source", "source")),
+                    "warn",
+                    M(
+                        "update.addons.waiting",
+                        "A newer version of {name} is known and not installed, though this box installs updates.",
+                        name=name,
+                    ),
+                    M(
+                        "update.addons.waiting.why",
+                        "The policy says to install it, so the update has either failed quietly or not run.",
+                    ),
+                    M("update.addons.waiting.fix", "Read the librarian's log, then check now on the Librarian page."),
+                    evidence=[latest.get("label", latest["version"])],
+                    go=GO_LIBRARIAN,
+                )
+            )
+
+    try:
+        simulated = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        simulated = ""
+    if simulated:
+        pending = {p["package"]: p for p in security.pending_updates(simulated)}
+        security_updates = set(security.pending_security(simulated))
+        access_state = access.read(ACCESS_FILE)
+        for addon_id, m in manifests.addons().items():
+            packages = (m.get("addon") or {}).get("packages") or []
+            if not packages or access.mode_of(access_state, addon_id) == "off":
+                continue
+            waiting_packages = [pending[p] for p in packages if p in pending]
+            if not waiting_packages:
+                continue
+            names = [p["package"] for p in waiting_packages]
+            out.append(
+                finding(
+                    f"addon-{addon_id}-packages",
+                    named(m["addon"]["title"], M("update.addons.role-addon", "add-on")),
+                    "warn",
+                    M(
+                        "update.addons.packages",
+                        {
+                            "one": "{name}: {n} package waits for an update: {packages}.",
+                            "other": "{name}: {n} packages wait for an update: {packages}.",
+                        },
+                        name=m["addon"]["title"],
+                        n=len(names),
+                        packages=names,
+                    ),
+                    notes=(
+                        [
+                            M(
+                                "update.addons.packages.security",
+                                "At least one of them is a security update. The Security page counts it.",
+                            )
+                        ]
+                        if security_updates & set(names)
+                        else []
+                    ),
+                    evidence=[f"{p['package']} {p['version']}" for p in waiting_packages[:6]],
+                    go=GO_SECURITY,
+                )
+            )
+    try:
+        local, _errors = manifests.load_local()
+        catalogue = json.loads((STATE / "addons-catalogue.json").read_text())
+    except (OSError, ValueError, TypeError):
+        local, catalogue = [], {}
+    for m in local:
+        entry = catalogue.get(m["id"]) or {}
+        if entry.get("status") != "held":
+            continue
+        out.append(
+            finding(
+                f"addon-{m['id']}-held",
+                named(m["addon"]["title"], M("update.addons.role-approval", "update approval")),
+                "warn",
+                M(
+                    "update.addons.held",
+                    "A newer version in the catalogue changes what you agreed to. The version you agreed to keeps running.",
+                ),
+                M(
+                    "update.addons.held.why",
+                    "Accepting the new version gives it the new permissions it asks for. Until then the old one runs.",
+                ),
+                M(
+                    "update.addons.held.fix",
+                    "On Add-ons, Web add-ons, read the changes, then accept the new version or remove the add-on.",
+                ),
+                evidence=entry.get("held", []),
+            )
+        )
+    if not out:
+        out.append(
+            finding(
+                "addons-sources",
+                title,
+                "ok",
+                M(
+                    "update.addons.ok",
+                    "No source has failed for three intervals, and every packaged add-on is up to date.",
+                ),
+            )
+        )
+    return out
+
+
 def scheduled_findings(now=None):
     """Whether the timer's runs actually reach the hub's own update (library/last-run.json, kept
     by the librarian): a check that the box *can* update says nothing about whether it *does*.
@@ -5027,7 +5266,6 @@ def scheduled_findings(now=None):
                         "Scheduled runs reach the update of the hub server.",
                     )
                 ),
-                notes=([M("update.scheduled.ok.errors", "Some sources had errors.")] if errors else []),
                 evidence=errors,
             )
         )
@@ -7302,6 +7540,67 @@ def _rk_erase(rkboard, req):
     return rkboard.erase(loader, req.get("confirm"))
 
 
+def _rk_install(rkboard, req):
+    """A bootloader on the board's onboard flash, and optionally the Alpine rescue image on a card in a reader.
+    Every value is checked here again, before the flash is erased."""
+    from irate_box.hub import rkusb
+    from irate_box.root import rkcard
+
+    loader = req.get("loader")
+    if loader is not None and loader not in {x["id"] for x in rkboard.loaders()}:
+        raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
+    bootloader = str(req.get("bootloader") or "")
+    if bootloader not in {b["id"] for b in rkusb.bootloaders()}:
+        raise Refused(M("rkboard.bootloader-unknown", "Select a bootloader to install."))
+    confirm = req.get("confirm")
+    if confirm is not None and not isinstance(confirm, str):
+        raise Refused(M("rkboard.install.confirm", "Read the onboard flash first, then confirm the install."))
+    rescue = req.get("rescue")
+    checked = None
+    if rescue is not None:
+        if not isinstance(rescue, dict):
+            raise Refused(M("rkboard.rescue-missing", "Select the Alpine rescue image and the card to write it to."))
+        image, sha = str(rescue.get("image") or ""), str(rescue.get("sha256") or "").lower()
+        if not next((x for x in rkusb.rescues() if x["name"] == image and x["sha256"] == sha), None):
+            raise Refused(M("rkboard.rescue-missing", "Select the Alpine rescue image and the card to write it to."))
+        # The image is hashed before anything on the board is erased: a damaged one must not cost the NAND.
+        with rkboard._image(image) as fh:
+            h = hashlib.sha256()
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                h.update(block)
+        if h.hexdigest() != sha:
+            raise Refused(
+                M(
+                    "rkboard.image-damaged",
+                    "The image {name} does not match its sha256: nothing was written.",
+                    name=image,
+                )
+            )
+        try:
+            size = int(rescue.get("size"))
+        except (TypeError, ValueError):
+            raise Refused(M("rkcard.name", "Select a card.")) from None
+        card = (str(rescue.get("card") or ""), size, str(rescue.get("serial") or ""))
+        rkcard._card(*card)  # found again, the same size and serial, nothing on it mounted
+        checked = (image, sha, card)
+    said = rkboard.install(bootloader, confirm, loader)
+    if checked is None:
+        return said
+    image, sha, card = checked
+    try:
+        on_card = rkcard.flash(*card, image, sha)
+    except Refused as exc:
+        raise Refused(
+            M(
+                "rkboard.install.rescue-failed",
+                "{said} The Alpine rescue image was not written to the card: {why}",
+                said=said,
+                why=exc.message,
+            )
+        ) from None
+    return sentences(said, on_card)
+
+
 # A new board set up over its serial console (rkserial.py): every value checked again here (rksetup.problem), the
 # console found by its /dev/serial/by-id name, this box's own WiFi password read here (never sent through the hub),
 # and the passwords made for the board kept for the page to show once (rk-secrets/<request id>.json, the hub's to
@@ -7733,6 +8032,105 @@ def _kit_hours(req):
     return hours
 
 
+def _kit_lists_hours(req):
+    hours = req.get("lists_max_hours", 24)
+    if type(hours) is not int or not 0 <= hours <= 24 * 30:
+        raise Refused(
+            M(
+                "control.kit.lists-hours-bad",
+                "The lists' age must be from 0 to {max} hours.",
+                max=24 * 30,
+            )
+        )
+    return hours
+
+
+def _kit_check_said(kit, result):
+    state = result.get("state")
+    if state == "current":
+        return M("control.kit.check-current", "The toolkit {kit} is up to date.", kit=kit)
+    if state == "newer":
+        return M(
+            "control.kit.check-newer",
+            {
+                "one": "The toolkit {kit} has {n} package to download: {packages}.",
+                "other": "The toolkit {kit} has {n} packages to download: {packages}.",
+            },
+            kit=kit,
+            n=len(result.get("changes") or []),
+            packages=[f"{c['name']} {c['from']} → {c['to']}" for c in result.get("changes") or []],
+        )
+    if state == "not-cached":
+        return M("control.kit.check-not-cached", "The toolkit {kit} is not cached yet.", kit=kit)
+    return M(
+        "control.kit.check-unavailable",
+        "The toolkit {kit} could not be checked: {why}",
+        kit=kit,
+        why=result.get("why") or "?",
+    )
+
+
+def _kit_check(req):
+    kit = req.get("kit")
+    if not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+        raise Refused(KIT_BAD)
+    try:
+        result = kits.check(kit, _kit_lists_hours(req))
+    finally:
+        _kits_status()
+    return _kit_check_said(kit, result)
+
+
+def _kit_check_all(req):
+    try:
+        results = kits.check_all(_kit_lists_hours(req))
+    finally:
+        _kits_status()
+    newer = sorted(k for k, v in results.items() if v.get("state") == "newer")
+    not_cached = sorted(k for k, v in results.items() if v.get("state") == "not-cached")
+    unavailable = sorted(k for k, v in results.items() if v.get("state") == "unavailable")
+    out = []
+    if newer:
+        out.append(
+            M(
+                "control.kit.checked-newer",
+                {
+                    "one": "{n} toolkit has updates: {kits}.",
+                    "other": "{n} toolkits have updates: {kits}.",
+                },
+                n=len(newer),
+                kits=newer,
+            )
+        )
+    if not_cached:
+        out.append(
+            M(
+                "control.kit.checked-not-cached",
+                {
+                    "one": "{n} toolkit is not cached: {kits}.",
+                    "other": "{n} toolkits are not cached: {kits}.",
+                },
+                n=len(not_cached),
+                kits=not_cached,
+            )
+        )
+    if unavailable:
+        out.append(
+            M(
+                "control.kit.checked-unavailable",
+                {
+                    "one": "{n} toolkit could not be checked: {kits}.",
+                    "other": "{n} toolkits could not be checked: {kits}.",
+                },
+                n=len(unavailable),
+                kits=unavailable,
+            )
+        )
+    if not out:
+        out.append(M("control.kit.checked-all-current", "Checked {n} toolkits: all are up to date.", n=len(results)))
+    return out
+
+
 def _kit_sweep(req):
     """The librarian's sweep by age: older sets past their days removed, control/kits.json written after it."""
     days = req.get("days")
@@ -7868,6 +8266,7 @@ ACTIONS = {
     "wifi-country": wifi_country,
     "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
     "rk-erase": _rk(_rk_erase),
+    "rk-install": _rk(_rk_install),
     "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
@@ -7883,6 +8282,8 @@ ACTIONS = {
     "wifi-join": wifi_join,
     "wifi-forget": wifi_forget,
     "admin-gate": admin_gate,
+    "kit-check": _kit_check,
+    "kit-check-all": _kit_check_all,
     "kit-fetch": _kit_req(kits.fetch),
     "kit-install": _kit_req(kits.install),
     "kit-remove": _kit_req(kits.remove),

@@ -1765,7 +1765,22 @@
               />
             </div>
           </form>
+          <p
+            class="setting-desc"
+            data-i18n="admin.toolkits.check-all-minutes"
+          >
+            Checking every toolkit takes a few minutes on a small board.
+          </p>
           <p class="library-buttons">
+            <button
+              class="action-btn"
+              type="button"
+              id="kits-check-all"
+              data-update="check"
+              data-i18n="admin.toolkits.kits-check-all"
+            >
+              Check all now
+            </button>
             <button
               class="action-btn"
               type="button"
@@ -1773,7 +1788,7 @@
               data-update="fetch"
               data-i18n="admin.toolkits.kits-refresh-all"
             >
-              Refresh toolkit cache
+              Download all
             </button>
             <button
               class="action-btn"
@@ -3314,9 +3329,6 @@
               >
                 This tab lists the radios and ports of the box, what each can
                 do, and which program manages each.
-              </p>
-              <p class="setting-desc" data-i18n="admin.network.pin-map">
-                <a href="/admin/pins.html">Pin map</a>: the header, what claims each GPIO pin, and which pins are free.
               </p>
               <p
                 class="setting-desc"

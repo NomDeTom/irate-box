@@ -141,6 +141,19 @@ check(
     said["evidence"],
 )
 
+# The builder changed and the tree no longer matches its own manifest: still held as the builder's change, not a
+# mismatch, but what the installed checker sees is shown with it, so the approval says what it covers.
+(tree / "install.sh").write_text((tree / "install.sh").read_text() + "\n# https://late.example/after-the-manifest\n")
+said = H._security_check(with_install(tree), None)
+check(
+    "a changed builder over a tree that differs from its manifest: held, the difference shown",
+    not said["ok"]
+    and said["detail"]["id"] == "update.verify.security.widens"
+    and any("installed checker sees 1 difference" in e for e in said["evidence"])
+    and any("late.example" in e for e in said["evidence"]),
+    said["evidence"],
+)
+
 check(
     "the fetched code was not imported: the tree has no __pycache__ under its copied root",
     not (tree / "irate_box" / "root" / "__pycache__").exists(),

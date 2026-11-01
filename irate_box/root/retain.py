@@ -17,6 +17,7 @@ damage: the copy is put back with the same code the Housecall doctor uses (resto
 running is the card verdict. Stdlib only.
 """
 
+import errno
 import hashlib
 import json
 import os
@@ -53,6 +54,9 @@ CONFIG = ETC / "retain.json"
 KEYFILE = ROOT / "retain-key"
 FF, ZERO = b"\xff", b"\x00"
 KEEP = 50
+# A read that fails this way is damage to mend, not a file removed: an I/O error, or a checksum the filesystem
+# found wrong (EUCLEAN on ext4 metadata, EBADMSG).
+UNREADABLE = {errno.EIO, errno.EUCLEAN, errno.EBADMSG}
 
 
 def protected():
@@ -589,7 +593,9 @@ def _store_sources(path, bad=None):
                 if data is not None:
                     yield name + ".enc", crypt, data
                 elif bad is not None:
-                    bad.append({"path": str(crypt), "action": "a copy that would not decrypt was skipped"})
+                    bad.append(
+                        {"path": str(crypt), "action": "a copy that would not decrypt was skipped", "kind": "uncopied"}
+                    )
 
 
 def sweep():
@@ -610,7 +616,7 @@ def sweep():
         except OSError:
             continue
         if _bad(data):
-            bad.append({"path": str(path), "action": "not copied: it reads back as 0xFF or zero"})
+            bad.append({"path": str(path), "action": "not copied: it reads back as 0xFF or zero", "kind": "uncopied"})
             if str(path) in previous:
                 entries[str(path)] = previous[str(path)]
             continue
@@ -643,25 +649,38 @@ def sweep():
             for source in STORE.iterdir():
                 if not source.is_file() or source.name.endswith(".lock"):
                     continue
+                # A copy's previous version (<ident>.prev) is the same file's: a key's .prev is a key too.
+                ident = source.name.removesuffix(".prev")
                 # The key that encrypts the copies is never put in an extra store: that would give it away with them.
-                if source.name == _ident(KEYFILE):
+                if ident == _ident(KEYFILE):
                     continue
-                key = source.name in key_ids
+                key = ident in key_ids
                 rule = store_keys(store)
-                if key and (rule is False or (rule == "plain" and removable and keys_mode() != "encrypt")):
+                if key and (
+                    rule is False
+                    or (rule == "plain" and removable and keys_mode() != "encrypt")
+                    or (rule == "encrypted" and keys_mode() != "encrypt")
+                ):
                     # "Leave them out" means the old key copies go too, whichever mode wrote them.
                     for suffix in ("", ".prev", ".enc", ".prev.enc"):
-                        (store / (source.name + suffix)).unlink(missing_ok=True)
-                    continue
-                if key and rule == "encrypted" and keys_mode() != "encrypt":
-                    for suffix in ("", ".prev", ".enc", ".prev.enc"):
-                        (store / (source.name + suffix)).unlink(missing_ok=True)
+                        (store / (ident + suffix)).unlink(missing_ok=True)
                     continue
                 encrypted = key and (rule == "encrypted" or removable)
                 target = store / (source.name + ".enc" if encrypted else source.name)
                 try:
                     plain = source.read_bytes()
                 except OSError:
+                    continue
+                if _bad(plain):
+                    # A card copy that reads as all 0xFF or all zero is the card's damage: never spread it over a
+                    # good copy elsewhere.
+                    bad.append(
+                        {
+                            "path": str(source),
+                            "action": "this copy is damaged, and was not copied on",
+                            "kind": "uncopied",
+                        }
+                    )
                     continue
                 if encrypted:
                     try:
@@ -769,19 +788,22 @@ def boot_check():
     for path_str, entry in manifest["entries"].items():
         path = Path(path_str)
         wanted = entry.get("sha256")
+        unreadable = False
         try:
             data = _read(path)
-        except OSError:
-            data = None
-        if data is None:
-            continue  # removed by the owner or the hub: the next sweep drops it, and it is not a card's damage
-        if not _bad(data) and _sha(data) == wanted:
+        except OSError as exc:
+            if exc.errno not in UNREADABLE:
+                continue  # removed by the owner or the hub: the next sweep drops it, and it is not a card's damage
+            # The storage will not give it back: btrfs answers a block that fails its checksum with EIO (a Lyra's
+            # state partition, 2026-10-30). That is the card's damage, as a file of 0xFF is.
+            data, unreadable = b"", True
+        if not unreadable and not _bad(data) and _sha(data) == wanted:
             continue
         try:
             mtime = path.stat().st_mtime_ns
         except OSError:
             mtime = None
-        if not _bad(data) and mtime != entry.get("mtime_ns"):
+        if not unreadable and not _bad(data) and mtime != entry.get("mtime_ns"):
             continue  # the owner changed it: the next sweep copies it
         done = False
         skipped = []
@@ -805,7 +827,7 @@ def boot_check():
                     )
                 finally:
                     temporary.unlink(missing_ok=True)
-                repairs.append({"path": str(path), "action": "restored from " + name})
+                repairs.append({"path": str(path), "action": "restored from " + name, "kind": "copy"})
                 done = True
                 break
             except (OSError, Refused):
@@ -813,12 +835,12 @@ def boot_check():
         if not done and path != site_path:
             made = regenerate(path)
             if made:
-                repairs.append({"path": str(path), "action": str(made)})
+                repairs.append({"path": str(path), "action": str(made), "kind": "made again"})
                 done = True
         if not done and _package_owned(path):
             try:
                 said = restore.from_package(path)
-                repairs.append({"path": str(path), "action": str(said)})
+                repairs.append({"path": str(path), "action": str(said), "kind": "package"})
                 done = True
             except (OSError, Refused):
                 done = False
@@ -827,15 +849,25 @@ def boot_check():
                 # Render it once the front's own includes are repaired: nginx -t would fail on their damage.
                 site_pending = True
             else:
-                lost.append({"path": str(path), "action": "damaged, and no good copy: reinstall or restore it by hand"})
+                lost.append(
+                    {
+                        "path": str(path),
+                        "action": "damaged, and no good copy: reinstall or restore it by hand",
+                        "kind": "lost",
+                    }
+                )
         problems.extend(skipped)
     if site_pending:
         made = regenerate(site_path)
         if made:
-            repairs.append({"path": str(site_path), "action": str(made)})
+            repairs.append({"path": str(site_path), "action": str(made), "kind": "made again"})
         else:
             lost.append(
-                {"path": str(site_path), "action": "damaged, and no good copy: reinstall or restore it by hand"}
+                {
+                    "path": str(site_path),
+                    "action": "damaged, and no good copy: reinstall or restore it by hand",
+                    "kind": "lost",
+                }
             )
     _streak(current, bool(repairs or lost))
     if repairs or lost or problems:

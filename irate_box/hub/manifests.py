@@ -313,13 +313,22 @@ def _check(m, where):
     addon = m.get("addon")
     if addon is not None:
         need(
-            re.match(r"^--with-(notes|sync|mqtt|irc|term|collab|kiwix)$", str(addon.get("option", ""))),
-            "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-irc, --with-term, --with-collab, --with-kiwix",
+            re.match(r"^--with-(notes|sync|mqtt|irc|inspircd|term|collab|kiwix)$", str(addon.get("option", ""))),
+            "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-irc, --with-inspircd, --with-term, --with-collab, --with-kiwix",
         )
         for k in ("title", "summary"):
             need(isinstance(addon.get(k), str), f"addon.{k}: a string")
         need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")
         need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
+        need(
+            "packages" not in addon
+            or (
+                isinstance(addon["packages"], list)
+                and len(addon["packages"]) <= 40
+                and all(isinstance(p, str) and re.match(r"^[a-z0-9][a-z0-9+.-]{1,62}$", p) for p in addon["packages"])
+            ),
+            "addon.packages: Debian package names",
+        )
     if "checks" in m:
         need(status is not None and "unit" in status, "checks need status.unit (the add-on they check)")
         _check_checks(m["checks"], need)
@@ -657,6 +666,7 @@ def local(m):
         "capabilities": {
             "connect": list(m.get("capabilities", {}).get("connect", [])),
             "storage": bool(m.get("capabilities", {}).get("storage", False)),
+            "local": bool(m.get("capabilities", {}).get("local", False)),
         },
     }
     if m.get("checks"):
@@ -709,6 +719,8 @@ def agreed_part(m):
         "consent": (m.get("addon") or {}).get("consent"),
         "connect": sorted((m.get("capabilities") or {}).get("connect", [])),
         "storage": bool((m.get("capabilities") or {}).get("storage", False)),
+        # It widens the add-on's policy (data:, blob:, blob: scripts), so a catalogue entry that adds it waits too.
+        "local": bool((m.get("capabilities") or {}).get("local", False)),
         "source": {k: src.get(k) for k in ("type", "repo", "workflow")},
     }
 
