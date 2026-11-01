@@ -22,6 +22,20 @@ Each update downloads only the files that changed. Some dependencies can downloa
 
 A GitHub signature does not prove who merged the commit. A version that fails the required signature check is not installed. Some other failed checks can be overridden with **Install anyway**. The Updates doctor says why a check failed.
 
+## Two system slots
+
+By default an update writes over the system the box is running. **A/B system updates** keep two system slots instead. An update patches the slot that is not running, checks it, then switches to it. A boot that fails falls back to the slot that worked.
+
+Select the route on **Recovery and monitoring → Hardening**, under **A/B system updates**:
+
+- **Off**: the box updates its one system slot in place. This is the default.
+- **One-shot tryboot**: the board tries the new slot once, and goes back on its own if it does not boot. A Raspberry Pi uses its firmware's own `tryboot`. A Lyra uses a spare register in its boot script, which the box asks you to record first: `irate-box hardening tryboot-reg 0xADDRESS`. Until you do, the route is recorded and nothing on the card changes.
+- **U-Boot and RAUC**: U-Boot counts the boot attempts and chooses the slot, and RAUC does the switching. It needs U-Boot rebuilt with a saved environment that survives a failed boot, and RAUC installed. The box says which of the tools it needs are missing.
+
+Selecting a route writes boot files under `/etc/hub/ab`. It does not repartition the card and it does not reboot. The box answers with what is ready and what is still to do, in its own words. The two slots are made by a fresh install or an offline repartition. The same card holds **Filesystem for a fresh install**, which names the filesystems for that install: see [Troubleshooting](troubleshooting.md).
+
+`irate-box hardening status` answers on the console what is recorded, which slot is running, which slot is the default, whether a trial is armed, the files the box wrote, and the tools it found. Switching the route back to **Off** removes the boot files. It changes no partition.
+
 ## Add-ons and their sources
 
 The Updates doctor gives each add-on source its own line: a source that failed, one that has not checked successfully for three intervals, or a newer release that the box's setting says to install but has not. A local add-on whose newer catalogue version needs your approval is listed there too, once. A packaged add-on with waiting packages is listed with them, and says when one is a security update. A source that is switched off, deferred, or set to flag only stays quiet.

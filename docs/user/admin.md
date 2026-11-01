@@ -29,7 +29,7 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
 - **Moderation**: **Reports** (content that users reported) and **User data**. Look at them and remove items.
 - **System**: Accounts, Network, Security, the librarian, Toolkits, Clock, **Recovery and monitoring**, Updates, and Backup and transfer.
   - The librarian page shows what the librarian is doing and the schedule for books and apps. It shows the storage limit for books and apps. It links to the schedules of other updates and holds the GitHub token.
-  - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card writes**.
+  - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card writes**. **SD card writes** chooses where the log, the box's own state and apt's cache live, and whether the onboard flash's data is checked as it is read. **Hardening** holds the two choices that change how the card is laid out or updated: **Filesystem for a fresh install** and **A/B system updates**. Neither repartitions a running card: a fresh install applies them.
 - **Doctors**: the Box doctor, the Security doctor and the Updates doctor. Each doctor checks one part of the box and lists the problems in plain words. Where a repair exists, the doctor shows a button for it.
 - **Mock controls**: every control the pages use, with sample data, at the bottom. It is for copying a control into a page and for comparing them. It changes nothing.
 
