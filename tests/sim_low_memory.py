@@ -239,5 +239,39 @@ check(
     {"memguard-limits", "memguard-action"} <= {g["key"] for g in memguard.groups()},
 )
 
+# Every memguard command the installer and uninstaller run is one memguard knows: install.sh once called two that did
+# not exist (liveness-apply, apt-apply), and only a real install on a Banana Pi M2 Zero showed it (2 problems).
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+called = sorted(
+    {
+        m
+        for f in ("install.sh", "uninstall.sh")
+        for m in re.findall(r"irate-box\"? memguard ([a-z][a-z-]+)", (ROOT / f).read_text())
+    }
+)
+unknown = []
+for name in called:
+    if name in ("run", "kill-builds"):  # the guard itself, and a kill: not to be started from a test
+        continue
+    try:
+        with open(os.devnull, "w") as quiet:
+            out, sys.stdout = sys.stdout, quiet
+            try:
+                rc = memguard.main([name])
+            finally:
+                sys.stdout = out
+    except Exception as exc:  # noqa: BLE001 - any failure is the finding
+        rc = f"{type(exc).__name__}: {exc}"
+    if rc not in (0, None):
+        unknown.append((name, rc))
+check(
+    "every memguard command install.sh and uninstall.sh run is one memguard knows",
+    called and not unknown,
+    (called, unknown),
+)
+
 print("all passed" if not fails else f"{fails} failures")
 sys.exit(1 if fails else 0)

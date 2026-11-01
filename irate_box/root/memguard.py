@@ -842,6 +842,12 @@ def main(argv):
         print(install_bounds())
     elif cmd == "kill-builds":
         print(kill_builds())
+    elif cmd == "liveness-apply":
+        apply_liveness()
+        print(f"the watched services: {load_settings()['watchdog_failure']} when one stops answering")
+    elif cmd == "apt-apply":
+        apply_apt()
+        print(f"package-update builds: {load_settings()['apt_builds']}")
     elif cmd == "undo":
         for path in (DROPIN, WRAPPER):
             try:
@@ -856,7 +862,7 @@ def main(argv):
             _run("systemctl", "daemon-reload")
         print("the build bounds are gone")
     else:
-        print("usage: memguard.py run | status | install-bounds | kill-builds | undo")
+        print("usage: memguard.py run | status | install-bounds | kill-builds | liveness-apply | apt-apply | undo")
         return 2
     return 0
 
