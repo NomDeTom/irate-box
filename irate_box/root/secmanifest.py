@@ -10,9 +10,10 @@ own manifest, and sorts two manifests' differences into widenings and narrowings
 
 The units whose text a module writes (source "code": the firewall, the AP units, bootkey and the
 health units) are declared in the manifest but not rebuilt from the tree here: a fetched tree's
-code for them is not compared. #559 has each of those units read its lines from the manifest
-instead, which closes the gap for everything the manifest holds; the modules' own fallbacks keep
-computed paths (retain's stores, health's state folders) that the manifest does not hold.
+code for them is not compared. Each of those modules now reads the lines the manifest holds
+(unit_lines), so changing the manifest is what changes them. Their fallbacks, and the paths
+retain and health compute for ReadWritePaths (the stores, the state folders), are not in the
+manifest and are not checked.
 
 Stdlib only. The same module is used by tests/security_manifest_guard.py in CI and by root's
 verify_update() on a fetched tree, so the box never has to trust the fetched code's account
@@ -370,9 +371,11 @@ def unit_lines(unit, order, fallback="", override=None):
 
 
 def apply_secrets():
-    """Put the declared mode and owner on every secret the box has now. A path with a * is each match;
-    a missing file is left for the installer. A group that names a rule rather than a group ("the web
-    server's group") is skipped; the installer still sets it. Returns the changes it made, as lines."""
+    """Put the declared mode and owner on every secret the box has now. Each is opened without
+    following a link and changed on that descriptor, so a link the hub can plant in between is not
+    followed. A path with a * is each match; a missing file is left for the installer. A group that
+    names a rule rather than a group ("the web server's group") is skipped; the installer still sets
+    it. Returns the changes it made, as lines."""
     manifest = _manifest()
     if not manifest:
         return []
@@ -384,33 +387,37 @@ def apply_secrets():
         paths = sorted(Path("/").glob(pattern.lstrip("/"))) if "*" in pattern else [Path(pattern)]
         for path in paths:
             try:
-                st = path.lstat()
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
             except OSError:
                 continue
-            if not stat.S_ISREG(st.st_mode):
-                continue
-            mode = entry.get("mode")
-            if mode:
-                want = int(str(mode), 8)
-                if stat.S_IMODE(st.st_mode) != want:
-                    os.chmod(path, want)
-                    changed.append(f"{path}: mode {mode}")
-            owner, group = entry.get("owner"), entry.get("group")
-            uid = -1
-            if owner:
-                try:
-                    uid = pwd.getpwnam(owner).pw_uid
-                except KeyError:
-                    uid = -1
-            gid = -1
-            if group and not group.startswith("the "):
-                try:
-                    gid = grp.getgrnam(group).gr_gid
-                except KeyError:
-                    gid = -1
-            if (uid != -1 and st.st_uid != uid) or (gid != -1 and st.st_gid != gid):
-                os.chown(path, uid, gid)
-                changed.append(f"{path}: owner {owner}:{group}")
+            try:
+                st = os.fstat(fd)
+                if not stat.S_ISREG(st.st_mode):
+                    continue
+                mode = entry.get("mode")
+                if mode:
+                    want = int(str(mode), 8)
+                    if stat.S_IMODE(st.st_mode) != want:
+                        os.fchmod(fd, want)
+                        changed.append(f"{path}: mode {mode}")
+                owner, group = entry.get("owner"), entry.get("group")
+                uid = -1
+                if owner:
+                    try:
+                        uid = pwd.getpwnam(owner).pw_uid
+                    except KeyError:
+                        uid = -1
+                gid = -1
+                if group and not group.startswith("the "):
+                    try:
+                        gid = grp.getgrnam(group).gr_gid
+                    except KeyError:
+                        gid = -1
+                if (uid != -1 and st.st_uid != uid) or (gid != -1 and st.st_gid != gid):
+                    os.fchown(fd, uid, gid)
+                    changed.append(f"{path}: owner {owner}:{group}")
+            finally:
+                os.close(fd)
     return changed
 
 
