@@ -7169,7 +7169,7 @@ function drawUpScope(inv) {
             ? `${upScope} has its own ${Object.keys(own).join(", ")}. The other settings follow every connection. `
             : `${upScope} follows the settings for every connection. A choice here becomes its own setting. `,
           own
-            ? actionButton("Use default connection settings", () => {
+            ? actionButton("Use default connection settings", (event) => {
                 const per = { ...upSaved.per_iface };
                 delete per[upScope];
                 upSec.discard();
@@ -7179,8 +7179,10 @@ function drawUpScope(inv) {
                     settings: { ...upSaved, per_iface: per },
                   },
                   "up",
+                  null,
+                  event.currentTarget,
                 );
-              })
+              }, { dataset: { wait: "net:scope:default" } })
             : null,
         ]
       : [
@@ -8009,8 +8011,8 @@ function radioTestButton(iface, exp, label) {
     { className: "radio-test" },
     actionButton(
       label,
-      () => netRequest({ action: "radiotest", iface, exp }, "scan"),
-      { className: "small", disabled: busy },
+      (event) => netRequest({ action: "radiotest", iface, exp }, "scan", null, event.currentTarget),
+      { className: "small", disabled: busy, dataset: { wait: `net:radiotest:${iface}:${exp}` } },
     ),
     el("span", { className: "setting-desc", textContent: ` ${RADIO_TEST_SAYS[exp]}` }),
   );
@@ -8481,16 +8483,18 @@ function drawRoaming(inv, uplink, wifi) {
         `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,
         actionButton(
           "Disable access-point lock",
-          () => {
+          (event) => {
             netRequest(
                 {
                   action: "settings",
                   settings: { ...chosen, roaming: "roam", lock_bssid: null },
                 },
                 "up",
+                null,
+                event.currentTarget,
               );
           },
-          { className: "primary" },
+          { className: "primary", dataset: { wait: "net:lock:off" } },
         ),
       ),
     );
@@ -8689,11 +8693,14 @@ function drawNetTabs(data, inv, uplink) {
                             netRequest(
                               { action: "forget", uuid: profile.uuid },
                               "join",
+                              null,
+                              event.currentTarget,
                             );
                         },
                         {
                           className: "small",
                           disabled: busy || current.has(profile.uuid),
+                          dataset: { wait: `net:forget:${profile.uuid}` },
                           title: current.has(profile.uuid)
                             ? "In use: the box is on it now"
                             : "",
@@ -8794,6 +8801,7 @@ function renderNetwork(data) {
     if (done) {
       netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
       if (netWaiting.onDone) netWaiting.onDone(done.ok, resultSaid(done));
+      clearWait(netWaiting);
       netWaiting = null;
       return renderNetwork(data);
     }
@@ -8895,9 +8903,10 @@ function renderNetwork(data) {
           el("button", {
             type: "button",
             className: "action-btn primary",
+            dataset: { wait: `net:stall:${need}` },
             disabled: busy,
             textContent: `${uplink.stall.label[0].toUpperCase()}${uplink.stall.label.slice(1)} now`,
-            onclick: () => netRequest({ action: "do", step: need }, "up"),
+            onclick: (event) => netRequest({ action: "do", step: need }, "up", null, event.currentTarget),
           }),
           // What it costs, beside it: an action acts at once.
           el("span", {
@@ -8948,14 +8957,14 @@ function renderNetwork(data) {
           "The settings above persist, whichever program writes the connection. ",
         actionButton(
           "Enable automatic retries",
-          () => netRequest({ action: "profile", on: true }, "up"),
-          { disabled: busy },
+          (event) => netRequest({ action: "profile", on: true }, "up", null, event.currentTarget),
+          { disabled: busy, dataset: { wait: "net:profile:on" } },
         ),
         " ",
         actionButton(
           "Undo",
-          () => netRequest({ action: "profile", on: false }, "up"),
-          { disabled: busy },
+          (event) => netRequest({ action: "profile", on: false }, "up", null, event.currentTarget),
+          { disabled: busy, dataset: { wait: "net:profile:off" } },
         ),
       ),
     );
@@ -8967,8 +8976,8 @@ function renderNetwork(data) {
         `Your WiFi connection ${change.name} is also set to retry without limit, by a separate setting (since ${new Date(change.at * 1000).toLocaleDateString()}). `,
         actionButton(
           "Undo",
-          () => netRequest({ action: "profile", on: false }, "up"),
-          { disabled: busy },
+          (event) => netRequest({ action: "profile", on: false }, "up", null, event.currentTarget),
+          { disabled: busy, dataset: { wait: "net:profile:off" } },
         ),
       ),
     );
@@ -8981,10 +8990,10 @@ function renderNetwork(data) {
           "Enable automatic retries to set the connection to retry without limit. Wrong passwords are also retried. You can undo this here or by uninstalling. ",
         actionButton(
           "Enable automatic retries",
-          () => {
-            netRequest({ action: "profile", on: true }, "up");
+          (event) => {
+            netRequest({ action: "profile", on: true }, "up", null, event.currentTarget);
           },
-          { disabled: busy },
+          { disabled: busy, dataset: { wait: "net:profile:on" } },
         ),
       ),
     );
@@ -9044,6 +9053,7 @@ function renderNetwork(data) {
     netRequest({ action: "scan" }, "scan");
     return;
   }
+  showWait(netWaiting);
   clearTimeout(netPoll);
   netPoll = setTimeout(
     loadNetwork,
@@ -9443,16 +9453,16 @@ function renderWifisync(inv, data, busy) {
       } `,
       actionButton(
         on ? "Disable wifisync" : "Enable wifisync",
-        () =>
-          netRequest({ action: "wifisync", do: on ? "off" : "on" }, "wifisync"),
-        { className: "small", disabled: busy },
+        (event) =>
+          netRequest({ action: "wifisync", do: on ? "off" : "on" }, "wifisync", null, event.currentTarget),
+        { className: "small", disabled: busy, dataset: { wait: `net:wifisync:${on ? "off" : "on"}` } },
       ),
       rec.was ? " " : null,
       rec.was
         ? actionButton(
             `Undo: ${unitWord(rec.was)}, as the image had it`,
-            () => netRequest({ action: "wifisync", do: "undo" }, "wifisync"),
-            { className: "small", disabled: busy },
+            (event) => netRequest({ action: "wifisync", do: "undo" }, "wifisync", null, event.currentTarget),
+            { className: "small", disabled: busy, dataset: { wait: "net:wifisync:undo" } },
           )
         : null,
     ),
@@ -9493,12 +9503,14 @@ function renderOtherAp(inv, data, busy) {
           `Ignored: ${what}. The profile is not disabled. `,
           actionButton(
             "Stop ignoring profile",
-            () =>
+            (event) =>
               netRequest(
                 { action: "otherap", uuid: other.uuid, do: "undo" },
                 "otherap",
+                null,
+                event.currentTarget,
               ),
-            { className: "small", disabled: busy },
+            { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:undo` } },
           ),
         ),
       );
@@ -9517,23 +9529,27 @@ function renderOtherAp(inv, data, busy) {
           "Delete the profile (the box keeps a copy that you can restore) or ignore it. Ignoring does not disable the profile. ",
         actionButton(
           "Delete profile",
-          () => {
+          (event) => {
             netRequest(
                 { action: "otherap", uuid: other.uuid, do: "remove" },
                 "otherap",
+                null,
+                event.currentTarget,
               );
           },
-          { className: "small", disabled: busy },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:remove` } },
         ),
         " ",
         actionButton(
           "Ignore profile",
-          () =>
+          (event) =>
             netRequest(
               { action: "otherap", uuid: other.uuid, do: "leave" },
               "otherap",
+              null,
+              event.currentTarget,
             ),
-          { className: "small", disabled: busy },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:leave` } },
         ),
       ),
     );
@@ -9547,8 +9563,8 @@ function renderOtherAp(inv, data, busy) {
         `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}. The box keeps a copy. `,
         actionButton(
           "Restore profile",
-          () => netRequest({ action: "otherap", uuid, do: "undo" }, "otherap"),
-          { className: "small", disabled: busy },
+          (event) => netRequest({ action: "otherap", uuid, do: "undo" }, "otherap", null, event.currentTarget),
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${uuid}:undo` } },
         ),
         " ",
         actionButton(
@@ -9558,7 +9574,7 @@ function renderOtherAp(inv, data, busy) {
               await AW.confirmHere(
                 `Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`, { anchor: event.currentTarget })
             )
-              netRequest({ action: "otherap", uuid, do: "forget" }, "otherap");
+              netRequest({ action: "otherap", uuid, do: "forget" }, "otherap", null, event.currentTarget);
           },
           { className: "small", disabled: busy },
         ),
@@ -9592,8 +9608,8 @@ function renderVisible(inv, busy) {
     );
   const scanAgain = actionButton(
     "Run scan",
-    () => netRequest({ action: "scan", rescan: true }, "scan"),
-    { disabled: busy, className: "small" },
+    (event) => netRequest({ action: "scan", rescan: true }, "scan", null, event.currentTarget),
+    { disabled: busy, className: "small", dataset: { wait: "net:scan:rescan" } },
   );
   const fields = joinForm.elements;
   box.replaceChildren(
@@ -9911,13 +9927,15 @@ function connSettings(profile, inv, data, busy, radio) {
           `Changed here: ${changed.changed.join(", ")}. `,
           actionButton(
             "Undo",
-            () => {
+            (event) => {
               netRequest(
                   { action: "connection", uuid: profile.uuid, undo: true },
                   "connection",
+                  null,
+                  event.currentTarget,
                 );
             },
-            { disabled: busy },
+            { disabled: busy, dataset: { wait: `net:connection:${profile.uuid}:undo` } },
           ),
         )
       : null,
@@ -9966,10 +9984,10 @@ function renderHandover(inv, busy) {
               "Select Manage with NetworkManager to keep changes permanently. The connection keeps the same name, password and settings. The box keeps the netplan file aside, so you can undo this. ",
             actionButton(
               "Manage with NetworkManager",
-              () => {
-                netRequest({ action: "handover", name: file.name }, "handover");
+              (event) => {
+                netRequest({ action: "handover", name: file.name }, "handover", null, event.currentTarget);
               },
-              { disabled: busy },
+              { disabled: busy, dataset: { wait: `net:handover:${file.name}:on` } },
             ),
           ),
         );
@@ -10003,13 +10021,15 @@ function renderHandover(inv, busy) {
             `Before, netplan wrote ${conns ? "it" : "them"} again from the file ${handover.name} at every boot, which undid any change made here. The box keeps that file aside. `,
           actionButton(
             "Restore netplan management",
-            () => {
+            (event) => {
               netRequest(
                   { action: "handover", name: handover.name, undo: true },
                   "handover",
+                  null,
+                  event.currentTarget,
                 );
             },
-            { disabled: busy },
+            { disabled: busy, dataset: { wait: `net:handover:${handover.name}:undo` } },
           ),
         ),
       );
@@ -10116,23 +10136,27 @@ function hazardControls(h) {
     btns.push(
       actionButton(
         "Delete profile",
-        () => {
+        (event) => {
           netRequest(
               { action: "otherap", uuid: ap[1], do: "remove" },
               "otherap",
+              null,
+              event.currentTarget,
             );
         },
-        { className: "small" },
+        { className: "small", dataset: { wait: `net:otherap:${ap[1]}:remove` } },
       ),
       " ",
       actionButton(
         "Ignore profile",
-        () =>
+        (event) =>
           netRequest(
             { action: "otherap", uuid: ap[1], do: "leave" },
             "otherap",
+            null,
+            event.currentTarget,
           ),
-        { className: "small" },
+        { className: "small", dataset: { wait: `net:otherap:${ap[1]}:leave` } },
       ),
     );
   }
@@ -10168,23 +10192,28 @@ function hazardControls(h) {
 }
 
 // onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
-async function netRequest(body, where, onDone) {
+async function netRequest(body, where, onDone, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     netWaiting = {
       id: (await postJSON("/admin/network", body)).id,
       where,
       onDone,
+      button,
+      waitKey,
     };
     delete netNotes[where];
   } catch (err) {
+    clearWait({ button, waitKey });
     netNotes[where] = { text: err.message, ok: false };
     if (onDone) onDone(false, err.message);
   }
   loadNetwork();
 }
 
-net.scan.addEventListener("click", () =>
-  netRequest({ action: "scan" }, "scan"),
+net.scan.addEventListener("click", (event) =>
+  netRequest({ action: "scan" }, "scan", null, event.currentTarget),
 );
 // A network for the box to join: added with consent, at once only when asked (and then said what it means).
 const joinForm = document.getElementById("net-join-form");
@@ -10195,7 +10224,7 @@ const joinOpen = () => {
 };
 joinForm.elements.security.addEventListener("change", joinOpen);
 joinOpen();
-function joinAsk(now) {
+function joinAsk(now, button) {
   const fields = joinForm.elements;
   if (!joinForm.reportValidity()) return;
   const ssid = fields.ssid.value;
@@ -10210,16 +10239,18 @@ function joinAsk(now) {
       now,
     },
     "join",
+    null,
+    button,
   );
   fields.psk.value = "";
 }
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  joinAsk(false);
+  joinAsk(false, event.submitter);
 });
 document
   .getElementById("net-join-now")
-  .addEventListener("click", () => joinAsk(true));
+  .addEventListener("click", (event) => joinAsk(true, event.currentTarget));
 // One question at Save for what needs saying, from the settings as they would be saved.
 // What a change of the watchdog's levels does, beside Save.
 function upWarn(all) {
@@ -10257,11 +10288,11 @@ function upSave() {
   netRequest({ action: "settings", settings }, "up", j.done);
   return j;
 }
-net.hold.addEventListener("click", () =>
-  netRequest({ action: "hold", minutes: 60 }, "up"),
+net.hold.addEventListener("click", (event) =>
+  netRequest({ action: "hold", minutes: 60 }, "up", null, event.currentTarget),
 );
-net.unhold.addEventListener("click", () =>
-  netRequest({ action: "hold", minutes: 0 }, "up"),
+net.unhold.addEventListener("click", (event) =>
+  netRequest({ action: "hold", minutes: 0 }, "up", null, event.currentTarget),
 );
 window.addEventListener("hashchange", () => {
   if (paneShown("network")) loadNetwork();
