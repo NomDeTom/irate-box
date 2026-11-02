@@ -991,7 +991,7 @@ def scan(focus=None):
         "country_by_phy": parse_reg(run("iw", "reg", "get")[1]) if iw_ok else {},
         # The WiFi country is a setting on the Network page now: the one saved for boot, and the list to choose from.
         "country_saved": wificountry.saved() if wificountry else None,
-        "countries": sorted(wificountry.countries().items(), key=lambda pair: pair[1]) if wificountry else [],
+        "countries": wificountry.by_name() if wificountry else [],
         # Known WiFi dongles plugged in but still in USB storage mode (no WiFi interface yet).
         "stuck_dongles": knownradios.stuck() if knownradios else [],
     }
