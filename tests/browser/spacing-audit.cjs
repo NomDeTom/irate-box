@@ -24,22 +24,41 @@ const all = [];
 const seen = new Set();
 function add(width, page, findings) {
   for (const finding of findings) {
-    const key = `${width}|${page}|${finding.pane}|${finding.rule}|${finding.what}`;
+    const key = `${width}|${finding.pane}|${finding.rule}|${finding.what}`;
     if (seen.has(key)) continue;
     seen.add(key);
     all.push({ width, page, ...finding });
   }
 }
 async function measure(page, width, pageName) {
-  const findings = await page.evaluate(() => {
+  const findings = await page.evaluate((label) => {
     const out = [];
     for (const pane of document.querySelectorAll('.admin-pane[id]')) {
       if (!pane.getClientRects().length) continue;
-      out.push(...SpacingAudit.measurePane(window, document, pane, pane.id));
+      out.push(...SpacingAudit.measurePane(window, document, pane, label));
     }
+    out.push(...SpacingAudit.measureOverflow(window, document, label));
     return out;
-  });
+  }, pageName);
   add(width, pageName, findings);
+}
+// A page in tabs shows one panel at a time; each tab is a page view of its own for the audit.
+async function measureTabs(page, width, pageName) {
+  const tabs = await page.evaluate(() => [...document.querySelectorAll('.admin-page:not([hidden]) [role="tab"]')]
+    .map((tab, index) => ({ index, label: (tab.textContent || '').trim().replace(/\s+/g, ' '), selected: tab.getAttribute('aria-selected') === 'true', shown: !!tab.getClientRects().length }))
+    .filter((tab) => tab.shown));
+  let visited = 0;
+  for (const tab of tabs) {
+    if (tab.selected) continue;
+    await page.evaluate((index) => {
+      const found = [...document.querySelectorAll('.admin-page:not([hidden]) [role="tab"]')];
+      if (found[index]) found[index].click();
+    }, tab.index);
+    await page.waitForTimeout(150);
+    await measure(page, width, `${pageName} / ${tab.label}`);
+    visited += 1;
+  }
+  return visited;
 }
 async function openSidebar(page) {
   await page.evaluate(() => {
@@ -75,7 +94,7 @@ async function sidebar(page, width) {
       await page.evaluate((hash) => { location.hash = hash; }, href);
       await page.waitForTimeout(900);
       await measure(page, width, `admin: ${title}`);
-      views += 1;
+      views += 1 + await measureTabs(page, width, `admin: ${title}`);
     }
     await sidebar(page, width);
 
@@ -84,7 +103,7 @@ async function sidebar(page, width) {
       await page.waitForTimeout(1200);
       await page.addScriptTag({ path: path.join(__dirname, 'spacing-rules.js') });
       await measure(page, width, `admin: ${title}`);
-      views += 1;
+      views += 1 + await measureTabs(page, width, `admin: ${title}`);
     }
     await context.close();
   }

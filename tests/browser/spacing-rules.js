@@ -176,5 +176,17 @@
     return out;
   }
 
-  return { measurePane, measureSidebar, role, band };
+  // A page that scrolls sideways is broken on a phone whatever its vertical gaps: the document must fit the window.
+  function measureOverflow(win, doc, page) {
+    const over = doc.documentElement.scrollWidth - win.innerWidth;
+    if (over <= 1) return [];
+    return [{
+      pane: 'page', page,
+      rule: `a page ${over}px wider than the window`,
+      what: `${doc.documentElement.scrollWidth}px of content in ${win.innerWidth}px`,
+      gap: over, expected: { min: 0, max: 1 }, pair: 'overflow',
+    }];
+  }
+
+  return { measurePane, measureSidebar, measureOverflow, role, band };
 });

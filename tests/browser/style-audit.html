@@ -104,10 +104,31 @@ f.addEventListener('load', async () => {
       await wait(900);
     }
     if (!shown(pane, win)) { findings.push({ pane: pane.id, rule: 'not shown by its own link', what: pane.id }); continue; }
-    findings.push(...audit(win, doc, pane));
-    findings.push(...SpacingAudit.measurePane(win, doc, pane, pane.id));
+    const run = (label) => {
+      findings.push(...audit(win, doc, pane));
+      findings.push(...SpacingAudit.measurePane(win, doc, pane, label));
+      findings.push(...SpacingAudit.measureOverflow(win, doc, label));
+    };
+    run(pane.id);
+    // A page in tabs shows one panel at a time: every tab's panel is looked over, not just the one the address kept.
+    if (!STATIC) {
+      for (const tab of [...pane.querySelectorAll('[role="tab"]')].filter((x) => shown(x, win))) {
+        if (tab.getAttribute('aria-selected') === 'true') continue;
+        tab.click();
+        await wait(80);
+        run(`${pane.id}#${tab.id}`);
+      }
+    }
   }
   findings.push(...SpacingAudit.measureSidebar(win, doc, "sidebar"));
-  document.body.dataset.out = JSON.stringify({ width: W, panes: panes.length, findings });
+  // A page viewed twice (one per tab) keeps one finding, not one per view.
+  const seen = new Set();
+  const unique = findings.filter((f) => {
+    const key = `${f.pane}|${f.rule}|${f.what}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  document.body.dataset.out = JSON.stringify({ width: W, panes: panes.length, findings: unique });
 });
 </script></body></html>
