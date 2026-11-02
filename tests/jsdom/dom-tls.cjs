@@ -66,12 +66,15 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   // The admin section.
   let state = { set_up: false, pending: 0, results: [] };
   const posted = [];
+  let holdTls = false, failTls = false;
   const admin = page(
     "admin.html",
     "http://box.local/admin/#security",
     async (u, o = {}) => {
       if (o.method === "POST" && u === "/admin/tls") {
         posted.push(JSON.parse(o.body));
+        if (failTls) return new Response("{}", { status: 503 });
+        if (holdTls) return json({ id: "r2" }, 202);
         state = Object.assign({}, ON, {
           results: [{ id: "r1", ok: true, message: "made the box's CA" }],
         });
@@ -216,6 +219,27 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     "  Go back: asked of the hub",
     posted.some((b) => b.action === "box"),
   );
+  // A TLS action's button keeps its wait across the poll that redraws the section, and clears on the answer or a refusal.
+  const testTls = d.createElement("button");
+  testTls.id = "test-tls";
+  testTls.className = "action-btn";
+  testTls.dataset.wait = "test:tls";
+  d.body.append(testTls);
+  holdTls = true;
+  admin.w.eval('tlsAct({ action: "make" }, document.getElementById("test-tls"))');
+  await wait(100);
+  check("a TLS action: its button waits while the helper has it", testTls.classList.contains("is-busy")
+    && testTls.getAttribute("aria-busy") === "true", testTls.outerHTML);
+  holdTls = false;
+  state = Object.assign({}, ON, { results: [{ id: "r2", ok: true, message: "Switched." }] });
+  admin.w.eval("loadTls()");
+  await wait(150);
+  check("  and the wait ends with the answer", !testTls.classList.contains("is-busy") && !testTls.hasAttribute("aria-busy"));
+  failTls = true;
+  admin.w.eval('tlsAct({ action: "make" }, document.getElementById("test-tls"))');
+  await wait(100);
+  check("  a refused request clears it too", !testTls.classList.contains("is-busy") && !testTls.hasAttribute("aria-busy"));
+  failTls = false;
   check(
     "admin: no page errors",
     !admin.errors.length,
