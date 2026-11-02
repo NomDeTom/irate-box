@@ -39,7 +39,9 @@ def disk():
     """The card, as the disk meter reads it: the filesystem holding `/`, not the state folder."""
     card = storage.places().get("card") or {}
     total = card.get("total") or 0
-    return {"disk_total": total, "disk_free": card.get("free") or 0} if total else {}
+    if not total:
+        return {}
+    return {"disk_total": total, "disk_free": card.get("free") or 0, "disk_kind": card.get("kind") or "card"}
 
 
 def state():
@@ -73,17 +75,22 @@ def _disk_ok(sample):
     return _pair_ok(sample, "disk")
 
 
-def _clean(sample):
-    """A sample with each unsound storage series left out, never a zero or a wrong free."""
+def _clean(sample, state_now=False):
+    """A sample with each unsound storage series left out, never a zero or a wrong free. When the
+    state is on its own device now, an old sample without state_* had the state's figures under
+    disk_*: they are dropped rather than drawn as a jump on the card's line."""
     out = dict(sample)
     if not _pair_ok(out, "disk"):
-        out.pop("disk_total", None)
-        out.pop("disk_free", None)
+        for key in ("disk_total", "disk_free", "disk_kind"):
+            out.pop(key, None)
     if not _pair_ok(out, "state"):
         for key in ("state_total", "state_free", "state_kind"):
             out.pop(key, None)
-    elif out.get("state_kind") not in ("flash", "usb", "other"):
+    elif out.get("state_kind") not in ("card", "flash", "usb", "other"):
         out.pop("state_kind", None)
+    if state_now and not _pair_ok(out, "state") and not out.get("disk_kind"):
+        for key in ("disk_total", "disk_free", "disk_kind"):
+            out.pop(key, None)
     return out
 
 
@@ -118,6 +125,7 @@ def load():
         return {"samples": []}
     old = _legacy(text)
     samples = old if old is not None else jsonlog.read(FILE)
+    state_now = bool(storage.places().get("state"))
     kept = [
         sample
         for sample in samples
@@ -130,7 +138,7 @@ def load():
         and 0 <= sample["available"] <= sample["total"]
         and 0 <= sample["swap_free"] <= sample["swap_total"]
     ][-LIMIT:]
-    return {"samples": [_clean(s) for s in kept]}
+    return {"samples": [_clean(s, state_now) for s in kept]}
 
 
 def record(hist, mem, now):

@@ -166,7 +166,7 @@ check(
 # The disk with each sample: the state folder's filesystem, as the disk meter reads it; an older sample without it, or
 # with unsound values, keeps its memory and says nothing of the disk (never a zero).
 M.FILE.unlink()
-disk = {"disk_total": 8000, "disk_free": 3000}
+disk = {"disk_total": 8000, "disk_free": 3000, "disk_kind": "card"}
 with (
     mock.patch.object(M, "memory", return_value=mem),
     mock.patch.object(M, "disk", return_value=disk),

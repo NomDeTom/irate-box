@@ -6,6 +6,7 @@ The card is the card's figures; the state is reported as flash only when it diff
 one filesystem there is one place. Then the status fields, the disk history and the presets' facts.
 python3 tests/sim_storage.py"""
 
+import json
 import os
 import sys
 import tempfile
@@ -140,7 +141,7 @@ with (
     with mock.patch.object(memhistory, "storage", storage):
         check(
             "the disk history reads the card",
-            memhistory.disk() == {"disk_total": CARD_BYTES, "disk_free": CARD_FREE},
+            memhistory.disk() == {"disk_total": CARD_BYTES, "disk_free": CARD_FREE, "disk_kind": "card"},
             memhistory.disk(),
         )
         check(
@@ -176,5 +177,16 @@ check(
     and memhistory._clean(bad)["available"] == 512,
     (memhistory._clean(good), memhistory._clean(bad)),
 )
+check(
+    "a state on a second card keeps its kind",
+    memhistory._clean(dict(mem, at=1, state_total=100, state_free=50, state_kind="card"))["state_kind"] == "card",
+)
+# Older samples on a box whose state moved: their disk_* were the state's, so they are not drawn on the card's line.
+memhistory.FILE.parent.mkdir(parents=True, exist_ok=True)
+memhistory.FILE.write_text(json.dumps({"samples": [dict(mem, at=1, disk_total=223, disk_free=145)]}))
+with mock.patch.object(memhistory.storage, "places", lambda: {"state": {"total": 223, "free": 145, "kind": "flash"}}):
+    old = memhistory.load()["samples"][0]
+check("an older disk-only sample is dropped when the state has its own device now", "disk_total" not in old, old)
+memhistory.FILE.unlink()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
