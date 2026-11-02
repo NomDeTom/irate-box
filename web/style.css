@@ -6213,15 +6213,29 @@ label > .aw-onoff-box ~ .chip-group,
 }
 
 
-/* Quick setup: three large tiles per dial (admin.js, admin.html #presets). */
+/* Quick setup: the purpose above the durability, and three tiles in a row for each dial
+   (admin.js, admin.html #presets). */
+.preset-dials {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
 .preset-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
   margin: 0.5rem 0 0.25rem;
 }
+/* A phone-width page holds one tile in a row: three columns would break the words up. */
+@container page (max-width: 760px) {
+  .preset-tiles {
+    grid-template-columns: 1fr;
+  }
+}
 .preset-tile {
   display: block;
+  min-width: 0;
   text-align: left;
   font: inherit;
   color: var(--text);

@@ -9,9 +9,10 @@ Two independent dials, both starting points rather than modes:
 | Purpose | `pirate`, `curated`, `power` | apps, accounts, access, building limits and the update pattern |
 | Durability | `longevity`, `balanced`, `full` | how hard the box writes to its card, and what a power cut can lose |
 
-The page is **System → Quick setup** (`/admin/#presets`). It previews every line, applies each
-change through the same path a hand change uses, and keeps one record so that **Undo preset** can
-put each setting back unless the administrator has changed it since.
+The page is at the top of **Overview → Setup steps** (`/admin/#presets`), and first in the setup
+tour. It previews every line, applies each change through the same path a hand change uses, and
+keeps one record so that **Undo preset** can put each setting back unless the administrator has
+changed it since.
 
 ## The data files
 
@@ -45,6 +46,12 @@ Root writes `$ROOT_STATE/presets/last.json` with each choice's before and after.
 the selected purpose and durability. Undo puts back a setting only while it still has the value
 the preset gave it; a setting the administrator changed since is named and left alone. Removing an
 add-on is never part of a preset: moving down switches its access off.
+
+When a preset completes, the setup steps it answers are marked done in `setup_decided`: the quick
+setup itself, `signup`, `hotspot`, `terminal` and `addons`, from the entries that applied. A step
+whose entry was left out or whose root request failed stays open. The record keeps `setup_added`,
+the steps that were not decided before. Undo takes exactly those back out; a step decided before
+the preset, or whose setting the administrator changed since, stays done.
 
 `full` logging writes `returns_at` (24 hours), and the hub's background loop applies only the
 durability the box had before it, so a debug level is not left on by mistake and the day's purpose

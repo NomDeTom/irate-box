@@ -150,6 +150,15 @@ const TOUR = (() => {
       said: "Kiwix serves the books offline. The librarian can keep them current.",
     },
   ];
+  // Quick setup comes before the rest: a preset can answer several of the steps below, and
+  // those it answers are marked done (preset setup ids, server.py).
+  const QUICK = {
+    id: "quick-setup",
+    label: "Quick setup",
+    section: "presets",
+    target: "#preset-purpose",
+    said: "Select what the box is for and how hard it writes to its card. A preset sets many of the steps below at once and marks the ones it completes done.",
+  };
   const BACKUP = {
     id: "backup",
     label: "Take a backup",
@@ -157,12 +166,13 @@ const TOUR = (() => {
     target: "#backup a[download]",
     said: "Download the box's state now that you have set it up: settings, accounts, saved work and the library sources. Keep the file off the box.",
   };
-  const ALL = [...OWN, ...DECISIONS, BACKUP];
+  const ALL = [QUICK, ...OWN, ...DECISIONS, BACKUP];
   // The services the box has, as admin.js learns them: a step marked only shows once its service is known
   // to be there (Tailscale: /admin/tailscale; Cockpit: the Security page's setting).
   const present = {};
   let STEPS = ALL.filter((step) => !step.only);
   const KIND = Object.fromEntries([
+    [QUICK.id, "decision"],
     ...OWN.map((step) => [step.id, "step"]),
     ...DECISIONS.map((decision) => [decision.id, "decision"]),
     [BACKUP.id, "step"],
@@ -270,6 +280,25 @@ const TOUR = (() => {
     if (decided.has(id)) return;
     decided.add(id);
     save();
+  }
+  // A preset's completed steps, already kept on the hub: add them here without a second save.
+  function decideMany(ids, saveIt = true) {
+    let changed = false;
+    for (const id of ids || []) {
+      if (!ALL.some((step) => step.id === id) || decided.has(id)) continue;
+      decided.add(id);
+      changed = true;
+    }
+    if (changed && saveIt) save();
+    else drawList();
+    return changed;
+  }
+  // Undo already took these back out on the hub; show them open here again.
+  function forgetMany(ids) {
+    let changed = false;
+    for (const id of ids || []) changed = decided.delete(id) || changed;
+    if (changed) drawList();
+    return changed;
   }
 
   // The setup page: every step in one numbered list, each its short name, its pill, a line of what
@@ -552,6 +581,8 @@ const TOUR = (() => {
     has,
     go,
     stop,
+    decideMany,
+    forgetMany,
     decided: () => new Set(decided),
     drawList,
     left: () => (checking() ? null : left().length), // null while the page is still checking

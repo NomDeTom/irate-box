@@ -6,7 +6,7 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js', 'admin-tour.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -37,16 +37,26 @@ const preview = {
   ],
   installs: [{ type: 'addon', label: 'Shared notes (SilverBullet)', why: 'A shared notebook', before: false, after: true }],
   left_out: [{ label: 'Build toolkit', why: 'it needs about 384 MB of memory and the box has 512' }],
+  setup: ['signup', 'hotspot', 'terminal', 'addons'],
   summary: 'Apply: 2 settings change, 1 app or toolkit installed, 1 left out.',
   automatic_undo: null,
 };
+let record = null;
+let current = fixture.current;
 w.fetch = async (u, opts = {}) => {
   if (u === '/admin/presets' && opts.method === 'POST') {
     const b = JSON.parse(opts.body); posted.push(b);
     if (b.action === 'preview') return new Response(JSON.stringify(preview), { status: 200 });
-    return new Response(JSON.stringify({ ...fixture, record: { status: 'done', purpose: 'curated', durability: 'balanced', purpose_title: 'Curated space', durability_title: 'Balanced: logs kept' }, current: { purpose: 'curated', durability: 'balanced' } }), { status: 202 });
+    if (b.action === 'undo') {
+      record = { status: 'undone', setup_added: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'], setup_kept: ['signup'], undone_at: 1790000000 };
+      current = fixture.current;
+      return new Response(JSON.stringify({ ...fixture, record, current }), { status: 202 });
+    }
+    record = { status: 'done', purpose: 'curated', durability: 'balanced', purpose_title: 'Curated space', durability_title: 'Balanced: logs kept', setup: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'], setup_added: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'] };
+    current = { purpose: 'curated', durability: 'balanced' };
+    return new Response(JSON.stringify({ ...fixture, record, current }), { status: 202 });
   }
-  if (u === '/admin/presets') return new Response(JSON.stringify(fixture), { status: 200 });
+  if (u === '/admin/presets') return new Response(JSON.stringify({ ...fixture, record, current }), { status: 200 });
   if (u === '/admin/tiles') return new Response('{"tiles":[],"state":{"size":{}}}', { status: 200 });
   if (u === '/admin/apps') return new Response('{"apps":[]}', { status: 200 });
   if (u === '/admin/folders') return new Response('{"folders":[],"state":{}}', { status: 200 });
@@ -65,9 +75,19 @@ setTimeout(async () => {
   const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
   const purpose = [...d.querySelectorAll('#preset-purpose-tiles .preset-tile')];
   const durability = [...d.querySelectorAll('#preset-durability-tiles .preset-tile')];
-  check('Quick setup: a page under System, three purpose tiles and three durability tiles',
-    !!d.getElementById('page-presets') && purpose.length === 3 && durability.length === 3,
+  check('Quick setup: at the top of Setup steps, not a System page, with three tiles per dial',
+    !!d.getElementById('page-presets') && !!d.querySelector('#page-presets #welcome')
+    && purpose.length === 3 && durability.length === 3
+    && ![...d.querySelectorAll('#admin-side-list a')].some((a) => a.textContent.trim() === 'Quick setup'),
     [purpose.length, durability.length]);
+  check('  the purpose card is above the durability card',
+    !!(d.getElementById('preset-purpose').compareDocumentPosition(d.getElementById('preset-durability'))
+      & w.Node.DOCUMENT_POSITION_FOLLOWING));
+  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/\s+/g, ' ');
+  check('  three tiles in a row for each dial (style.css)',
+    /\.preset-tiles \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(css));
+  check('  one tile in a row on a narrow page (style.css)',
+    /@container page \(max-width: 760px\) \{ \.preset-tiles \{ grid-template-columns: 1fr; \} \}/.test(css));
   check('  the current choices are marked',
     purpose.find((b) => b.textContent.includes('Pirate box')).classList.contains('selected')
     && durability.find((b) => b.textContent.includes('Longevity')).classList.contains('selected'));
@@ -81,10 +101,25 @@ setTimeout(async () => {
     lines.some((x) => /Who may post in the shoutbox: guests → users/.test(x))
     && lines.some((x) => /Shared notes \(SilverBullet\): not installed → installed/.test(x)), lines);
   check('  and what was left out says why', /it needs about 384 MB of memory/.test(d.getElementById('preset-preview').textContent));
+  check('  and the setup steps it answers are named before Apply',
+    /Setup steps this answers: Account registration, Hotspot security, Terminal \(shell in the browser\), Add-ons\./
+      .test(d.getElementById('preset-preview').textContent), d.getElementById('preset-preview').textContent);
   const apply = [...d.querySelectorAll('#preset-buttons button')].find((b) => /Preview and apply/.test(b.textContent));
   apply.click();
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 600));
   check('Apply sends the two choices', posted.some((b) => b.action === 'apply' && b.purpose === 'curated' && b.durability === 'longevity'), posted);
+  check('  the completed setup steps are marked done in the tour',
+    w.TOUR.ALL.length === 20
+    && ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'].every((id) => w.TOUR.decided().has(id)),
+    [...w.TOUR.decided()].join(' '));
+  const undo = [...d.querySelectorAll('#preset-buttons button')].find((b) => /Undo preset/.test(b.textContent));
+  check('  the page offers Undo', !!undo, d.getElementById('preset-buttons').textContent);
+  undo.click();
+  await new Promise((r) => setTimeout(r, 600));
+  check('  Undo takes the steps it added back out, and leaves one decided since',
+    !['quick-setup', 'hotspot', 'terminal', 'addons'].some((id) => w.TOUR.decided().has(id))
+    && w.TOUR.decided().has('signup'),
+    [...w.TOUR.decided()].join(' '));
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);

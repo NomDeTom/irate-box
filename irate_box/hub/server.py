@@ -1358,6 +1358,7 @@ def accent_ink(accent):
 # web/admin-tour.js has each one's words and where it lives.
 # With the setup's own steps and the backup: one list, one tour.
 SETUP_DECISIONS = (
+    "quick-setup",
     "visitors",
     "names",
     "signup",
@@ -1665,6 +1666,69 @@ def _preset_after(entry):
     return entry.get("value", entry.get("mode"))
 
 
+def _preset_setup_id(entry):
+    """The setup step an entry answers, if any: signup, hotspot, terminal, addons."""
+    kind = entry.get("type")
+    if kind == "accounts" and entry.get("key") == "signup":
+        return "signup"
+    if kind == "hotspot":
+        return "hotspot"
+    if kind == "access" and entry.get("app") == "term":
+        return "terminal"
+    if kind in ("addon", "kit"):
+        return "addons"
+    return None
+
+
+def _preset_setup_ids(record, answers=None):
+    """The setup steps the preset completed: quick-setup, and each step whose entry applied.
+    answers ({request id: result}) filters out a step whose root request failed; at apply time,
+    only the entries that needed no root request are known to have applied."""
+    done = {"quick-setup"}
+    for item in record.get("changes") or []:
+        if not item.get("ok"):
+            continue
+        step = _preset_setup_id(item.get("entry") or {})
+        if not step:
+            continue
+        request = item.get("request")
+        if request and answers is not None and not (answers.get(request) or {}).get("ok"):
+            continue
+        done.add(step)
+    return sorted(done)
+
+
+def _mark_setup_decided(steps):
+    """Keep the setup steps a completed preset answered, with the same setting the tour writes.
+    Returns the steps that were not decided before: Undo takes exactly those back out."""
+    if not steps:
+        return []
+    current = settings_snapshot()
+    decided = list(current.get("setup_decided") or [])
+    added = [step for step in steps if step not in decided]
+    if added:
+        _apply_hub_settings({"setup_decided": decided + added})
+    return added
+
+
+def _unmark_setup_decided(steps):
+    """Take back the steps a preset added, leaving anything decided before or changed since."""
+    if not steps:
+        return []
+    current = settings_snapshot()
+    decided = list(current.get("setup_decided") or [])
+    removed = [step for step in steps if step in decided]
+    if removed:
+        _apply_hub_settings({"setup_decided": [step for step in decided if step not in removed]})
+    return removed
+
+
+def _undo_setup_steps(record):
+    """The steps an undo takes back: what the preset added, less what was decided or changed since."""
+    kept = set(record.get("setup_kept") or [])
+    return _unmark_setup_decided([step for step in record.get("setup_added") or [] if step not in kept])
+
+
 def _apply_hub_settings(patch):
     """A patch to the hub's own settings, through the same validation and save as the settings page."""
     with _settings_lock:
@@ -1715,6 +1779,7 @@ def preset_preview(purpose_id, durability_id):
         }
         for item in left
     ]
+    setup = sorted({step for entry in entries if (step := _preset_setup_id(entry))})
     return {
         "purpose": purpose["id"],
         "purpose_title": purpose.get("title"),
@@ -1723,6 +1788,7 @@ def preset_preview(purpose_id, durability_id):
         "changes": changes,
         "installs": installs,
         "left_out": left_out,
+        "setup": setup,
         "summary": _preset_summary(changes, installs, left_out),
         "automatic_undo": _preset_return_hours(durability),
     }
@@ -1783,11 +1849,17 @@ def apply_preset(purpose_id, durability_id):
                     hotspot_mode = after
                     item["after_full"] = dict(hotspot.load(), mode=after)
                 elif kind == "access":
-                    ids.append(control_request({"action": "access", "app": entry["app"], "mode": after}))
+                    request = control_request({"action": "access", "app": entry["app"], "mode": after})
+                    ids.append(request)
+                    item["request"] = request
                 elif kind == "addon":
-                    ids.append(control_request({"action": "addon", "addon": entry["addon"], "on": after is True}))
+                    request = control_request({"action": "addon", "addon": entry["addon"], "on": after is True})
+                    ids.append(request)
+                    item["request"] = request
                 elif kind == "kit":
-                    ids.append(control_request({"action": "kit-install", "kit": entry["kit"]}))
+                    request = control_request({"action": "kit-install", "kit": entry["kit"]})
+                    ids.append(request)
+                    item["request"] = request
             except Exception as exc:  # noqa: BLE001 - one request that cannot be made leaves the others
                 item["ok"] = False
                 failed.append(f"{item['label']}: {getattr(exc, 'message', exc)}")
@@ -1799,11 +1871,17 @@ def apply_preset(purpose_id, durability_id):
             accounts.set_settings(**accounts_patch)
         except Exception as exc:  # noqa: BLE001 - the other settings still apply
             failed.append(f"Accounts: {getattr(exc, 'message', exc)}")
+            for item in changes:
+                if item["type"] == "accounts":
+                    item["ok"] = False
     if hotspot_mode:
         try:
             _set_hotspot_mode(hotspot_mode)
         except Exception as exc:  # noqa: BLE001
             failed.append(f"The hotspot: {getattr(exc, 'message', exc)}")
+            for item in changes:
+                if item["type"] == "hotspot":
+                    item["ok"] = False
     if any(item["type"] == "choice" and item["ok"] and item["before"] != item["after"] for item in changes):
         try:
             ids.append(
@@ -1830,7 +1908,12 @@ def apply_preset(purpose_id, durability_id):
         "ids": ids,
         "failed": failed,
         "status": "applying" if ids else "done",
+        "setup": [],
+        "setup_added": [],
     }
+    if record["status"] == "done":
+        record["setup"] = _preset_setup_ids(record)
+        record["setup_added"] = _mark_setup_decided(record["setup"])
     _write_preset_record(record)
     return record
 
@@ -1844,13 +1927,15 @@ def preset_undo():
     changes = record.get("changes") or []
     current = _preset_facts()
     hub_patch, accounts_patch, hotspot_mode = {}, {}, None
-    ids, kept = [], []
+    ids, kept, kept_setup = [], [], set()
     for item in changes:
         entry = item.get("entry") or {}
         before, after = item.get("before"), item.get("after")
         now = _preset_before(entry, current)
         if now != after:
             kept.append({"label": item.get("label"), "now": now, "after": after})
+            if step := _preset_setup_id(entry):
+                kept_setup.add(step)
             continue
         kind = entry.get("type")
         try:
@@ -1868,6 +1953,8 @@ def preset_undo():
                 ids.append(control_request({"action": "kit-remove", "kit": entry["kit"]}))
         except Exception as exc:  # noqa: BLE001
             kept.append({"label": item.get("label"), "problem": getattr(exc, "message", exc)})
+            if step := _preset_setup_id(entry):
+                kept_setup.add(step)
     if hub_patch:
         _apply_hub_settings(hub_patch)
     if accounts_patch:
@@ -1883,6 +1970,9 @@ def preset_undo():
     record["undone_at"] = time.time()
     record["ids"] = ids
     record["kept"] = kept
+    record["setup_kept"] = sorted(kept_setup)
+    if record["status"] == "undone":
+        _undo_setup_steps(record)
     _write_preset_record(record)
     return record
 
@@ -1894,7 +1984,8 @@ def _preset_refresh_status():
     results = {r.get("id"): r for r in control_results(40)}
     ids = record.get("ids") or []
     if ids and all(rid in results for rid in ids):
-        record["status"] = "done" if record["status"] == "applying" else "undone"
+        done = record["status"] == "applying"
+        record["status"] = "done" if done else "undone"
         record["answered"] = [
             {
                 "id": rid,
@@ -1903,6 +1994,11 @@ def _preset_refresh_status():
             }
             for rid in ids
         ]
+        if done:
+            record["setup"] = _preset_setup_ids(record, results)
+            record["setup_added"] = _mark_setup_decided(record["setup"])
+        else:
+            _undo_setup_steps(record)
         _write_preset_record(record)
     return record
 

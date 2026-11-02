@@ -18,7 +18,7 @@ const AL = (() => {
     // flat: no group head to fold; the links stand at the top of the sidebar.
     { name: 'Overview', art: 'controller', flat: true, pages: [
       { title: 'Overview', sections: ['overview'] },
-      { title: 'Setup steps', sections: ['welcome'], art: 'welcome-controller' }] },
+      { title: 'Setup steps', sections: ['presets', 'welcome'], art: 'welcome-controller' }] },
     { name: 'Apps', art: 'librarian', apps: 'apps', pages: [
       { title: 'All apps', sections: ['app-inventory', 'apps', 'addons'] }] },
     { name: 'Hub layout', art: 'librarian', apps: 'folders', under: 'folder-index', pages: [
@@ -30,7 +30,6 @@ const AL = (() => {
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'User data', sections: ['made'] }] },
     { name: 'System', art: 'controller', links: [{ title: 'Pin map', href: '/admin/pins.html' }], pages: [
-      { title: 'Quick setup', sections: ['presets'] },
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },
