@@ -322,6 +322,18 @@
       "reads": [],
       "writes": []
     },
+    "preset-apply": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
+    "preset-undo": {
+      "https_only": true,
+      "policy": true,
+      "reads": [],
+      "writes": []
+    },
     "radio-test": {
       "https_only": false,
       "policy": false,
