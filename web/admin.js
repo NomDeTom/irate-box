@@ -14056,6 +14056,15 @@ function renderFirmware(data) {
     keep_beta: cfg.keep_beta,
     all_boards: cfg.boards === "all",
     boards: cfg.boards === "all" ? [] : [...cfg.boards].sort(),
+    proving: cfg.proving === true,
+    proving_releases: cfg.proving_releases || "stable",
+    proving_families: Array.isArray(cfg.proving_families) ? "chosen" : cfg.proving_families || "chosen",
+    proving_families_list: Array.isArray(cfg.proving_families) ? cfg.proving_families.join(", ") : "",
+    proving_when: cfg.proving_when || "idle",
+    proving_window_start: cfg.proving_window_start || "22:00",
+    proving_window_end: cfg.proving_window_end || "06:00",
+    proving_tooling: cfg.proving_tooling || "flag",
+    proving_keep: cfg.proving_keep || 3,
   });
   const running = data.running
     ? data.progress
@@ -14242,6 +14251,19 @@ const fwSec = AW.form(fw.form, {
       keep_alpha: Number(v.keep_alpha),
       keep_beta: Number(v.keep_beta),
       boards: v.all_boards ? "all" : v.boards,
+      proving: v.proving === true,
+      proving_releases: v.proving_releases,
+      proving_families: String(v.proving_families_list || "").trim()
+        ? String(v.proving_families_list)
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean)
+        : v.proving_families,
+      proving_when: v.proving_when,
+      proving_window_start: v.proving_window_start,
+      proving_window_end: v.proving_window_end,
+      proving_tooling: v.proving_tooling,
+      proving_keep: Number(v.proving_keep),
     });
     setTimeout(() => renderFirmware(fwData));
     return "Saved. Select Update now to download the missing files. The schedule handles the rest.";

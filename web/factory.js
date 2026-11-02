@@ -56,6 +56,15 @@
   };
   const sentence = (text) => { const x = String(text).replace(/\.$/, ''); return `${x.charAt(0).toUpperCase()}${x.slice(1)}.`; };
   const facEst = (family) => { const estimate = facData && facData.estimates[family]; return estimate ? `about ${facDur(estimate.seconds)} a target here` : 'no build estimate'; };
+  // A family's last proof (factory.proving): the tag it built offline, when, or that it failed.
+  const facProof = (family) => {
+    const proof = facData && facData.proving && facData.proving.proofs && facData.proving.proofs[family];
+    if (!proof) return 'Not proved offline yet.';
+    const day = proof.at ? new Date(proof.at * 1000).toLocaleDateString() : '';
+    if (proof.state === 'passed') return `Proven offline at ${proof.tag || '?'} on ${day} (by ${proof.env || '?'}).`;
+    if (proof.state === 'skipped') return `Not proved at ${proof.tag || '?'}: tooling missing (${proof.step || 'no cache'}).`;
+    return `Offline proof failed at ${proof.tag || '?'}: ${proof.step || proof.state}.`;
+  };
 
   async function loadFactory() {
     try { renderFactory(await getJSON('/admin/factory')); } catch (_) { fac.waiting.textContent = 'Could not load the Firmware Factory.'; }
@@ -173,8 +182,15 @@
       const picked = list.filter((t) => facChosen.has(t.env)).length;
       const fold = el('details', { className: 'factory-family', open: !!q || picked > 0 },
         el('summary', {}, el('strong', { textContent: family }),
-          el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}.${picked ? ` ${picked} selected.` : ''} ${sentence(facReady(family))} ${sentence(facEst(family))}` })),
+          el('span', { className: 'setting-desc', textContent: ` ${list.length} target${list.length === 1 ? '' : 's'}.${picked ? ` ${picked} selected.` : ''} ${sentence(facReady(family))} ${sentence(facEst(family))} ${facProof(family)}` })),
         el('p', { className: 'library-buttons' }, el('label', { className: 'inline factory-test-target' }, 'Test target ', facTestSelect(family)),
+        actionButton('Prove now', async () => {
+          try {
+            const reply = await postJSON('/admin/factory', { action: 'prove', family });
+            say(`Proving ${family} offline at ${reply.tag}: queued ${reply.queued} run${reply.queued === 1 ? '' : 's'}.`, true, fac.note);
+            renderFactory(reply.snapshot);
+          } catch (err) { say(err.message, false, fac.note); }
+        }, { title: 'Build one target of this family with the network disabled, from the cache alone, and keep the proof.' }),
         actionButton('Download build dependencies', async () => {
           try {
             const reply = await postJSON('/admin/factory', { action: 'tools', source: fac.source.value, ref: fac.ref.value, family: family, env: facTest[family] });

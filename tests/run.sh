@@ -169,6 +169,7 @@ run sim_gitaddon.py
 run sim_ci_view.py
 run sim_pio_bundle.py
 run sim_firmware_bundle.py
+run sim_proving.py
 run sim_factory.py
 run sim_toolkits.py
 run sim_rkboard.py

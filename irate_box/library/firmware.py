@@ -79,7 +79,24 @@ REPO = "meshtastic/firmware"
 RELEASE_BASE = "https://release.meshtastic.org"
 # Kept by default, every board (about 600 MB a release), so a radio can be flashed from a new box with no internet; the
 # librarian's space guard (min_free_mb) still stops a download the card can't take.
-DEFAULTS = {"enabled": True, "boards": "all", "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True}
+DEFAULTS = {
+    "enabled": True,
+    "boards": "all",
+    "keep_alpha": 2,
+    "keep_beta": 1,
+    "cache": "discard",
+    "configs": True,
+    # Proving runs (hub/proving.py): off until the owner asks. The families follow the flasher's
+    # chosen boards unless set to every family or a list; a missing tool is flagged, not fetched.
+    "proving": False,
+    "proving_releases": "stable",
+    "proving_families": "chosen",
+    "proving_when": "idle",
+    "proving_tooling": "flag",
+    "proving_keep": 3,
+    "proving_window_start": "22:00",
+    "proving_window_end": "06:00",
+}
 CONFIGS = ROOT / "config.d.json"
 CONFIGS_MAX = 4 << 20  # the whole folder's text; a few hundred KB in 2026
 CONFIGS_TOO_LARGE = M(
@@ -88,6 +105,11 @@ CONFIGS_TOO_LARGE = M(
     mb=CONFIGS_MAX >> 20,
 )
 CACHES = ("discard", "native", "whole")
+PROVING_RELEASES = ("stable", "stable-beta", "all")
+PROVING_WHEN = ("idle", "night", "manual")
+PROVING_TOOLING = ("flag", "fetch", "install")
+FAMILY_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+CLOCK_RE = re.compile(r"^([01]?[0-9]|2[0-3]):[0-5][0-9]$")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,}$")
 BOARD_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 FILE_RE = re.compile(r"^[A-Za-z0-9_.+-]{1,128}$")
@@ -141,6 +163,46 @@ def set_settings(**changes):
                 )
             )
         cfg["cache"] = changes["cache"]
+    if "proving" in changes:
+        cfg["proving"] = bool(changes["proving"])
+    for key, allowed in (
+        ("proving_releases", PROVING_RELEASES),
+        ("proving_when", PROVING_WHEN),
+        ("proving_tooling", PROVING_TOOLING),
+    ):
+        if key in changes:
+            if changes[key] not in allowed:
+                raise LibrarianError(
+                    M(
+                        "firmware.proving.invalid",
+                        "Invalid proving setting. {key} must be one of {values}.",
+                        key=key,
+                        values=list(allowed),
+                    )
+                )
+            cfg[key] = changes[key]
+    if "proving_families" in changes:
+        value = changes["proving_families"]
+        if value not in ("chosen", "all") and not (
+            isinstance(value, list) and all(isinstance(x, str) and FAMILY_RE.match(x) for x in value)
+        ):
+            raise LibrarianError(
+                M(
+                    "firmware.proving.families",
+                    'Invalid families setting. Enter "chosen", "all", or a list of family names.',
+                )
+            )
+        cfg["proving_families"] = value if value in ("chosen", "all") else sorted(set(value))
+    if "proving_keep" in changes:
+        n = changes["proving_keep"]
+        if type(n) is not int or not 1 <= n <= 10:
+            raise LibrarianError(M("firmware.proving.keep", "Invalid setting. Keep a number of proofs from 1 to 10."))
+        cfg["proving_keep"] = n
+    for key in ("proving_window_start", "proving_window_end"):
+        if key in changes:
+            if not CLOCK_RE.match(str(changes[key] or "")):
+                raise LibrarianError(M("firmware.proving.clock", "Give a time as HH:MM, from 00:00 to 23:59."))
+            cfg[key] = changes[key]
     librarian._write_json(SETTINGS, cfg)
     return cfg
 
@@ -218,6 +280,8 @@ def _releases(cfg):
         item = {
             "version": version,
             "tag": rel["tag_name"],
+            "name": rel.get("name") or "",
+            "prerelease": bool(rel.get("prerelease")),
             "published": rel.get("published_at"),
             "notes": rel.get("body") or "",
             "list_digest": names[f"firmware-{version}.json"].get("digest"),
@@ -901,7 +965,16 @@ def sync(check_only=False, log=print):
     st["last_check"] = librarian.now_iso()
     try:
         kept = _releases(cfg)
-        st["latest"] = [{"version": r["version"], "channel": r["channel"]} for r in kept]
+        st["latest"] = [{"version": r["version"], "tag": r["tag"], "channel": r["channel"]} for r in kept]
+        if kept:
+            # The new-tag check also compares what the tag needs with the box's tooling, and may
+            # queue proving runs, as the Firmware page's settings allow (hub/proving.py).
+            try:
+                from irate_box.hub import proving
+
+                proving.on_release_check(kept, log=log)
+            except Exception as exc:  # noqa: BLE001 - a proving run never stops the release check
+                log(f"proving: the release check could not queue runs ({str(exc)[:200]})")
         if check_only:
             st.pop("error", None)
             _save_status(st)
