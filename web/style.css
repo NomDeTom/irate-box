@@ -1594,10 +1594,11 @@ body.admin button.link-button {
 .art-page {
   scrollbar-gutter: stable;
 }
-/* The same art on a public page (Services: data-art on its body), behind its sections. */
+/* The same art on a public page (Services: data-art on its body), behind its sections. The
+   popovers (emoji.js, ident.js) are left out: they are positioned against the viewport. */
 body[data-art] > header,
 body[data-art] > section,
-body.home[data-art] > :not(header):not(.admin-art):not(script) {
+body.home[data-art] > :not(header):not(.admin-art):not(script):not(.emoji-panel):not(.hue-panel) {
   position: relative;
   z-index: 1;
 }
