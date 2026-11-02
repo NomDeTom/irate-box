@@ -72,6 +72,18 @@ def hotspots(nets=None):
     return sorted(out, key=lambda x: -x["signal"])
 
 
+def next_name(candidates=None, spots=None):
+    """The next free lyra-N: the smallest number no board on the network or setup hotspot already has, so a
+    second new board does not start as the first one's name. Names that are not lyra-N are left alone."""
+    seen = boardfind.candidates() if candidates is None else candidates
+    here = hotspots() if spots is None else spots
+    used = {str(x.get("host") or "").lower() for x in [*(seen or []), *(here or [])]}
+    n = 1
+    while f"lyra-{n}" in used:
+        n += 1
+    return f"lyra-{n}"
+
+
 def _read(path):
     try:
         return path.read_text().strip()
@@ -155,14 +167,16 @@ def routes(consoles_in_range=None, cards_in_reader=None, boards_on_network=None)
 
 def snapshot():
     """/admin/rkboard's "setup": the hotspots in range, the box's own values, the serial adapters and cards it can
-    use, and the routes built for them."""
+    use, the routes built for them, and the next free name for a new board."""
     found, cards, seen = consoles(), rkusb.cards(), boardfind.candidates()
+    spots = hotspots()
     return {
-        "hotspots": hotspots(),
+        "hotspots": spots,
         "defaults": defaults(),
         "consoles": found,
         "cards": cards,
         "boards": seen,
         "routes": routes(found, cards, seen),
+        "name": next_name(seen, spots),
         "ready": True,
     }

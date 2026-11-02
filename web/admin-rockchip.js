@@ -427,12 +427,12 @@
   const OTHER = 'other';
   const picked = new Map();   // hotspot name -> the choices made for that board
   let setupShown = '';
-  function choicesFor(id, defaults) {
+  function choicesFor(id, defaults, setup) {
     if (!picked.has(id)) {
       picked.set(id, {
         route: id === OTHER ? 'serial' : 'hotspot', boardAddress: '', network: defaults.ssid ? 'same' : 'other', wifiPass: '', otherSsid: '', otherPass: '',
         rootPass: 'generated', rootTyped: '', userName: 'armbian', userPass: 'generated', userTyped: '', lockRoot: false, key: '',
-        hostname: 'lyra-1', place: 'box', locale: defaults.locale || 'en_GB.UTF-8', timezone: defaults.timezone || 'Etc/UTC',
+        hostname: (setup && setup.name) || 'lyra-1', place: 'box', locale: defaults.locale || 'en_GB.UTF-8', timezone: defaults.timezone || 'Etc/UTC',
         country: defaults.country || 'GB', address: 'dhcp', ip: '', mask: '255.255.255.0', gateway: '', dns: '',
         board: 'auto', card: '', after: 'leave',
       });
@@ -470,7 +470,7 @@
   }
 
   function setupBody(item, setup) {
-    const c = choicesFor(item.id, setup.defaults || {});
+    const c = choicesFor(item.id, setup.defaults || {}, setup);
     const boxValues = setup.defaults || {};
     const action = h('button', { type: 'button', class: 'action-btn primary', text: 'Set up the board' });
     const reason = h('p', { class: 'setting-desc bad', role: 'status' });
@@ -699,7 +699,7 @@
     const address = h('input', { type: 'text', name: 'rk-finish-address', autocomplete: 'off', spellcheck: false, placeholder: '192.168.1.60' });
     address.value = first.address;
     const name = h('input', { type: 'text', name: 'rk-finish-name', autocomplete: 'off', spellcheck: false, placeholder: 'lyra-1' });
-    name.value = 'lyra-1';
+    name.value = setup.name || 'lyra-1';
     const key = h('textarea', { name: 'rk-finish-key', autocomplete: 'off', spellcheck: false, rows: 2, placeholder: 'ssh-ed25519 AAAA… you@laptop' });
     const result = document.getElementById('rk-setup-result');
     const send = async (body, said) => {

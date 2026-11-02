@@ -151,7 +151,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   mc.querySelector('.aw-card-head').click();
 
   // Boards to set up.
-  const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, ready: false, ...extra });
+  const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, name: 'lyra-2', ready: false, ...extra });
   const spot = { ssid: 'armbiansetup-luckfox-lyra-zero-w', host: 'luckfox-lyra-zero-w', signal: 70, boards: 1 };
   w.rkRenderSetup(setup([]));
   check('boards to set up: no hotspot in range, said; the card for a board not listed still there', /No setup hotspot is in range/.test(text('rk-setup')) && d.querySelectorAll('#rk-setup .aw-card').length === 1 && /A board not listed here/.test(text('rk-setup')));
@@ -174,7 +174,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   pass.dispatchEvent(new w.Event('input', { bubbles: true }));
   check('  a password with a dollar sign: refused beside its field, saying why', /It has a dollar sign, which Armbian's setup cannot take/.test(pass.closest('label').textContent));
   const host = drawer.querySelector('input[name="rk-hostname"]');
-  check('  the name on the network: a default, and why to change it', host.value === 'lyra-1' && /Every new Lyra starts as luckfox-lyra-zero-w/.test(host.closest('label').textContent));
+  check('  the name on the network: a default, and why to change it', host.value === 'lyra-2' && /Every new Lyra starts as luckfox-lyra-zero-w/.test(host.closest('label').textContent));
   const go = [...drawer.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board');
   check("  Set up off while the box's half is not built, saying so", go && go.disabled && /Setting up is not built yet/.test(drawer.textContent));
   check('  the steps listed for the hotspot route, none done', drawer.querySelectorAll('.rk-steps li.step-todo').length === 7 && /Join the board's setup hotspot/.test(drawer.querySelector('.rk-steps').textContent));
@@ -241,7 +241,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
   await wait(40);
   const cardSent = posted.find((x) => x.action === 'setup' && x.route === 'card');
-  check('  Set up: the card route with the card, its size and serial', cardSent && cardSent.card === 'sda' && cardSent.size === 15634268160 && cardSent.serial === '000000001206' && cardSent.choices.hostname === 'lyra-1', cardSent);
+  check('  Set up: the card route with the card, its size and serial', cardSent && cardSent.card === 'sda' && cardSent.size === 15634268160 && cardSent.serial === '000000001206' && cardSent.choices.hostname === 'lyra-2', cardSent);
   atile('ssh').click();
   await wait(10);
   check("  the default password route: the board the box found chosen, its address", ad.querySelector('input[type=radio][value="192.168.1.60"]').checked);
@@ -270,7 +270,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   await wait(20);
   [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Finish the board').click();
   await wait(40);
-  check('  Finish: the finish action with the address, the name and the administrator\'s key', posted.some((x) => x.action === 'finish' && x.address === '192.168.1.60' && x.choices.hostname === 'lyra-1'), posted);
+  check('  Finish: the finish action with the address, the name and the administrator\'s key', posted.some((x) => x.action === 'finish' && x.address === '192.168.1.60' && x.choices.hostname === 'lyra-2'), posted);
   posted.length = 0;
   [...fin.querySelectorAll('button')].find((b) => b.textContent === 'Install irate-box').click();
   await wait(20);

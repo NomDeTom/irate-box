@@ -53,6 +53,16 @@ check(
     "  two boards raising the same name counted",
     next(x for x in got if x["host"] == "luckfox-lyra-zero-w")["boards"] == 2,
 )
+check(
+    "the next free lyra-N: the first, then the smallest number no board on the network or hotspot has",
+    rksetup.next_name([], []) == "lyra-1"
+    and rksetup.next_name([{"host": "lyra-1"}, {"host": "lyra-4"}, {"host": "bpi"}], [{"host": "lyra-2"}]) == "lyra-3"
+    and rksetup.next_name([{"host": "box"}, {"host": ""}], [{"host": "luckfox-lyra-zero-w"}]) == "lyra-1",
+    (
+        rksetup.next_name([], []),
+        rksetup.next_name([{"host": "lyra-1"}, {"host": "lyra-4"}, {"host": "bpi"}], [{"host": "lyra-2"}]),
+    ),
+)
 asked = []
 real_run = netinv.run
 netinv.run = lambda *cmd, **kw: (asked.append(cmd), (0, ""))[1]
@@ -157,7 +167,8 @@ check(
     and snap["cards"]
     and snap["ready"] is True
     and "serial" in snap["routes"]
-    and "card" in snap["routes"],
+    and "card" in snap["routes"]
+    and snap["name"] == "lyra-1",
     snap,
 )
 
