@@ -2652,7 +2652,7 @@ def _signature_check(src, installed, tag=None):
                 if ok
                 else M(
                     "update.verify.signed.fix",
-                    "Install anyway skips this check only where this box's security levels allow: with any of "
+                    "Install anyway skips this check only where this box's security levels let it: with any of "
                     "them at console, only at the console or over SSH. To change the signing level, open "
                     "Updates, then Update verification.",
                 )
@@ -4811,7 +4811,7 @@ def updates_doctor_findings():
                             "update.last-check.fix",
                             "Review the evidence here. Clear a broken cache or, for a trusted version with a known "
                             "checker failure, select Install anyway in this doctor. The installer's syntax check "
-                            "cannot be skipped, and a failed signature only where this box's security levels allow.",
+                            "cannot be skipped, and a failed signature only where this box's security levels let it.",
                         )
                     ),
                     go=GO_SOURCE_BRANCH if any(c.get("id") == "history" for c in failed) else None,
