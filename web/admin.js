@@ -2602,8 +2602,8 @@ function renderBox(data) {
             : ops.map((op) =>
                 actionButton(
                   OP_LABEL[op],
-                  () => control(service, op),
-                  OP_TITLE[op] ? { title: OP_TITLE[op] } : {},
+                  (event) => control(service, op, event.currentTarget),
+                  OP_TITLE[op] ? { title: OP_TITLE[op], dataset: { wait: `svc:${service.unit}:${op}` } } : { dataset: { wait: `svc:${service.unit}:${op}` } },
                 ),
               )),
         ),
@@ -2628,9 +2628,11 @@ function renderBox(data) {
       // A service's answer is already at the top of the list above; the password's is not.
       if (waitingFor.at === controlNote) say("", true, controlNote);
       else say(resultSaid(done), done.ok, waitingFor.at);
+      clearWait(waitingFor);
       waitingFor = null;
     }
   }
+  showWait(waitingFor);
   clearTimeout(boxPoll);
   boxPoll = setTimeout(loadBox, data.pending || waitingFor ? 1500 : 15000);
 }
@@ -2644,15 +2646,20 @@ async function loadBox() {
   }
 }
 
-async function control(service, op) {
+async function control(service, op, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     waitingFor = {
       id: (await postJSON("/admin/control", { unit: service.unit, op })).id,
       at: controlNote,
+      button,
+      waitKey,
     };
     say(`${OP_LABEL[op]}: ${service.name}…`, true, controlNote);
     loadBox();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, controlNote);
   }
 }
@@ -3173,10 +3180,15 @@ pwForm.addEventListener("submit", async (event) => {
     say("The two passwords differ.", false, pwNote);
     return;
   }
+  const button = event.submitter;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     waitingFor = {
       id: (await postJSON("/admin/password", { password: pw })).id,
       at: pwNote,
+      button,
+      waitKey,
     };
     pwForm.reset();
     say(
@@ -3186,6 +3198,7 @@ pwForm.addEventListener("submit", async (event) => {
     );
     loadBox();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, pwNote);
   }
 });
@@ -11553,8 +11566,8 @@ function fillHeadBlocks() {
         ...ops.map((op) =>
           actionButton(
             OP_LABEL[op],
-            () => control(svc, op),
-            OP_TITLE[op] ? { title: OP_TITLE[op] } : {},
+            (event) => control(svc, op, event.currentTarget),
+            OP_TITLE[op] ? { title: OP_TITLE[op], dataset: { wait: `svc:${svc.unit}:${op}` } } : { dataset: { wait: `svc:${svc.unit}:${op}` } },
           ),
         ),
       );
@@ -15502,6 +15515,7 @@ const tlsEl = {
   adminHttp: document.getElementById("tls-admin-http"),
 };
 let tlsWaiting = null;
+let tlsWait = null; // the button that asked (and its data-wait key), for the redraw
 let tlsData = null;
 let tlsOperation = null,
   tlsJob = null; // the section's save waiting for the root helper (AW.job)
@@ -15695,6 +15709,8 @@ function renderTls(data) {
           )
           .dispatchEvent(new Event("settings-saved"));
       }
+      clearWait(tlsWait);
+      tlsWait = null;
       tlsWaiting = null;
     }
   }
@@ -15726,12 +15742,16 @@ function renderTls(data) {
     button.disabled = busy || (data.policy || {}).mode === "console";
   });
   drawTlsChoices();
+  showWait(tlsWait);
   if (busy) setTimeout(loadTls, 1500);
 }
-async function tlsAct(body) {
+async function tlsAct(body, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     const reply = await postJSON("/admin/tls", body);
     tlsWaiting = reply.id;
+    tlsWait = { id: reply.id, button, waitKey };
     tlsOperation = body.action;
     say(
       "Working…",
@@ -15740,18 +15760,19 @@ async function tlsAct(body) {
     );
     loadTls();
   } catch (err) {
+    clearWait({ button, waitKey });
     if (tlsJob) {
       tlsJob.done(false, err.message);
       tlsJob = null;
     } else say(err.message, false, tlsEl.note);
   }
 }
-tlsEl.make.addEventListener("click", () => tlsAct({ action: "make" }));
-tlsEl.box.addEventListener("click", () => tlsAct({ action: "box" }));
+tlsEl.make.addEventListener("click", (event) => tlsAct({ action: "make" }, event.currentTarget));
+tlsEl.box.addEventListener("click", (event) => tlsAct({ action: "box" }, event.currentTarget));
 tlsEl.own.addEventListener("submit", (event) => {
   event.preventDefault();
   const fields = tlsEl.own.elements;
-  tlsAct({ action: "import", chain: fields.chain.value, key: fields.key.value });
+  tlsAct({ action: "import", chain: fields.chain.value, key: fields.key.value }, event.submitter);
   fields.key.value = ""; // not left in the page
 });
 tlsEl.again.addEventListener("click", async (event) => {
@@ -15759,7 +15780,7 @@ tlsEl.again.addEventListener("click", async (event) => {
     await AW.confirmHere(
       "Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.", { anchor: event.currentTarget })
   ) {
-    tlsAct({ action: "make", again: true });
+    tlsAct({ action: "make", again: true }, event.currentTarget);
   }
 });
 window.addEventListener("hashchange", () => {
@@ -15926,7 +15947,7 @@ function renderAccounts(data) {
     ...(data.accounts.length
       ? data.accounts.map((account) => {
           const act = (action, label) =>
-            actionButton(label, () => acctAct({ action, name: account.name }));
+            actionButton(label, (event) => acctAct({ action, name: account.name }, event.currentTarget));
           const state =
             account.state === "asked"
               ? "Awaiting approval"
@@ -16107,13 +16128,14 @@ function codeBox(name, code) {
   );
 }
 // True when the hub did it; false when cancelled or refused (said in the note).
-async function acctAct(body) {
+async function acctAct(body, button) {
   if (
     body.action === "delete" &&
     !await AW.confirmHere(
       `Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`)
   )
     return false;
+  if (button) AW.setBusy(button, true);
   try {
     const reply = await postJSON("/admin/accounts", body);
     if (reply.code) showCode(body.name, reply.code);
@@ -16123,6 +16145,8 @@ async function acctAct(body) {
   } catch (err) {
     say(err.message, false, acctEl.note);
     return false;
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
 }
 const acctSettings = AW.form(acctEl.settings, {
@@ -16140,11 +16164,14 @@ const acctSettings = AW.form(acctEl.settings, {
 acctEl.make.addEventListener("submit", (event) => {
   event.preventDefault();
   const fields = acctEl.make.elements;
-  acctAct({
-    action: "make",
-    name: fields.name.value.trim(),
-    role: (event.submitter && event.submitter.value) || "user",
-  });
+  acctAct(
+    {
+      action: "make",
+      name: fields.name.value.trim(),
+      role: (event.submitter && event.submitter.value) || "user",
+    },
+    event.submitter,
+  );
   fields.name.value = "";
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
