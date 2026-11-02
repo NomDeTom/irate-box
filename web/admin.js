@@ -1853,6 +1853,26 @@ const actionButton = (label, onclick, extra = {}) =>
     ...extra,
     className: `action-btn${extra.className ? " " + extra.className : ""}`,
   });
+// A button the page draws again at every poll (a finding's action) outlives no node: its wait follows a stable
+// key in data-wait, and is put back on the copy drawn after the answer's poll. A static button needs only itself.
+const waitKeyOf = (button) => (button && button.dataset && button.dataset.wait) || "";
+function waitNode(key) {
+  return key
+    ? [...document.querySelectorAll("[data-wait]")].find((node) => node.dataset.wait === key) || null
+    : null;
+}
+function showWait(waiting) {
+  if (!waiting) return;
+  if (waiting.button && waiting.button.isConnected) AW.setBusy(waiting.button, true);
+  const node = waitNode(waiting.waitKey);
+  if (node && node !== waiting.button) AW.setBusy(node, true);
+}
+function clearWait(waiting) {
+  if (!waiting) return;
+  if (waiting.button) AW.setBusy(waiting.button, false);
+  const node = waitNode(waiting.waitKey);
+  if (node) AW.setBusy(node, false);
+}
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = {
@@ -3311,6 +3331,7 @@ function renderUpdoctor(report, stale) {
       el("button", {
         type: "button",
         className: "action-btn",
+        dataset: { wait: `upd:doctor:${action.choice || action.label}` },
         textContent: action.label,
         onclick: async (event) => {
           if (
@@ -3321,7 +3342,7 @@ function renderUpdoctor(report, stale) {
             }))
           )
             return;
-          requestUpdate(action.choice, null, {}, true);
+          requestUpdate(action.choice, null, {}, true, event.currentTarget);
         },
       }),
     );
@@ -3460,6 +3481,7 @@ function renderUpdate(data) {
         updWaiting.finding,
       );
       if (updWaiting.job) updWaiting.job.done(!failed, resultSaid(done));
+      clearWait(updWaiting);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -3475,6 +3497,7 @@ function renderUpdate(data) {
   upd.doctor.disabled = upd.clear.disabled = busy;
   upd.fetch.disabled = busy || fetched;
   upd.install.disabled = busy || (fetched && !ready);
+  showWait(updWaiting);
   clearTimeout(updPoll);
   if (busy) updPoll = setTimeout(loadUpdate, progress ? 1000 : 2000);
 }
@@ -3498,12 +3521,16 @@ async function loadUpdate() {
 
 // fromFinding: a doctor finding's own button, which asked its question already (Install anyway names the checks it skips) and is answered beside it.
 // Install anyway is only a finding's button: the doctor offers it by the same rule the helper installs by.
-async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false) {
+async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false, button = null) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     updWaiting = {
       id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate, ...extra })).id,
       action: endpoint === "install" ? "install" : action,
       finding: fromFinding,
+      button,
+      waitKey,
     };
     upd.check.disabled =
       upd.fetch.disabled =
@@ -3531,20 +3558,25 @@ async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = 
     );
     loadUpdate();
   } catch (err) {
+    clearWait({ button, waitKey });
     updSay(action, err.message, false, null, fromFinding);
   }
 }
 
-upd.check.addEventListener("click", () => requestUpdate("check"));
-upd.fetch.addEventListener("click", () => {
-  requestUpdate("reach", "download");
+upd.check.addEventListener("click", (event) =>
+  requestUpdate("check", null, {}, false, event.currentTarget),
+);
+upd.fetch.addEventListener("click", (event) => {
+  requestUpdate("reach", "download", {}, false, event.currentTarget);
 });
-upd.doctor.addEventListener("click", () => requestUpdate("doctor"));
-upd.clear.addEventListener("click", () => {
-  requestUpdate("clear-cache");
+upd.doctor.addEventListener("click", (event) =>
+  requestUpdate("doctor", null, {}, false, event.currentTarget),
+);
+upd.clear.addEventListener("click", (event) => {
+  requestUpdate("clear-cache", null, {}, false, event.currentTarget);
 });
-upd.install.addEventListener("click", () => {
-  requestUpdate("reach", "install");
+upd.install.addEventListener("click", (event) => {
+  requestUpdate("reach", "install", {}, false, event.currentTarget);
 });
 // Where updates come from (a fork, say): a section, filled with the recorded source. The repository is asked for its
 // branches (the default first, offered as choices) and how the branch this box follows stands against the installed
@@ -3678,13 +3710,19 @@ function drawSource(data) {
     ? `${says(known)} Select ${known.default || "main"} and save.`
     : "";
 }
-upd.sourcePoll.addEventListener("click", () =>
-  requestUpdate("poll-source", null, {
-    repo:
-      upd.sourceRepo.value.trim() === (updLast && updLast.source && updLast.source.repo)
-        ? ""
-        : upd.sourceRepo.value.trim(),
-  }),
+upd.sourcePoll.addEventListener("click", (event) =>
+  requestUpdate(
+    "poll-source",
+    null,
+    {
+      repo:
+        upd.sourceRepo.value.trim() === (updLast && updLast.source && updLast.source.repo)
+          ? ""
+          : upd.sourceRepo.value.trim(),
+    },
+    false,
+    event.currentTarget,
+  ),
 );
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
@@ -3865,6 +3903,7 @@ function scanButtons(finding, busy) {
     const b = el("button", {
       type: "button",
       className: "action-btn" + (secChosen(finding.id, action) ? " pending" : ""),
+      dataset: { wait: `sec:${finding.id}:${action.choice || action.label}` },
       textContent: action.label,
       disabled: busy,
       title: secChosen(finding.id, action)
@@ -3934,9 +3973,9 @@ const secChosen = (fid, action) => {
   const sec = secSecs.get(secHome(fid));
   return !!sec && sec.dirty() && secPicked(sec.get("choice")).includes(action.choice);
 };
-function secChoose(finding, action) {
+function secChoose(finding, action, button) {
   // A cure acts at once (the one in effect already: nothing to do).
-  if (secKind(finding) === "cure") return action.on ? undefined : secFix(finding.id, action);
+  if (secKind(finding) === "cure") return action.on ? undefined : secFix(finding.id, action, button);
   // A row's chip replaces that row's choice, and leaves the other rows' alone. Chosen again, or the value the
   // row has now: nothing to save for that row.
   const sec = secSection(finding);
@@ -4184,16 +4223,21 @@ async function secAccept(key, title, yes) {
     say(err.message, false, sec.auditNote);
   }
 }
-let secRepair = null; // { id, label }: a repair asked from the Security doctor, answered there
-async function healthRepair(choice, label) {
+let secRepair = null; // { id, label, button }: a repair asked from the Security doctor, answered there
+async function healthRepair(choice, label, ask, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     secRepair = {
       id: (await postJSON("/admin/health", { action: "fix", choice })).id,
       label,
+      button,
+      waitKey,
     };
     say(`${label}: waiting for the root helper.`, true, sec.auditNote);
     loadHealth();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, sec.auditNote);
   }
 }
@@ -4204,6 +4248,7 @@ function secRepairFollow(data) {
   const q = data.queue || {};
   if (done) {
     say(`${secRepair.label}: ${resultSaid(done)}`, done.ok, sec.auditNote);
+    clearWait(secRepair);
     secRepair = null;
     return;
   }
@@ -4441,6 +4486,7 @@ function renderSecurity(data) {
             .map(resultSaid)
             .join(" "),
         );
+      clearWait(secWaiting);
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -4673,6 +4719,7 @@ function renderSecurity(data) {
     secRequest({ action: "scan" }, "scan");
     return;
   }
+  showWait(secWaiting);
   clearTimeout(secPoll);
   if (busy) secPoll = setTimeout(loadSecurity, 2000);
 }
@@ -4744,9 +4791,10 @@ function jointDo(i, data, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
+          dataset: { wait: `sec:${finding.id}:${action.choice || action.label}` },
           textContent: action.label,
           disabled: busy,
-          onclick: () => secFix(finding.id, action),
+          onclick: (event) => secFix(finding.id, action, event.currentTarget),
         }),
       );
     }
@@ -4757,13 +4805,15 @@ function jointDo(i, data, busy) {
       el("button", {
         type: "button",
         className: "action-btn",
+        dataset: { wait: "health:repair:rerun-install" },
         textContent: "Run the installer again",
         disabled: busy,
-        onclick: () =>
+        onclick: (event) =>
           healthRepair(
             "rerun-install",
             "Running the installer again",
             "Run the installer with this box's recorded options? The installer can repair, upgrade and restart services.",
+            event.currentTarget,
           ),
       }),
     );
@@ -4774,13 +4824,15 @@ function jointDo(i, data, busy) {
       el("button", {
         type: "button",
         className: "action-btn",
+        dataset: { wait: `health:repair:${todo.health.choice}` },
         textContent: todo.health.label,
         disabled: busy,
-        onclick: () =>
+        onclick: (event) =>
           healthRepair(
             todo.health.choice,
             todo.health.label,
             `${todo.health.label}? ${todo.say || ""}`.trim(),
+            event.currentTarget,
           ),
       }),
     );
@@ -5296,7 +5348,9 @@ async function loadSecurity() {
 // onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
 // One request, or several in turn (a card's rows changed at one Save): the helper runs them in order, so the last
 // one's answer means all have one.
-async function secRequest(body, fid, onDone) {
+async function secRequest(body, fid, onDone, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     const ids = [];
     for (const one of [].concat(body)) ids.push((await postJSON("/admin/security", one)).id);
@@ -5305,10 +5359,13 @@ async function secRequest(body, fid, onDone) {
       ids: ids.length > 1 ? ids : undefined,
       fid,
       onDone,
+      button,
+      waitKey,
     };
     secNote = null;
     loadSecurity();
   } catch (err) {
+    clearWait({ button, waitKey });
     secNote = { fid, text: err.message, ok: false };
     if (onDone) onDone(false, err.message);
     loadSecurity();
@@ -5331,22 +5388,32 @@ const DEB_INSTALL_ASK =
 deb.buttons = AW.updateButtons({
   check: {
     label: "Check for updates",
-    onclick: () => secFix("security-updates", { choice: "security-check" }),
+    wait: "sec:deb:check",
+    onclick: (event) =>
+      secFix("security-updates", { choice: "security-check" }, event.currentTarget),
   },
   fetch: {
     label: "Check for updates and download",
-    onclick: () =>
-      secFix("security-updates", {
-        choice: deb.waiting ? "security-fetch" : "security-reach-fetch",
-      }),
+    wait: "sec:deb:fetch",
+    onclick: (event) =>
+      secFix(
+        "security-updates",
+        { choice: deb.waiting ? "security-fetch" : "security-reach-fetch" },
+        event.currentTarget,
+      ),
   },
   install: {
     label: "Check for updates, download and install",
-    onclick: () =>
-      secFix("security-updates", {
-        choice: deb.waiting ? "security-updates" : "security-reach-install",
-        confirm: DEB_INSTALL_ASK,
-      }),
+    wait: "sec:deb:install",
+    onclick: (event) =>
+      secFix(
+        "security-updates",
+        {
+          choice: deb.waiting ? "security-updates" : "security-reach-install",
+          confirm: DEB_INSTALL_ASK,
+        },
+        event.currentTarget,
+      ),
   },
 });
 deb.box.replaceChildren(deb.buttons);
@@ -5453,24 +5520,29 @@ const debSec = AW.form(deb.form, {
   },
 });
 
-function secFix(fid, action) {
-  secRequest({ action: "fix", choice: action.choice }, fid);
+function secFix(fid, action, button) {
+  secRequest({ action: "fix", choice: action.choice }, fid, null, button);
 }
 
-sec.scan.addEventListener("click", () =>
-  secRequest({ action: "scan" }, "scan"),
+sec.scan.addEventListener("click", (event) =>
+  secRequest({ action: "scan" }, "scan", null, event.currentTarget),
 );
-sec.auditRun.addEventListener("click", () =>
-  secRequest({ action: "audit" }, "audit"),
+sec.auditRun.addEventListener("click", (event) =>
+  secRequest({ action: "audit" }, "audit", null, event.currentTarget),
 );
-sec.auditDeep.addEventListener("click", () =>
-  secRequest({ action: "deep" }, "audit"),
+sec.auditDeep.addEventListener("click", (event) =>
+  secRequest({ action: "deep" }, "audit", null, event.currentTarget),
 );
 const importNote = document.getElementById("import-note");
 document.getElementById("import-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const file = event.target.elements.file.files[0];
   if (!file) return;
+  const button =
+    event.submitter && event.submitter.classList.contains("action-btn")
+      ? event.submitter
+      : null;
+  if (button) AW.setBusy(button, true);
   try {
     if (file.size > 64 * 2 ** 20)
       throw new Error(
@@ -5491,9 +5563,10 @@ document.getElementById("import-form").addEventListener("submit", async (event) 
       true,
       importNote,
     );
-    secWaiting = { id: reply.id, fid: "audit" };
+    secWaiting = { id: reply.id, fid: "audit", button, waitKey: waitKeyOf(button) };
     loadSecurity();
   } catch (err) {
+    if (button) AW.setBusy(button, false);
     say(err.message, false, importNote);
   }
 });
@@ -5514,19 +5587,23 @@ function renderImports(imports) {
         ),
         actionButton(
           "Remove",
-          async () => {
+          async (event) => {
+            const button = event.currentTarget;
+            const waitKey = waitKeyOf(button);
+            AW.setBusy(button, true);
             try {
               const reply = await postJSON("/admin/security", {
                 action: "import-remove",
                 kind,
               });
-              secWaiting = { id: reply.id, fid: "audit" };
+              secWaiting = { id: reply.id, fid: "audit", button, waitKey };
               loadSecurity();
             } catch (err) {
+              clearWait({ button, waitKey });
               say(err.message, false, importNote);
             }
           },
-          { className: "small" },
+          { className: "small", dataset: { wait: `sec:import-remove:${kind}` } },
         ),
       ),
     ),
@@ -5705,9 +5782,10 @@ function healthDo(finding, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
+          dataset: { wait: `health:${finding.id}:${action.choice || action.label}` },
           textContent: action.label,
           disabled: busy,
-          onclick: () => hlFix(finding.id, action),
+          onclick: (event) => hlFix(finding.id, action, event.currentTarget),
         }),
       ),
   ];
@@ -6222,6 +6300,7 @@ function renderHealth(data) {
     if (done) {
       hlNote = { fid: hlWaiting.fid, text: resultSaid(done), ok: done.ok };
       if (hlWaiting.onDone) hlWaiting.onDone(done.ok, resultSaid(done));
+      clearWait(hlWaiting);
       hlWaiting = null;
       return renderHealth(data);
     }
@@ -6405,6 +6484,8 @@ function renderHealth(data) {
   hl.output.hidden = !(data.log || []).length;
   const problems = all.filter((finding) => finding.status === "problem").length;
   badge("health", h.stuck ? "!" : problems ? String(problems) : "");
+  showWait(hlWaiting);
+  showWait(secRepair);
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
   const here = paneShown("health") || paneShown("clock");
@@ -6817,11 +6898,15 @@ function clockWarn(cur, c) {
 }
 
 // onDone(ok, why): told whether the root helper did it, or false when the hub refused it.
-async function hlRequest(body, fid, onDone) {
+// button: the action button that asked, so it can show its own wait until the answer is in.
+async function hlRequest(body, fid, onDone, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
-    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid, onDone };
+    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid, onDone, button, waitKey };
     hlNote = null;
   } catch (err) {
+    clearWait({ button, waitKey });
     hlNote = { fid, text: err.message, ok: false };
     if (onDone) onDone(false, err.message);
   }
@@ -6830,7 +6915,7 @@ async function hlRequest(body, fid, onDone) {
 
 // A repair acts at once; only setting the clock from this device asks, as only the administrator can
 // tell whether this device's clock is right.
-async function hlFix(fid, action) {
+async function hlFix(fid, action, button) {
   let choice = action.choice;
   let ask = null;
   if (choice === "clock-set") {
@@ -6840,12 +6925,14 @@ async function hlFix(fid, action) {
     ask = `Set the box clock to ${now.toLocaleString()} (the time of this device)? Do this only if the clock of this device is correct.`;
   }
   if (ask && !(await AW.confirmHere(ask, { label: "Set the clock" }))) return;
-  hlRequest({ action: "fix", choice }, fid);
+  hlRequest({ action: "fix", choice }, fid, null, button);
 }
 
-hl.scan.addEventListener("click", () => hlRequest({ action: "scan" }, "scan"));
-hl.clockScan.addEventListener("click", () =>
-  hlRequest({ action: "fix", choice: "rtc-look" }, "clock-scan"),
+hl.scan.addEventListener("click", (event) =>
+  hlRequest({ action: "scan" }, "scan", null, event.currentTarget),
+);
+hl.clockScan.addEventListener("click", (event) =>
+  hlRequest({ action: "fix", choice: "rtc-look" }, "clock-scan", null, event.currentTarget),
 );
 window.addEventListener("hashchange", () => {
   if (paneShown("health") || paneShown("clock")) loadHealth();

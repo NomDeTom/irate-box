@@ -129,6 +129,20 @@ setTimeout(async () => {
     hgRow && /Filesystem for a fresh install/.test(hgRow.textContent) && /ext4 \(now\)/.test(hgRow.textContent)
     && /btrfs for the state/.test(hgRow.textContent) && d.getElementById('hardening-foot').children.length > 0,
     hgRow && hgRow.textContent);
+  // A repair's button keeps its wait across the poll that redraws the finding.
+  const calm = JSON.parse(fixture);
+  calm.helper = { ...calm.helper, stuck: false, waiting: 0, oldest: 0 };
+  w.renderHealth(calm);
+  const repair = d.querySelector('#hl-kiwix-down .fdo-controls button.action-btn');
+  const waitKey = repair && repair.dataset.wait;
+  const fresh = () => [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === waitKey);
+  repair.click();
+  await new Promise((r) => setTimeout(r, 150));
+  check('a doctor repair: its button waits while the helper has it', waitKey && fresh() && fresh().classList.contains('is-busy')
+    && fresh().getAttribute('aria-busy') === 'true', waitKey);
+  w.renderHealth({ ...calm, results: [{ id: 'x', ok: true, message: 'Done.' }] });
+  await new Promise((r) => setTimeout(r, 20));
+  check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);

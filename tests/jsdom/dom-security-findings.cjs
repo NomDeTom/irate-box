@@ -148,6 +148,25 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const sentRoot = posted.filter((b) => b.action === 'fix').map((b) => b.choice).sort().join(' ');
   check('  both sent at one Save', sentRoot === 'group-drop:lyra@docker sudo-drop:90-lyra', JSON.stringify(posted));
 
+  // A Security action button keeps its wait across the poll that redraws the card.
+  sec.results = posted.map((b, i) => ({ id: `job-${i + 1}`, ok: true, message: 'Done.' }));
+  w.eval('loadSecurity')();
+  await wait(200);
+  posted.length = 0;
+  sec.results = [];
+  const action = [...d.querySelectorAll('#debian-buttons button[data-update]')].find((b) => !b.disabled);
+  const key = action && action.dataset.wait;
+  action.click();
+  await wait(150);
+  const fresh = () => [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === key);
+  check('a Security action: its button waits while the helper has it', key && fresh() && fresh().classList.contains('is-busy')
+    && fresh().getAttribute('aria-busy') === 'true', key);
+  const id = `job-${posted.length}`;
+  sec.results = [{ id, ok: true, message: 'Done.' }];
+  w.eval('loadSecurity')();
+  await wait(100);
+  check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
+
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);

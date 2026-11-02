@@ -152,9 +152,37 @@ setTimeout(() => {
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
   // The doctor's answer, said from its message (as the result file keeps it), under its button.
   d.getElementById('update-doctor').click();
-  setTimeout(() => {
+  setTimeout(async () => {
     check('the doctor\'s answer said from its message, under its button', t(d.getElementById('doctor-note')) === 'The update doctor found 4 problems. The first is Name lookup (DNS).',
       t(d.getElementById('doctor-note')));
+    // An Updates doctor action button keeps its wait across the poll that redraws the finding.
+    let held = [];
+    let pageData = data;
+    w.fetch = async (u, opts = {}) => {
+      if (u === '/admin/update' && opts.method === 'POST') {
+        held = [{ id: 'w1', ok: true, message: 'Done.' }];
+        return new Response(JSON.stringify({ id: 'w1' }), { status: 202 });
+      }
+      return u === '/admin/update'
+        ? new Response(JSON.stringify({ ...pageData, results: [] }), { status: 200 })
+        : new Response('{}', { status: 404 });
+    };
+    const actionData = {
+      ...data,
+      doctor: { at: now, findings: [{ id: 'test-action', title: 'A test action', status: 'warn', summary: 'Something to do.', actions: [{ choice: 'test-choice', label: 'Do it' }] }] },
+    };
+    pageData = actionData;
+    w.renderUpdate(actionData);
+    const action = [...d.querySelectorAll('#doctor-findings button[data-wait]')].find((b) => !b.disabled);
+    const key = action && action.dataset.wait;
+    action.click();
+    await new Promise((r) => setTimeout(r, 200));
+    const fresh = () => [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === key);
+    check('an Updates doctor action: its button waits while the helper has it', key && fresh() && fresh().classList.contains('is-busy')
+      && fresh().getAttribute('aria-busy') === 'true', key);
+    w.renderUpdate({ ...actionData, results: held });
+    await new Promise((r) => setTimeout(r, 20));
+    check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
     check('no errors', !errors.length, errors.join(' | '));
     console.log(fails ? `${fails} failure(s)` : 'ok');
     process.exit(fails ? 1 : 0);
