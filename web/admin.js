@@ -10144,7 +10144,7 @@ function hazardControls(h) {
               event.currentTarget,
             );
         },
-        { className: "small", dataset: { wait: `net:otherap:${ap[1]}:remove` } },
+        { className: "small", dataset: { wait: `hazard:otherap:${ap[1]}:remove` } },
       ),
       " ",
       actionButton(
@@ -10156,7 +10156,7 @@ function hazardControls(h) {
             null,
             event.currentTarget,
           ),
-        { className: "small", dataset: { wait: `net:otherap:${ap[1]}:leave` } },
+        { className: "small", dataset: { wait: `hazard:otherap:${ap[1]}:leave` } },
       ),
     );
   }
