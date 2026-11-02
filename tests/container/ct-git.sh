@@ -17,6 +17,8 @@ ok() { echo "  ok   $*"; }
 bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 check() { local want=$1; shift; local got; got="$("$@" 2>/dev/null)"; [ "$got" = "$want" ] && ok "$* -> $got" || bad "$* -> $got (want $want)"; }
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$@"; }
+# The main origin's /git/ while Git is on: nginx answers 302 to the git origin, Caddy 200.
+MAIN_GIT_CODE=$(code "http://$H/git/")
 admin() { curl -s -u "admin:$PW" -X POST -H 'Content-Type: application/json' -H 'X-Irate-Admin: 1' -d "$1" "http://127.0.0.1:8095/admin/git"; }
 W=$(mktemp -d); cd "$W" || exit 1
 for area in public private; do for n in demo secret big; do admin "{\"action\":\"delete\",\"area\":\"$area\",\"name\":\"$n\"}" >/dev/null; done; done
@@ -100,6 +102,62 @@ check "running" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; p
 
 echo "== fcgiwrap runs as the hub"
 check "hub" sh -c "ps -o user= -C fcgiwrap | sort -u | head -1"
+
+# The round trip: the remove command on a running box, --no-git at install (the hub running without
+# Git), an update keeping it out by the marker, then --with-git adding it back.
+echo "== remove: the command on the running box"
+/opt/irate-box/irate-box gitaddon remove --yes >"$W/remove.log" 2>&1
+if grep -q "set Git access to off" "$W/remove.log"; then
+	ok "remove: Git's access set to off"
+else
+	bad "remove: $(tail -2 "$W/remove.log" | tr '\n' ' ')"
+fi
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.service ] && echo yes || echo no"
+check "no" sh -c "[ -e /run/irate-box-git.sock ] && echo yes || echo no"
+check "no" sh -c "[ -e /var/lib/hub/git/cgitrc-public ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check "yes" sh -c "[ -d /var/lib/hub/git/public/demo.git ] && echo yes || echo no"
+check 404 code "http://$H/git/"
+check 404 code "$GB/git/"
+check 200 code "http://$H/status"
+if git clone -q "http://$H/git/demo.git" gone 2>/dev/null; then
+	bad "clone after remove went through"
+else
+	ok "clone after remove refused"
+fi
+
+echo "== --no-git: installing and running"
+bash /src/install.sh --src /src --no-git >/dev/null 2>&1
+check "yes" sh -c "grep -qx -- --no-git /etc/hub/install-options && echo yes || echo no"
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check 404 code "http://$H/git/"
+check 200 code "http://$H/status"
+check 200 code "http://$H/"
+
+echo "== an update keeps Git out"
+bash /src/install.sh --src /src >/dev/null 2>&1
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check 404 code "http://$H/git/"
+
+echo "== --with-git: added back by a second install"
+bash /src/install.sh --src /src --with-git >/dev/null 2>&1
+check "yes" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "yes" sh -c "[ -e /etc/systemd/system/irate-box-git.service ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/cgitrc-public ] && echo yes || echo no"
+check "no" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check "no" sh -c "grep -qx -- --no-git /etc/hub/install-options && echo yes || echo no"
+check "$MAIN_GIT_CODE" code "http://$H/git/"
+check 200 code "$GB/git/"
+if git clone -q "http://$H/git/demo.git" back 2>/dev/null && [ "$(git -C back log -1 --format=%s)" = second ]; then
+	ok "clone after --with-git has the commit"
+else
+	bad "clone after --with-git"
+fi
+check "running" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; print([s[\"state\"] for s in json.load(sys.stdin)[\"services\"] if s[\"path\"]==\"/git/\"][0])'"
+cd "$W" || exit
 
 rm -rf "$W"
 echo "== result: $fails failed"
