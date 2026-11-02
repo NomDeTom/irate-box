@@ -82,6 +82,25 @@ const AW = (() => {
   }
   const btn = (label, props = {}) => h('button', { type: 'button', class: 'action-btn', ...props }, label);
 
+  // An action button's wait, drawn by CSS: the faster ring for a click still in flight, the slower one for a
+  // button waiting on the root helper. Everything else (the sentence under the button, its title) still says
+  // what is happening. Returns a function that clears both classes and aria-busy.
+  function setBusy(node, on, kind) {
+    if (!node) return () => {};
+    const helper = kind === 'helper';
+    node.classList.toggle('is-busy', !!on && !helper);
+    node.classList.toggle('is-helper-busy', !!on && helper);
+    if (on) node.setAttribute('aria-busy', 'true');
+    else node.removeAttribute('aria-busy');
+    return () => setBusy(node, false);
+  }
+  // The same, tied to a promise when one is given: clear it when the request settles.
+  function busy(node, promise) {
+    const clear = setBusy(node, true);
+    if (promise && typeof promise.then === 'function') promise.then(clear, clear);
+    return clear;
+  }
+
   // A state, one meaning each: ok, warn, bad or info, from the word unless told.
   const BAD = /red|fail|down|stopped|invalid|reported|problem/i, WARN = /amber|update|behind|flagged|queued|planned|working|ready|warn|^not /i,
     OK = /^ok$|built|installed|cached|stable|running|kept|on$/i;
@@ -1010,7 +1029,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, drawKept, say, localise, h, btn, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, drawKept, say, localise, h, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
