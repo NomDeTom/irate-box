@@ -116,6 +116,10 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   await wait(120);
   check('the moved level saves as before (POST /admin/hotspot, action share)',
     posted.some((b) => b.action === 'share' && b.level === 'open'), JSON.stringify(posted));
+  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
+  const mobileTabs = /@media \(max-width: 760px\)\s*\{[\s\S]*?\.tab-set > \.view-switch\s*\{[^}]*overflow-x: auto[^}]*\}/.test(css);
+  const noWrap = /\.tab-set > \.view-switch > \.view-switch-btn\s*\{[^}]*white-space: nowrap/.test(css);
+  check('phone: the tab strip scrolls by itself and keeps each label on one line', mobileTabs && noWrap);
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(fails ? `${fails} failure(s)` : 'ok');
   process.exit(fails ? 1 : 0);
