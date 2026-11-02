@@ -47,7 +47,12 @@ w.fetch = async (u, opts = {}) => {
   if (u === '/admin/presets' && opts.method === 'POST') {
     const b = JSON.parse(opts.body); posted.push(b);
     if (b.action === 'preview') return new Response(JSON.stringify(preview), { status: 200 });
-    record = { status: 'done', purpose: 'curated', durability: 'balanced', purpose_title: 'Curated space', durability_title: 'Balanced: logs kept', setup: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'] };
+    if (b.action === 'undo') {
+      record = { status: 'undone', setup_added: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'], setup_kept: ['signup'], undone_at: 1790000000 };
+      current = fixture.current;
+      return new Response(JSON.stringify({ ...fixture, record, current }), { status: 202 });
+    }
+    record = { status: 'done', purpose: 'curated', durability: 'balanced', purpose_title: 'Curated space', durability_title: 'Balanced: logs kept', setup: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'], setup_added: ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'] };
     current = { purpose: 'curated', durability: 'balanced' };
     return new Response(JSON.stringify({ ...fixture, record, current }), { status: 202 });
   }
@@ -81,6 +86,8 @@ setTimeout(async () => {
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/\s+/g, ' ');
   check('  three tiles in a row for each dial (style.css)',
     /\.preset-tiles \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(css));
+  check('  one tile in a row on a narrow page (style.css)',
+    /@container page \(max-width: 760px\) \{ \.preset-tiles \{ grid-template-columns: 1fr; \} \}/.test(css));
   check('  the current choices are marked',
     purpose.find((b) => b.textContent.includes('Pirate box')).classList.contains('selected')
     && durability.find((b) => b.textContent.includes('Longevity')).classList.contains('selected'));
@@ -104,6 +111,14 @@ setTimeout(async () => {
   check('  the completed setup steps are marked done in the tour',
     w.TOUR.ALL.length === 20
     && ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'].every((id) => w.TOUR.decided().has(id)),
+    [...w.TOUR.decided()].join(' '));
+  const undo = [...d.querySelectorAll('#preset-buttons button')].find((b) => /Undo preset/.test(b.textContent));
+  check('  the page offers Undo', !!undo, d.getElementById('preset-buttons').textContent);
+  undo.click();
+  await new Promise((r) => setTimeout(r, 600));
+  check('  Undo takes the steps it added back out, and leaves one decided since',
+    !['quick-setup', 'hotspot', 'terminal', 'addons'].some((id) => w.TOUR.decided().has(id))
+    && w.TOUR.decided().has('signup'),
     [...w.TOUR.decided()].join(' '));
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);

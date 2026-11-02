@@ -49,8 +49,9 @@ add-on is never part of a preset: moving down switches its access off.
 
 When a preset completes, the setup steps it answers are marked done in `setup_decided`: the quick
 setup itself, `signup`, `hotspot`, `terminal` and `addons`, from the entries that applied. A step
-whose entry was left out or whose root request failed stays open. Undo puts the settings back but
-does not reopen those steps: the administrator made the choice.
+whose entry was left out or whose root request failed stays open. The record keeps `setup_added`,
+the steps that were not decided before. Undo takes exactly those back out; a step decided before
+the preset, or whose setting the administrator changed since, stays done.
 
 `full` logging writes `returns_at` (24 hours), and the hub's background loop applies only the
 durability the box had before it, so a debug level is not left on by mistake and the day's purpose

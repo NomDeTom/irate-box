@@ -16953,7 +16953,7 @@ loadCardWrites();
 // ---- Quick setup (presets.d/, server.py's preset_*): two independent dials -------------------------
 // What the box is for, and how hard it writes. The page previews every line before it applies
 // anything; Apply sends the hub's own settings itself and the rest to root through one request.
-const presetState = { data: null, purpose: null, durability: null, busy: false, poll: null, setup: "" };
+const presetState = { data: null, purpose: null, durability: null, busy: false, poll: null, setup: "", undone: "" };
 function presetValue(value, type) {
   if (type === "addon" || type === "kit") return value ? "installed" : "not installed";
   if (value === true) return "on";
@@ -17038,6 +17038,15 @@ async function loadPresets() {
   if (setupKey && setupKey !== presetState.setup) {
     presetState.setup = setupKey;
     if (window.TOUR) TOUR.decideMany(setup, false);
+  }
+  if (record.status === "undone") {
+    presetState.setup = "";
+    const back = (record.setup_added || []).filter((id) => !(record.setup_kept || []).includes(id));
+    const undoneKey = `${record.undone_at || ""} ${back.join(" ")}`;
+    if (back.length && undoneKey !== presetState.undone) {
+      presetState.undone = undoneKey;
+      if (window.TOUR) TOUR.forgetMany(back);
+    }
   }
   if (["applying", "undoing"].includes(record.status) && !presetState.poll) {
     presetState.poll = setTimeout(() => { presetState.poll = null; loadPresets(); }, 2500);

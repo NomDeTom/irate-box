@@ -6202,10 +6202,15 @@ label > .aw-onoff-box ~ .chip-group,
   gap: 0.6rem;
   margin: 0.5rem 0 0.25rem;
 }
+/* A phone-width page holds one tile in a row: three columns would break the words up. */
+@container page (max-width: 760px) {
+  .preset-tiles {
+    grid-template-columns: 1fr;
+  }
+}
 .preset-tile {
   display: block;
   min-width: 0;
-  overflow-wrap: anywhere;
   text-align: left;
   font: inherit;
   color: var(--text);

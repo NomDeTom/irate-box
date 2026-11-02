@@ -293,6 +293,13 @@ const TOUR = (() => {
     else drawList();
     return changed;
   }
+  // Undo already took these back out on the hub; show them open here again.
+  function forgetMany(ids) {
+    let changed = false;
+    for (const id of ids || []) changed = decided.delete(id) || changed;
+    if (changed) drawList();
+    return changed;
+  }
 
   // The setup page: every step in one numbered list, each its short name, its pill, a line of what
   // it is now, and a link that starts the tour there.
@@ -575,6 +582,7 @@ const TOUR = (() => {
     go,
     stop,
     decideMany,
+    forgetMany,
     decided: () => new Set(decided),
     drawList,
     left: () => (checking() ? null : left().length), // null while the page is still checking

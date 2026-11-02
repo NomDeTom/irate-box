@@ -223,5 +223,30 @@ check(
     == ["quick-setup", "terminal"],
 )
 
+# Undo takes back exactly the steps the preset added, not one decided before or changed since.
+server._apply_hub_settings({"setup_decided": ["visitors"]})
+added = server._mark_setup_decided(["quick-setup", "signup", "visitors"])
+check(
+    "a preset adds only the setup steps that were not decided before",
+    added == ["quick-setup", "signup"]
+    and server.settings_snapshot()["setup_decided"] == ["visitors", "quick-setup", "signup"],
+    (added, server.settings_snapshot()["setup_decided"]),
+)
+removed = server._unmark_setup_decided(["quick-setup", "signup", "names"])
+check(
+    "undo takes exactly those back out, and leaves a step it did not add",
+    removed == ["quick-setup", "signup"] and server.settings_snapshot()["setup_decided"] == ["visitors"],
+    (removed, server.settings_snapshot()["setup_decided"]),
+)
+server._apply_hub_settings({"setup_decided": ["visitors", "quick-setup", "signup", "hotspot", "terminal", "addons"]})
+added = ["quick-setup", "signup", "hotspot", "terminal", "addons"]
+removed = server._undo_setup_steps({"setup_added": added, "setup_kept": ["signup"]})
+check(
+    "an undo takes back its added steps, but not one decided since",
+    removed == ["quick-setup", "hotspot", "terminal", "addons"]
+    and server.settings_snapshot()["setup_decided"] == ["visitors", "signup"],
+    (removed, server.settings_snapshot()["setup_decided"]),
+)
+
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
