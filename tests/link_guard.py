@@ -28,6 +28,7 @@ HUB_ROUTES = {
     "/admin/",
     "/admin/backup",
     "/admin/factory.html",
+    "/admin/git.html",
     "/admin/mesh.html",
     "/admin/rockchip.html",
     "/admin/pins.html",

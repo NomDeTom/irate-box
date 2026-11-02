@@ -148,6 +148,14 @@ try:
     )
     st, _ = get("/admin/factory.html", {})
     check("  refused without the front's header, as /admin is", st == 403, st)
+    st, page = get("/admin/git.html", {"X-Irate-Front": SECRET})
+    check(
+        "Git's Builds served at /admin/git.html",
+        st == 200 and b"/admin-git.js" in page and b"ci-cache-form" in page,
+        st,
+    )
+    st, _ = get("/admin/git.html", {})
+    check("  refused without the front's header, as /admin is", st == 403, st)
     st, page = get("/admin/mesh.html", {"X-Irate-Front": SECRET})
     check(
         "Mesh's Heard served at /admin/mesh.html",

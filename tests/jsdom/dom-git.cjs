@@ -224,36 +224,16 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   check('creating asks the hub', posted.some(([, b]) => b.action === 'create' && b.name === 'notes' && b.area === 'private'));
 
-  // Builds: the limits, what is offline, a run's own view, Build now and the templates.
-  await wait(100);
-  check('builds: the limits said', /Each build: up to 12 hours, memory limit 300\.0 MB, the lowest CPU priority\. The runs use 4\.8 MB\. The box retains the newest 5 runs for each repository/.test(t(d.getElementById('ci-limits'))),
-    t(d.getElementById('ci-limits')));
-  check('builds: what comes from the box with no internet', /git downloads of 2 URLs in a build use the mirrors of this box \(github\.com\/meshtastic\/firmware/.test(t(d.getElementById('ci-offline')))
-    && /PlatformIO packages come from the cache of the library/.test(t(d.getElementById('ci-offline'))), t(d.getElementById('ci-offline')));
-  check('builds: a kept run says so', /· retained/.test(t(d.getElementById('ci-runs'))));
-  [...d.querySelectorAll('#ci-runs button')].find((b) => t(b) === 'View').click();
-  await wait(100);
-  const rv = d.getElementById('ci-run-view');
-  check('a run\'s view: its steps, its log, its artifacts with sizes, Retain run and Delete run', !rv.hidden && /start/.test(t(rv.querySelector('.ci-steps')))
-    && rv.querySelector('pre.ci-log').textContent === '== start\nbuilding\n' && /fw\.bin \(0\.1 MB\)/.test(t(rv)) && button(rv, 'Retain run') && button(rv, 'Delete run'), t(rv));
-  w.confirm = () => true;
-  button(rv, 'Delete run').click();
-  await wait();
-  check('  Delete asks the hub (the builder does it)', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'delete' && b.run === 'fw-ci/3') && rv.hidden);
+  // Builds has its own page: /admin links there, and its controls are not on this page.
+  check('Builds on its own page: a link, and no build controls here', d.getElementById('git-builds-open').getAttribute('href') === '/admin/git.html'
+    && !d.getElementById('ci-runs') && !d.getElementById('ci-cache-form') && !d.getElementById('ci-keep-form'));
   [...card('fw-ci').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();
   const dr = d.querySelector('.git-drawer');
-  check('Manage: Build now, and Set up builds with the variables and templates', button(dr, 'Build now') && /Set up builds/.test(t(dr.querySelector('details.ci-setup')))
-    && /CI_ARTIFACTS/.test(t(dr.querySelector('.ci-env'))) && /Run make/.test(t(dr.querySelector('.ci-template'))));
+  check('Manage: Build now, and no Set up builds (that is on the Builds page)', button(dr, 'Build now') && !dr.querySelector('details.ci-setup'));
   button(dr, 'Build now').click();
   await wait();
   check('Build now asks the hub, and says what it queued', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'build' && b.repo === 'fw-ci')
     && /Queued: fw-ci\.git main at cccccc/.test(t(d.getElementById('git-note'))), t(d.getElementById('git-note')));
-  const kf = d.getElementById('ci-keep-form');
-  kf.elements.keep.value = '8';
-  kf.elements.keep.dispatchEvent(new w.Event('input', { bubbles: true }));
-  kf.dispatchEvent(new w.Event('submit', { cancelable: true }));
-  await wait();
-  check('runs kept per repository: a setting', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'settings' && b.keep_runs === 8));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
   check('the grid as Kiwix\'s: minmax(18rem, 1fr)', /\.card-grid \{[^}]*minmax\(18rem, 1fr\)/.test(css));
   check('a drawer spans the grid', /\.git-drawer \{\s*grid-column: 1 \/ -1;\s*\}/.test(css));

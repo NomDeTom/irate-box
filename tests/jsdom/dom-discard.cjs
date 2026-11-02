@@ -17,7 +17,7 @@ let sent = 0;
 w.fetch = async (u, opts = {}) => { if (opts.method === 'POST') sent++; return new Response('{}', { status: 404 }); };
 w.eval(js);
 const FORMS = ['fw-form', 'fw-policy', 'mirrors-policy', 'kits-policy', 'kits-budget', 'library-policy', 'library-token', 'store-settings',
-  'ci-cache-form', 'ci-keep-form', 'accounts-settings', 'auto-form', 'update-signing-form', 'debian-pattern'];
+  'accounts-settings', 'auto-form', 'update-signing-form', 'debian-pattern'];
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 setTimeout(() => {
   const forms = FORMS.map((id) => d.getElementById(id));
