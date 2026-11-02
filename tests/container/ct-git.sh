@@ -151,7 +151,7 @@ check "no" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || ech
 check "no" sh -c "grep -qx -- --no-git /etc/hub/install-options && echo yes || echo no"
 check "$MAIN_GIT_CODE" code "http://$H/git/"
 check 200 code "$GB/git/"
-if git clone -q "http://$H/git/demo.git" back 2>/dev/null && [ "$(cat back/README)" = hello ]; then
+if git clone -q "http://$H/git/demo.git" back 2>/dev/null && [ "$(git -C back log -1 --format=%s)" = second ]; then
 	ok "clone after --with-git has the commit"
 else
 	bad "clone after --with-git"
