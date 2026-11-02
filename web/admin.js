@@ -10975,12 +10975,16 @@ async function loadBackupPlan() {
   }
 }
 // The sticks, the image and the offline copy: the root helper, through /admin/usb, as the Books page's exports.
-async function bkSticks(scan) {
+async function bkSticks(scan, button) {
+  const waitKey = waitKeyOf(button);
+  if (scan && button) AW.setBusy(button, true);
   try {
     if (scan) {
       bkWaiting = {
         id: (await postJSON("/admin/usb", { action: "scan" })).id,
         note: bku.note,
+        button,
+        waitKey,
       };
     }
     const reply = await getJSON("/admin/usb");
@@ -10989,6 +10993,7 @@ async function bkSticks(scan) {
       const done = (reply.results || []).find((result) => result.id === bkWaiting.id);
       if (done) {
         say(resultSaid(done), done.ok, bkWaiting.note);
+        clearWait(bkWaiting);
         bkWaiting = null;
       }
     }
@@ -10999,19 +11004,21 @@ async function bkSticks(scan) {
       bku.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
     }
     drawBackupGo();
+    showWait(bkWaiting);
     clearTimeout(bkPoll);
     if (bkWaiting || progress || reply.pending > 0)
       bkPoll = setTimeout(() => bkSticks(false), 1500);
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, bku.note);
   }
 }
 document
   .getElementById("backup-image-scan")
-  .addEventListener("click", () => bkSticks(true));
+  .addEventListener("click", (event) => bkSticks(true, event.currentTarget));
 document
   .getElementById("offline-scan")
-  .addEventListener("click", () => bkSticks(true));
+  .addEventListener("click", (event) => bkSticks(true, event.currentTarget));
 bku.imageGo.addEventListener("click", async (event) => {
   const usbStick = usbSticks.find((x) => x.name === bku.stick.value);
   if (
@@ -11021,27 +11028,35 @@ bku.imageGo.addEventListener("click", async (event) => {
         "On this board it can take an hour or more. The box stays in use meanwhile.", { anchor: event.currentTarget })
   )
     return;
+  const waitKey = waitKeyOf(event.currentTarget);
+  AW.setBusy(event.currentTarget, true);
   try {
     bkWaiting = {
       id: (await postJSON("/admin/usb", { action: "image", device: usbStick.name }))
         .id,
       note: bku.note,
+      button: event.currentTarget,
+      waitKey,
     };
     say("Writing the image. The progress shows here.", true, bku.note);
     bkSticks(false);
   } catch (err) {
+    clearWait({ button: event.currentTarget, waitKey });
     say(err.message, false, bku.note);
   }
 });
 
 // The kit: the root helper makes it (hub_control.py offline_kit); the hub streams the download.
 let kitWaiting = null;
+let kitWait = null; // the button that asked for the kit (and its data-wait key)
 let kitPoll = null;
 function renderKit(data) {
   if (kitWaiting) {
     const done = (data.results || []).find((result) => result.id === kitWaiting);
     if (done) {
       say(resultSaid(done), done.ok, kitEl.note);
+      clearWait(kitWait);
+      kitWait = null;
       kitWaiting = null;
     }
   }
@@ -11098,15 +11113,21 @@ function renderKit(data) {
     kitEl.contents.replaceChildren(
       ...(k.contents || []).map((t) => el("li", { textContent: t })),
     );
+  showWait(kitWait);
   clearTimeout(kitPoll);
   if (busy) kitPoll = setTimeout(loadKit, 2000);
 }
 // Refresh export: the last export's choices again; Make the export again: when the librarian does it by itself.
-kitEl.refresh.addEventListener("click", async () => {
+kitEl.refresh.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     kitWaiting = (await postJSON("/admin/kit", { action: "refresh" })).id;
+    kitWait = { id: kitWaiting, button, waitKey };
     loadKit();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitEl.note);
   }
 });
@@ -11120,6 +11141,7 @@ kitEl.when.addEventListener("change", async () => {
     );
     say("Saved.", true, kitEl.note);
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitEl.note);
   }
 });
@@ -11146,6 +11168,9 @@ kitEl.form.addEventListener("submit", async (event) => {
     kits = picked(kitEl.kits),
     repos = picked(kitEl.repos),
     state = fields.state.value;
+  const button = event.submitter;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     if (fields.dest.value === "stick") {
       const usbStick = usbSticks.find((x) => x.name === stickEl.stick.value);
@@ -11162,6 +11187,8 @@ kitEl.form.addEventListener("submit", async (event) => {
           })
         ).id,
         note: kitEl.note,
+        button,
+        waitKey,
       };
       say(
         "Copying. The progress shows above, under Back up this box.",
@@ -11182,6 +11209,7 @@ kitEl.form.addEventListener("submit", async (event) => {
         budget_mb: budget,
       })
     ).id;
+    kitWait = { id: kitWaiting, button, waitKey };
     say(
       "Creating the export. This takes a minute or two, and longer with books.",
       true,
@@ -11189,6 +11217,7 @@ kitEl.form.addEventListener("submit", async (event) => {
     );
     loadKit();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitEl.note);
   }
 });
@@ -12849,6 +12878,7 @@ function renderUsb(data) {
     const done = (data.results || []).find((result) => result.id === usbWaiting.id);
     if (done) {
       usbNote = { at: usbWaiting.at, text: resultSaid(done), ok: done.ok };
+      clearWait(usbWaiting);
       usbWaiting = null;
       if (done.ok) loadLibrary();
       return renderUsb(data);
@@ -12908,12 +12938,14 @@ function renderUsb(data) {
                     ? el("button", {
                         type: "button",
                         className: "action-btn small",
+                        dataset: { wait: `usb:import:${device.name}:${z.file}` },
                         textContent: "Copy book to library",
                         disabled: busy,
-                        onclick: () =>
+                        onclick: (event) =>
                           usbRequest(
                             { action: "import", device: device.name, file: z.file },
                             `${device.name}:${z.file}`,
+                            event.currentTarget,
                           ),
                       })
                     : null,
@@ -12934,12 +12966,14 @@ function renderUsb(data) {
                 el("button", {
                   type: "button",
                   className: "action-btn",
+                  dataset: { wait: `usb:export:${device.name}` },
                   textContent: "Export book to USB drive",
                   disabled: busy,
-                  onclick: () =>
+                  onclick: (event) =>
                     usbRequest(
                       { action: "export", device: device.name, book: pick.value },
                       `export:${device.name}`,
+                      event.currentTarget,
                     ),
                 }),
               )
@@ -12962,6 +12996,7 @@ function renderUsb(data) {
     usb.bar.value = progress.total ? Math.min(progress.done / progress.total, 1) : 0;
     usb.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
   }
+  showWait(usbWaiting);
   clearTimeout(usbPoll);
   if (busy) usbPoll = setTimeout(loadUsb, 1000);
 }
@@ -12974,19 +13009,22 @@ async function loadUsb() {
   }
 }
 
-async function usbRequest(body, at) {
+async function usbRequest(body, at, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
-    usbWaiting = { id: (await postJSON("/admin/usb", body)).id, at };
+    usbWaiting = { id: (await postJSON("/admin/usb", body)).id, at, button, waitKey };
     usbNote = null;
     loadUsb();
   } catch (err) {
+    clearWait({ button, waitKey });
     usbNote = { at, text: err.message, ok: false };
     loadUsb();
   }
 }
 
-usb.scan.addEventListener("click", () =>
-  usbRequest({ action: "scan" }, "scan"),
+usb.scan.addEventListener("click", (event) =>
+  usbRequest({ action: "scan" }, "scan", event.currentTarget),
 );
 loadUsb();
 
@@ -15201,6 +15239,7 @@ kitsEl.addCancel.addEventListener("click", resetKitForm);
 // Kits by USB drive (usbstick.py, kits.py): the root helper's last stick scan, Import for each kit
 // found for this box's architecture, and a cached kit to copy onto each drive.
 let kitsUsbWaiting = null;
+let kitsUsbWait = null; // the button that asked (and its data-wait key), for the redraw
 let kitsUsbAsked = null; // what the waiting request asked: an import refused for the clock is offered again below
 async function loadKitsUsb() {
   let data;
@@ -15224,13 +15263,15 @@ async function loadKitsUsb() {
           el("button", {
             type: "button",
             className: "action-btn small",
+            dataset: { wait: "kits:usb:retry" },
             textContent: "Import without a freshness check",
-            onclick: () =>
+            onclick: (event) =>
               kitsUsbAsk(
                 { ...asked, freshness: "unknown-time" },
                 "Import this toolkit without checking that its packages are current? Their signatures and hashes " +
                   "are still checked, but a USB drive could carry an older signed set with problems fixed since. " +
                   "Set the clock on the Clock page first if you can.",
+                event.currentTarget,
               ),
           }),
         );
@@ -15298,15 +15339,18 @@ async function loadKitsUsb() {
                     ? el("button", {
                         type: "button",
                         className: "action-btn small",
+                        dataset: { wait: `kits:usb:import:${device.name}:${k.kit}` },
                         textContent: "Import toolkit",
                         disabled: busy,
-                        onclick: () =>
+                        onclick: (event) =>
                           kitsUsbAsk(
                             {
                               action: "kit-import",
                               device: device.name,
                               kit: k.kit,
                             },
+                            null,
+                            event.currentTarget,
                           ),
                       })
                     : null,
@@ -15326,11 +15370,14 @@ async function loadKitsUsb() {
                 el("button", {
                   type: "button",
                   className: "action-btn",
+                  dataset: { wait: `kits:usb:export:${device.name}` },
                   textContent: "Export toolkit to USB drive",
                   disabled: busy,
-                  onclick: () =>
+                  onclick: (event) =>
                     kitsUsbAsk(
                       { action: "kit-export", device: device.name, kit: pick.value },
+                      null,
+                      event.currentTarget,
                     ),
                 }),
               )
@@ -15348,23 +15395,28 @@ async function loadKitsUsb() {
         ]
       : []),
   );
+  showWait(kitsUsbWait);
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
 // confirmText: only where the box cannot go on without a decision (an import with the clock unknown).
-async function kitsUsbAsk(body, confirmText) {
+async function kitsUsbAsk(body, confirmText, button) {
   if (confirmText && !(await AW.confirmHere(confirmText))) return;
   kitsUsbAsked = body;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     kitsUsbWaiting = (await postJSON("/admin/usb", body)).id;
+    kitsUsbWait = { id: kitsUsbWaiting, button, waitKey };
     say("Working…", true, noteEl("kits-usb-note"));
     loadKitsUsb();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, noteEl("kits-usb-note"));
   }
 }
 document
   .getElementById("kits-usb-scan")
-  .addEventListener("click", () => kitsUsbAsk({ action: "scan" }));
+  .addEventListener("click", (event) => kitsUsbAsk({ action: "scan" }, null, event.currentTarget));
 
 async function loadKits() {
   try {
