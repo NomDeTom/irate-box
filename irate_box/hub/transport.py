@@ -16,6 +16,8 @@ Stdlib only."""
 # gates from the accounts as they are), and share-allow, which a guest's agreement on the hotspot's sheet asks for
 # (over plain HTTP, as every guest page), within the level the administrator chose. Plus installing an update and
 # adding or removing an add-on, which run code as root, and widening the filesystems root mounts from USB drives.
+# And setting up a new board: each sends this box's WiFi password or keys to the board, or signs in to it as root with
+# this box's own key and runs the installer there.
 # tests/api_https_gate.py checks the rest are all here.
 HTTPS_ONLY = frozenset(
     (
@@ -36,6 +38,12 @@ HTTPS_ONLY = frozenset(
         "share-set",
         "addon",
         "usb-filesystems",
+        "rk-serial-setup",
+        "rk-card-setup",
+        "rk-hotspot-setup",
+        "rk-ssh-setup",
+        "rk-finish",
+        "board-install",
     )
 )
 TRUSTED = ("https", "loopback", "hub")
