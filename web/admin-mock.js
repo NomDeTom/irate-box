@@ -225,9 +225,11 @@
       field('Password', h('input', { type: 'password', name: 'mock-password', minlength: '8', autocomplete: 'new-password' })),
       field('Address', h('input', { type: 'url', name: 'mock-url', placeholder: 'https://' })),
       field('Message (with the emoji button)', story),
-      field('A file', h('input', { type: 'file', name: 'mock-file' })),
-      h('label', { class: 'setting' }, h('input', { type: 'checkbox', name: 'mock-tick' }),
-        h('span', { class: 'setting-desc', text: 'I understand that this runs someone else\'s code on this box\'s address' })));
+      field('A file', h('input', { type: 'file', name: 'mock-file' })));
+    // A consent card is not one of the form's own field labels: a .library-form stacks its labels, while a .setting
+    // keeps its checkbox and words on one line. The pages put the consent after the form, not inside it.
+    const fieldsDemo = h('div', {}, fields, h('label', { class: 'setting' }, h('input', { type: 'checkbox', name: 'mock-tick' }),
+      h('span', { class: 'setting-desc', text: 'I understand that this runs someone else\'s code on this box\'s address' })));
     if (window.EMOJI) window.EMOJI.attach(story);
     const colour = AW.settings([{ key: 'accent', label: 'Accent colour', kind: 'colour', value: '', shown: '#9d8ff9', unset: 'Theme colour',
       warn: (value) => (value && value.toLowerCase() === '#ffff00' ? 'Yellow on white is hard to read.' : '') }]);
@@ -312,7 +314,7 @@
 
     return group('More from the pages', 'Controls the pages draw with their own markup or admin.js\'s helpers, beyond the shared widgets above.',
       row('fields', 'Form fields', 'Each with its label around it, as the forms on Accounts, Kiwix and Drop. The emoji button joins any field marked data-emoji.',
-        '<form class="library-form"><label>Name <input …></label>…; <label class="setting"><input type="checkbox"> …; data-emoji, EMOJI.attach(field)', fields),
+        '<form class="library-form"><label>Name <input …></label>…; data-emoji, EMOJI.attach(field); a consent: <label class="setting"><input type="checkbox"> … after the form', fieldsDemo),
       row('colour', 'Colour', 'A colour, or the theme\'s own. A warning shows beside a colour that will be hard to read.',
         "AW.settings([{key, label, kind: 'colour', value, shown, unset, warn}])", colour),
       row('progress', 'Progress, output and space used', 'A job\'s progress, what its program printed, and how full something is.',
