@@ -16,6 +16,13 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
 
+# The security manifest (security.json): JSON carries no comment, and the guard reads it as data.
+[[annotations]]
+path = "security.json"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"
+
 [[annotations]]
 path = "irate_box/hub/known_radios.json"
 precedence = "aggregate"
