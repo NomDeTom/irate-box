@@ -774,24 +774,59 @@ class Usage(threading.Thread):
     everything the box received, not only the build: an upper bound). Not IPAccounting: on some boards'
     vendor kernels systemd cannot attach its cgroup programs (bpf-firewall, error 524), so it reads 0
     whatever a build downloads, and IPAddressDeny blocks nothing. Whether a build
-    ran offline is not inferred from this: an offline build runs with no network at all (OFFLINE)."""
+    ran offline is not inferred from this: an offline build runs with no network at all (OFFLINE).
+    Also how many of its processes the kernel killed for memory (the cgroup's oom_kill), and the memory and swap
+    it was allowed (the smallest limits on its cgroup's path: build.slice's, the owner's build limits)."""
+
+    CGROUP_ROOT = Path("/sys/fs/cgroup")
 
     def __init__(self, every=5):
         super().__init__(daemon=True)
         self.every, self.stop_ev = every, threading.Event()
         self.peak, self.hottest = 0, None
         self.cg = self._cgroup()
+        self.kills0 = self.memory_kills()
 
-    @staticmethod
-    def _cgroup():
+    @classmethod
+    def _cgroup(cls):
         try:
             for line in Path("/proc/self/cgroup").read_text().splitlines():
                 if line.startswith("0::"):
-                    f = Path("/sys/fs/cgroup") / line[3:].lstrip("/") / "memory.current"
+                    f = cls.CGROUP_ROOT / line[3:].lstrip("/") / "memory.current"
                     return f if f.is_file() else None
         except OSError:
             pass
         return None
+
+    def memory_kills(self):
+        """The processes the kernel has killed for memory in this cgroup and below, or None."""
+        if not self.cg:
+            return None
+        try:
+            for line in (self.cg.parent / "memory.events").read_text().splitlines():
+                key, _, value = line.partition(" ")
+                if key == "oom_kill":
+                    return int(value)
+        except (OSError, ValueError):
+            pass
+        return None
+
+    def memory_limits(self):
+        """{"memory", "swap"}: the smallest memory.max and memory.swap.max from this cgroup up, in bytes; None where
+        nothing on the path sets one."""
+        out = {"memory": None, "swap": None}
+        d = self.cg.parent if self.cg else None
+        root = self.CGROUP_ROOT
+        while d is not None and d != root and root in d.parents:
+            for key, name in (("memory", "memory.max"), ("swap", "memory.swap.max")):
+                try:
+                    text = (d / name).read_text().strip()
+                except OSError:
+                    continue
+                if text.isdigit():
+                    out[key] = int(text) if out[key] is None else min(out[key], int(text))
+            d = d.parent
+        return out
 
     @staticmethod
     def temperature():
@@ -853,6 +888,11 @@ class Usage(threading.Thread):
             "hottest": self.hottest,
             "received": None if self.net0 is None or net1 is None else max(0, net1 - self.net0),
         }
+        kills = self.memory_kills()
+        if kills is not None and self.kills0 is not None:
+            self.result["memory_killed"] = max(0, kills - self.kills0)
+        limits = self.memory_limits()
+        self.result["memory_limit"], self.result["swap_limit"] = limits["memory"], limits["swap"]
         return False
 
 
@@ -1021,6 +1061,15 @@ def build_firmware(job):
         except OSError:
             pass
         res["build_cache_bytes"] = prune_build_cache()[1]
+        if res.get("memory_killed") and state != "passed":
+            # The kernel stopped it inside the build limits: say so, rather than leave a compiler's death unexplained.
+            limit = res.get("memory_limit")
+            with open(run / "log.txt", "a") as log:
+                log.write(
+                    f"== stopped for memory: the kernel ended {res['memory_killed']} of its processes. This target "
+                    f"needs more than the box gives builds ({limit // 2**20 if limit else '?'} MB, "
+                    f"{(res.get('swap_limit') or 0) // 2**20} MB swap): Recovery and monitoring, Build limits.\n"
+                )
     _write_status(
         run,
         state=state,
