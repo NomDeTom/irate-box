@@ -12554,14 +12554,14 @@ function setupStep(step, text, status) {
 
 function applySetup(done) {
   AL.hide("welcome", done);
-  if (!done && !location.hash) location.hash = "#welcome";
+  if (!done && !location.hash) location.hash = "#presets";
 }
 
 async function setSetupDone(done) {
   try {
     await postJSON("/admin/settings", { setup_done: done });
     applySetup(done);
-    location.hash = done ? "#overview" : "#welcome";
+    location.hash = done ? "#overview" : "#presets";
   } catch (err) {
     say(err.message, false, noteEl("setup-note"));
   }
@@ -16953,7 +16953,7 @@ loadCardWrites();
 // ---- Quick setup (presets.d/, server.py's preset_*): two independent dials -------------------------
 // What the box is for, and how hard it writes. The page previews every line before it applies
 // anything; Apply sends the hub's own settings itself and the rest to root through one request.
-const presetState = { data: null, purpose: null, durability: null, busy: false, poll: null };
+const presetState = { data: null, purpose: null, durability: null, busy: false, poll: null, setup: "" };
 function presetValue(value, type) {
   if (type === "addon" || type === "kit") return value ? "installed" : "not installed";
   if (value === true) return "on";
@@ -17032,6 +17032,13 @@ async function loadPresets() {
   if (!presetState.durability) presetState.durability = (data.current || {}).durability || null;
   drawQuickSetup();
   const record = data.record || {};
+  // The setup steps this preset completed are already kept on the hub; show them done here now.
+  const setup = record.status === "done" ? record.setup || [] : [];
+  const setupKey = setup.join(" ");
+  if (setupKey && setupKey !== presetState.setup) {
+    presetState.setup = setupKey;
+    if (window.TOUR) TOUR.decideMany(setup, false);
+  }
   if (["applying", "undoing"].includes(record.status) && !presetState.poll) {
     presetState.poll = setTimeout(() => { presetState.poll = null; loadPresets(); }, 2500);
   }
@@ -17068,6 +17075,13 @@ async function presetPreview() {
       parts.push(el("p", { className: "setting-name", textContent: "Left out on this box" }));
       parts.push(el("ul", { className: "preset-preview" }, ...plan.left_out.map((x) =>
         el("li", {}, el("strong", { textContent: `${x.label}: ` }), el("span", { textContent: x.why })))));
+    }
+    if ((plan.setup || []).length) {
+      const labels = plan.setup.map((id) => {
+        const step = window.TOUR && TOUR.ALL.find((x) => x.id === id);
+        return step ? step.label : id;
+      });
+      parts.push(el("p", { className: "setting-desc", textContent: `Setup steps this answers: ${labels.join(", ")}.` }));
     }
     if (plan.automatic_undo) {
       parts.push(el("p", { className: "setting-desc", textContent: `Full logging returns to the durability this box had after ${plan.automatic_undo} hours, unless you keep it.` }));

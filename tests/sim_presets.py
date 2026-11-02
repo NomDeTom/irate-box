@@ -188,5 +188,40 @@ check(
     all(choices.CHOICE_RE.match(e["choice"]) for p in all_presets for e in p["entries"] if e.get("type") == "choice"),
 )
 
+# The setup tour: a completed preset marks the steps it answered done.
+check(
+    "quick setup is a setup decision, and the hub keeps it",
+    "quick-setup" in server.SETUP_DECISIONS and server.valid_setting("setup_decided", ["quick-setup"]),
+)
+setup_changes = [
+    {"ok": True, "entry": {"type": "accounts", "key": "signup"}},
+    {"ok": True, "entry": {"type": "hotspot", "value": "open"}},
+    {"ok": True, "entry": {"type": "access", "app": "term", "mode": "off"}},
+    {"ok": True, "entry": {"type": "addon", "addon": "notes", "on": True}},
+    {"ok": False, "entry": {"type": "addon", "addon": "room", "on": True}},
+    {"ok": True, "entry": {"type": "hub", "key": "shout_who", "value": "users"}},
+]
+check(
+    "a preset's setup steps: quick setup, signup, hotspot, terminal and add-ons",
+    server._preset_setup_ids({"changes": setup_changes}) == ["addons", "hotspot", "quick-setup", "signup", "terminal"],
+    server._preset_setup_ids({"changes": setup_changes}),
+)
+check(
+    "  an entry that failed is not marked",
+    server._preset_setup_ids(
+        {"changes": [{"ok": True, "request": "r1", "entry": {"type": "access", "app": "term", "mode": "on"}}]},
+        {"r1": {"ok": False}},
+    )
+    == ["quick-setup"],
+)
+check(
+    "  an answered root request is",
+    server._preset_setup_ids(
+        {"changes": [{"ok": True, "request": "r1", "entry": {"type": "access", "app": "term", "mode": "on"}}]},
+        {"r1": {"ok": True}},
+    )
+    == ["quick-setup", "terminal"],
+)
+
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

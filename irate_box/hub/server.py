@@ -1358,6 +1358,7 @@ def accent_ink(accent):
 # web/admin-tour.js has each one's words and where it lives.
 # With the setup's own steps and the backup: one list, one tour.
 SETUP_DECISIONS = (
+    "quick-setup",
     "visitors",
     "names",
     "signup",
@@ -1665,6 +1666,49 @@ def _preset_after(entry):
     return entry.get("value", entry.get("mode"))
 
 
+def _preset_setup_id(entry):
+    """The setup step an entry answers, if any: signup, hotspot, terminal, addons."""
+    kind = entry.get("type")
+    if kind == "accounts" and entry.get("key") == "signup":
+        return "signup"
+    if kind == "hotspot":
+        return "hotspot"
+    if kind == "access" and entry.get("app") == "term":
+        return "terminal"
+    if kind in ("addon", "kit"):
+        return "addons"
+    return None
+
+
+def _preset_setup_ids(record, answers=None):
+    """The setup steps the preset completed: quick-setup, and each step whose entry applied.
+    answers ({request id: result}) filters out a step whose root request failed; at apply time,
+    only the entries that needed no root request are known to have applied."""
+    done = {"quick-setup"}
+    for item in record.get("changes") or []:
+        if not item.get("ok"):
+            continue
+        step = _preset_setup_id(item.get("entry") or {})
+        if not step:
+            continue
+        request = item.get("request")
+        if request and answers is not None and not (answers.get(request) or {}).get("ok"):
+            continue
+        done.add(step)
+    return sorted(done)
+
+
+def _mark_setup_decided(steps):
+    """Keep the setup steps a completed preset answered, with the same setting the tour writes."""
+    if not steps:
+        return
+    current = settings_snapshot()
+    decided = list(current.get("setup_decided") or [])
+    missing = [step for step in steps if step not in decided]
+    if missing:
+        _apply_hub_settings({"setup_decided": decided + missing})
+
+
 def _apply_hub_settings(patch):
     """A patch to the hub's own settings, through the same validation and save as the settings page."""
     with _settings_lock:
@@ -1715,6 +1759,7 @@ def preset_preview(purpose_id, durability_id):
         }
         for item in left
     ]
+    setup = sorted({step for entry in entries if (step := _preset_setup_id(entry))})
     return {
         "purpose": purpose["id"],
         "purpose_title": purpose.get("title"),
@@ -1723,6 +1768,7 @@ def preset_preview(purpose_id, durability_id):
         "changes": changes,
         "installs": installs,
         "left_out": left_out,
+        "setup": setup,
         "summary": _preset_summary(changes, installs, left_out),
         "automatic_undo": _preset_return_hours(durability),
     }
@@ -1783,11 +1829,17 @@ def apply_preset(purpose_id, durability_id):
                     hotspot_mode = after
                     item["after_full"] = dict(hotspot.load(), mode=after)
                 elif kind == "access":
-                    ids.append(control_request({"action": "access", "app": entry["app"], "mode": after}))
+                    request = control_request({"action": "access", "app": entry["app"], "mode": after})
+                    ids.append(request)
+                    item["request"] = request
                 elif kind == "addon":
-                    ids.append(control_request({"action": "addon", "addon": entry["addon"], "on": after is True}))
+                    request = control_request({"action": "addon", "addon": entry["addon"], "on": after is True})
+                    ids.append(request)
+                    item["request"] = request
                 elif kind == "kit":
-                    ids.append(control_request({"action": "kit-install", "kit": entry["kit"]}))
+                    request = control_request({"action": "kit-install", "kit": entry["kit"]})
+                    ids.append(request)
+                    item["request"] = request
             except Exception as exc:  # noqa: BLE001 - one request that cannot be made leaves the others
                 item["ok"] = False
                 failed.append(f"{item['label']}: {getattr(exc, 'message', exc)}")
@@ -1799,11 +1851,17 @@ def apply_preset(purpose_id, durability_id):
             accounts.set_settings(**accounts_patch)
         except Exception as exc:  # noqa: BLE001 - the other settings still apply
             failed.append(f"Accounts: {getattr(exc, 'message', exc)}")
+            for item in changes:
+                if item["type"] == "accounts":
+                    item["ok"] = False
     if hotspot_mode:
         try:
             _set_hotspot_mode(hotspot_mode)
         except Exception as exc:  # noqa: BLE001
             failed.append(f"The hotspot: {getattr(exc, 'message', exc)}")
+            for item in changes:
+                if item["type"] == "hotspot":
+                    item["ok"] = False
     if any(item["type"] == "choice" and item["ok"] and item["before"] != item["after"] for item in changes):
         try:
             ids.append(
@@ -1830,8 +1888,13 @@ def apply_preset(purpose_id, durability_id):
         "ids": ids,
         "failed": failed,
         "status": "applying" if ids else "done",
+        "setup": [],
     }
+    if record["status"] == "done":
+        record["setup"] = _preset_setup_ids(record)
     _write_preset_record(record)
+    if record["setup"]:
+        _mark_setup_decided(record["setup"])
     return record
 
 
@@ -1894,7 +1957,8 @@ def _preset_refresh_status():
     results = {r.get("id"): r for r in control_results(40)}
     ids = record.get("ids") or []
     if ids and all(rid in results for rid in ids):
-        record["status"] = "done" if record["status"] == "applying" else "undone"
+        done = record["status"] == "applying"
+        record["status"] = "done" if done else "undone"
         record["answered"] = [
             {
                 "id": rid,
@@ -1903,7 +1967,11 @@ def _preset_refresh_status():
             }
             for rid in ids
         ]
+        if done:
+            record["setup"] = _preset_setup_ids(record, results)
         _write_preset_record(record)
+        if done:
+            _mark_setup_decided(record.get("setup") or [])
     return record
 
 
