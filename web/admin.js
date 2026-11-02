@@ -1910,12 +1910,13 @@ const helperHeld = (busy) =>
 function markHelperWait(root, busy) {
   if (!root) return;
   const held = helperHeld(busy);
-  root.querySelectorAll("[data-helper-wait]").forEach((button) => {
+  root.querySelectorAll('[data-helper-wait="1"]').forEach((button) => {
     if (!button.classList.contains("is-busy")) AW.setBusy(button, held, "helper");
   });
 }
 function markHelperButton(button, busy) {
-  if (button && !button.classList.contains("is-busy")) AW.setBusy(button, helperHeld(busy), "helper");
+  if (button && !button.classList.contains("is-busy"))
+    AW.setBusy(button, helperHeld(busy) && button.disabled, "helper");
 }
 
 // --- box and services ------------------------------------------------------------
