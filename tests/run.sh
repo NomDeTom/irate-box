@@ -33,6 +33,7 @@ run sim_servicewrites.py
 run sim_nand_state.py
 run sim_recommended.py
 run sim_nmrepair.py
+run sim_presets.py
 run sim_hardening.py
 run sim_alpine_rescue.py
 run sim_uboot_build.py
@@ -103,6 +104,7 @@ run housecall_guard.py
 run sim_restore.py
 run sim_clock_sources.py
 run sim_secdoctor_accounts.py
+run sim_secdoctor_manifest.py
 run sim_secdoctor_missing.py
 run sim_secdoctor_sandbox.py
 run sim_ap_refresh.py
@@ -164,10 +166,13 @@ run sim_git_public.py
 run sim_git_levels.py
 run origin_guard.py
 run unit_guard.py
+run security_manifest_guard.py
+run sim_secmanifest_generate.py
 run uninstall_guard.py
 run sim_mirrors.py
 run sim_gitaddon.py
 run sim_ci_view.py
+run sim_ci_memory.py
 run sim_pio_bundle.py
 run sim_firmware_bundle.py
 run sim_factory.py
@@ -195,6 +200,8 @@ run sim_secdoctor_joint.py
 run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_update_doctor.py
+run sim_security_manifest.py
+run sim_security_changes.py
 run sim_updates_addons.py
 run sim_update_source_view.py
 run sim_share.py

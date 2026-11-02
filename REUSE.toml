@@ -11,7 +11,15 @@ path = [
   "holders/*.json",
   "toolkits/*.json",
   "packages.d/*.json",
+  "presets.d/*.json",
 ]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 NomDeTom"
+SPDX-License-Identifier = "MIT"
+
+# The security manifest (security.json): JSON carries no comment, and the guard reads it as data.
+[[annotations]]
+path = "security.json"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"

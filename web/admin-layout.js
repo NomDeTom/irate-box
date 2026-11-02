@@ -30,6 +30,7 @@ const AL = (() => {
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'User data', sections: ['made'] }] },
     { name: 'System', art: 'controller', links: [{ title: 'Pin map', href: '/admin/pins.html' }], pages: [
+      { title: 'Quick setup', sections: ['presets'] },
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },

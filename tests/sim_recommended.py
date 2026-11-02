@@ -17,7 +17,7 @@ T = Path(tempfile.mkdtemp(prefix="recommended-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
 from irate_box.msg import render
-from irate_box.root import clock, crashwatch, health, recommended, security
+from irate_box.root import clock, crashwatch, health, memguard, recommended, security
 
 fails = 0
 
@@ -98,6 +98,7 @@ def auto_fix(choice, log):
 
 
 security.fix = auto_fix
+memguard.meminfo = lambda: {"total_mb": 1024}
 
 diffs = {k: (want, now) for k, _, want, now in recommended.differences()}
 check(
@@ -115,6 +116,14 @@ check(
     },
     diffs,
 )
+memguard.meminfo = lambda: {"total_mb": 476}
+small = dict((k, w) for k, _, w, _ in recommended.differences())
+check(
+    "  on a 512 MB box: automatic updates are downloaded, not installed",
+    small["autoupdate"] == "24-1",
+    small.get("autoupdate"),
+)
+memguard.meminfo = lambda: {"total_mb": 1024}
 nand["state"] = "free"
 check(
     "  a free onboard flash: the journal on the flash",

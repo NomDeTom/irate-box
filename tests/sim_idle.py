@@ -17,6 +17,7 @@ T = Path(tempfile.mkdtemp(prefix="idle-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
+from irate_box import msg
 from irate_box.finding import message_ids as msg_ids
 from irate_box.root import health
 
@@ -86,6 +87,12 @@ check(
 check(
     "  ModemManager with no modem, Bluetooth with nothing paired: said",
     "idle:ModemManager.service" in f and "idle:bluetooth.service" in f,
+)
+check(
+    "  the Bluetooth one carries the Radios toolkit's consent, naming --no-default-kits",
+    "idle.bluetooth.radios" in msg_ids(f["idle:bluetooth.service"])
+    and "--no-default-kits" in msg.text(f["idle:bluetooth.service"]["notes"][0]),
+    f["idle:bluetooth.service"].get("notes"),
 )
 check(
     "  each offered to be switched off, asked first; nothing done by looking",

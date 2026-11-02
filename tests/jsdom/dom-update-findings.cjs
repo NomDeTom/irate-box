@@ -109,8 +109,9 @@ setTimeout(() => {
 
   const lc = row('last-check');
   check('the last download\'s failed check: counted, then said by its own name and sentence, Updates the place',
-    lc && t(lc.querySelector('.fdetail')) === 'The downloaded version failed 2 checks.'
+    lc && t(lc.querySelector('.fdetail')) === 'The downloaded version failed 3 checks.'
     && [...lc.querySelectorAll('.fnote')].map(t).includes('Shell syntax of uninstall.sh: The shell finds a syntax error in it.')
+    && [...lc.querySelectorAll('.fnote')].map(t).includes('Security changes: The update has no security manifest, so its security changes cannot be checked.')
     && !lc.querySelector('a.go-btn'), lc && t(lc));
 
   const kit = row('kits-installed-debug');

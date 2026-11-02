@@ -22,10 +22,13 @@ Stdlib only."""
 HTTPS_ONLY = frozenset(
     (
         "security-policy",
+        "security-changes",
+        "security-record-read",
         "security-fix",
         "update-signing",
         "update-force-install",
         "update-set-source",
+        "update-approve-security",
         "update-install",
         "tls-make",
         "tls-switch",
@@ -36,6 +39,8 @@ HTTPS_ONLY = frozenset(
         "access",
         "admin-login",
         "share-set",
+        "preset-apply",
+        "preset-undo",
         "addon",
         "usb-filesystems",
         "rk-serial-setup",

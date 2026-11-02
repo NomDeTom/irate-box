@@ -754,6 +754,14 @@ def idle_units():
                         "On a radio that does both WiFi and Bluetooth, as the AIC8800 does, "
                         "Bluetooth shares the chip with the WiFi.",
                     ),
+                    "notes": [
+                        M(
+                            "idle.bluetooth.radios",
+                            "Bluetooth comes from the Radios toolkit. A first install installs it unless "
+                            "--no-default-kits was given. The toolkit's consent: a device that pairs can use the "
+                            "box, and the service stays on.",
+                        )
+                    ],
                     "evidence": [],
                 }
             )
@@ -774,6 +782,7 @@ def check_idle():
                 i["summary"],
                 i["why"],
                 M("idle.fix", "If this box does not need it, switch it off. You can switch it on again here."),
+                notes=i.get("notes") or (),
                 evidence=i["evidence"],
                 actions=[
                     action(
@@ -3659,14 +3668,30 @@ def _unit(name, text):
 
 def unit_text(name):
     """A unit of the Box doctor's own (install.sh writes them, and set_timer/lostwrites/canary here)."""
-    from irate_box.root import safeio
+    from irate_box.root import safeio, secmanifest
 
     code, state = CODE, STATE
     root_state = safeio.ROOT_STATE
-    sandbox = (
-        "ProtectSystem=strict\n"
-        f"ReadWritePaths={state}/control {root_state}\n"
-        "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=read-only\nProtectProc=invisible\n"
+    order = ("ProtectSystem", "ReadWritePaths", "PrivateTmp", "NoNewPrivileges", "ProtectHome", "ProtectProc")
+    sandbox = secmanifest.unit_lines(
+        name,
+        order,
+        fallback=(
+            "ProtectSystem=strict\n"
+            f"ReadWritePaths={state}/control {root_state}\n"
+            "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=read-only\nProtectProc=invisible\n"
+        ),
+        override={"ReadWritePaths": f"{state}/control {root_state}"},
+    )
+    canary_sandbox = secmanifest.unit_lines(
+        CANARY_SERVICE,
+        order,
+        fallback=(
+            "ProtectSystem=strict\n"
+            f"ReadWritePaths={root_state}\n"
+            "PrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+        ),
+        override={"ReadWritePaths": str(root_state)},
     )
     if name == DOCTOR_SERVICE:
         return (
@@ -3696,8 +3721,7 @@ def unit_text(name):
         return (
             "[Unit]\nDescription=Irate-Box: a test file for lost writes on the SD card\n\n"
             f"[Service]\nType=oneshot\nExecStart={code}/irate-box health canary\nNice=19\n"
-            "IOSchedulingClass=idle\nProtectSystem=strict\n"
-            f"ReadWritePaths={root_state}\nPrivateTmp=yes\nNoNewPrivileges=yes\nProtectHome=yes\nProtectProc=invisible\n"
+            "IOSchedulingClass=idle\n" + canary_sandbox
         )
     if name == CANARY_TIMER:
         return (
@@ -3955,6 +3979,18 @@ def _journal_storage():
     return "volatile" if storage in ("volatile", "none") else "persistent"
 
 
+def _journal_sync_seconds():
+    """The journal's SyncIntervalSec in irate-box's drop-in, or None when it is journald's own (5 minutes)."""
+    try:
+        text = JOURNAL_CONF.read_text()
+    except OSError:
+        return None
+    m = re.search(r"^SyncIntervalSec=(\d+)([smh]?)$", text, re.M)
+    if not m:
+        return None
+    return int(m[1]) * {"": 1, "s": 1, "m": 60, "h": 3600}[m[2]]
+
+
 def card_groups():
     """The system's write settings as choice groups, as setting_groups(): the first option is the system's own."""
     from irate_box.hub import cardhistory
@@ -3989,11 +4025,28 @@ def card_groups():
             "label": M("cs.journal", "System journal"),
             "desc": M(
                 "cs.journal.desc",
-                "The system's log. In memory, nothing of it is written to the SD card, but a restart or a crash loses it.",
+                "The system's log. In memory, nothing of it is written to the SD card, but a restart or a crash loses it. "
+                "On the card it can be synced at most every 5 minutes, which bounds what a power cut can lose.",
             ),
-            "current": "flash" if NAND_STATE.exists() else "memory" if _journal_storage() == "volatile" else "card",
+            "current": "flash"
+            if NAND_STATE.exists()
+            else "memory"
+            if _journal_storage() == "volatile"
+            else "card5"
+            if (_journal_sync_seconds() or 0) <= 300
+            else "card",
             "options": [
                 {"value": "card", "label": M("cs.on-card", "On the SD card"), "choice": choice("journal", "card")},
+                {
+                    "value": "card5",
+                    "label": M("cs.on-card-5m", "On the SD card, synced every 5 minutes"),
+                    "choice": choice("journal", "card5"),
+                    "confirm": M(
+                        "cs.journal.card5.confirm",
+                        "Keep the journal on the SD card and sync it at most every 5 minutes? A power cut can lose "
+                        "about 5 minutes of logs, not the whole journal.",
+                    ),
+                },
                 {
                     "value": "memory",
                     "label": M("cs.in-memory", "In memory"),
@@ -4254,16 +4307,24 @@ def card_set(key, value):
         if NAND_STATE.exists():
             _nand_tool("off")
         JOURNAL_CONF.parent.mkdir(parents=True, exist_ok=True)
+        if value == "memory":
+            body = "Storage=volatile\nRuntimeMaxUse=24M\n"
+        elif value == "card5":
+            body = "Storage=persistent\nSyncIntervalSec=5m\n"
+        else:
+            body = "Storage=persistent\n"
         JOURNAL_CONF.write_text(
-            "# irate-box (SD card writes): where the system journal is kept. Remove to undo.\n[Journal]\n"
-            + ("Storage=volatile\nRuntimeMaxUse=24M\n" if value == "memory" else "Storage=persistent\n")
+            "# irate-box (SD card writes): where the system journal is kept. Remove to undo.\n[Journal]\n" + body
         )
         _systemctl("restart", "systemd-journald")
-        return (
-            M("repair.card-set.journal-memory", "The system journal is now kept in memory.")
-            if value == "memory"
-            else M("repair.card-set.journal-card", "The system journal is now kept on the SD card.")
-        )
+        if value == "memory":
+            return M("repair.card-set.journal-memory", "The system journal is now kept in memory.")
+        if value == "card5":
+            return M(
+                "repair.card-set.journal-card5",
+                "The system journal is on the SD card, synced at most every 5 minutes.",
+            )
+        return M("repair.card-set.journal-card", "The system journal is now kept on the SD card.")
     if key == "box_state":
         if value == "flash":
             if not NAND_STATE.exists():

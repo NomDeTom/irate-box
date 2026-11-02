@@ -7,14 +7,12 @@ Stock Armbian describes the WiFi in netplan and runs it with systemd-networkd. i
 NetworkManager (joining a network, a connection's own settings, a roam test, the hotspot on many radios), so
 the Box doctor offers NetworkManager as a repair. The install starts nothing while apt runs; the WiFi's
 netplan file is given `renderer: NetworkManager`, netplan is applied, and the profile is handed over to
-NetworkManager when that works. A transient timer checks two minutes later: a box that is on a WiFi network
-keeps the change, and a box that is not is put back exactly as it was.
-
-Record: /etc/hub/nm-install.json (root's) holds the netplan files as they were and, while the change waits,
-the timer's phase. The file can hold a WiFi password, so it is root's alone.
+NetworkManager when that works. A transient timer checks two minutes later, and a unit enabled for the same
+period checks at the next boot too: a box that is on its WiFi connection keeps the change, and a box that is
+not is put back exactly as it was. Once kept, the record drops the netplan copy, which can hold the WiFi
+password.
 """
 
-import base64
 import json
 import os
 import re
@@ -29,9 +27,10 @@ from irate_box.root import safeio
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 RECORD = ETC / "nm-install.json"
 NETPLAN = Path(os.environ.get("HUB_NETPLAN_DIR", "/etc/netplan"))
-POLICY_RC = Path(os.environ.get("HUB_POLICY_RC", "/usr/sbin/policy-rc.d"))
 CODE = Path(os.environ.get("HUB_CODE_DIR", Path(__file__).resolve().parents[2]))
-CHECK_UNIT = "irate-box-nm-check"
+UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
+CHECK_SERVICE = "irate-box-nm-check.service"
+CHECK_TIMER = "irate-box-nm-check-timer"
 CHECK_SECONDS = 120
 WIFI_FILE_RE = re.compile(r"^\s*(wifis|access-points):", re.M)
 
@@ -75,6 +74,25 @@ def _wifi_file():
     return None
 
 
+def _wifi_device(text):
+    """The interface a netplan WiFi file describes: its first key under wifis."""
+    base = None
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if base is None:
+            if re.match(r"^\s*wifis:\s*$", line):
+                base = indent
+            continue
+        if indent <= base:
+            break
+        m = re.match(r"^\s*([A-Za-z0-9_.:-]+):\s*$", line)
+        if m:
+            return m.group(1)
+    return None
+
+
 def _renderer(text):
     """The netplan file with `renderer: NetworkManager` under `network:`. None when it has no network block."""
     lines = text.splitlines()
@@ -94,14 +112,23 @@ def _renderer(text):
     return None
 
 
-def _nm_wifi(run):
-    """Whether NetworkManager has a WiFi device connected: the box is back on a network through it."""
+def _nm_wifi(run, device=None):
+    """Whether NetworkManager runs the handed-over WiFi interface, with an address and a default route.
+    Any connected wifi device is not enough: an access-point connection also counts as connected."""
     out = run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"])
     if out.returncode != 0:
         return False
+    wifi = []
     for line in out.stdout.splitlines():
         parts = line.rsplit(":", 2)
         if len(parts) == 3 and parts[1] in ("wifi", "802-11-wireless") and parts[2] == "connected":
+            wifi.append(parts[0])
+    for iface in wifi:
+        if device is not None and iface != device:
+            continue
+        if run(["ip", "-o", "-4", "addr", "show", "dev", iface]).stdout.strip() == "":
+            continue
+        if "via " in run(["ip", "-4", "route", "show", "default", "dev", iface]).stdout:
             return True
     return False
 
@@ -128,32 +155,56 @@ def _restore(rec, run):
     return out.returncode == 0
 
 
-def _restore_policy(rec):
-    """The policy-rc.d that was there before the install: put back, or taken away when there was none."""
-    saved = rec.get("policy")
-    if saved is None:
-        POLICY_RC.unlink(missing_ok=True)
-    else:
-        POLICY_RC.write_bytes(base64.b64decode(saved))
-        os.chmod(POLICY_RC, 0o755)  # nosec B103 - policy-rc.d is a script dpkg runs
+def _boot_unit_text():
+    return (
+        "[Unit]\n"
+        "Description=Irate-Box: finish the NetworkManager change after a reboot\n"
+        "After=NetworkManager.service NetworkManager-wait-online.service network-online.target\n"
+        "Wants=NetworkManager-wait-online.service network-online.target\n"
+        f"ConditionPathExists={RECORD}\n"
+        "\n[Service]\n"
+        "Type=oneshot\n"
+        f"ExecStart={CODE}/irate-box nmrepair check\n"
+        "\n[Install]\n"
+        "WantedBy=multi-user.target\n"
+    )
+
+
+def _arm_boot_check(run):
+    """The check runs at the next boot too, so a box that is power-cycled off its network is put back."""
+    path = UNIT_DIR / CHECK_SERVICE
+    text = _boot_unit_text()
+    try:
+        if path.read_text() == text:
+            return
+    except OSError:
+        pass
+    safeio.write(path, text, mode=0o644)
+    run(["systemctl", "daemon-reload"], timeout=60)
+    run(["systemctl", "enable", CHECK_SERVICE], timeout=60)
+
+
+def _disarm_boot_check(run):
+    # disable, not disable --now: from the boot unit itself, stopping the unit would stop this check.
+    run(["systemctl", "disable", CHECK_SERVICE], timeout=60)
+    (UNIT_DIR / CHECK_SERVICE).unlink(missing_ok=True)
+    run(["systemctl", "daemon-reload"], timeout=60)
 
 
 def _cancel_check(run):
-    run(["systemctl", "stop", f"{CHECK_UNIT}.timer"], timeout=30)
-    run(["systemctl", "reset-failed", f"{CHECK_UNIT}.timer", f"{CHECK_UNIT}.service"], timeout=30)
+    run(["systemctl", "stop", f"{CHECK_TIMER}.timer"], timeout=30)
+    run(["systemctl", "reset-failed", f"{CHECK_TIMER}.timer", f"{CHECK_TIMER}.service"], timeout=30)
 
 
 def install(run=run):
     """Install NetworkManager, give it the WiFi in netplan, and hand the profile over. A check two minutes
-    later keeps the change when a WiFi device is connected, and puts everything back when none is."""
+    later, or at the next boot, keeps the change when the WiFi interface is connected with an address and a
+    default route, and puts everything back when it is not."""
     rec = _load()
     if rec.get("phase") == "checking":
         raise Refused(
             M("nm-install.waiting", "NetworkManager was just installed. The box keeps or undoes it in two minutes.")
         )
-    if rec.get("phase") == "installing":
-        # A run that stopped before it changed the WiFi left the policy file behind: put it back and go on.
-        _restore_policy(rec)
     if _nm_wifi(run):
         return M("nm-install.already", "NetworkManager already runs a WiFi connection on this box.")
     wifi = _wifi_file()
@@ -165,18 +216,18 @@ def install(run=run):
             )
         )
     installed_before = _installed(run)
-    saved_policy = POLICY_RC.read_bytes() if POLICY_RC.exists() else None
+    original = (rec.get("files") or {}).get(wifi.name) or wifi.read_text()
     rec = {
         "at": time.time(),
         "phase": "installing",
         "file": wifi.name,
+        "device": _wifi_device(original),
         "files": _snapshot(),
         "installed_before": installed_before,
-        "policy": base64.b64encode(saved_policy).decode() if saved_policy is not None else None,
     }
     _save(rec)
-    POLICY_RC.write_text("#!/bin/sh\n# irate-box: NetworkManager is being installed without starting.\nexit 101\n")
-    os.chmod(POLICY_RC, 0o755)  # policy-rc.d is a script dpkg runs. # nosec B103
+    # Masked at run time only: a package script's systemctl start does nothing, and a reboot clears it.
+    masked = run(["systemctl", "mask", "--runtime", "NetworkManager"], timeout=120).returncode == 0
     try:
         out = run(["apt-get", "update", "-q"], timeout=900)
         if out.returncode != 0:
@@ -195,12 +246,14 @@ def install(run=run):
                 M("nm-install.apt", "The box could not install NetworkManager: {detail}", detail=detail[0][:200])
             )
     except Exception:
-        _restore_policy(rec)
+        if masked:
+            run(["systemctl", "unmask", "--runtime", "NetworkManager"], timeout=120)
         RECORD.unlink(missing_ok=True)
         raise
-    _restore_policy(rec)
+    if masked:
+        run(["systemctl", "unmask", "--runtime", "NetworkManager"], timeout=120)
 
-    changed = _renderer((rec["files"] or {}).get(wifi.name, ""))
+    changed = _renderer(original)
     if changed is None:
         _restore(rec, run)
         RECORD.unlink(missing_ok=True)
@@ -226,13 +279,14 @@ def install(run=run):
         handed = None
     rec.update(phase="checking", handover=wifi.name if handed else None)
     _save(rec)
+    _arm_boot_check(run)
     run(
         [
             "systemd-run",
             "--quiet",
             "--collect",
             f"--on-active={CHECK_SECONDS}",
-            f"--unit={CHECK_UNIT}",
+            f"--unit={CHECK_TIMER}",
             str(CODE / "irate-box"),
             "nmrepair",
             "check",
@@ -254,10 +308,12 @@ def check(run=run):
     if rec.get("phase") != "checking":
         return "There is no NetworkManager change waiting."
     _cancel_check(run)
-    if _nm_wifi(run):
+    _disarm_boot_check(run)
+    if _nm_wifi(run, rec.get("device")):
         rec.update(phase="kept", checked=time.time())
+        rec.pop("files", None)  # the netplan copy can hold a WiFi password; it is not needed once kept
         _save(rec)
-        return "The box is on a WiFi connection through NetworkManager. The change stays."
+        return "The box is on the WiFi connection through NetworkManager. The change stays."
     revert(run=run)
     return "The box was not on a WiFi connection, so it restored the earlier network settings."
 
@@ -268,6 +324,7 @@ def revert(run=run):
     if not rec:
         raise Refused(M("nm-install.undo.none", "The box did not change the WiFi to NetworkManager."))
     _cancel_check(run)
+    _disarm_boot_check(run)
     if rec.get("handover"):
         try:
             from irate_box.root import nmhandover

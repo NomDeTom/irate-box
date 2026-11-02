@@ -1,0 +1,218 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+"""Generation from the security manifest (root/secmanifest.py): a unit's sandbox lines and a
+secret's mode and owner come from security.json, not from the module's own literals; with no
+manifest the module's fallback is used; a symlink is not followed. python3 tests/sim_secmanifest_generate.py"""
+
+import grp
+import json
+import os
+import pwd
+import stat
+import sys
+import tempfile
+from pathlib import Path
+from unittest import mock
+
+T = Path(tempfile.mkdtemp(prefix="secgen-"))
+for d in ("code", "state/control", "etc"):
+    (T / d).mkdir(parents=True)
+os.environ.update(
+    HUB_CODE_DIR=str(T / "code"),
+    HUB_STATE_DIR=str(T / "state"),
+    HUB_ETC_DIR=str(T / "etc"),
+    HUB_ROOT_STATE_DIR=str(T / "root"),
+    HUB_SYSTEMD_ETC=str(T / "systemd"),
+)
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+from irate_box.root import ap, bootkey, health, secmanifest
+
+fails = 0
+
+
+def check(name, cond, info=""):
+    global fails
+    print(("PASS " if cond else "FAIL ") + name + ("" if cond else f"  {info}"))
+    fails += not cond
+
+
+manifest = json.loads((REPO / "security.json").read_text())
+manifest["units"][bootkey.UNIT] = {
+    "source": "code",
+    "ProtectSystem": "full",
+    "ReadOnlyPaths": ["/tmp/sys"],
+    "PrivateTmp": "no",
+    "NoNewPrivileges": "no",
+}
+manifest["units"][ap.HOSTAPD_UNIT] = {
+    "source": "code",
+    "ProtectSystem": "strict",
+    "NoNewPrivileges": "yes",
+    "PrivateTmp": "yes",
+    "ProtectHome": "yes",
+    "ProtectProc": "invisible",
+    "ReadWritePaths": ["-/tmp/hostapd"],
+}
+manifest["units"][health.DOCTOR_SERVICE] = {
+    "source": "code",
+    "ProtectSystem": "strict",
+    "ReadWritePaths": ["/tmp/control", "/tmp/root"],
+    "PrivateTmp": "yes",
+    "NoNewPrivileges": "yes",
+    "ProtectHome": "no",
+    "ProtectProc": "invisible",
+}
+secret = T / "secret"
+secret.write_text("secret\n")
+secret.chmod(0o644)
+me, my_group = pwd.getpwuid(os.getuid()).pw_name, grp.getgrgid(os.getgid()).gr_name
+manifest["secrets"] = {
+    str(secret): {"owner": me, "group": my_group, "mode": "600", "readers": ["root"]},
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+
+text = bootkey.unit_text()
+check(
+    "a unit's sandbox comes from the manifest: ProtectSystem, ReadOnlyPaths, PrivateTmp, NoNewPrivileges",
+    "ProtectSystem=full\n" in text
+    and "ReadOnlyPaths=/tmp/sys\n" in text
+    and "PrivateTmp=no\n" in text
+    and "NoNewPrivileges=no\n" in text,
+    text,
+)
+text = ap.hostapd_unit()
+check(
+    "  an AP unit's writable path comes from the manifest",
+    "ReadWritePaths=-/tmp/hostapd\n" in text and "ProtectHome=yes\n" in text,
+    text,
+)
+text = health.unit_text(health.DOCTOR_SERVICE)
+check(
+    "  a health unit's ProtectHome comes from the manifest",
+    "ProtectHome=no\n" in text and f"ReadWritePaths={T / 'state'}/control {T / 'root'}\n" in text,
+    text,
+)
+
+with mock.patch.object(secmanifest, "_manifest", lambda: None):
+    text = bootkey.unit_text()
+    check(
+        "with no manifest, the module's own fallback is used",
+        "ReadOnlyPaths=/sys\n" in text and "ProtectSystem=strict\n" in text,
+        text,
+    )
+
+changes = secmanifest.apply_secrets()
+check(
+    "a secret's declared mode is applied",
+    stat.S_IMODE(secret.stat().st_mode) == 0o600 and any(str(secret) in line for line in changes),
+    (changes, oct(stat.S_IMODE(secret.stat().st_mode))),
+)
+target = T / "target"
+target.write_text("keep\n")
+target.chmod(0o644)
+link = T / "link"
+link.symlink_to(target)
+manifest["secrets"] = {str(link): {"owner": me, "group": my_group, "mode": "600", "readers": ["root"]}}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+secmanifest.apply_secrets()
+check(
+    "a symlink is not followed, and its target keeps its mode",
+    stat.S_IMODE(target.stat().st_mode) == 0o644 and link.is_symlink(),
+    oct(stat.S_IMODE(target.stat().st_mode)),
+)
+fifo = T / "fifo"
+os.mkfifo(fifo)
+manifest["secrets"] = {str(fifo): {"owner": me, "group": my_group, "mode": "600", "readers": ["root"]}}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+secmanifest.apply_secrets()
+check(
+    "a FIFO is skipped without a blocking open (the hub could plant one), and left a FIFO",
+    stat.S_ISFIFO(fifo.lstat().st_mode),
+    oct(stat.S_IMODE(fifo.lstat().st_mode)),
+)
+
+systemd = T / "systemd" / "system"
+systemd.mkdir(parents=True)
+unit = systemd / "example.service"
+unit.write_text(
+    "[Unit]\nDescription=Example\n\n[Service]\nUser=hub\nProtectSystem=no\nPrivateTmp=no\nExecStart=/bin/true\n\n[Install]\nWantedBy=multi-user.target\n"
+)
+manifest["units"]["example.service"] = {
+    "source": "install.sh",
+    "User": "hub",
+    "ProtectSystem": "strict",
+    "ReadWritePaths": ["$STATE/ci"],
+    "PrivateTmp": "yes",
+    "NoNewPrivileges": "yes",
+    "CapabilityBoundingSet": [],
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+changed = secmanifest.apply_units(systemd=T / "systemd")
+text = unit.read_text()
+check(
+    "a unit written by install.sh gets the manifest's sandbox lines",
+    changed == ["example.service"]
+    and "ProtectSystem=strict\n" in text
+    and "ReadWritePaths=/var/lib/hub/ci\n" in text
+    and "PrivateTmp=yes\n" in text
+    and "NoNewPrivileges=yes\n" in text
+    and "CapabilityBoundingSet=\n" in text
+    and "ProtectSystem=no" not in text
+    and "User=hub\n" in text
+    and "ExecStart=/bin/true\n" in text
+    and "[Install]\nWantedBy=multi-user.target\n" in text,
+    text,
+)
+check("  a second pass changes nothing", secmanifest.apply_units(systemd=T / "systemd") == [])
+dropin = systemd / "syncthing@hub.service.d" / "irate-box.conf"
+dropin.parent.mkdir(parents=True)
+dropin.write_text("[Service]\nProtectSystem=no\n")
+manifest["units"]["syncthing@$HUB_USER.service.d/irate-box.conf"] = {
+    "source": "install.sh",
+    "ProtectSystem": "strict",
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+changed = secmanifest.apply_units(systemd=T / "systemd")
+check(
+    "  a unit name's $HUB_USER is expanded to find the drop-in",
+    changed == ["syncthing@$HUB_USER.service.d/irate-box.conf"] and "ProtectSystem=strict" in dropin.read_text(),
+    (changed, dropin.read_text()),
+)
+
+# A unit that carried $ROOT_SANDBOX: its five lines came from that variable, and the manifest now holds
+# them (security.json's irate-box-led.service). Applying the units must not remove them.
+root_unit = systemd / "root-unit.service"
+root_unit.write_text(
+    "[Unit]\nDescription=Root unit\n\n[Service]\nUser=root\nProtectSystem=strict\nNoNewPrivileges=yes\n"
+    "PrivateTmp=yes\nProtectHome=yes\nProtectProc=invisible\nExecStart=/bin/true\n"
+)
+manifest["units"]["root-unit.service"] = json.loads((REPO / "security.json").read_text())["units"][
+    "irate-box-led.service"
+]
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+secmanifest.apply_units(systemd=T / "systemd")
+text = root_unit.read_text()
+check(
+    "a $ROOT_SANDBOX unit keeps its five lines through apply_units",
+    all(
+        line in text
+        for line in (
+            "ProtectSystem=strict\n",
+            "NoNewPrivileges=yes\n",
+            "PrivateTmp=yes\n",
+            "ProtectHome=yes\n",
+            "ProtectProc=invisible\n",
+        )
+    ),
+    text,
+)
+install = (REPO / "install.sh").read_text()
+check(
+    "install.sh applies the units before it starts them",
+    install.index("secmanifest apply-units") < install.index('say "Starting services"'),
+    install.index("secmanifest apply-units"),
+)
+
+print(f"{fails} failure(s)" if fails else "ok")
+sys.exit(1 if fails else 0)
