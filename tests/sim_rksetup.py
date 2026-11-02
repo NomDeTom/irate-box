@@ -18,6 +18,7 @@ os.environ.update(
     HUB_SYSETC_DIR=str(T / "etc"),
     HUB_MODPROBE_DIR=str(T / "modprobe.d"),
     HUB_SERIAL_BY_ID=str(T / "by-id"),
+    HUB_STATE_DIR=str(T / "state"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.hub import netinv, rksetup, rkusb
@@ -52,6 +53,12 @@ check(
 check(
     "  two boards raising the same name counted",
     next(x for x in got if x["host"] == "luckfox-lyra-zero-w")["boards"] == 2,
+)
+check(
+    "the names in sight, lower-cased: the boards seen and the setup hotspots, once each, blanks left out",
+    rksetup.taken_names([{"host": "Lyra-4"}, {"host": ""}, {"host": "lyra-4"}], [{"host": "LYRA-ULTRA"}, {"host": ""}])
+    == ["lyra-4", "lyra-ultra"],
+    rksetup.taken_names([{"host": "Lyra-4"}, {"host": ""}], [{"host": "LYRA-ULTRA"}]),
 )
 asked = []
 real_run = netinv.run
@@ -157,7 +164,8 @@ check(
     and snap["cards"]
     and snap["ready"] is True
     and "serial" in snap["routes"]
-    and "card" in snap["routes"],
+    and "card" in snap["routes"]
+    and isinstance(snap["taken"], list),
     snap,
 )
 
