@@ -137,14 +137,22 @@ nmrepair.install(run=fake)
 state.update(address=True, route=True)
 
 
+armed = {"during": False}
+
+
 def nap(_seconds):
+    armed["during"] = (nmrepair.UNIT_DIR / nmrepair.CHECK_SERVICE).exists()
     state["nm_wifi"] = True
 
 
 said = nmrepair.check(run=fake, grace=10, sleep=nap)
 check(
-    "  at boot: a WiFi that joins during the grace keeps the change",
-    state["nm_wifi"] and json.loads(nmrepair.RECORD.read_text())["phase"] == "kept" and "stays" in said,
+    "  at boot: a WiFi that joins during the grace keeps the change, the unit armed until the decision",
+    state["nm_wifi"]
+    and armed["during"]
+    and not (nmrepair.UNIT_DIR / nmrepair.CHECK_SERVICE).exists()
+    and json.loads(nmrepair.RECORD.read_text())["phase"] == "kept"
+    and "stays" in said,
     (said, nmrepair.RECORD.read_text()),
 )
 
