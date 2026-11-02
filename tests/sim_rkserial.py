@@ -437,5 +437,49 @@ check(
     not rkserial.FIRST["user"].search("Error: illegal characters in username\n"),
 )
 
+# The console speed: each board family's, a speed the box knows, or the one root hears the board on.
+check(
+    "console speeds: Rockchip 1.5 Mbaud, Allwinner and Raspberry Pi 115 200, and every known speed a termios constant",
+    rkserial.BOARD_SPEEDS == {"rockchip": 1500000, "allwinner": 115200, "raspberrypi": 115200}
+    and all(hasattr(termios, f"B{baud}") for baud in rkserial.SPEEDS),
+)
+check(
+    "  a family's speed, a chosen speed, and none for auto",
+    rkserial.baud_for("allwinner") == 115200
+    and rkserial.baud_for("rockchip") == 1500000
+    and rkserial.baud_for("", "115200") == 115200
+    and rkserial.baud_for("allwinner", "auto") == 115200
+    and rkserial.baud_for("auto") == 0,
+)
+check(
+    "  a speed termios does not have refused, and one that is not a number",
+    refused(rkserial.baud_for, "", "12345") == "rkserial.speed-unknown"
+    and refused(rkserial.baud_for, "", "fast") == "rkserial.speed-bad",
+)
+# The action passes the family and speed to open_for, and a family it does not know is refused.
+con, proc, rec = board("shell")
+seen = {}
+real_open_for = rkserial.open_for
+rkserial.open_for = lambda path, board="", speed=None, listen=2.0: (seen.update(board=board, speed=speed), con)[1]
+act_said = act(
+    {
+        "id": "rk8",
+        "console": "usb-1a86_USB2.0-Serial-if00-port0",
+        "choices": dict(page, board="allwinner", speed="auto", listen=1),
+    }
+)
+rkserial.open_for = real_open_for
+proc.kill()
+check(
+    "the serial action opens the console at the board family's speed",
+    seen == {"board": "allwinner", "speed": "auto"} and act_said["id"] == "rkserial.done",
+    (seen, act_said),
+)
+check(
+    "  a board family the box does not know refused before the console is opened",
+    refused(act, {"id": "rk9", "console": "usb-1a86_USB2.0-Serial-if00-port0", "choices": dict(page, board="amiga")})
+    == "rkserial.board-unknown",
+)
+
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

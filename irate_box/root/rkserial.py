@@ -9,8 +9,10 @@ zone block (tzselect with it). At the root shell that follows, the rest is set w
 the WiFi (nmcli, or netplan where there is no NetworkManager), the name, the time zone, the locale, the keys, the setup page stopped, root's password locked if
 chosen.
 
-The console is a USB serial adapter at 1 500 000 baud (a Rockchip board's debug console). Characters are sent one at
-a time with a pause, and the board's answers are read between markers, as the line can drop characters coming back.
+The console is a USB serial adapter, at the speed the board's family uses (Rockchip's debug console runs at
+1 500 000 baud; Allwinner and Raspberry Pi boards at 115 200), or at the speed root hears a boot log or a prompt
+on. Characters are sent one at a time with a pause, and the board's answers are read between markers, as the line
+can drop characters coming back.
 Every value has passed hub/rksetup.problem (no quote, dollar sign, backtick, backslash or control character), so it
 is safe inside double quotes in a command. Stdlib only.
 """
@@ -26,6 +28,9 @@ import time
 from irate_box.msg import M, Refused
 
 BAUD = 1500000
+# Each board family's console speed. "auto" lets root try the known speeds and keep the one that hears the board.
+BOARD_SPEEDS = {"rockchip": 1500000, "allwinner": 115200, "raspberrypi": 115200}
+SPEEDS = (1500000, 921600, 115200, 57600, 38400, 9600)
 PACE = 0.004  # seconds between characters sent
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][0-9A-Za-z]|\x1b[=>78]")
 SHELL_RE = re.compile(r"root@[\w.-]+:[^\r\n#]*#\s*$")
@@ -51,6 +56,58 @@ FIRST = {
     "illegal": re.compile(r"illegal characters in username"),
     "shellprompt": SHELL_RE,
 }
+
+
+def baud_for(board="", speed=None):
+    """The console speed to open at: the one given, the board family's, or 0 to try the known speeds. Refused for
+    a speed termios does not have."""
+    if speed in (None, "", "auto"):
+        return BOARD_SPEEDS.get(board, 0)
+    try:
+        baud = int(speed)
+    except (TypeError, ValueError):
+        raise Refused(M("rkserial.speed-bad", "Select a console speed the box knows.")) from None
+    if not hasattr(termios, f"B{baud}"):
+        raise Refused(M("rkserial.speed-unknown", "The box cannot open a console at {baud} baud.", baud=baud))
+    return baud
+
+
+def heard(console):
+    """Whether what the console holds looks like a board talking: one of its first-login questions, a prompt, or
+    words enough to be a boot log rather than line noise."""
+    return bool(
+        any(rx.search(console.buf) for rx in FIRST.values())
+        or LOGIN_RE.search(console.buf)
+        or SHELL_RE.search(console.buf)
+        or INITRAMFS_RE.search(console.buf)
+        or re.search(r"[A-Za-z]{4,}", console.buf)
+    )
+
+
+def open_for(path, board="", speed=None, listen=2.0):
+    """The console opened at the speed chosen, or at the first known speed that hears the board. A board that
+    says nothing at any speed is opened at its family's speed (or the Rockchip one), so setup can say it is
+    silent."""
+    baud = baud_for(board, speed)
+    if baud:
+        return Console.open(path, baud)
+    for baud in SPEEDS:
+        try:
+            console = Console.open(path, baud)
+        except OSError:
+            continue  # an adapter that cannot run at this speed
+        end = time.time() + listen
+        while time.time() < end:
+            console._read(min(0.5, max(0.0, end - time.time())))
+            if heard(console):
+                return console
+        console.close()
+    try:
+        return Console.open(path, BOARD_SPEEDS.get(board, BAUD))
+    except OSError as exc:
+        raise Refused(
+            M("rkserial.open-console", "The box cannot open that serial adapter: {detail}", detail=str(exc)[:160])
+        ) from None
 
 
 def generated(length=16):

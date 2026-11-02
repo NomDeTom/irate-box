@@ -2491,7 +2491,16 @@ def rkboard_snapshot():
         "rescues": rkusb.rescues(),
         "cards": rkusb.cards(),
         "setup": rksetup.snapshot(),
+        "install_log": _install_log(),
     }
+
+
+def _install_log(limit=4000):
+    """The new board's install output, as much as the page shows: written by root/rkfinish.py."""
+    try:
+        return (CONTROL_DIR / "board-install.log").read_text()[-limit:]
+    except OSError:
+        return ""
 
 
 def _pending_actions(prefix):
@@ -6496,15 +6505,71 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request(req)})
             elif (
                 act == "setup"
-                and payload.get("route") == "serial"
-                and isinstance(payload.get("console"), str)
-                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}", payload["console"])
+                and payload.get("route") in ("serial", "card", "hotspot", "ssh")
                 and isinstance(payload.get("choices"), dict)
                 and len(json.dumps(payload["choices"])) < 8192
+                and (
+                    payload.get("route") != "serial"
+                    or (
+                        isinstance(payload.get("console"), str)
+                        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}", payload["console"])
+                    )
+                )
+                and (
+                    payload.get("route") != "card"
+                    or (
+                        isinstance(payload.get("card"), str)
+                        and re.fullmatch(r"sd[a-z]{1,2}", payload["card"])
+                        and isinstance(payload.get("size"), int)
+                        and isinstance(payload.get("serial"), str)
+                        and len(payload["serial"]) < 128
+                    )
+                )
+                and (
+                    payload.get("route") != "hotspot"
+                    or (isinstance(payload.get("hotspot"), str) and len(payload["hotspot"]) <= 128)
+                )
+                and (
+                    payload.get("route") != "ssh"
+                    or (
+                        isinstance(payload.get("address"), str)
+                        and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", payload["address"])
+                    )
+                )
             ):
                 # Every value is checked again by the root helper (rksetup.problem), which reads this box's own WiFi
                 # password itself where it is to be sent.
-                req = {"action": "rk-serial-setup", "console": payload["console"], "choices": payload["choices"]}
+                route = payload["route"]
+                if route == "serial":
+                    req = {"action": "rk-serial-setup", "console": payload["console"], "choices": payload["choices"]}
+                elif route == "card":
+                    req = {
+                        "action": "rk-card-setup",
+                        "card": payload["card"],
+                        "size": payload["size"],
+                        "serial": payload["serial"],
+                        "choices": payload["choices"],
+                    }
+                elif route == "hotspot":
+                    req = {"action": "rk-hotspot-setup", "hotspot": payload["hotspot"], "choices": payload["choices"]}
+                else:
+                    req = {"action": "rk-ssh-setup", "address": payload["address"], "choices": payload["choices"]}
+                self.send_json(202, {"id": control_request(req)})
+            elif (
+                act == "finish"
+                and isinstance(payload.get("address"), str)
+                and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", payload["address"])
+                and isinstance(payload.get("choices"), dict)
+                and len(json.dumps(payload["choices"])) < 8192
+            ):
+                req = {"action": "rk-finish", "address": payload["address"], "choices": payload["choices"]}
+                self.send_json(202, {"id": control_request(req)})
+            elif (
+                act == "board-install"
+                and isinstance(payload.get("address"), str)
+                and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", payload["address"])
+            ):
+                req = {"action": "board-install", "address": payload["address"]}
                 self.send_json(202, {"id": control_request(req)})
             elif (
                 act in ("card-check", "card-genuine", "card-flash")

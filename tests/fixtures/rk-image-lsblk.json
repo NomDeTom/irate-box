@@ -1,0 +1,4 @@
+{"blockdevices":[{"name":"sda","path":"/dev/sda","type":"disk","children":[
+  {"name":"sda1","path":"/dev/sda1","fstype":"vfat","label":"armbi_boot","size":268435456},
+  {"name":"sda2","path":"/dev/sda2","fstype":"ext4","label":"armbi_root","size":15032385536}
+]}]}
