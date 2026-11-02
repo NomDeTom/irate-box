@@ -93,27 +93,34 @@ check(
     found,
 )
 
-# An apt run in progress: its lock is held, so apt-get check is not asked.
-import fcntl
-
+# An apt run in progress: its lock is held with apt's own fcntl record lock, so apt-get check is
+# not asked. A separate process holds it: POSIX record locks are per process.
 lock = T / "apt.lock"
-fh = lock.open("a")
-fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-partswatch.APT_LOCK = lock
-
-
-def locked_run(*cmd, timeout=120, **kw):
-    if cmd[:2] == ("dpkg", "--audit"):
-        return done(0, "")
-    raise AssertionError(f"asked {cmd} while apt holds the lock")
-
-
+holder = subprocess.Popen(
+    [
+        sys.executable,
+        "-c",
+        "import fcntl,sys,time; f=open(sys.argv[1], 'a'); fcntl.lockf(f, fcntl.LOCK_EX); "
+        "print('held', flush=True); time.sleep(30)",
+        str(lock),
+    ],
+    stdout=subprocess.PIPE,
+    text=True,
+)
 try:
+    holder.stdout.readline()
+    partswatch.APT_LOCK = lock
+
+    def locked_run(*cmd, timeout=120, **kw):
+        if cmd[:2] == ("dpkg", "--audit"):
+            return done(0, "")
+        raise AssertionError(f"asked {cmd} while apt holds the lock")
+
     with mock.patch.object(partswatch, "run", locked_run):
         found = ids(partswatch._broken())
 finally:
-    fcntl.flock(fh, fcntl.LOCK_UN)
-    fh.close()
+    holder.terminate()
+    holder.wait()
 check("an apt run in progress: no false broken-packages finding", not found, found)
 
 # A failed automatic update: the log's error, and the unit's result.

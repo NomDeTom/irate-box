@@ -23,6 +23,7 @@ import fcntl
 import json
 import os
 import re
+import struct
 import subprocess
 import sys
 import time
@@ -230,7 +231,9 @@ def _removed():
 
 
 def _apt_running():
-    """Whether apt or dpkg holds the frontend lock now: True, False, or None when it cannot be told."""
+    """Whether apt or dpkg holds the frontend lock now: True, False, or None when it cannot be told.
+    apt and dpkg take an fcntl record lock (F_SETLK), not a flock; F_GETLK asks who holds one
+    without taking a lock of our own, so an apt that starts at this moment is not made to fail."""
     try:
         fh = APT_LOCK.open("a")
     except FileNotFoundError:
@@ -239,11 +242,11 @@ def _apt_running():
         return None
     try:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return True
-        fcntl.flock(fh, fcntl.LOCK_UN)
-        return False
+            request = struct.pack("hhqqi4x", fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0)
+            reply = fcntl.fcntl(fh.fileno(), fcntl.F_GETLK, request)
+            return struct.unpack("hhqqi4x", reply)[0] != fcntl.F_UNLCK
+        except (OSError, struct.error, AttributeError):
+            return None
     finally:
         fh.close()
 
