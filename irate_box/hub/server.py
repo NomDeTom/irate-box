@@ -59,6 +59,7 @@ from irate_box.hub import (
     pagehistory,
     reach,
     refused,
+    storage,
     store,
     svchistory,
     transport,
@@ -1594,10 +1595,8 @@ def _preset_facts():
     flash_free = any(
         g.get("key") == "journal" and any(o.get("value") == "flash" for o in g.get("options") or []) for g in groups
     )
-    try:
-        free_mb = shutil.disk_usage(STATE_DIR).free // (1 << 20)
-    except OSError:
-        free_mb = 0
+    card = storage.places().get("card") or {}
+    free_mb = (card.get("free") or 0) // (1 << 20)
     return {
         "arch": _preset_arch(platform.machine()),
         "memory_mb": _preset_memory_mb(),
@@ -2842,7 +2841,7 @@ def admin_box(proxied):
         )
     now = CLOCK.ticks()
     return {
-        "system": system_status(),
+        "system": system_status(admin=True),
         "uptime": now,
         "online": online_count(now),
         "memory_history": memhistory.snapshot(),
@@ -4286,9 +4285,10 @@ def card_written():
         return None
 
 
-def system_status():
+def system_status(admin=False):
     """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
-    cache Kiwix leans on counts as available, and is the first thing to go."""
+    cache Kiwix leans on counts as available, and is the first thing to go. The state's own
+    storage (the NAND beside a card) is for the administrator only: the public meter is the card."""
     out = {}
     try:
         out["boot_uptime"] = float(Path("/proc/uptime").read_text().split()[0])
@@ -4304,14 +4304,27 @@ def system_status():
         out["swap_total"], out["swap_free"] = mem.get("SwapTotal", 0), mem.get("SwapFree", 0)
     except (OSError, KeyError, ValueError):
         pass
-    try:
-        st = os.statvfs(STATE_DIR)
-        out["disk_total"], out["disk_free"] = (
-            st.f_blocks * st.f_frsize,
-            st.f_bavail * st.f_frsize,
-        )
-    except OSError:
-        pass
+    places = storage.places()
+    card = places.get("card") or {}
+    if card:
+        out["disk_total"], out["disk_free"] = card["total"], card["free"]
+        out["disk_kind"] = card["kind"]
+    state = places.get("state")
+    if admin and state:
+        out["state_total"], out["state_free"] = state["total"], state["free"]
+        out["state_kind"] = state["kind"]
+        out["state_device"] = state.get("device")
+    if admin and places.get("drives"):
+        out["drives"] = [
+            {
+                "kind": p.get("kind"),
+                "device": p.get("device"),
+                "mount": p.get("mount"),
+                "total": p.get("total"),
+                "free": p.get("free"),
+            }
+            for p in places["drives"]
+        ]
     return out
 
 

@@ -1871,12 +1871,16 @@ let boxPoll = null;
 let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
 const controlNote = noteEl("control-note");
 
-function tile(label, value) {
+function tile(label, value, detail) {
+  const lines = Array.isArray(detail) ? detail : detail ? [detail] : [];
   return el(
     "div",
     { className: "admin-tile" },
     el("span", { className: "setting-desc", textContent: label }),
     el("span", { className: "setting-name", textContent: value }),
+    ...lines.map((line) =>
+      el("span", { className: "setting-desc", textContent: line }),
+    ),
   );
 }
 
@@ -2163,6 +2167,18 @@ function renderMemoryHistory(history, system = {}) {
         ((sample.disk_total - sample.disk_free) / sample.disk_total) * 100,
       ),
     );
+  const hasState = (sample) =>
+    Number.isFinite(sample.state_total) &&
+    sample.state_total > 0 &&
+    Number.isFinite(sample.state_free);
+  const stateUsed = (sample) =>
+    Math.max(
+      0,
+      Math.min(
+        100,
+        ((sample.state_total - sample.state_free) / sample.state_total) * 100,
+      ),
+    );
   const latest = samples.at(-1);
   document.getElementById("memory-current").replaceChildren(
     el("span", {
@@ -2183,6 +2199,12 @@ function renderMemoryHistory(history, system = {}) {
         ? `Disk used: ${size(system.disk_total - system.disk_free)} of ${size(system.disk_total)}`
         : "Disk data unavailable",
     }),
+    system.state_total
+      ? el("span", {
+          className: "memory-state-key",
+          textContent: `${system.state_kind === "flash" ? "Flash" : "State"} used: ${size(system.state_total - system.state_free)} of ${size(system.state_total)}`,
+        })
+      : null,
   );
   document.querySelectorAll("[data-memory-hours]").forEach((button) => {
     const active = Number(button.dataset.memoryHours) === memoryHours;
@@ -2195,6 +2217,9 @@ function renderMemoryHistory(history, system = {}) {
       (samples.some(hasDisk)
         ? ` Disk ${Math.round(disk(samples.filter(hasDisk).at(-1)))}% used at the last sample.`
         : " No disk samples yet.") +
+      (samples.some(hasState)
+        ? ` ${system.state_kind === "flash" ? "Flash" : "State"} ${Math.round(stateUsed(samples.filter(hasState).at(-1)))}% used at the last sample.`
+        : "") +
       (now - latest.at > (memoryHistory.every || 300) * 2
         ? " No recent sample."
         : "");
@@ -2270,18 +2295,24 @@ function renderMemoryHistory(history, system = {}) {
     [used, "memory-used-line"],
     [swap, "memory-swap-line"],
     [disk, "memory-disk-line"],
+    [stateUsed, "memory-state-line"],
   ]) {
     const visible =
       className === "memory-swap-line"
         ? samples.filter((sample) => sample.swap_total > 0)
         : className === "memory-disk-line"
           ? samples.filter(hasDisk)
-          : samples;
-    // A new stroke after a gap in the samples, and for the disk where its size changed.
+          : className === "memory-state-line"
+            ? samples.filter(hasState)
+            : samples;
+    // A new stroke after a gap in the samples, and for a storage series where its size changed.
     const joins = (sample, prev) =>
       sample.at - prev.at <= gap &&
-      (className !== "memory-disk-line" ||
-        sample.disk_total === prev.disk_total);
+      (className === "memory-disk-line"
+        ? sample.disk_total === prev.disk_total
+        : className === "memory-state-line"
+          ? sample.state_total === prev.state_total
+          : true);
     const path = visible
       .map(
         (sample, index) =>
@@ -2329,7 +2360,10 @@ function renderMemoryHistory(history, system = {}) {
         : ", no swap") +
       (hasDisk(sample)
         ? `, disk ${Math.round(disk(sample))}% used, ${size(sample.disk_free)} free.`
-        : ", disk not recorded.");
+        : ", disk not recorded.") +
+      (hasState(sample)
+        ? ` ${system.state_kind === "flash" ? "Flash" : "State"} ${Math.round(stateUsed(sample))}% used, ${size(sample.state_free)} free.`
+        : "");
   };
   svg.addEventListener("pointermove", (event) => {
     if (!samples.length) return;
@@ -2422,31 +2456,47 @@ function renderBox(data) {
     sys.boot_uptime == null
       ? "Not available"
       : `${Math.floor(bootMinutes / 1440)} d ${Math.floor(bootMinutes / 60) % 24} h ${bootMinutes % 60} min`;
-  document
-    .getElementById("box-tiles")
-    .replaceChildren(
-      tile(
-        "Memory",
-        sys.mem_total
-          ? `${size(sys.mem_available)} free of ${size(sys.mem_total)}`
-          : "—",
-      ),
-      tile(
-        "Card",
-        sys.disk_total
-          ? `${size(sys.disk_free)} free of ${size(sys.disk_total)}`
-          : "—",
-      ),
-      tile("Since boot", bootTime),
+  const boxTiles = [
+    tile(
+      "Memory",
+      sys.mem_total
+        ? `${size(sys.mem_available)} free of ${size(sys.mem_total)}`
+        : "—",
+    ),
+    tile(
+      "Card",
+      sys.disk_total
+        ? `${size(sys.disk_free)} free of ${size(sys.disk_total)}`
+        : "—",
+      Array.isArray(sys.drives) && sys.drives.length
+        ? sys.drives.map((drive) => {
+            const kind =
+              drive.kind === "flash"
+                ? "NAND"
+                : drive.kind === "usb"
+                  ? "USB"
+                  : drive.kind === "card"
+                    ? "Card"
+                    : "Disk";
+            const device = String(drive.device || "").replace(/^\/dev\//, "");
+            const named = drive.kind === "flash" ? "" : device ? ` (${device})` : "";
+            return `${kind}${named}: ${size(drive.free)} free of ${size(drive.total)}`;
+          })
+        : sys.state_total
+          ? `${sys.state_kind === "flash" ? "NAND" : "State"}: ${size(sys.state_free)} free of ${size(sys.state_total)}`
+          : null,
+    ),
+    tile("Since boot", bootTime),
       tile(
         "Total recorded powered-on time",
         `${Math.floor(h / 24)} d ${h % 24} h across boots`,
       ),
-      tile(
-        "Guests",
-        `${data.online} hub sessions${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ""}`,
-      ),
-    );
+    tile(
+      "Guests",
+      `${data.online} hub sessions${data.joined !== null && data.joined !== undefined ? `, ${data.joined} on the WiFi` : ""}`,
+    ),
+  ].filter(Boolean);
+  document.getElementById("box-tiles").replaceChildren(...boxTiles);
   renderMemoryHistory(data.memory_history, sys);
   renderOverviewNet(data.net_uptime);
   document.getElementById("first-use").hidden = !data.first_use;

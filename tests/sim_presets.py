@@ -61,10 +61,22 @@ check(
     (names, left),
 )
 large = {"arch": "aarch64", "memory_mb": 4096, "free_mb": 20000, "flash_free": True}
+large_card = {
+    "arch": "armv7",
+    "memory_mb": 4096,
+    "free_mb": 20000,
+    "flash_free": False,
+}  # a small state on the NAND, room on the card
 fitted, left = presets.resolve(presets.get("power")["entries"], large)
 check(
     "  and on a Pi 4 with a free flash, everything fits",
     not left and {"notes", "room", "debug"} <= {e.get("addon") or e.get("kit") for e in fitted},
+)
+fitted, left = presets.resolve(presets.get("power")["entries"], large_card)
+check(
+    "  the room a preset needs is the card's, whatever the state folder's own size",
+    "room" in {e.get("addon") for e in fitted} and not any(item.get("addon") == "room" for item in left),
+    left,
 )
 
 
