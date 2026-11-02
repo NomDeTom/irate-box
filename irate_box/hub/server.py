@@ -16,6 +16,7 @@ import io
 import ipaddress
 import json
 import os
+import platform
 import re
 import secrets
 import shutil
@@ -32,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
 
-from irate_box import confine, durable, finding, security_levels, setup_code
+from irate_box import confine, durable, finding, presets, security_levels, setup_code
 from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
 from irate_box.hub import (
     access,
@@ -1507,6 +1508,456 @@ NOTEBOOKS = notebooks.Notebooks(
 def settings_snapshot():
     with _settings_lock:
         return dict(_settings)
+
+
+# --- quick presets -----------------------------------------------------------------------------
+# Two independent dials (purpose and durability), each a data file in presets.d/. The hub works out
+# what changes, applies the hub's own settings, and asks root for the rest through the same paths a
+# hand change uses. One record of the whole application is kept for Undo.
+PRESET_RECORD = STATE_DIR / "preset-applied.json"
+PRESET_RETURN_HOURS = 24
+
+
+def _read_json(path, default=None):
+    try:
+        value = json.loads(path.read_text())
+        return value
+    except (OSError, ValueError):
+        return default
+
+
+def _write_preset_record(record):
+    durable.write_checked(PRESET_RECORD, json.dumps(record, indent=1, sort_keys=True) + "\n")
+
+
+def _preset_record():
+    data = _read_json(PRESET_RECORD, {})
+    return data if isinstance(data, dict) else {}
+
+
+def _preset_report():
+    return _read_json(CONTROL_DIR / "health.json", {}) or {}
+
+
+def _preset_install_options():
+    try:
+        return (STATE_DIR / "install-options").read_text().split()
+    except OSError:
+        return []
+
+
+def _preset_addons_installed():
+    opts = set(_preset_install_options())
+    return {name for name, spec in manifests.addons(MANIFESTS).items() if spec["addon"]["option"] in opts}
+
+
+def _preset_kits_installed():
+    data = _read_json(CONTROL_DIR / "kits.json", {}) or {}
+    return set((data.get("installed") or {}).keys())
+
+
+def _preset_access_state():
+    try:
+        return access.read(ACCESS_STATE)
+    except Exception:  # noqa: BLE001 - an unreadable access file is the defaults
+        return access.defaults()
+
+
+def _preset_arch(name):
+    name = str(name or "").lower()
+    if name.startswith("armv7"):
+        return "armv7"
+    if name.startswith("aarch64") or name.startswith("arm64"):
+        return "aarch64"
+    if name.startswith("x86_64") or name.startswith("amd64"):
+        return "x86_64"
+    if name.startswith("armv6"):
+        return "armv6"
+    return name
+
+
+def _preset_memory_mb():
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                return int(line.split()[1]) // 1024
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def _preset_facts():
+    rep = _preset_report()
+    settings = rep.get("settings") or {}
+    groups = []
+    for key in ("groups", "card_groups", "hardening_groups"):
+        groups.extend(settings.get(key) or [])
+    flash_free = any(
+        g.get("key") == "journal" and any(o.get("value") == "flash" for o in g.get("options") or []) for g in groups
+    )
+    try:
+        free_mb = shutil.disk_usage(STATE_DIR).free // (1 << 20)
+    except OSError:
+        free_mb = 0
+    return {
+        "arch": _preset_arch(platform.machine()),
+        "memory_mb": _preset_memory_mb(),
+        "free_mb": free_mb,
+        "flash_free": flash_free,
+        "access": _preset_access_state(),
+        "addons": _preset_addons_installed(),
+        "kits": _preset_kits_installed(),
+        "report": rep,
+    }
+
+
+def _choice_group_key(choice):
+    kind, _, arg = choice.partition(":")
+    if kind == "card-set":
+        return arg.partition(":")[0]
+    if kind.startswith("crashwatch-"):
+        return kind[len("crashwatch-") :]
+    return kind
+
+
+def _preset_choice_current(choice, rep):
+    settings = (rep or {}).get("settings") or {}
+    groups = []
+    for key in ("groups", "card_groups", "hardening_groups"):
+        groups.extend(settings.get(key) or [])
+    wanted = _choice_group_key(choice)
+    for group in groups:
+        if group.get("key") == wanted and group.get("current") is not None:
+            return group["current"]
+    for group in groups:
+        for option in group.get("options") or []:
+            if option.get("choice") == choice:
+                return group.get("current")
+    if choice.startswith("autoupdate-set:"):
+        from irate_box.root import security
+
+        record = _read_json(Path(os.environ.get("HUB_ETC_DIR", "/etc/hub")) / "security-changes.json", {}) or {}
+        pattern = security.chosen_pattern(record)
+        return f"{pattern[0]}-{pattern[1]}" if pattern else None
+    return None
+
+
+def _preset_before(entry, facts):
+    kind = entry.get("type")
+    if kind == "hub":
+        return _settings.get(entry.get("key"))
+    if kind == "accounts":
+        return accounts.settings().get(entry.get("key"))
+    if kind == "hotspot":
+        return hotspot.load().get("mode")
+    if kind == "access":
+        return access.mode_of(facts["access"], entry.get("app"))
+    if kind == "addon":
+        return entry.get("addon") in facts["addons"]
+    if kind == "kit":
+        return entry.get("kit") in facts["kits"]
+    if kind == "choice":
+        return _preset_choice_current(entry.get("choice"), facts.get("report"))
+    return None
+
+
+def _preset_after(entry):
+    if entry.get("type") in ("addon", "kit"):
+        return entry.get("on", True) is not False
+    return entry.get("value", entry.get("mode"))
+
+
+def _apply_hub_settings(patch):
+    """A patch to the hub's own settings, through the same validation and save as the settings page."""
+    with _settings_lock:
+        was_counting = _settings.get("visitor_counts")
+        for key in DEFAULT_SETTINGS:
+            if key in patch and valid_setting(key, patch[key]):
+                _settings[key] = patch[key]
+        current = dict(_settings)
+        save_settings(current)
+        apply_settings(current)
+        if current["visitor_counts"] != was_counting or not VISITORS_WANT.exists():
+            write_visitors_want(current["visitor_counts"])
+    return current
+
+
+def _preset_entries(purpose_id, durability_id):
+    purpose, durability = presets.get(purpose_id), presets.get(durability_id)
+    if not purpose or purpose.get("kind") != "purpose":
+        raise ValueError(f"there is no purpose preset called {purpose_id}")
+    if not durability or durability.get("kind") != "durability":
+        raise ValueError(f"there is no durability preset called {durability_id}")
+    facts = _preset_facts()
+    entries, left = presets.resolve((purpose.get("entries") or []) + (durability.get("entries") or []), facts)
+    return purpose, durability, facts, entries, left
+
+
+def preset_preview(purpose_id, durability_id):
+    purpose, durability, facts, entries, left = _preset_entries(purpose_id, durability_id)
+    changes, installs = [], []
+    for entry in entries:
+        before, after = _preset_before(entry, facts), _preset_after(entry)
+        if before == after:
+            continue
+        item = {
+            "type": entry.get("type"),
+            "label": presets.label(entry),
+            "why": entry.get("why"),
+            "before": before,
+            "after": after,
+            "entry": entry,
+        }
+        (installs if entry.get("type") in ("addon", "kit") else changes).append(item)
+    left_out = [
+        {
+            "label": presets.label(item["entry"]),
+            "why": item["why"],
+            "entry": item["entry"],
+        }
+        for item in left
+    ]
+    return {
+        "purpose": purpose["id"],
+        "purpose_title": purpose.get("title"),
+        "durability": durability["id"],
+        "durability_title": durability.get("title"),
+        "changes": changes,
+        "installs": installs,
+        "left_out": left_out,
+        "summary": _preset_summary(changes, installs, left_out),
+        "automatic_undo": _preset_return_hours(durability),
+    }
+
+
+def _preset_summary(changes, installs, left_out):
+    parts = []
+    if changes:
+        parts.append(f"{len(changes)} setting{'s' if len(changes) != 1 else ''} change")
+    if installs:
+        parts.append(
+            f"{len(installs)} app{'s' if len(installs) != 1 else ''} or toolkit{'s' if len(installs) != 1 else ''} installed"
+        )
+    if left_out:
+        parts.append(f"{len(left_out)} left out")
+    return ("Apply: " + ", ".join(parts) + ".") if parts else "Nothing changes: the box already has this."
+
+
+def _preset_return_hours(durability):
+    hours = durability.get("auto_return_hours")
+    return hours if isinstance(hours, (int, float)) and hours > 0 else None
+
+
+def _set_hotspot_mode(mode):
+    settings = dict(mode) if isinstance(mode, dict) else dict(hotspot.load(), mode=mode)
+    return hotspot.save(settings)
+
+
+def apply_preset(purpose_id, durability_id):
+    """Apply a purpose and a durability preset. Hub settings and accounts are done here; access,
+    add-ons and toolkits go to root one request each, and root's choices in one request. The record
+    says what was before and after, for Undo."""
+    previous = _preset_record()
+    purpose, durability, facts, entries, left = _preset_entries(purpose_id, durability_id)
+    changes, hub_patch, accounts_patch, hotspot_mode = [], {}, {}, None
+    ids, failed = [], []
+    for entry in entries:
+        kind = entry.get("type")
+        before, after = _preset_before(entry, facts), _preset_after(entry)
+        item = {
+            "type": kind,
+            "label": presets.label(entry),
+            "why": entry.get("why"),
+            "before": before,
+            "after": after,
+            "entry": entry,
+            "ok": True,
+        }
+        if kind == "hotspot":
+            item["before_full"] = hotspot.load()
+        if before != after:
+            try:
+                if kind == "hub":
+                    hub_patch[entry["key"]] = after
+                elif kind == "accounts":
+                    accounts_patch[entry["key"]] = after
+                elif kind == "hotspot":
+                    hotspot_mode = after
+                    item["after_full"] = dict(hotspot.load(), mode=after)
+                elif kind == "access":
+                    ids.append(control_request({"action": "access", "app": entry["app"], "mode": after}))
+                elif kind == "addon":
+                    ids.append(control_request({"action": "addon", "addon": entry["addon"], "on": after is True}))
+                elif kind == "kit":
+                    ids.append(control_request({"action": "kit-install", "kit": entry["kit"]}))
+            except Exception as exc:  # noqa: BLE001 - one request that cannot be made leaves the others
+                item["ok"] = False
+                failed.append(f"{item['label']}: {getattr(exc, 'message', exc)}")
+        changes.append(item)
+    if hub_patch:
+        _apply_hub_settings(hub_patch)
+    if accounts_patch:
+        try:
+            accounts.set_settings(**accounts_patch)
+        except Exception as exc:  # noqa: BLE001 - the other settings still apply
+            failed.append(f"Accounts: {getattr(exc, 'message', exc)}")
+    if hotspot_mode:
+        try:
+            _set_hotspot_mode(hotspot_mode)
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"The hotspot: {getattr(exc, 'message', exc)}")
+    root_choices = [
+        item["entry"]["choice"]
+        for item in changes
+        if item["type"] == "choice" and item["ok"] and item["before"] != item["after"]
+    ]
+    if root_choices:
+        try:
+            ids.append(control_request({"action": "preset-apply", "choices": root_choices}))
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"Root's settings: {getattr(exc, 'message', exc)}")
+    return_durability = None
+    if previous.get("status") in ("done", "applying") and previous.get("durability"):
+        return_durability = previous["durability"]
+    elif durability.get("id") != "balanced":
+        return_durability = "balanced"
+    hours = _preset_return_hours(durability) if durability.get("id") == "full" else None
+    record = {
+        "at": time.time(),
+        "purpose": purpose["id"],
+        "purpose_title": purpose.get("title"),
+        "durability": durability["id"],
+        "durability_title": durability.get("title"),
+        "return_durability": return_durability,
+        "returns_at": time.time() + hours * 3600 if hours else None,
+        "changes": changes,
+        "left_out": [{"label": presets.label(x["entry"]), "why": x["why"]} for x in left],
+        "ids": ids,
+        "failed": failed,
+        "status": "applying" if ids else "done",
+    }
+    _write_preset_record(record)
+    return record
+
+
+def preset_undo():
+    record = _preset_record()
+    if not record or record.get("status") == "undone":
+        raise ValueError("there is no preset to undo")
+    if record.get("status") in ("applying", "undoing"):
+        raise ValueError("the preset is still being applied or undone")
+    changes = record.get("changes") or []
+    current = _preset_facts()
+    hub_patch, accounts_patch, hotspot_mode = {}, {}, None
+    ids, kept = [], []
+    for item in changes:
+        entry = item.get("entry") or {}
+        before, after = item.get("before"), item.get("after")
+        now = _preset_before(entry, current)
+        if now != after:
+            kept.append({"label": item.get("label"), "now": now, "after": after})
+            continue
+        kind = entry.get("type")
+        try:
+            if kind == "hub":
+                hub_patch[entry["key"]] = before
+            elif kind == "accounts":
+                accounts_patch[entry["key"]] = before
+            elif kind == "hotspot":
+                hotspot_mode = item.get("before_full") or before
+            elif kind == "access":
+                ids.append(control_request({"action": "access", "app": entry["app"], "mode": before}))
+            elif kind == "addon":
+                ids.append(control_request({"action": "addon", "addon": entry["addon"], "on": before is True}))
+            elif kind == "kit":
+                ids.append(control_request({"action": "kit-remove", "kit": entry["kit"]}))
+        except Exception as exc:  # noqa: BLE001
+            kept.append({"label": item.get("label"), "problem": getattr(exc, "message", exc)})
+    if hub_patch:
+        _apply_hub_settings(hub_patch)
+    if accounts_patch:
+        accounts.set_settings(**accounts_patch)
+    if hotspot_mode:
+        _set_hotspot_mode(hotspot_mode)
+    if any(item.get("type") == "choice" for item in changes):
+        try:
+            ids.append(control_request({"action": "preset-undo"}))
+        except Exception as exc:  # noqa: BLE001
+            kept.append({"label": "Root's settings", "problem": getattr(exc, "message", exc)})
+    record["status"] = "undoing" if ids else "undone"
+    record["undone_at"] = time.time()
+    record["ids"] = ids
+    record["kept"] = kept
+    _write_preset_record(record)
+    return record
+
+
+def _preset_refresh_status():
+    record = _preset_record()
+    if not record or record.get("status") not in ("applying", "undoing"):
+        return record
+    results = {r.get("id"): r for r in control_results(40)}
+    ids = record.get("ids") or []
+    if ids and all(rid in results for rid in ids):
+        record["status"] = "done" if record["status"] == "applying" else "undone"
+        record["answered"] = [
+            {
+                "id": rid,
+                "ok": bool(results[rid].get("ok")),
+                "message": results[rid].get("message"),
+            }
+            for rid in ids
+        ]
+        _write_preset_record(record)
+    return record
+
+
+def _preset_view():
+    record = _preset_refresh_status()
+    facts = _preset_facts()
+    own = []
+    if record.get("status") in ("done", "applying"):
+        for item in record.get("changes") or []:
+            entry = item.get("entry") or {}
+            now = _preset_before(entry, facts)
+            if now != item.get("after"):
+                own.append({"label": item.get("label"), "now": now, "was": item.get("after")})
+    options = _preset_install_options()
+    suggested = {}
+    if "--profile" in options and options.index("--profile") + 1 < len(options):
+        suggested["purpose"] = options[options.index("--profile") + 1]
+    if "--durability" in options and options.index("--durability") + 1 < len(options):
+        suggested["durability"] = options[options.index("--durability") + 1]
+    current = {
+        "purpose": record.get("purpose") if record.get("status") in ("done", "applying") else suggested.get("purpose"),
+        "durability": record.get("durability")
+        if record.get("status") in ("done", "applying")
+        else suggested.get("durability"),
+    }
+    return {
+        "purposes": [
+            {k: p.get(k) for k in ("id", "title", "summary", "suggested_durability")} for p in presets.load("purpose")
+        ],
+        "durabilities": [
+            {k: p.get(k) for k in ("id", "title", "summary", "auto_return_hours")} for p in presets.load("durability")
+        ],
+        "current": current,
+        "suggested": suggested,
+        "record": record,
+        "own_changes": own,
+        "results": control_results(20),
+    }
+
+
+def _preset_tick(now=None):
+    """Full logging's automatic return to the durability the box had, after a day."""
+    record = _preset_record()
+    if record.get("status") != "done" or not record.get("returns_at"):
+        return None
+    now = time.time() if now is None else now
+    if now < record["returns_at"]:
+        return None
+    return apply_preset(record.get("purpose"), record.get("return_durability") or "balanced")
 
 
 def online_count(now):
@@ -4804,6 +5255,10 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/admin/presets":
+            self.send_json(200, _preset_view())
+            return
+
         if path == "/admin/settings":
             self.send_json(200, settings_snapshot())
             return
@@ -5690,6 +6145,35 @@ class Handler(BaseHTTPRequestHandler):
                     {"id": rid},
                     [self._session_cookie(token, accounts.SESSION_DAYS * 86400)],
                 )
+            return
+
+        if path == "/admin/presets":
+            action = payload.get("action")
+            if action == "preview":
+                try:
+                    self.send_json(
+                        200,
+                        preset_preview(str(payload.get("purpose") or ""), str(payload.get("durability") or "")),
+                    )
+                except ValueError as exc:
+                    self.send_json(400, refused.say(M("preset.unknown-name", "{why}.", why=str(exc))))
+                return
+            if action == "apply":
+                try:
+                    self.send_json(
+                        202,
+                        apply_preset(str(payload.get("purpose") or ""), str(payload.get("durability") or "")),
+                    )
+                except ValueError as exc:
+                    self.send_json(400, refused.say(M("preset.unknown-name", "{why}.", why=str(exc))))
+                return
+            if action == "undo":
+                try:
+                    self.send_json(202, preset_undo())
+                except ValueError as exc:
+                    self.send_json(400, refused.say(M("preset.none", "{why}.", why=str(exc))))
+                return
+            self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/admin/settings":
@@ -7485,6 +7969,17 @@ if __name__ == "__main__":
     memory_sampler.start()
     # The card's writes by the hour, with the write settings in force (the Box doctor's SD card writes).
     cardhistory.Sampler(lambda: {"card_writes": load_settings()["card_writes"]}).start()
+
+    # Full logging returns to the durability the box had after a day, so a debug level is not left on by mistake.
+    def preset_return_loop():
+        while True:
+            time.sleep(60)
+            try:
+                _preset_tick()
+            except Exception as exc:  # noqa: BLE001 - a failed return leaves the record for the next minute
+                print(f"quick preset: automatic return not done: {exc}")
+
+    threading.Thread(target=preset_return_loop, daemon=True).start()
     notebooks.Reaper(NOTEBOOKS).start()
     # The pages the web server serves itself (no unit to sample): their use, from nginx's log of page loads.
     pagehistory.Sampler(lambda: [s["path"] for s in SERVICES if "root" in s and s.get("path")]).start()

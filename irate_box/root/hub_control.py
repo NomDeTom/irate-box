@@ -349,6 +349,8 @@ POLICY_ACTIONS = frozenset(
         "admin-gate",
         "share-set",
         "share-allow",
+        "preset-apply",
+        "preset-undo",
     )
 )
 
@@ -6724,6 +6726,61 @@ def health_fix(req):
     return msg
 
 
+def preset_apply(req):
+    """A quick preset's root choices, applied together and recorded so that Undo can put them back."""
+    from irate_box.root import presets as preset_root
+
+    choices_list = req.get("choices")
+    if (
+        not isinstance(choices_list, list)
+        or len(choices_list) > 80
+        or not all(isinstance(c, str) for c in choices_list)
+    ):
+        raise Refused(M("control.preset.bad-list", "The preset's choices must be a list of settings."))
+    got = preset_root.apply_choices(choices_list)
+    failed = [entry for entry in got["entries"] if not entry["ok"]]
+    if failed:
+        return M(
+            "control.preset.partly",
+            {
+                "one": "One setting of the preset could not be applied. The others were.",
+                "other": "{n} settings of the preset could not be applied. The others were.",
+            },
+            n=len(failed),
+        )
+    return M(
+        "control.preset.applied",
+        {
+            "one": "One setting of the preset was applied.",
+            "other": "{n} settings of the preset were applied.",
+        },
+        n=len(got["entries"]),
+    )
+
+
+def preset_undo(req):
+    """Put back what the last quick preset changed, unless the administrator changed it since."""
+    from irate_box.root import presets as preset_root
+
+    got = preset_root.undo()
+    if not got["restored"] and not got["kept"]:
+        return M("control.preset.undo-none", "There is no preset to undo.")
+    if got["kept"]:
+        return M(
+            "control.preset.undone-some",
+            "The preset's settings that were unchanged were put back. {n} had been changed since and were left.",
+            n=len(got["kept"]),
+        )
+    return M(
+        "control.preset.undone",
+        {
+            "one": "One setting of the preset is back as it was.",
+            "other": "{n} settings of the preset are back as they were.",
+        },
+        n=got["restored"],
+    )
+
+
 HOUSECALL_UNIT = "irate-box-housecall"
 
 
@@ -8435,6 +8492,8 @@ ACTIONS = {
     "content-export": content_export,
     "health-scan": health_scan,
     "health-fix": health_fix,
+    "preset-apply": preset_apply,
+    "preset-undo": preset_undo,
     "housecall-scan": housecall_scan,
     "housecall-stop": housecall_stop,
     "housecall-restore": housecall_restore,

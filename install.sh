@@ -121,6 +121,17 @@ The installer keeps user data and the administrator password.
                         onboard flash or in memory, the longer write-back delay, a reboot
                         after a kernel panic, the hardware watchdog), each changeable later
                         on Recovery. Recorded, so updates keep it.
+  --profile NAME        a starting point for what the box is for: pirate (an open drop
+                        box and library), curated (accounts, moderation and some building)
+                        or power (a self-updating firmware and app store, everything that
+                        fits). It sets the add-ons this install adds and records the choice;
+                        the matching settings are offered once the administrator account
+                        exists, under System > Quick setup. Recorded, so updates keep it.
+  --durability NAME     a starting point for how hard the box writes: longevity (the card
+                        lives longest, up to an hour of the hub's own state at risk),
+                        balanced (low writes, at most about 5 minutes of logs lost) or full
+                        (everything as it happens, for debugging). Applied at a first
+                        install and changeable later on System > Quick setup. Recorded.
   --no-git              leave out the Git add-on: no cgit or fcgiwrap, no Git servers, no Git
                         tiles. The repositories' folder and the librarian's mirrors stay (git
                         itself is in every install). Recorded, so updates keep it; so does
@@ -185,6 +196,7 @@ SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" A
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
 APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_INSPIRCD=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 ALLOW_ADMIN_HTTP=0 NO_GIT=0 WITH_GIT=0 KEEP_SYSTEM=0
+PROFILE="" DURABILITY=""
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
 for _a in "$@"; do
@@ -265,6 +277,36 @@ while [ $# -gt 0 ]; do
 		;;
 	--keep-system-defaults)
 		KEEP_SYSTEM=1
+		shift
+		;;
+	--profile)
+		case "$2" in
+		pirate)
+			PROFILE=pirate
+			NO_GIT=1
+			;;
+		curated)
+			PROFILE=curated
+			WITH_NOTES=1
+			WITH_INSPIRCD=1
+			WITH_COLLAB=1
+			;;
+		power)
+			PROFILE=power
+			WITH_NOTES=1 WITH_SYNC=1 WITH_MQTT=1 WITH_INSPIRCD=1 WITH_COLLAB=1 WITH_TERM=1 WITH_KIWIX=1
+			;;
+		*)
+			die "--profile takes pirate, curated or power"
+			;;
+		esac
+		shift 2
+		;;
+	--durability)
+		case "$2" in longevity | balanced | full) DURABILITY="$2" ;; *)
+			die "--durability takes longevity, balanced or full"
+			;;
+		esac
+		shift 2
 		;;
 	--allow-admin-http)
 		ALLOW_ADMIN_HTTP=1
@@ -1041,6 +1083,13 @@ hub_site_in() {
 # Administration over plain HTTP stays allowed once chosen, now or at an earlier install (recorded).
 [ "$ALLOW_ADMIN_HTTP" = 0 ] && grep -qx -- --allow-admin-http "$ETC/install-options" 2>/dev/null && ALLOW_ADMIN_HTTP=1
 [ "$KEEP_SYSTEM" = 0 ] && grep -qx -- --keep-system-defaults "$ETC/install-options" 2>/dev/null && KEEP_SYSTEM=1
+# The quick presets stay the box's own once chosen, so an update keeps them; the page can change them later.
+[ -z "$PROFILE" ] && [ -f "$ETC/install-options" ] &&
+	PROFILE="$(grep -A1 -x -- --profile "$ETC/install-options" | tail -1 || true)"
+case "$PROFILE" in pirate | curated | power) ;; *) PROFILE="" ;; esac
+[ -z "$DURABILITY" ] && [ -f "$ETC/install-options" ] &&
+	DURABILITY="$(grep -A1 -x -- --durability "$ETC/install-options" | tail -1 || true)"
+case "$DURABILITY" in longevity | balanced | full) ;; *) DURABILITY="" ;; esac
 # A first install: no record of an earlier one (the recommended settings are given only then).
 FIRST_INSTALL=0
 [ -f "$ETC/install-options" ] || FIRST_INSTALL=1
@@ -1421,6 +1470,8 @@ fi
 	[ "$ALLOW_ADMIN_HTTP" = 1 ] && echo --allow-admin-http
 	[ "$NO_GIT" = 1 ] && echo --no-git
 	[ "$KEEP_SYSTEM" = 1 ] && echo --keep-system-defaults
+	[ -n "$PROFILE" ] && printf '%s\n' --profile "$PROFILE"
+	[ -n "$DURABILITY" ] && printf '%s\n' --durability "$DURABILITY"
 	true
 } | write_if_changed "$ETC/install-options" 644
 # A copy the hub can read ($ETC is 750: it holds the admin password), for /admin's Add-ons
@@ -3519,6 +3570,12 @@ if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
 	say "The recommended settings for writes and recovery"
 	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.recommended fresh | sed 's/^/    /' ||
 		problem "could not apply the recommended settings (Box doctor offers them)"
+fi
+# The durability dial, at a first install: longevity, balanced or full (presets.d/, root/presets.py).
+if [ "$FIRST_INSTALL" = 1 ] && [ -n "$DURABILITY" ]; then
+	say "The durability preset: $DURABILITY"
+	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.presets durability "$DURABILITY" | sed 's/^/    /' ||
+		problem "could not apply the durability preset (System > Quick setup offers it)"
 fi
 
 # apt keeps every .deb it downloads (unattended-upgrades included); the startup packages' installed

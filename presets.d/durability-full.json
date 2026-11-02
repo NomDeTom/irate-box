@@ -1,0 +1,21 @@
+{
+  "id": "full",
+  "kind": "durability",
+  "title": "Full logging",
+  "summary": "Everything is written as it happens. For debugging; the box returns to the durability it had after a day unless you keep it.",
+  "auto_return_hours": 24,
+  "entries": [
+    {"type": "hub", "key": "card_writes", "value": "everything", "label": "Card write level", "why": "The clock and the mesh saved every minute"},
+    {"type": "choice", "choice": "card-set:journal:card", "label": "System journal", "why": "Persistent on the card, synced as journald does"},
+    {"type": "choice", "choice": "card-set:writeback:standard", "label": "Write-back delay", "why": "The standard delay"},
+    {"type": "choice", "choice": "card-set:apt_cache:card", "label": "apt's cache", "why": "On the card, as Debian ships it"},
+    {"type": "choice", "choice": "card-set:apt_languages:download", "label": "Package descriptions", "why": "Downloaded"},
+    {"type": "choice", "choice": "card-set:box_state:card", "label": "Often-written state", "why": "On the card"},
+    {"type": "choice", "choice": "crashwatch-panic:on", "label": "A kernel panic, oops or lockup", "why": "The box restarts by itself"},
+    {"type": "choice", "choice": "crashwatch-watchdog:on", "label": "A box that stops answering", "why": "The hardware watchdog restarts it"},
+    {"type": "choice", "choice": "lost-writes:on", "label": "Watch the card for lost writes", "why": "A card that drops its newest writes is named at boot"},
+    {"type": "choice", "choice": "retain:on", "label": "A second copy of the settings and keys", "why": "Recovery is kept even if the card is damaged"},
+    {"type": "choice", "choice": "health-timer:on", "label": "Box doctor checks the box by itself", "why": "A down service is found without anyone on /admin"},
+    {"type": "choice", "choice": "card-set:card_accounting:on", "label": "Writes by service", "why": "Counted, so the debug record can say which service writes most"}
+  ]
+}

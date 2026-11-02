@@ -550,6 +550,38 @@
 
         <section
           class="admin-pane"
+          id="presets"
+          aria-labelledby="presets-title"
+        >
+          <h2 id="presets-title" data-i18n="admin.presets.title">Quick setup</h2>
+          <p class="setting-desc" data-i18n="admin.presets.intro">
+            Select what this box is for and how hard it can write to its card. A preset
+            sets many settings at once, shows exactly which, and leaves each one yours to
+            change afterwards. The two choices are independent.
+          </p>
+          <div class="net-cards">
+            <div class="net-card setting" id="preset-purpose">
+              <h3 data-i18n="admin.presets.purpose-title">What is this box for?</h3>
+              <div class="preset-tiles" id="preset-purpose-tiles"></div>
+            </div>
+            <div class="net-card setting" id="preset-durability">
+              <h3 data-i18n="admin.presets.durability-title">How hard can it write to its card?</h3>
+              <div class="preset-tiles" id="preset-durability-tiles"></div>
+            </div>
+          </div>
+          <p class="setting-desc" id="preset-current" aria-live="polite"></p>
+          <div class="library-buttons" id="preset-buttons"></div>
+          <p class="setting-desc action-note" id="preset-note" role="status" hidden></p>
+          <div id="preset-preview"></div>
+          <p class="setting-desc" data-i18n="admin.presets.set-yourself">
+            Or set each setting yourself: the whole of today's settings is unchanged under
+            <a href="#recovery">Recovery and monitoring</a>, <a href="#accounts">Accounts</a>,
+            <a href="#network">Network</a> and the apps' own pages.
+          </p>
+        </section>
+
+        <section
+          class="admin-pane"
           id="recovery"
           aria-labelledby="recovery-title"
         >

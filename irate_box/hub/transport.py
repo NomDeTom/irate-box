@@ -39,6 +39,8 @@ HTTPS_ONLY = frozenset(
         "access",
         "admin-login",
         "share-set",
+        "preset-apply",
+        "preset-undo",
         "addon",
         "usb-filesystems",
         "rk-serial-setup",
