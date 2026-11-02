@@ -12,13 +12,16 @@ const w = dom.window;
 require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 const posted = [];
 let results = [];
+let holdResults = false, failPost = false;
+const scan = { devices: [{ name: 'sda1', label: 'Stick', fstype: 'vfat', size: 8e9, error: null,
+  kits: [{ title: 'Debugging', packages: 55, bytes: 69 * 2 ** 20, arch: 'armhf', kit: 'debug' }], zims: [] }] };
 w.fetch = async (url, opts = {}) => {
   const u = String(url);
   if (opts.method === 'POST' && /\/admin\/usb$/.test(u)) {
     posted.push(JSON.parse(opts.body));
-    return new Response(JSON.stringify({ id: `r${posted.length}` }), { status: 202 });
+    return failPost ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ id: `r${posted.length}` }), { status: 202 });
   }
-  if (/\/admin\/usb$/.test(u)) return new Response(JSON.stringify({ results, pending: 0, scan: null }), { status: 200 });
+  if (/\/admin\/usb$/.test(u)) return new Response(JSON.stringify({ results: holdResults ? [] : results, pending: 0, scan }), { status: 200 });
   return new Response('{}', { status: 404 });
 };
 w.scrollTo = () => {};
@@ -60,6 +63,25 @@ const untrusted = { id: 'kits.usb.time-untrusted', en: 'The box cannot check tha
   await w.eval('loadKitsUsb()');
   await settle();
   check('another refusal (a bad signature): no such offer', /Signature invalid/.test(note().textContent) && !offer(), note().textContent);
+  // A USB toolkit action keeps its wait across the poll that redraws the drive.
+  holdResults = true;
+  const importButton = () => [...d.querySelectorAll('#kits-usb button')].find((b) => b.textContent === 'Import toolkit');
+  const ikey = importButton() && importButton().dataset.wait;
+  importButton().click();
+  await settle();
+  const ifresh = () => [...d.querySelectorAll('[data-wait]')].find((n) => n.dataset.wait === ikey);
+  check('a USB toolkit action: its button waits while the helper has it', ikey && ifresh() && ifresh().classList.contains('is-busy')
+    && ifresh().getAttribute('aria-busy') === 'true', ikey);
+  holdResults = false;
+  results = [{ id: `r${posted.length}`, ok: true, message: 'Done.' }];
+  await w.eval('loadKitsUsb()');
+  await settle();
+  check('  and the wait ends with the answer', ifresh() && !ifresh().classList.contains('is-busy') && !ifresh().hasAttribute('aria-busy'));
+  failPost = true;
+  importButton().click();
+  await settle();
+  check('  a refused request clears it too', ifresh() && !ifresh().classList.contains('is-busy') && !ifresh().hasAttribute('aria-busy'));
+  failPost = false;
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 })();

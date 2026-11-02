@@ -15252,6 +15252,8 @@ async function loadKitsUsb() {
   if (kitsUsbWaiting) {
     const done = (data.results || []).find((result) => result.id === kitsUsbWaiting);
     if (done) {
+      clearWait(kitsUsbWait);
+      kitsUsbWait = null;
       kitsUsbWaiting = null;
       say(resultSaid(done), done.ok, note);
       // The clock cannot date the release: the owner may import it anyway, knowing its freshness goes unchecked.
