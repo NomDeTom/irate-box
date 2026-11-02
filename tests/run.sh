@@ -71,6 +71,7 @@ run sim_doctor_choices.py
 run sim_idle.py
 run sim_sbdocs.py
 run sim_pkgwatch.py
+run sim_pkgcache.py
 run sim_update_pattern.py
 run sim_wifijoin.py
 run sim_nmconf.py
@@ -127,12 +128,14 @@ run sim_setup_code.py
 run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py
+run sim_inspircd.py
 run sim_books.py
 run sim_ghpace.py
 run sim_cut_short.py
 run sim_download_bounds.py
 run sim_pin.py
 run sim_local_addons.py
+run sim_adapt_jspaint.py
 run api_admin_gate.py
 run api_https_gate.py
 run api_parsing.py
@@ -165,6 +168,8 @@ run uninstall_guard.py
 run sim_mirrors.py
 run sim_gitaddon.py
 run sim_ci_view.py
+run sim_pio_bundle.py
+run sim_firmware_bundle.py
 run sim_factory.py
 run sim_toolkits.py
 run sim_rkboard.py
@@ -186,6 +191,7 @@ run sim_signing.py
 run sim_update_doctor.py
 run sim_security_manifest.py
 run sim_security_changes.py
+run sim_updates_addons.py
 run sim_update_source_view.py
 run sim_share.py
 run sim_guest_net.py

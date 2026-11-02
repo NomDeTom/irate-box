@@ -41,6 +41,7 @@ DATA = (
 )
 REFETCHED = (
     "zim",
+    "notebooks",
     "firmware",
     "holds",
     "ci",

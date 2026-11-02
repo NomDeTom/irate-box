@@ -2484,9 +2484,11 @@ def rkboard_snapshot():
         "boards": rkusb.boards(),
         "tools": rkusb.tools(),
         "loaders": [{"id": x["id"], "chip": x["chip"], "boards": x.get("boards", [])} for x in rkusb.loaders()],
+        "bootloaders": rkusb.bootloaders(),
         "pending": _pending_actions("rk-"),
         "results": control_results(5),
         "images": rkusb.images(),
+        "rescues": rkusb.rescues(),
         "cards": rkusb.cards(),
         "setup": rksetup.snapshot(),
     }
@@ -6421,10 +6423,62 @@ class Handler(BaseHTTPRequestHandler):
             act, loader = payload.get("action"), payload.get("loader")
             if act == "loader":
                 self.send_json(202, {"id": control_request({"action": "rk-loader"})})
-            elif act == "erase" and (
+            elif act == "read" and (
                 loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
             ):
-                self.send_json(202, {"id": control_request({"action": "rk-erase", "loader": loader})})
+                self.send_json(202, {"id": control_request({"action": "rk-read", "loader": loader})})
+            elif (
+                act == "erase"
+                and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))
+                and (
+                    payload.get("confirm") is None
+                    or (
+                        isinstance(payload.get("confirm"), str)
+                        and re.fullmatch(r"[A-Za-z0-9,_-]{0,64}", payload["confirm"])
+                    )
+                )
+            ):
+                req = {"action": "rk-erase", "loader": loader, "confirm": payload.get("confirm")}
+                self.send_json(202, {"id": control_request(req)})
+            elif (
+                act == "install"
+                and isinstance(payload.get("bootloader"), str)
+                and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", payload["bootloader"])
+                and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))
+                and (
+                    payload.get("confirm") is None
+                    or (
+                        isinstance(payload.get("confirm"), str)
+                        and re.fullmatch(r"[A-Za-z0-9,_-]{0,64}", payload["confirm"])
+                    )
+                )
+                and (
+                    payload.get("rescue") is None
+                    or (
+                        isinstance(payload.get("rescue"), dict)
+                        and isinstance(payload["rescue"].get("image"), str)
+                        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?", payload["rescue"]["image"])
+                        and isinstance(payload["rescue"].get("sha256"), str)
+                        and re.fullmatch(r"[0-9a-fA-F]{64}", payload["rescue"]["sha256"])
+                        and isinstance(payload["rescue"].get("card"), str)
+                        and re.fullmatch(r"sd[a-z]{1,2}", payload["rescue"]["card"])
+                        and isinstance(payload["rescue"].get("size"), int)
+                        and isinstance(payload["rescue"].get("serial"), str)
+                        and len(payload["rescue"]["serial"]) < 128
+                    )
+                )
+            ):
+                req = {
+                    "action": "rk-install",
+                    "bootloader": payload["bootloader"],
+                    "loader": loader,
+                    "confirm": payload.get("confirm"),
+                }
+                if payload.get("rescue") is not None:
+                    rescue = dict(payload["rescue"])
+                    rescue["sha256"] = rescue["sha256"].lower()
+                    req["rescue"] = rescue
+                self.send_json(202, {"id": control_request(req)})
             elif (
                 act == "write"
                 and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))

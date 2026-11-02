@@ -146,6 +146,18 @@
       "reads": [],
       "writes": []
     },
+    "kit-check": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "kit-check-all": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "kit-define": {
       "https_only": false,
       "policy": false,
@@ -329,6 +341,12 @@
       "writes": []
     },
     "rk-erase": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-install": {
       "https_only": false,
       "policy": false,
       "reads": [],
@@ -722,6 +740,7 @@
         "/flasher/esp-web-tools/*",
         "/flasher/firmware/*",
         "/flasher/freeocd/*",
+        "/gamja/*",
         "/git",
         "/git-hl/*",
         "/git-private",
@@ -730,6 +749,7 @@
         "/git/*",
         "/hub",
         "/hub-return.js",
+        "/irc-ws",
         "/mermaid",
         "/mermaid/*",
         "/mqtt",
@@ -795,6 +815,8 @@
         "/flasher/firmware/",
         "/flasher/flasher.html",
         "/flasher/freeocd/",
+        "/gamja",
+        "/gamja/",
         "/git",
         "/git-hl/",
         "/git-private",
@@ -802,6 +824,7 @@
         "/hub",
         "/hub-return.js",
         "/index.html",
+        "/irc-ws",
         "/mermaid",
         "/mermaid/",
         "/mermaid/_app/immutable/",
@@ -882,6 +905,16 @@
         "AF_INET6",
         "AF_NETLINK"
       ],
+      "source": "install.sh"
+    },
+    "inspircd.service.d/irate-box.conf": {
+      "CapabilityBoundingSet": [],
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "User": "root",
       "source": "install.sh"
     },
     "irate-box-ap-dns.service": {

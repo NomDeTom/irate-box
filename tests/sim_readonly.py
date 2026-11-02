@@ -45,12 +45,16 @@ def run(*cmd, timeout=600):
     calls.append(tuple(cmd))
     ok = 0
     if cmd[:2] == ("dpkg", "-s"):
-        ok = 0 if state["installed"] else 1
+        # installed: True (every package), False (none), or the set of package names installed.
+        have = state["installed"]
+        ok = 0 if have is True or (isinstance(have, set) and cmd[2] in have) else 1
     elif cmd[:2] == ("apt-get", "update"):
         ok = 0 if state["apt_ok"] else 100
     elif cmd[:1] == ("env",) and "apt-get" in cmd:
         ok = 0 if state["apt_ok"] else 100
-        state["installed"] = state["apt_ok"]
+        if state["apt_ok"] and state["installed"] is not True:
+            have = set() if state["installed"] is False else set(state["installed"])
+            state["installed"] = have | {name for name in cmd if name in readonly.LYRA_PACKAGES}
     elif cmd[:1] == ("update-initramfs",):
         ok = 0 if state["initramfs_ok"] else 1
     elif cmd[:2] == ("raspi-config", "nonint"):
@@ -136,6 +140,25 @@ check(
     and readonly.enabled()
     and 'overlayroot="tmpfs"' in readonly.CONF.read_text(),
     calls,
+)
+
+# Found on a Lyra (2026-10-30): with overlayroot but no BusyBox, the initramfs had no grep, and overlayroot.log said
+# "loaded 'overlay' module but no 'overlay' in /proc/filesystems"; the card stayed read-write.
+reset(installed={"overlayroot"}, apt_ok=True)
+readonly.enable(True)
+installs = [c for c in calls if c[:1] == ("env",) and "apt-get" in c]
+check(
+    "  overlayroot there but no BusyBox (mPWRD-OS ships none): BusyBox is installed, and only it",
+    len(installs) == 1 and "busybox" in installs[0] and "overlayroot" not in installs[0] and readonly.enabled(),
+    installs,
+)
+reset(installed=False, apt_ok=True)
+readonly.enable(True)
+installs = [c for c in calls if c[:1] == ("env",) and "apt-get" in c]
+check(
+    "  neither there: both installed in one run",
+    len(installs) == 1 and "busybox" in installs[0] and "overlayroot" in installs[0],
+    installs,
 )
 
 reset(installed=False, apt_ok=False)

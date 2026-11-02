@@ -29,7 +29,7 @@ const AL = (() => {
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'User data', sections: ['made'] }] },
-    { name: 'System', art: 'controller', pages: [
+    { name: 'System', art: 'controller', links: [{ title: 'Pin map', href: '/admin/pins.html' }], pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },
@@ -212,6 +212,7 @@ const AL = (() => {
       if (g.apps === 'apps') slots.apps = entries;
       if (!entries.length) continue;
       const links = entries.filter((entry) => !entry.parent).map((entry) => entry.link);
+      (g.links || []).forEach((link) => links.push(el('a', { href: link.href, title: link.title }, link.title)));
       if (g.flat) list.append(el('div', { class: 'admin-side-links', role: 'group', 'aria-label': g.name }, links));
       else list.append(...group(g.name, links));
     }

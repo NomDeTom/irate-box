@@ -55,6 +55,10 @@ The Security page (`security.py`) is not a doctor. It shows what a guest can rea
 It looks at what an update needs from outside the box, and runs when a check for updates fails. It covers:
 
 - the librarian: its sources, its access token and its checks
+- add-ons and sources, one finding each: a source's error (a problem after three intervals), a source
+  with no successful check, a newer release the policy would install, a held local add-on, and a
+  packaged add-on's waiting packages (one `apt-get -s upgrade` read). `librarian.py` keeps `last_ok`
+  and `error_since` so "failing for three intervals" can be told from "has not checked"
 - the App store's holders: a failing or overdue check, a newest release with none of the held files,
   a kept file whose digest GitHub says differently now, a space limit that dropped versions
   (what the holders recorded, read from their state — no network of its own)

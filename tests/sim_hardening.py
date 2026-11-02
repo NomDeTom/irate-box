@@ -9,6 +9,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,15 @@ try:
 except Refused as exc:
     check("  a filesystem it does not offer: refused", exc.message["id"] == "harden.fs.unknown")
 
+
+def shipped_texts():
+    """Every file the hardening options write for the box to use. U-Boot, RAUC and fw_printenv read them, and the
+    owner can cat them: none of them may point at where the work was planned, nor carry a date as if it were a
+    version. history_guard.py reads the source's comments, which are leads; this reads what leaves the source."""
+    return {q.name: q.read_text() for q in sorted((etc / "ab").iterdir()) if q.is_file()}
+
+
+NOTE_OR_DATE = re.compile(r"\b20\d\d-[01]\d-[0-3]\d\b|\bnotes\s*:")
 said = hardening.set_ab("uboot")
 artifacts = {p.name for p in (etc / "ab").iterdir()}
 check(
@@ -86,6 +96,8 @@ check(
     and "setenv BOOT_A_LEFT 2" in (etc / "ab" / "boot.cmd").read_text(),
     (said, artifacts),
 )
+shipped = {n: t for n, t in shipped_texts().items() if NOTE_OR_DATE.search(t)}
+check("  what it writes for /etc names no plan and carries no date", not shipped, sorted(shipped))
 uboot_cmd = (etc / "ab" / "boot.cmd").read_text()
 check(
     "  each slot boots through its own Armbian boot.scr, from its own partition, loaded clear of load_addr",
@@ -277,6 +289,8 @@ check(
     (etc / "ab" / "tryboot.txt").is_file() and not (etc / "ab" / "boot.cmd").exists(),
     list((etc / "ab").iterdir()),
 )
+shipped = {n: t for n, t in shipped_texts().items() if NOTE_OR_DATE.search(t)}
+check("  the Pi's tryboot file too: no plan named in it, no date", not shipped, sorted(shipped))
 check(
     "the plan lays out system, bootstate, state and content, twice for A/B",
     [p["name"] for p in hardening.plan()["partitions"]] == ["bootstate", "system-a", "system-b", "state", "content"]

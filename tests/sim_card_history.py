@@ -43,6 +43,8 @@ from irate_box.hub import cardhistory
 from irate_box.msg import render
 from irate_box.root import health
 
+REAL_RUN = health.run
+
 fails = 0
 
 
@@ -307,10 +309,14 @@ def run(*cmd, timeout=60, **kw):
         (T / "nand-logs.conf").unlink()
     elif cmd[0] == "journalctl" and "-k" in cmd:
         out = said_kernel["log"]
-    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "apt-daily.service":
-        out = "ProtectSystem=strict\nReadWritePaths=/var/lib/apt -/var/cache/apt /run/irate-box-apt\nStateDirectory=\nBindPaths=\n"
-    elif cmd[:2] == ("systemctl", "show") and cmd[2] == "meshtasticd.service":
-        out = "ProtectSystem=no\nReadWritePaths=\n"
+    elif cmd[:2] == ("systemctl", "show"):
+        unit = cmd[cmd.index("--") + 1] if "--" in cmd else cmd[2]
+        out = {
+            "apt-daily.service": "ProtectSystem=strict\nReadWritePaths=/var/lib/apt -/var/cache/apt /run/irate-box-apt\nStateDirectory=\nBindPaths=\n",
+            # as box 181 answered for an A/B trial's ended unit
+            "ab-B-install.service": "LoadState=not-found\nProtectSystem=no\n",
+            "meshtasticd.service": "ProtectSystem=no\nReadWritePaths=\n",
+        }.get(unit, "")
     elif cmd[0] == "systemctl" and cmd[1] == "is-active":
         out = "inactive\n"
     elif cmd[0] == "systemd-analyze":
@@ -325,7 +331,7 @@ lines = [
         "at": day0 + i * H,
         "boot": "dddd4444",
         "card": i * ((2 << 30) // 24),
-        "units": {"meshtasticd.service": i << 26, "apt-daily.service": i << 25},
+        "units": {"meshtasticd.service": i << 26, "apt-daily.service": i << 25, "ab-B-install.service": i << 26},
         "other": 0,
         "accounting": True,
         "mem_min": 100 << 20,
@@ -350,6 +356,26 @@ check(
     and "anywhere on the SD card" in render(mw["why"])
     and "meshtasticd.service writes about" in render(mw["summary"]),
     mw,
+)
+check(
+    "  a unit systemd no longer knows (an ended transient run) is not reported, however much it wrote",
+    "card-writer:ab-B-install.service" not in got,
+    sorted(got),
+)
+ran.clear()
+bad = health._service_writes_findings(
+    {"days": [1], "week_units": [("--host=evil.example.service", 3 << 30)]}, "/dev/mmcblk0p2"
+)
+check(
+    "  a unit name that would be a systemctl option is refused before systemctl runs",
+    bad == [] and not ran and health._unit_writes("--host=evil.example.service", "/dev/mmcblk0p2") == (False, []),
+    ran,
+)
+health._unit_writes("meshtasticd.service", "/dev/mmcblk0p2")
+check(
+    "  systemctl show puts an option terminator before the unit",
+    any(c[:2] == ("systemctl", "show") and "--" in c for c in ran),
+    ran,
 )
 check(
     "  one confined to its paths: those on the SD card listed, the one in RAM not",
@@ -730,23 +756,86 @@ check("  and shown in the evidence", "read speed:" in " ".join(health.check_card
 ran.clear()
 said = health.fix("card-scan")
 check(
-    "the whole-card read: started in a unit of its own, at the lowest priority",
-    any(c[0] == "systemd-run" and f"--unit={health.CARD_SCAN_UNIT}" in c and "IOSchedulingClass=idle" in c for c in ran)
+    "the whole-card read: started in a unit of its own, at the lowest priority, with a time limit",
+    any(
+        c[0] == "systemd-run"
+        and f"--unit={health.CARD_SCAN_UNIT}" in c
+        and "IOSchedulingClass=idle" in c
+        and f"RuntimeMaxSec={health.CARD_SCAN_MAX + 600}" in c
+        for c in ran
+    )
     and said["id"] == "repair.card-scan.started",
     ran,
 )
-real_sub = health.subprocess.run
-health.subprocess.run = lambda cmd, **kw: type(
-    "R", (), {"returncode": 1, "stderr": "dd: error reading '/dev/mmcblk0': Input/output error\n" * 3}
-)()
+real_run = health.run
+asked = {}
+
+
+def dd_run(*cmd, **kw):
+    asked["cmd"], asked["kw"] = cmd, kw
+    return type("R", (), {"returncode": 0, "stdout": "", "stderr": "Input/output error\n" * 3})()
+
+
+health.run = dd_run
 bad = health.card_scan()
-health.subprocess.run = real_sub
+check(
+    "  its dd is bounded, so a card that never answers cannot hold the read open for ever",
+    asked["kw"].get("timeout") == health.CARD_SCAN_MAX and asked["cmd"][0] == "dd",
+    asked,
+)
+health.run = lambda *c, **k: type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 f = health.check_card_health()[0]
 check(
     "  its result: the unreadable places counted, a problem, said with the date",
     bad == 3 and f["status"] == "problem" and f["summary"]["args"] == {"n": 3},
     f,
 )
+health.run = lambda *c, **k: type(
+    "R", (), {"returncode": health.RUN_TIMEOUT, "stdout": "", "stderr": "Input/output error\n" * 2}
+)()
+health.card_scan()
+f = health.check_card_health()[0]
+check(
+    "  a read stopped at its limit: cut is a problem, said as stopped, and the errors before it still counted",
+    f["status"] == "problem"
+    and any("stopped at its limit" in e for e in f["evidence"])
+    and f["summary"]["args"] == {"n": 2}
+    and "2 unreadable places before it was stopped at its limit" in " ".join(f["evidence"])
+    and health._card_tests()["scan"].get("done")
+    and health._card_tests()["scan"].get("cut") == "timeout",
+    f,
+)
+health.run = lambda *c, **k: type("R", (), {"returncode": 127, "stdout": "", "stderr": "dd: not found"})()
+health.card_scan()
+f = health.check_card_health()[0]
+check(
+    "  a read that could not run (dd is not there): cut, a problem, and said differently from a timeout",
+    f["status"] == "problem"
+    and f["summary"]["id"] == "card-health.scan-cut"
+    and health._card_tests()["scan"].get("cut") == "error",
+    f,
+)
+out = REAL_RUN(
+    "python3",
+    "-c",
+    'import sys, time; sys.stderr.write("Input/output error\\n"); sys.stderr.flush(); time.sleep(5)',
+    timeout=1,
+)
+check(
+    "  run() keeps what the child said before its time limit, and says it was the limit",
+    out.returncode == health.RUN_TIMEOUT and "Input/output error" in out.stderr,
+    out,
+)
+rec = health._card_tests()
+rec["scan"] = {"started": time.time() - 3600}
+health._card_tests_save(rec)
+f = health.check_card_health()[0]
+check(
+    "  a read that started and never reported (the box restarted, the unit was stopped): said, not silently gone",
+    any(n["id"] == "card-health.scan-lost" for n in f["notes"]),
+    f,
+)
+health.run = real_run
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

@@ -542,10 +542,10 @@ check(
 librarian.record_run(lambda: {"books": "up to date", "mirrors": {"fw": "error: refused"}, "hub": "up to date"}, True)
 f = hub_control.scheduled_findings()
 check(
-    "a run that reaches the hub's update: ok, the sources' errors said",
+    "a run that reaches the hub's update: ok, the sources' errors kept as evidence",
     len(f) == 1
     and f[0]["status"] == "ok"
-    and "update.scheduled.ok.errors" in msg_ids(f[0])
+    and "update.scheduled.ok.errors" not in msg_ids(f[0])
     and any("fw: error: refused" in e for e in f[0]["evidence"]),
     f,
 )

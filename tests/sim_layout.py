@@ -77,6 +77,19 @@ check(
     and ("losetup", "-d", "/dev/loop7") in calls,
     calls,
 )
+# Found on the spare card (2026-10-29/30): the raw bootstate kept the old image's ext4 signature and root UUID, and a
+# Lyra's U-Boot scanned nothing, as no partition was bootable and the first one is raw.
+check(
+    "the raw bootstate is wiped of any old signature, and nothing else is",
+    ("wipefs", "-a", "/dev/loop7p1") in calls and sum(1 for c in calls if c[0] == "wipefs") == 1,
+    [c for c in calls if c[0] == "wipefs"],
+)
+check(
+    "  slot A, and only slot A, is marked bootable for U-Boot's scan",
+    any("--change-name=2:irate-system-a" in c and "--attributes=2:set:2" in c for c in calls)
+    and sum(1 for c in calls if any(a.startswith("--attributes=") for a in c)) == 1,
+    [c for c in calls if c[0] == "sgdisk"],
+)
 check(
     "the system is copied into each slot, and the read-back matches the plan",
     sum(1 for c in calls if c[0] == "rsync" and "--delete" in c) == 2
@@ -112,5 +125,38 @@ check(
 )
 layout.os.stat = real_stat
 layout.stat.S_ISBLK = __import__("stat").S_ISBLK
+
+# The real rsync with the copy's excludes, on a small system tree: the mount points arrive empty, with their modes,
+# and their contents do not. A Lyra booted from a slot copied without /dev stopped in its initramfs (2026-10-30).
+src, dst = T / "rsync-src", T / "rsync-dst"
+for d, mode in (
+    ("dev", 0o755),
+    ("proc", 0o555),
+    ("sys", 0o555),
+    ("run", 0o755),
+    ("tmp", 0o1777),
+    ("var/lib/hub", 0o755),
+):
+    (src / d).mkdir(parents=True, exist_ok=True)
+    (src / d / "inside").write_text("left out\n")
+    (src / d).chmod(mode)
+(src / "sbin").mkdir()
+(src / "sbin" / "init").write_text("#!/bin/sh\n")
+(src / "etc").mkdir()
+(src / "etc" / "fstab").write_text("# the image's\n")
+dst.mkdir()
+copied = subprocess.run(["rsync", "-a", *layout.COPY_EXCLUDES, f"{src}/", f"{dst}/"], capture_output=True, text=True)
+modes = {d: oct((dst / d).stat().st_mode & 0o7777) if (dst / d).is_dir() else None for d in ("dev", "proc", "tmp")}
+check(
+    "the copy keeps every mount point, empty and with its mode, and leaves fstab out",
+    copied.returncode == 0
+    and all(
+        (dst / d).is_dir() and not any((dst / d).iterdir()) for d in ("dev", "proc", "sys", "run", "tmp", "var/lib/hub")
+    )
+    and modes == {"dev": "0o755", "proc": "0o555", "tmp": "0o1777"}
+    and (dst / "sbin" / "init").is_file()
+    and not (dst / "etc" / "fstab").exists(),
+    (copied.stderr, modes, sorted(str(p.relative_to(dst)) for p in dst.rglob("*"))),
+)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

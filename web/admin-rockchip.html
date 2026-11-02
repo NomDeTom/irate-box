@@ -25,8 +25,13 @@
     <section class="admin-pane" id="rockchip" aria-label="Rockchip boards" data-i18n-aria-label="admin-rockchip.main.aria-rockchip-boards">
       <p class="setting-desc" data-i18n="admin-rockchip.main.intro">
         Prepare a Luckfox Lyra or another RK3506 board for mPWRD-OS: the box erases the board's onboard flash, so that
-        the board starts from its SD card. Connect the board's USB port to a USB port of this box. Connect one board at
-        a time.
+        the board starts from its SD card. You can install the original bootloader or the irate-box NAND U-Boot, and
+        add the Alpine rescue image to a card in a reader. Connect the board's USB port to a USB port of this box.
+        Connect one board at a time.
+      </p>
+      <p class="setting-desc warn-text" data-i18n="admin-rockchip.main.erase-warning">
+        Installing a bootloader erases the board's onboard flash. If logs were being kept on the NAND, they are
+        erased. There is no migration: the board is prepared again from scratch.
       </p>
       <p class="setting-desc warn-text" id="rk-tools" hidden></p>
       <div class="net-card setting" id="rk-card">
