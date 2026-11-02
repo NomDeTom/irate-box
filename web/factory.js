@@ -220,7 +220,9 @@
     event.preventDefault();
     try {
       const reply = await postJSON('/admin/factory', { action: 'queue', source: fac.source.value, ref: fac.ref.value, targets: [...facChosen] });
-      say(`Added ${reply.queued} target${reply.queued === 1 ? '' : 's'} to the queue at ${reply.commit.slice(0, 7)}.`, true, fac.note);
+      const added = `Added ${reply.queued} target${reply.queued === 1 ? '' : 's'} to the queue at ${reply.commit.slice(0, 7)}.`;
+      // Targets the kernel stopped for memory at today's build limit are left out, with the reason.
+      say(reply.skipped_said ? `${added} ${AW.say(reply.skipped_said)}` : added, true, fac.note);
       facChosen.clear();
       renderFactory(reply.snapshot);
       renderFactoryTargets();

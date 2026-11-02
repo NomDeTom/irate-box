@@ -49,6 +49,9 @@ MIRRORS = STATE / "library" / "mirrors.json"
 REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
 ENV_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 MAX_PER_REQUEST = 50  # a sanity cap until the tracking says more
+# The build slice the builder runs in (install.sh: irate-box-ci.service, Slice=build.slice): its limits are the
+# administrator's build limits (memguard), read here to know what a build may use.
+BUILD_SLICE = Path(os.environ.get("HUB_BUILD_SLICE", "/sys/fs/cgroup/build.slice"))
 MAX_FILES = 2000
 MAX_BYTES = 8 << 20
 
@@ -314,9 +317,13 @@ def queue(name, ref, envs, floor_mb=512):
         raise Refused(
             M("factory.storage.low", "Not enough storage to queue a build. The box needs {mb} MB free.", mb=floor_mb)
         )
+    big = too_big(runs(limit=200))
+    skipped = [e for e in dict.fromkeys(envs) if e in big]
+    picked = sorted((e for e in dict.fromkeys(envs) if e not in big), key=lambda e: (known[e]["family"], e))
+    if not picked:
+        raise Refused(_too_big_said(skipped, big))
     ci.QUEUE.mkdir(parents=True, exist_ok=True)
     batch, now = secrets.token_hex(4), time.time()
-    picked = sorted(dict.fromkeys(envs), key=lambda e: (known[e]["family"], e))
     for i, env in enumerate(picked):
         _put(
             {
@@ -332,7 +339,65 @@ def queue(name, ref, envs, floor_mb=512):
                 "queued": now + i / 1000,
             }
         )
-    return {"batch": batch, "queued": len(picked), "commit": data["commit"]}
+    out = {"batch": batch, "queued": len(picked), "commit": data["commit"]}
+    if skipped:
+        out["skipped"] = skipped
+        out["skipped_said"] = _too_big_said(skipped, big)
+    return out
+
+
+def build_limit():
+    """The memory and swap a build may use here, in bytes (build.slice's memory.max and memory.swap.max), or None
+    where builds are not bounded."""
+    try:
+        memory = (BUILD_SLICE / "memory.max").read_text().strip()
+    except OSError:
+        return None
+    if not memory.isdigit():
+        return None
+    try:
+        swap = (BUILD_SLICE / "memory.swap.max").read_text().strip()
+    except OSError:
+        swap = "0"
+    return int(memory) + (int(swap) if swap.isdigit() else 0)
+
+
+def too_big(history, limit=None):
+    """{env: what it was killed at}: the targets whose newest build here the kernel killed for memory at no less than
+    today's build limit. Each would be killed again, so they are not queued until the limit is raised; a target
+    killed under a smaller limit is tried again."""
+    limit = build_limit() if limit is None else limit
+    out, seen = {}, set()
+    for s in history:  # newest first
+        env = s.get("env")
+        if not env or env in seen or s.get("tools_only") or s.get("state") in ("queued", "running"):
+            continue
+        seen.add(env)
+        res = s.get("resources") or {}
+        if not res.get("memory_killed") or s.get("state") == "passed":
+            continue
+        at = (res.get("memory_limit") or 0) + (res.get("swap_limit") or 0)
+        if limit is not None and at and at >= limit:
+            out[env] = {"limit": at, "run": s.get("run"), "family": s.get("family")}
+    return out
+
+
+def _too_big_said(skipped, big):
+    limit = max(big[e]["limit"] for e in skipped)
+    return M(
+        "factory.targets.too-big",
+        {
+            "one": "Not queued: {envs} needs more memory than this box gives a build ({mb} MB with swap). The kernel "
+            "stopped its last build for memory. A larger preset under Recovery and monitoring, Limits for builds, "
+            "lets it try again.",
+            "other": "Not queued: {envs} need more memory than this box gives a build ({mb} MB with swap). The kernel "
+            "stopped their last builds for memory. A larger preset under Recovery and monitoring, Limits for builds, "
+            "lets them try again.",
+        },
+        n=len(skipped),
+        envs=skipped,
+        mb=limit >> 20,
+    )
 
 
 # A family's test target (Fetch tools, Test offline), when the owner hasn't chosen one: a board
