@@ -133,9 +133,19 @@ def watched_units():
         return {}
 
 
+RUN_TIMEOUT = 124  # run()'s return code when the child was stopped at its time limit (127 is "could not run")
+
+
+def _output(value):
+    return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+
+
 def run(*cmd, timeout=60, **kw):
     try:
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, **kw)  # noqa: TID251
+    except subprocess.TimeoutExpired as exc:
+        # What it printed before it was stopped is kept (a card's I/O errors, counted before a hang).
+        return subprocess.CompletedProcess(cmd, RUN_TIMEOUT, _output(exc.stdout), _output(exc.stderr) or str(exc))
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
@@ -2556,10 +2566,36 @@ def _midnight(now):
     return time.mktime((local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1))
 
 
+def _power_failures(events, since):
+    """The supply's failures, one entry each. A UPS says "on battery" first and "battery low" after it: those are
+    one failure still happening, not two, and counting the pair as two while missing the case where the failure
+    began before the window and is still on is both wrong at once. So the events are walked in order, a failure
+    runs from a power-fail (or a battery-low that came with no power-fail, after the events rolled over) to the
+    power coming back, and it is in the window when its last event is or when it has not come back at all: a
+    failure still on is not hidden by its age. The last event's words are kept, being what the supply says now."""
+    out, live = [], None
+    for e in sorted((e for e in events if isinstance(e.get("at"), (int, float))), key=lambda e: e["at"]):
+        kind = e.get("kind")
+        if kind in ("power-fail", "battery-low"):
+            if live is None:
+                live = {"at": e["at"], "kind": kind, "text": e.get("text") or "", "back": False}
+                out.append(live)
+            else:
+                live.update(
+                    at=e["at"], kind=kind, text=e.get("text") or live["text"], back=False
+                )  # a low battery is the same failure, later
+        elif kind == "power-restored" and live is not None:
+            live["back"] = True
+            live = None
+    return [f for f in out if f["at"] >= since or not f["back"]]
+
+
 def check_power(now=None):
     """The supply: an INA2xx's bus voltage or the Pi's rpi_volt/get_throttled, and the power-fail hook (NUT or a pin)
     as crashwatch records them (Part 3, step 2). An undervoltage is a count and its times; a power failure is a
-    problem. The last 24 hours, not since midnight, so a failure late at night stays in view."""
+    problem, and so is one still happening: a UPS that ran the box down off the mains keeps saying its battery is
+    low, and that is the same failure, not a new one. The last 24 hours, not since midnight, so a failure late at
+    night stays in view; a failure that has not come back is shown whatever its age."""
     from irate_box.root import crashwatch as cw
 
     now = time.time() if now is None else now
@@ -2571,7 +2607,7 @@ def check_power(now=None):
     except (OSError, ValueError):
         return []
     window = [e for e in events if isinstance(e.get("at"), (int, float)) and e["at"] >= now - 86400]
-    fails = [e for e in window if e.get("kind") == "power-fail"]
+    fails = _power_failures(events, now - 86400)
     under = [e for e in window if e.get("kind") == "undervoltage"]
     title = M("power.title", "Power supply")
     go = _go("health-settings", RECOVERY, "hs-undervoltage")
@@ -2586,6 +2622,15 @@ def check_power(now=None):
                 what=latest.get("text") or "",
             )
         ]
+        if not latest.get("back"):
+            notes.append(
+                M(
+                    "power.battery.still",
+                    "The box is running on its battery still.",
+                )
+                if latest.get("kind") == "battery-low"
+                else M("power.failed.still", "The power has not come back since.")
+            )
         if owner:
             notes.insert(
                 0,
@@ -2831,6 +2876,8 @@ def _foreign_unused():
 
 
 SERVICE_HEAVY = 100 << 20  # a service writing more than this a day to the card (averaged over the week) is named
+# A unit name from the hub's record, before it becomes a systemctl argument: systemd's grammar, never a leading "-".
+SERVICE_UNIT_RE = re.compile(r"^[A-Za-z0-9:_.@][A-Za-z0-9:_.@-]{0,246}\.service$")
 MOUNTINFO = Path(os.environ.get("HUB_MOUNTINFO", "/proc/self/mountinfo"))
 
 
@@ -2863,13 +2910,16 @@ def _on_card(path, card_name):
 def _unit_writes(unit, card_name):
     """(confined, [card paths]): whether the unit can write only where it says (ProtectSystem=strict), and of the
     places it says, those on the SD card (its writable paths; its state, log and cache folders; a bind into RAM is
-    not one)."""
+    not one). The name comes from the hub's record: only a unit name reaches systemctl, and after "--"."""
+    if not SERVICE_UNIT_RE.fullmatch(unit):
+        return False, []
     out = run(
         "systemctl",
         "show",
-        unit,
         "-p",
         "ProtectSystem,ReadWritePaths,StateDirectory,LogsDirectory,CacheDirectory,BindPaths",
+        "--",
+        unit,
         timeout=10,
     ).stdout
     props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
@@ -2889,6 +2939,15 @@ def _unit_writes(unit, card_name):
         if _on_card(path, card_name):
             on_card.append(path + (f" (but {', '.join(under)} in RAM)" if under else ""))
     return confined, on_card
+
+
+def _unit_gone(unit):
+    """Whether systemd no longer knows the unit (a transient run that has ended, or one removed): its past writes are
+    in the week's total, but there is nothing left to confine or move. A name that is not a unit's is treated the
+    same: nothing from the hub's record goes to systemctl as an option."""
+    if not SERVICE_UNIT_RE.fullmatch(unit):
+        return True
+    return "LoadState=not-found" in run("systemctl", "show", "-p", "LoadState", "--", unit, timeout=10).stdout
 
 
 def _service_writes_findings(summary, card_name):
@@ -2920,8 +2979,10 @@ def _service_writes_findings(summary, card_name):
                 )
             )
             continue
-        if unit == cardhistory.KERNEL or not unit.endswith(".service"):
+        if unit == cardhistory.KERNEL or not SERVICE_UNIT_RE.fullmatch(unit):
             continue
+        if _unit_gone(unit):
+            continue  # found on box 181: an A/B trial's transient unit, gone for days, still "writing 294 MB a day"
         confined, paths = _unit_writes(unit, card_name)
         if confined:
             where = M(
@@ -3409,22 +3470,40 @@ def check_writes_kept():
     ]
 
 
+def _protected_kind(item):
+    """What the boot check did with one protected file: the record's own kind, as retain.py writes it — copy,
+    made again, package, lost or uncopied. A record made before the field is read by its words, so a box whose
+    doctor updated but whose boot check did not still says what it repaired. An item this cannot place is read as
+    a repair: it names the file, and a repair left unsaid is the bug this replaces."""
+    kind = str(item.get("kind") or "")
+    if kind:
+        return kind
+    action = str(item.get("action"))
+    if "restored from" in action:
+        return "copy"
+    if "no good copy" in action:
+        return "lost"
+    if "not copied" in action:
+        return "uncopied"
+    return "repair"
+
+
 def check_protected():
     """The second copy's repairs, losses and files it could not copy (retain.py, Part 2 step 4). The current boot's
     only; repairs at two boots running are the card verdict."""
     from irate_box.root import retain
 
     try:
-        items = json.loads((retain.ROOT / "protected-findings.json").read_text())
+        items = json.loads(retain.FINDINGS.read_text())
     except (OSError, ValueError):
         return []
     if not isinstance(items, list):
         return []
-    current = retain._boot_id()
+    current = _boot_id()
     items = [i for i in items if isinstance(i, dict) and i.get("path") and i.get("boot") == current]
-    repairs = [i for i in items if "restored from" in str(i.get("action"))]
-    lost = [i for i in items if "no good copy" in str(i.get("action"))]
-    uncopied = [i for i in items if "not copied" in str(i.get("action"))]
+    lost = [i for i in items if _protected_kind(i) == "lost"]
+    uncopied = [i for i in items if _protected_kind(i) == "uncopied"]
+    repairs = [i for i in items if i not in lost and i not in uncopied]
     streak = retain.streak()
     housecall = CODE / "irate_box/root/housecall.py"
     notes = []
@@ -4701,6 +4780,10 @@ CARD_ERROR_RE = re.compile(
     r"(I/O error, dev {dev}|Buffer I/O error on dev {dev}|{host}: .*(timeout|error|CRC|reset)|EXT4-fs error \(device {dev})"
 )
 CARD_SCAN_UNIT = "irate-box-card-scan"
+# The whole-card read's own time limit, in seconds. A card that is dying holds a read open for as long as it is
+# asked to: the unit that runs it is stopped at this, and dd is given the same limit to stop on its own first.
+# Four hours reads a 32 GB card at about 2 MB/s, the pace of a card already going bad.
+CARD_SCAN_MAX = 4 * 3600
 CARD_SPEED_MB = 256  # read by the speed test, from the start of the card
 
 
@@ -4813,16 +4896,29 @@ def check_card_health():
             + (f" (first test: {speeds[0]['mbps']} MB/s)" if len(speeds) > 1 else "")
         )
     scan = tests.get("scan")
+    cut = (scan or {}).get("cut")
     if scan and scan.get("done"):
-        evidence.append(
-            f"whole-card read on {time.strftime('%Y-%m-%d', time.localtime(scan['done']))}: "
-            + (f"{scan['bad']} unreadable places" if scan.get("bad") else "every part read")
-        )
+        if scan.get("bad"):
+            stopped = (
+                " before it was stopped at its limit"
+                if cut in ("timeout", True)
+                else " before the read could not run"
+                if cut
+                else ""
+            )
+            said = f"{scan['bad']} unreadable places{stopped}"
+        elif cut in ("timeout", True):
+            said = f"stopped after {CARD_SCAN_MAX // 60} min with no answer"
+        elif cut:
+            said = "stopped before it finished: the read could not run"
+        else:
+            said = "every part read"
+        evidence.append(f"whole-card read on {time.strftime('%Y-%m-%d', time.localtime(scan['done']))}: {said}")
     evidence += errors[-3:]
     emmc_worn = info["type"] == "MMC" and (
         info["pre_eol"] in ("0x02", "0x03") or any(v in ("0x09", "0x0a", "0x0b") for v in info["life_time"].split())
     )
-    bad = bool(errors) or read_only or bool(scan and scan.get("bad")) or emmc_worn
+    bad = bool(errors) or read_only or bool(scan and (scan.get("bad") or cut)) or emmc_worn
     status = "problem" if bad else "warn" if info["ext4_errors"] or info["manfid"] in (0, -1) else "ok"
     summary = (
         M(
@@ -4836,6 +4932,17 @@ def check_card_health():
             n=scan["bad"],
         )
         if scan and scan.get("bad")
+        else M(
+            "card-health.scan-timeout",
+            "The whole-card read was stopped after {n} min with no answer, so the card is not known to be sound.",
+            n=CARD_SCAN_MAX // 60,
+        )
+        if cut in ("timeout", True)
+        else M(
+            "card-health.scan-cut",
+            "The whole-card read could not run, so the card is not known to be sound. Check that dd is installed.",
+        )
+        if cut
         else M(
             "card-health.errors", "The kernel reported {n} errors from the card since the box started.", n=len(errors)
         )
@@ -4867,6 +4974,14 @@ def check_card_health():
                 "card-health.scan-running",
                 "The whole-card read is running (started {at}).",
                 at=when((scan or {}).get("started", 0)),
+            )
+        )
+    elif scan and scan.get("started") and not scan.get("done"):
+        notes.append(
+            M(
+                "card-health.scan-lost",
+                "The whole-card read started {at} and never reported: the box restarted, or the read was stopped.",
+                at=when(scan.get("started", 0)),
             )
         )
     actions = [
@@ -4961,6 +5076,10 @@ def card_scan_start():
         "Nice=19",
         "-p",
         "IOSchedulingClass=idle",
+        # The backstop: a read that never ends is stopped here even if the process cannot stop itself, so the
+        # Box doctor's "running" cannot outlive the card it is waiting on.
+        "-p",
+        f"RuntimeMaxSec={CARD_SCAN_MAX + 600}",
         f"{CODE}/irate-box",
         "health",
         "card-scan",
@@ -4976,16 +5095,26 @@ def card_scan_start():
 
 
 def card_scan():
-    """Every block of the card read once (dd, carrying on past an unreadable one); the count of unreadable ones."""
+    """Every block of the card read once (dd, carrying on past an unreadable one); the count of unreadable ones.
+    Bounded by CARD_SCAN_MAX: the card this reads is the one that may not answer, and a read that never ends is
+    worse for the box than a read that stops early."""
     info = card_info()
     rec = _card_tests()
-    out = subprocess.run(  # noqa: TID251
-        ["dd", f"if=/dev/{info['dev']}", "of=/dev/null", "bs=1M", "iflag=direct", "conv=noerror", "status=none"],
-        capture_output=True,
-        text=True,
+    out = run(
+        "dd",
+        f"if=/dev/{info['dev']}",
+        "of=/dev/null",
+        "bs=1M",
+        "iflag=direct",
+        "conv=noerror",
+        "status=none",
+        timeout=CARD_SCAN_MAX,
     )
     bad = sum(1 for line in out.stderr.splitlines() if "Input/output error" in line)
-    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad}
+    # A read that did not finish is not a clean card: it was stopped at its limit, or it could not run at all
+    # (dd is not there). run() says which (RUN_TIMEOUT); the stderr above keeps what it said before it stopped.
+    cut = "timeout" if out.returncode == RUN_TIMEOUT else "error" if out.returncode else ""
+    rec["scan"] = {**(rec.get("scan") or {}), "done": time.time(), "bad": bad, "cut": cut}
     _card_tests_save(rec)
     return bad
 

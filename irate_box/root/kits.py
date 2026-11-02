@@ -37,6 +37,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 
 from irate_box.hub import kitdefs
@@ -51,6 +52,7 @@ POOL = ROOT / "pool"
 # build's `pip install` needs no internet (ci.py sets PIP_NO_INDEX and PIP_FIND_LINKS to this).
 WHEELHOUSE = ROOT / "wheelhouse"
 MANIFESTS = ROOT / "manifests"
+CHECKS = ROOT / "checks"
 INSTALLED = ROOT / "installed.json"
 ID_RE = kitdefs.ID_RE
 PKG_RE = kitdefs.PKG_RE
@@ -376,6 +378,130 @@ def _link_cached(wanted, stage):
         with contextlib.suppress(OSError):
             if cached.stat().st_size == size:
                 os.link(cached, stage / f)
+
+
+def _deb_file(path):
+    name, version, deb_arch = Path(path).name[: -len(".deb")].rsplit("_", 2)
+    # apt names the file with the version's epoch colon encoded (1%3a9.20.30); the manifest and
+    # the page say the version as apt's package metadata does (1:9.20.30).
+    return {
+        "name": urllib.parse.unquote(name),
+        "version": urllib.parse.unquote(version),
+        "arch": deb_arch,
+        "file": Path(path).name,
+    }
+
+
+def check_result(kit_id):
+    return _read(CHECKS / f"{kit_id}.json", None)
+
+
+def _store_check(kit_id, result):
+    _write(CHECKS / f"{kit_id}.json", result)
+    return result
+
+
+def check(kit_id, lists_max_hours=24):
+    """A fetch's resolution, without the download: what apt would download now, and whether that differs from
+    the kit's current set. Reads the same filtered status and package lists as fetch, so a kit installed now is
+    still checked whole. Writes only the check's result (and apt's lists, when older than lists_max_hours)."""
+    kit = _kit(kit_id)
+    with aptram.shared() as ram:
+        return _check(kit_id, kit, lists_max_hours, ram)
+
+
+def _check(kit_id, kit, lists_max_hours, ram):
+    at = time.time()
+    debug = _debug_apt() if kit.get("debug_archive") else []
+    try:
+        for d in (ROOT,):
+            d.mkdir(parents=True, exist_ok=True)
+        os.chmod(ROOT, 0o755)  # The kits folder, read by apt. # nosec B103
+        _update_lists(debug, lists_max_hours, lambda *_: None)
+        leave_out = _kit_added(installed_state())
+        status = ram / "status"
+        _base_status(status, leave_out)
+        archives = ram / "check-archives"
+        archives.mkdir(exist_ok=True)
+        packages, _left_out = _packages(kit, fetching=True)
+        options = [
+            "--no-install-recommends",
+            "-o",
+            f"Dir::Cache::archives={archives}",
+            "-o",
+            f"Dir::State::status={status}",
+            "-o",
+            "Debug::NoLocking=1",
+        ]
+        wanted = _wanted(
+            run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
+        )
+    except (Refused, OSError, subprocess.SubprocessError) as exc:
+        return _store_check(
+            kit_id,
+            {
+                "state": "unavailable",
+                "why": str(getattr(exc, "message", None) or exc)[:300],
+                "at": at,
+            },
+        )
+    cur = manifest(kit_id)
+    if not cur:
+        return _store_check(
+            kit_id,
+            {
+                "state": "not-cached",
+                "at": at,
+                "packages": len(wanted),
+                "download_bytes": sum(size for size, _sha in wanted.values()),
+            },
+        )
+    old = {p["name"]: p for p in cur.get("packages", [])}
+    new = {}
+    for path, (size, sha) in wanted.items():
+        fields = _deb_file(path)
+        new[fields["name"]] = {**fields, "size": size, "sha256": sha}
+    changes = []
+    for name in sorted(set(old) | set(new)):
+        was, now = old.get(name), new.get(name)
+        if was and now and was.get("file") == now.get("file"):
+            same = (
+                was["sha256"] == now["sha256"]
+                if was.get("sha256") and now.get("sha256")
+                else was.get("size") == now.get("size")
+            )
+            if same:
+                continue
+        changes.append({"name": name, "from": (was or {}).get("version", ""), "to": (now or {}).get("version", "")})
+    download_bytes = sum(
+        size
+        for path, (size, _sha) in wanted.items()
+        if not ((POOL / path).is_file() and (POOL / path).stat().st_size == size)
+    )
+    return _store_check(
+        kit_id,
+        {
+            "state": "newer" if changes else "current",
+            "at": at,
+            "changes": changes,
+            "packages": len(wanted),
+            "download_bytes": download_bytes,
+        },
+    )
+
+
+def check_all(lists_max_hours=24):
+    """Every shipped kit, one check each; a kit that cannot be checked does not stop the rest."""
+    out = {}
+    for kit_id in definitions():
+        try:
+            out[kit_id] = check(kit_id, lists_max_hours)
+        except (Refused, OSError, subprocess.SubprocessError) as exc:
+            out[kit_id] = _store_check(
+                kit_id,
+                {"state": "unavailable", "why": str(getattr(exc, "message", None) or exc)[:300], "at": time.time()},
+            )
+    return out
 
 
 def fetch(kit_id, budget_mb=500, lists_max_hours=0, log=print):
@@ -1676,6 +1802,7 @@ def status():
                 "versions": {p["name"]: p["version"] for p in cur["packages"]},
             },
             "previous": prev and _trailing(cur, prev),
+            "check": check_result(kid),
         }
     return {
         "at": time.time(),

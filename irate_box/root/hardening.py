@@ -210,7 +210,7 @@ def set_filesystem(value):
 def _system_conf():
     return (
         "# irate-box (A/B updates): RAUC's system description, written by irate-box. The slots are made by a fresh\n"
-        "# install or an offline repartition; the boot chain follows 2026-10-29-bootloader-bootcount.\n"
+        "# install or an offline repartition. A slot that fails to boot is left, and the other one is tried.\n"
         "[system]\ncompatible=irate-box\nbootloader=uboot\nmountprefix=/mnt/rauc\n\n"
         "[slot.system.0]\ndevice=/dev/disk/by-partlabel/irate-system-a\ntype=ext4\nbootname=A\n\n"
         "[slot.system.1]\ndevice=/dev/disk/by-partlabel/irate-system-b\ntype=ext4\nbootname=B\n"
@@ -235,7 +235,7 @@ SLOT_NOTES = (
 
 def _uboot_boot_cmd():
     return (
-        "# RAUC's U-Boot script for the Lyra Zero W (notes: 2026-10-29-bootloader-bootcount).\n"
+        "# RAUC's U-Boot script for the Lyra Zero W: it counts boots, and falls back to the other slot.\n"
         + SLOT_NOTES
         + "# It needs U-Boot rebuilt with a persistent redundant environment (CONFIG_ENV_IS_IN_MMC,\n"
         "# CONFIG_SYS_REDUNDAND_ENVIRONMENT), CONFIG_CMD_SAVEENV, and, for a failed boot that never reaches\n"
@@ -263,7 +263,7 @@ def _uboot_boot_cmd():
 
 def _lyra_tryboot_cmd(reg):
     return (
-        "# A one-shot tryboot in the Lyra's boot script (notes: 2026-10-29-bootloader-bootcount, Option H).\n"
+        "# A one-shot tryboot in the Lyra's boot script: the switch over to an update, undone by a power cut.\n"
         f"# The register {reg} must be a spare PMU GRF register that survives a warm reset and is cleared on a power\n"
         "# cut. Confirm it on the board before trusting this: read it at the U-Boot prompt (md.l), reboot, read it\n"
         "# again, then power-cycle and read it again. Never use 0xff910200: U-Boot clears it before this runs.\n"
@@ -292,7 +292,7 @@ def _pi_tryboot_txt():
     return (
         "# irate-box (A/B updates): the Pi firmware's one-shot tryboot configuration. The switch writes the slot's\n"
         "# kernel and cmdline here, then `reboot '0 tryboot'`; the firmware falls back to config.txt if it fails.\n"
-        "# See 2026-10-29-bootloader-bootcount, option F. This file is a template: a fresh install fills the paths.\n"
+        "# This file is a template: a fresh install fills the paths.\n"
         "[all]\n# kernel=slot-b/Image\n# cmdline=slot-b/cmdline.txt\n"
     )
 
@@ -310,8 +310,8 @@ def _fw_env_example():
     first, second = _env_offsets()
     return (
         "# irate-box (A/B updates): where U-Boot's saved environment lives.\n"
-        "# Nothing here is active until the offset is confirmed on the board (notes:\n"
-        "# 2026-10-29-bootloader-bootcount). Copying this file as it stands does nothing.\n"
+        "# Nothing here is active until the offset is confirmed on the board. Copying this file as it stands\n"
+        "# does nothing.\n"
         "# With the partition named in the device tree, U-Boot keeps the environment at its top.\n"
         "# device offset size\n"
         f"# {BOOTSTATE_DEVICE} 0x{first:08X} 0x2000\n"

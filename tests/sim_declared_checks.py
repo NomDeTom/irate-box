@@ -247,6 +247,26 @@ check("refused: an http check with no expectation", refused([c("x", "http", via=
 check("refused: an http check via elsewhere", refused([c("x", "http", via="other", path="/a/", expect=[200])]))
 check("refused: a repair on a security check", refused([c("x", "unit", property="User", equals="a", repair="restart")]))
 
+# A probe that cannot read what it was given: the add-on says so as a warn. It must not carry the whole
+# add-on step down with it (a bad Location: port from one add-on is one add-on's affair).
+real_front = webprobe.through_front
+webprobe.through_front = lambda path, **kw: (_ for _ in ()).throw(ValueError("Port out of range 0-65535"))
+one = [c("probe", "http", via="front", path="/ok/", expect=[200])]
+try:
+    got = sd.run_declared({"id": "x", "unit": "x.service", "port": PORT, "checks": one})
+except Exception as exc:  # noqa: BLE001 - the point is what it raises, whatever it is
+    got = f"raised {type(exc).__name__}: {exc}"
+webprobe.through_front = real_front
+check(
+    "a probe that raises: its add-on's checks are said as missing, with the reason, and the run carries on",
+    isinstance(got, list)
+    and [i["key"] for i in got] == ["checks"]
+    and got[0]["status"] == "warn"
+    and got[0]["summary"]["id"] == "addon.declared.failed"
+    and "Port out of range" in " ".join(got[0]["evidence"]),
+    got,
+)
+
 # The Box doctor runs its own ("doctor": "box"), with the repair the manifest names.
 box_checks = [
     c("answers", "http", via="direct", path="/gone/", expect=[200], doctor="box", repair="restart"),

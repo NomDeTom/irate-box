@@ -8,12 +8,18 @@ A toolkit is a set of Debian packages for one kind of job. The toolkits are Buil
 
 While the box is online, it downloads the packages of each toolkit into a local cache. When the cache of a toolkit is complete, you can install the toolkit without an internet connection. After an installation, the services of the toolkit stay stopped. The exceptions are on the card of each toolkit.
 
+**Check for updates** first asks apt what a download would bring, using the same package set and cache as a download, and downloads nothing. It says whether the cache is up to date, which packages are newer, and how much is still to download. **Download** then fetches only what is new.
+
 On the card of each toolkit:
 
+- **Check for updates** says what a download would bring, without downloading.
+- **Download** fetches the packages the cache does not have.
 - **Install** installs the toolkit.
 - **Remove after** removes it after an hour, a day, a week or never. This is the default removal period.
-- **Keep current** refreshes the cache automatically.
+- **Keep current** downloads updates to the cache automatically.
 - **Roll back** returns to an earlier copy.
+
+**Check all now** checks every toolkit the same way; **Download all** downloads what each needs.
 
 Select **+ Custom toolkit** to make your own toolkit from a list of packages.
 

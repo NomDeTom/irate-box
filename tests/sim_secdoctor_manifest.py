@@ -19,6 +19,7 @@ os.environ.update(
     HUB_ETC_DIR=str(T / "etc"),
     HUB_STATE_DIR=str(T / "state"),
     HUB_CODE_DIR=str(T / "code"),
+    HUB_SYSTEMD_ETC=str(T / "etc" / "systemd"),
     HUB_USER="hub",
 )
 REPO = Path(__file__).resolve().parents[1]
@@ -107,6 +108,95 @@ check(
     "the hub user in an undeclared group: a problem, naming it",
     said["manifest-hub"]["status"] == "problem" and said["manifest-hub"]["evidence"] == ["video"],
     said["manifest-hub"],
+)
+
+# A drop-in is checked through its unit, and the directives that widen a unit are compared too.
+manifest["units"] = {
+    "caddy.service.d/irate-box.conf": {"ReadWritePaths": ["/etc/hub"]},
+    "irate-box.service": {
+        "User": "hub",
+        "ReadWritePaths": ["/var/lib/hub"],
+        "CapabilityBoundingSet": [],
+        "RestrictAddressFamilies": ["AF_UNIX"],
+    },
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+dropin = T / "etc/systemd/system/caddy.service.d/irate-box.conf"
+dropin.parent.mkdir(parents=True, exist_ok=True)
+dropin.write_text("[Service]\nUser=caddy\n")
+
+
+def show(name, *props):
+    if name == "caddy.service":
+        return {"LoadState": "loaded", "DropInPaths": str(dropin)}
+    return {
+        "LoadState": "loaded",
+        "User": "hub",
+        "ReadWritePaths": "/var/lib/hub",
+        "CapabilityBoundingSet": "",
+        "RestrictAddressFamilies": "AF_UNIX",
+    }
+
+
+with mock.patch.object(sd, "_show", show):
+    with mock.patch.object(sd.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "hub\n"})()):
+        said = {f["id"]: f for f in sd.step_manifest({})}
+check(
+    "a loaded drop-in and the widening directives match: fine",
+    said["manifest-units"]["status"] == "ok",
+    said["manifest-units"],
+)
+
+
+def show_bad(name, *props):
+    if name == "caddy.service":
+        return {"LoadState": "loaded", "DropInPaths": "/elsewhere"}
+    return {
+        "LoadState": "loaded",
+        "User": "hub",
+        "ReadWritePaths": "/var/lib/hub /etc",
+        "CapabilityBoundingSet": "",
+        "RestrictAddressFamilies": "AF_UNIX",
+    }
+
+
+with mock.patch.object(sd, "_show", show_bad):
+    with mock.patch.object(sd.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "hub\n"})()):
+        said = {f["id"]: f for f in sd.step_manifest({})}
+check(
+    "an unloaded drop-in and a wider ReadWritePaths are named",
+    said["manifest-units"]["status"] == "problem"
+    and any("drop-in" in e for e in said["manifest-units"]["evidence"])
+    and any("ReadWritePaths" in e for e in said["manifest-units"]["evidence"]),
+    said["manifest-units"],
+)
+
+# A plain box (found on a Banana Pi M2 Zero with no add-ons, 2026-11-01): drop-ins of add-ons it does not have, and
+# units the manifest names as $HUB_USER, are not findings.
+manifest["units"] = {
+    "mosquitto.service.d/irate-box-sandbox.conf": {"ReadWritePaths": ["-/var/log/mosquitto"]},
+    "caddy.service.d/irate-box.conf": {"User": "caddy"},
+    "irate-box.service": {"User": "$HUB_USER", "ReadWritePaths": ["$STATE"]},
+}
+(T / "code" / "security.json").write_text(json.dumps(manifest))
+dropin.unlink()
+
+
+def show_plain(name, *props):
+    if name == "mosquitto.service":
+        return {"LoadState": "not-found"}
+    if name == "caddy.service":
+        return {"LoadState": "loaded", "DropInPaths": ""}
+    return {"LoadState": "loaded", "User": "hub", "ReadWritePaths": str(T / "state")}
+
+
+with mock.patch.object(sd, "_show", show_plain), mock.patch.object(sd, "STATE", T / "state"):
+    with mock.patch.object(sd.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0, "stdout": "hub\n"})()):
+        said = {f["id"]: f for f in sd.step_manifest({})}
+check(
+    "a plain box: an add-on's drop-in whose unit is absent, or never written, and User=$HUB_USER are all fine",
+    said["manifest-units"]["status"] == "ok",
+    said["manifest-units"],
 )
 
 (T / "code" / "security.json").unlink()

@@ -67,12 +67,48 @@ check(
 )
 check("  and it is still on", secchanges.load()["console_only"] is True)
 
+try:
+    secchanges.save({"toggles": {"root_actions": "flag"}})
+    lower = None
+except Refused as exc:
+    lower = exc.message
+check(
+    "while the console switch is on, no level lowers from the page",
+    lower and lower["id"] == "security.changes.console-only-lower",
+    lower,
+)
+
 said = secchanges.console_only_off()
 check(
     "the console command turns it off",
     said["id"] == "security.changes.console-off" and not secchanges.load()["console_only"],
     said,
 )
+
+try:
+    secchanges.save({"toggles": {"root_actions": "flag"}})
+    lower = None
+except Refused as exc:
+    lower = exc.message
+check(
+    "a console level cannot be lowered from the page",
+    lower and lower["id"] == "security.changes.console-lower",
+    lower,
+)
+try:
+    secchanges.save({"toggles": {"root_actions": "flag"}, "over": "console"})
+    forged = None
+except Refused as exc:
+    forged = exc.message
+check(
+    "  a request that says it came over the console is still the page: the hub writes over",
+    forged and forged["id"] == "security.changes.console-lower",
+    forged,
+)
+said = secchanges.save({"toggles": {"root_actions": "flag"}}, how="console")
+check("  the console command can lower it", said["id"] == "security.changes.saved", said)
+said = secchanges.save({"toggles": {"outbound": "flag"}})
+check("an authorise level can be lowered over HTTPS", said["id"] == "security.changes.saved", said)
 
 changes = ["a new root action, pins"]
 record = secchanges.approve("a" * 40, "aaaaaaa", changes, "https", "an administrator over HTTPS", secchanges.levels())
@@ -105,7 +141,9 @@ check(
 check("  the approval is cleared after the install", not (T / "etc/security-approval.json").exists())
 check(
     "the record is root's alone, and append-only",
-    stat.S_IMODE((T / "root/security-changes.jsonl").stat().st_mode) == 0o600 and len(entries) == 2,
+    stat.S_IMODE((T / "root/security-changes.jsonl").stat().st_mode) == 0o600
+    and sum(1 for e in entries if e["event"] == "installed") == 1
+    and any(e["event"] == "levels" for e in entries),
     entries,
 )
 check(

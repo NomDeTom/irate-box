@@ -56,6 +56,25 @@
       say(err.message, false, at);
     }
   }
+  // The same guard for installing a bootloader: read, say what is there, then ask with what will be written.
+  async function readThenInstall(body, at, anchor, title, what) {
+    say('Reading the onboard flash…', true, at);
+    try {
+      const id = (await postJSON('/admin/rkboard', { action: 'read', loader: body.loader })).id;
+      const read = await awaitResult(id);
+      if (!read) return say('The flash was not read in time.', false, at);
+      if (!read.ok) return say(resultSaid(read), false, at);
+      const token = (read.msg && read.msg.token) || '';
+      const ask = `${resultSaid(read)} ${what} This erases the board's onboard flash, including any logs kept on the NAND. It cannot be undone.`;
+      if (!(await AW.confirmHere(ask, { anchor, label: title }))) return say('Nothing was written.', true, at);
+      say('Writing the bootloader to the board…', true, at);
+      waiting = (await postJSON('/admin/rkboard', { ...body, confirm: token })).id;
+      shown = '';
+      load();
+    } catch (err) {
+      say(err.message, false, at);
+    }
+  }
   // "a", "a and b", "a, b and c".
   const listSaid = (items) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
 
@@ -74,6 +93,10 @@
   let cardShown = false;
   let imageChosen = '';
   let shaTyped = '';
+  // The bootloader to install, and the Alpine rescue image and card to add beside it.
+  let bootloaderChosen = 'nand-uboot';
+  let rescueChosen = '';
+  let rescueCard = '';
 
   async function load() {
     clearTimeout(poll);
@@ -113,7 +136,7 @@
     if (lastRk) cardShown = lastRk.msg.id === 'rkboard.card-shown';
     if (!boards.length) cardShown = false;
     const images = data.images || [];
-    const key = JSON.stringify([boards, busy, missing, chipChosen, cardShown, images]);
+    const key = JSON.stringify([boards, busy, missing, chipChosen, cardShown, images, data.bootloaders, data.rescues, data.cards, bootloaderChosen, rescueChosen, rescueCard]);
     if (key === shown) return;
     shown = key;
     const board = document.getElementById('rk-board');
@@ -121,7 +144,7 @@
     const actions = document.getElementById('rk-actions');
     chip.hidden = true;
     actions.replaceChildren();
-    document.querySelectorAll('#rk-write').forEach((n) => n.remove());
+    document.querySelectorAll('#rk-write, #rk-install').forEach((n) => n.remove());
     if (!boards.length) {
       board.replaceChildren(el('p', {
         className: 'setting-desc',
@@ -171,6 +194,75 @@
       actions.append(step('Erase the flash', { action: 'erase', loader: chipChosen }, ERASE_ASK));
     }
     if (cardShown && (b.mode === 'loader' || b.mode === 'maskrom')) actions.after(writeBlock(images, busy, b, note));
+    if (b.mode === 'loader' || b.mode === 'maskrom') actions.after(installBlock(data, b, busy, note));
+  }
+
+  // Installing a bootloader on the onboard flash, and optionally the Alpine rescue on a card in a reader. The
+  // bootloaders are the original and the NAND U-Boot; the rescue image is one of the alpine-rescue*.img files.
+  function installBlock(data, b, busy, note) {
+    const box = el('div', { id: 'rk-install', className: 'rk-write' },
+      el('h3', { textContent: 'Install a bootloader' }),
+      el('p', { className: 'setting-desc', textContent: "Write a bootloader to the board's onboard flash. The original is the one Luckfox ships; the irate-box NAND U-Boot boots from the SPI NAND. The Alpine rescue image can be written to a card in a reader in the same step." }),
+      el('p', { className: 'setting-desc warn-text', textContent: "Installing a bootloader erases the board's onboard flash. If logs were being kept on the NAND, they are erased. There is no migration: the board is prepared again from scratch." }));
+    const boots = data.bootloaders || [];
+    if (!boots.length) {
+      box.append(el('p', { className: 'setting-desc', textContent: 'No bootloader is described on this box.' }));
+      return box;
+    }
+    if (!boots.some((x) => x.id === bootloaderChosen)) bootloaderChosen = boots[0].id;
+    const bootTiles = el('div', { id: 'rk-bootloaders' });
+    AW.choices(bootTiles, 'rk-bootloaders', boots.map((x) => ({
+      value: x.id,
+      title: x.title,
+      desc: x.ready
+        ? `${x.summary} Ready, ${(x.size / 2 ** 20).toFixed(1)} MB.`
+        : `${x.summary} Not ready: ${[...(x.missing || []), ...(x.damaged || [])].join(', ') || 'stage its files'}.`,
+    })), { value: bootloaderChosen, onChange: (v) => { bootloaderChosen = v; shown = ''; load(); } });
+    box.append(el('span', { className: 'setting-name', textContent: 'Bootloader' }), bootTiles);
+
+    const rescues = data.rescues || [];
+    const rescueChoices = [{ value: '', title: 'Do not add it', desc: 'Install the bootloader only.' }].concat(
+      rescues.map((x) => ({ value: x.name, title: x.name, desc: `${(x.size / 2 ** 20).toFixed(0)} MB${x.sha256 ? ', its sha256 beside it' : ', no sha256 beside it'}` })));
+    if (!rescueChoices.some((x) => x.value === rescueChosen)) rescueChosen = '';
+    const rescueTiles = el('div', { id: 'rk-rescues' });
+    AW.choices(rescueTiles, 'rk-rescues', rescueChoices, { value: rescueChosen, onChange: (v) => { rescueChosen = v; shown = ''; load(); } });
+    box.append(el('span', { className: 'setting-name', textContent: 'Alpine rescue' }), rescueTiles);
+    if (!rescues.length) {
+      box.append(el('p', { className: 'setting-desc', textContent: 'No Alpine rescue image is on the box. Put an alpine-rescue .img (or .img.xz) in /var/lib/hub/rk-images, with its sha256 in a .sha256 file beside it.' }));
+    }
+
+    const cards = (data.cards || []).filter((c) => !c.mounted);
+    if (rescueChosen && !cards.some((c) => c.name === rescueCard)) rescueCard = cards.length ? cards[0].name : '';
+    let cardTiles = null;
+    if (rescueChosen) {
+      if (!cards.length) {
+        box.append(el('p', { className: 'setting-desc', textContent: 'Put the card for the rescue image in a USB reader on this box, and unmount it if a window opened for it.' }));
+      } else {
+        cardTiles = el('div', { id: 'rk-rescue-cards' });
+        AW.choices(cardTiles, 'rk-rescue-cards', cards.map((c) => ({
+          value: c.name,
+          title: `${c.model || 'SD card'}, ${(c.size / 1e9).toFixed(1)} GB`,
+          desc: `In a USB reader (${c.path}).`,
+        })), { value: rescueCard, onChange: (v) => { rescueCard = v; shown = ''; load(); } });
+        box.append(el('span', { className: 'setting-name', textContent: 'Rescue card' }), cardTiles);
+      }
+    }
+
+    const chosen = boots.find((x) => x.id === bootloaderChosen) || boots[0];
+    const rescue = rescues.find((x) => x.name === rescueChosen);
+    const card = cards.find((c) => c.name === rescueCard);
+    const go = el('button', { type: 'button', className: 'action-btn', textContent: rescue ? 'Install the bootloader and the rescue' : 'Install the bootloader' });
+    go.disabled = busy || !(data.tools || {}).rkdeveloptool || !chosen.ready || (!!rescue && (!card || !rescue.sha256));
+    go.addEventListener('click', (event) => {
+      const body = { action: 'install', bootloader: chosen.id, loader: b.mode === 'maskrom' ? chipChosen : null };
+      if (rescue && card) {
+        body.rescue = { image: rescue.name, sha256: rescue.sha256, card: card.name, size: card.size, serial: card.serial };
+      }
+      readThenInstall(body, note, event.currentTarget, go.textContent,
+        `Install ${chosen.title}${rescue ? ` and write ${rescue.name} to the card` : ''}?`);
+    });
+    box.append(el('div', { className: 'library-buttons' }, go));
+    return box;
   }
 
   // Writing an image to the SD card the board's loader shows: one of the images on the box (rkusb.IMAGES), its

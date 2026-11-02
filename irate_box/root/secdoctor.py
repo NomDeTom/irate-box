@@ -46,6 +46,7 @@ from irate_box.root import secdoctor_xref
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
+SYSTEMD_ETC = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd"))
 HUB_USER = os.environ.get("HUB_USER", "hub")
 CI_USER = "hubci"
 CONTROL = STATE / "control"
@@ -1180,30 +1181,6 @@ def step_web_addons(ctx):
                     notes=i["notes"],
                     commands=i["commands"],
                     evidence=i["evidence"],
-                )
-            )
-    try:
-        cat_state = json.loads(_read(STATE / "addons-catalogue.json") or "{}")
-    except ValueError:
-        cat_state = {}
-    for m in local:
-        c = cat_state.get(m["id"]) or {}
-        if c.get("status") == "held":
-            out.append(
-                finding(
-                    f"addons-held-{m['id']}",
-                    named(m["addon"]["title"], M("addons.role.update", "update approval")),
-                    "warn",
-                    M(
-                        "addons.held",
-                        "A newer version in the catalogue changes what you agreed to. The version you agreed "
-                        "to keeps running.",
-                    ),
-                    fix=M(
-                        "addons.held.fix",
-                        "On Add-ons, Web add-ons, read the changes. Then accept the new version, or remove the add-on.",
-                    ),
-                    evidence=c.get("held", []),
                 )
             )
     origin_t = M("addons.origin.title", "Add-on origin")
@@ -3307,6 +3284,7 @@ def run_declared(a, timeout=DECLARED_SECONDS, doctor="security"):
     checks = [c for c in a["checks"] if c.get("doctor", "security") == doctor]
     if not checks:
         return []
+    r, fault = None, ""
     try:
         r = _cmd(sys.executable, "-I", str(DECLARED), timeout=timeout, input=json.dumps(_declared_got(a, checks)))
         got = {x["id"]: x for x in json.loads(r.stdout)} if r and r.returncode == 0 else None
@@ -3325,15 +3303,17 @@ def run_declared(a, timeout=DECLARED_SECONDS, doctor="security"):
                 evidence=[f"stopped after {timeout} s"],
             )
         ]
-    except (ValueError, KeyError, TypeError):
-        got = None
+    except (ValueError, KeyError, TypeError) as exc:
+        # Reading the manifest's checks, or the answer they came back with, went wrong. The child was never
+        # started, so there is no stderr to quote: the reason is this exception's own words.
+        got, fault = None, f"{type(exc).__name__}: {exc}"[:200]
     if got is None:
         return [
             _issue(
                 "checks",
                 "warn",
                 M("addon.declared.failed", "Its own checks could not run, so their results are missing."),
-                evidence=[(r.stderr.strip().splitlines() or ["?"])[-1][:200]] if r else [],
+                evidence=[(r.stderr.strip().splitlines() or ["?"])[-1][:200]] if r else [fault] if fault else [],
             )
         ]
     out, unread = [], {}
@@ -7894,21 +7874,51 @@ def step_manifest(ctx):
         "ProtectProc",
         "PrivateDevices",
         "DynamicUser",
+        "ReadWritePaths",
+        "CapabilityBoundingSet",
+        "RestrictAddressFamilies",
     )
+    list_checks = {"ReadWritePaths", "CapabilityBoundingSet", "RestrictAddressFamilies"}
+    hub_user = os.environ.get("HUB_USER", "hub")
     bad = []
     for name, entry in manifest.get("units", {}).items():
-        props = _show(name, "LoadState", "User", *checks)
+        if ".d/" in name:
+            # A drop-in is not a unit: systemd knows it only through the unit it belongs to.
+            unit, _, _ = name.partition(".d/")
+            unit = unit.replace("$HUB_USER", hub_user)
+            path = name.replace("$HUB_USER", hub_user)
+            props = _show(unit, "LoadState", "DropInPaths")
+            # An add-on this box does not have (its unit absent, or the drop-in never written) is not a finding:
+            # only a drop-in irate-box wrote that its unit does not load is.
+            if not props or props.get("LoadState") in ("not-found", "masked", ""):
+                continue
+            if not (SYSTEMD_ETC / "system" / path).is_file():
+                continue
+            if not any(item == path or item.endswith("/" + path) for item in (props.get("DropInPaths") or "").split()):
+                bad.append(f"{name}: the drop-in is not loaded by {unit}")
+            continue
+        props = _show(name.replace("$HUB_USER", hub_user), "LoadState", "User", *checks)
         if not props or props.get("LoadState") in ("not-found", "masked", ""):
             continue
         if props.get("DynamicUser") != "yes" and entry.get("DynamicUser") != "yes":
             user = props.get("User") or "root"
-            if entry.get("User", "root") != user:
-                bad.append(f"{name}: runs as {user} (manifest {entry.get('User', 'root')})")
+            wanted_user = str(entry.get("User", "root")).replace("$HUB_USER", hub_user)
+            if wanted_user != user:
+                bad.append(f"{name}: runs as {user} (manifest {wanted_user})")
         for key in checks:
             wanted = entry.get(key)
             if wanted is None:
                 continue
-            got = props.get(key) or "no"
+            got = props.get(key) or ""
+            if key in list_checks:
+                want = [
+                    str(v).replace("$STATE", str(STATE)).replace("$ETC", str(ETC)).replace("$HUB_USER", hub_user)
+                    for v in wanted
+                ]
+                if sorted(want) != sorted(got.split()):
+                    bad.append(f"{name}: {key} differs (manifest {want}, now {got.split()})")
+                continue
+            got = got or "no"
             if got != wanted:
                 bad.append(f"{name}: {key}={got} (manifest {wanted})")
     if bad:

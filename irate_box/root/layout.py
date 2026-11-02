@@ -23,6 +23,12 @@ FIRST = 16 * MIB
 BOOTSTATE = 16 * MIB
 STATE = 1 << 30
 SYSTEM = {"lyra": 4 << 30, "pi": 8 << 30}
+# What the copy of a system into a slot leaves out. The mount points stay, empty and with their modes: only what
+# is in them is left out. With the folders left out too, a Lyra booted from a slot copied this way stopped in its
+# initramfs ("run-init: opening console: No such file or directory", "No init found"; 2026-10-30): no /dev.
+COPY_EXCLUDES = tuple(
+    f"--exclude=/{d}/*" for d in ("proc", "sys", "dev", "run", "tmp", "var/log.nand", "mnt", "media", "var/lib/hub")
+) + ("--exclude=/etc/fstab",)
 
 
 def run(*cmd, timeout=3600):
@@ -116,15 +122,17 @@ def _sgdisk(path, parts):
     for index, part in enumerate(parts, 1):
         size = f"+{part['size'] // 512}" if part["name"] != "irate-content" else "0"
         code = "0700" if part["filesystem"] == "vfat" else "8300"
-        commands.append(
-            [
-                "sgdisk",
-                f"--new={index}:{part['start'] // 512}:{size}",
-                f"--change-name={index}:{part['name']}",
-                f"--typecode={index}:{code}",
-                str(path),
-            ]
-        )
+        command = [
+            "sgdisk",
+            f"--new={index}:{part['start'] // 512}:{size}",
+            f"--change-name={index}:{part['name']}",
+            f"--typecode={index}:{code}",
+        ]
+        if part["name"] == "irate-system-a":
+            # The legacy BIOS bootable attribute (bit 2): U-Boot's boot scan looks only at bootable partitions when
+            # one is, and the first partition here is a raw bootstate it cannot read (found on a Lyra, 2026-10-30).
+            command.append(f"--attributes={index}:set:2")
+        commands.append(command + [str(path)])
     return commands
 
 
@@ -190,6 +198,21 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
         for index, part in enumerate(parts, 1):
             device_part = _part(device if loop else str(path), index)
             mkfs = _mkfs(device_part, part)
+            if not mkfs:
+                # A partition left raw keeps whatever the card held there: a card laid out over an image read
+                # back its old root's ext4 signature and UUID in the bootstate (2026-10-29). Wipe the signatures.
+                wipe = ["wipefs", "-a", device_part]
+                used.append(wipe)
+                result = run(*wipe)
+                if result.returncode:
+                    raise Refused(
+                        M(
+                            "layout.wipe",
+                            "{name} could not be cleared of an old filesystem's signature: {why}",
+                            name=part["name"],
+                            why=result.stderr.strip()[-300:],
+                        )
+                    )
             if mkfs:
                 used.append(mkfs)
                 result = run(*mkfs)
@@ -223,16 +246,7 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
                         "-x",
                         "--numeric-ids",
                         "--delete",
-                        "--exclude=/proc",
-                        "--exclude=/sys",
-                        "--exclude=/dev",
-                        "--exclude=/run",
-                        "--exclude=/tmp",
-                        "--exclude=/var/log.nand",
-                        "--exclude=/mnt",
-                        "--exclude=/media",
-                        "--exclude=/var/lib/hub",
-                        "--exclude=/etc/fstab",
+                        *COPY_EXCLUDES,
                         f"{source}/",
                         f"{mnt}/",
                     )

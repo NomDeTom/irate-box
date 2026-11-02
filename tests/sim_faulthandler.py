@@ -58,6 +58,24 @@ try:
     check("  and the hub still running", hub.poll() is None)
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=3) as r:
         check("  still answering", r.status == 200)
+    # faulthandler's own dump on SIGUSR1 crashed the hub (SIGSEGV) about one time in eight on a Lyra, while a request's
+    # thread was starting or ending: ten signals among requests, and the hub still up after each.
+    survived = 0
+    for _ in range(10):
+        hub.send_signal(signal.SIGUSR1)
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=5).read()
+        except OSError:
+            break
+        time.sleep(0.2)
+        if hub.poll() is not None:
+            break
+        survived += 1
+    check(
+        "  ten more SIGUSR1s among requests: the hub stays up and answers",
+        survived == 10,
+        f"{survived}, exit {hub.poll()}",
+    )
 finally:
     hub.terminate()
     hub.wait(10)

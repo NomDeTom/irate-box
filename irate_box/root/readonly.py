@@ -83,8 +83,15 @@ def _enable_pi():
         )
 
 
+# overlayroot's initramfs script runs grep and other BusyBox applets; mPWRD-OS ships no BusyBox, so its initramfs has no
+# grep, and overlayroot then decides the overlay driver is missing and boots the card read-write (overlayroot.log:
+# "loaded 'overlay' module but no 'overlay' in /proc/filesystems"; a Lyra, 2026-10-30).
+LYRA_PACKAGES = ("overlayroot", "busybox")
+
+
 def _enable_lyra():
-    if not _installed("overlayroot"):
+    missing = [name for name in LYRA_PACKAGES if not _installed(name)]
+    if missing:
         said = run(
             "apt-get",
             "update",
@@ -113,15 +120,15 @@ def _enable_lyra():
             "Acquire::http::Timeout=20",
             "-o",
             "Acquire::Retries=0",
-            "overlayroot",
+            *missing,
             timeout=900,
         )
-        if said.returncode or not _installed("overlayroot"):
+        if said.returncode or not all(_installed(name) for name in LYRA_PACKAGES):
             raise Refused(
                 M(
                     "readonly.lyra-not-installed",
-                    "The overlay could not be switched on: overlayroot is not installed, and it could not be installed "
-                    "({why}).",
+                    "The overlay could not be switched on: {packages} could not be installed ({why}).",
+                    packages=" and ".join(missing),
                     why=_why(said) or "no answer from apt",
                 )
             )

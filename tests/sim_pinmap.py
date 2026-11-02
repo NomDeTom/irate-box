@@ -6,6 +6,7 @@ partial read and a missing gpioinfo said, and each line kept by its chip and num
 python3 tests/sim_pinmap.py"""
 
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -92,12 +93,54 @@ check(
     and next(x for x in lyra if x["chip"] == "gpiochip3" and x["line"] == 0)["used"],
     lyra[6],
 )
-lyra_header = pinmap.board_lines("lyra", lyra)
+lyra_header = pinmap.board_lines("lyra", lyra, "Luckfox Lyra Zero W")
 check(
-    "a board without a header map keys every line by its chip and number, with no duplicate pins",
-    len(lyra_header) == len(lyra) == len({row["pin"] for row in lyra_header})
-    and next(row for row in lyra_header if row["pin"] == "gpiochip0:6")["used"],
-    lyra_header[:3],
+    "the Lyra Zero W's 40-pin header: the SPI pin at 19, I2C on 3/5, UART0 on 8/10, power named",
+    len(lyra_header) == 40
+    and next(row for row in lyra_header if row["pin"] == 19)["used"]
+    and next(row for row in lyra_header if row["pin"] == 19)["consumer"] == "ff120000.spi"
+    and next(row for row in lyra_header if row["pin"] == 19)["gpio"] == 6
+    and next(row for row in lyra_header if row["pin"] == 3)["role"] == "TP+RTC"
+    and next(row for row in lyra_header if row["pin"] == 8)["role"] == "UART0 TX"
+    and next(row for row in lyra_header if row["pin"] == 10)["role"] == "UART0 RX"
+    and next(row for row in lyra_header if row["pin"] == 1)["type"] == "3v3"
+    and next(row for row in lyra_header if row["pin"] == 2)["type"] == "5v",
+    lyra_header[:9],
+)
+lyra_unknown = pinmap.board_lines("lyra", lyra)
+check(
+    "a Lyra that is not a Zero W keeps every line by its chip and number, with no duplicate pins",
+    len(lyra_unknown) == len(lyra) == len({row["pin"] for row in lyra_unknown})
+    and next(row for row in lyra_unknown if row["pin"] == "gpiochip0:6")["used"],
+    lyra_unknown[:3],
+)
+# An added controller before the GPIO banks shifts every gpiochipN: the header must follow the device address
+# (/sys/bus/gpio/devices/gpiochipN), not the number. gpiochip0 is a PMIC here; the RK3506 banks are 1..5.
+gpio_sys, devices = Path(tempfile.mkdtemp(prefix="gpio-sys-")), Path(tempfile.mkdtemp(prefix="gpio-dev-"))
+for chip, addr in {
+    "gpiochip0": "e0000000",
+    "gpiochip1": "ff940000",
+    "gpiochip2": "ff870000",
+    "gpiochip3": "ff1c0000",
+    "gpiochip4": "ff1d0000",
+    "gpiochip5": "ff1e0000",
+}.items():
+    target = devices / f"{addr}.gpio" / "gpio" / chip
+    target.mkdir(parents=True)
+    (gpio_sys / chip).symlink_to(target)
+real_gpio_sys = pinmap.GPIO_SYS
+pinmap.GPIO_SYS = gpio_sys
+shifted = [dict(line, chip=f"gpiochip{int(line['chip'][8:]) + 1}") for line in lyra]
+shifted.append({"chip": "gpiochip0", "line": 0, "name": "pmic", "consumer": "", "direction": "input", "used": False})
+shifted_header = pinmap.board_lines("lyra", shifted, "Luckfox Lyra Zero W")
+pinmap.GPIO_SYS = real_gpio_sys
+check(
+    "  a controller added before the banks (gpiochipN shifted): the header follows the device address",
+    next(row for row in shifted_header if row["pin"] == 3)["chip"] == "gpiochip1"
+    and next(row for row in shifted_header if row["pin"] == 3)["line"] == 0
+    and next(row for row in shifted_header if row["pin"] == 27)["chip"] == "gpiochip2"
+    and next(row for row in shifted_header if row["pin"] == 27)["line"] == 9,
+    [row for row in shifted_header if row["pin"] in (3, 27)],
 )
 
 
