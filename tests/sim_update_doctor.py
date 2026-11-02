@@ -490,10 +490,28 @@ check(
     == {"n": 1, "checks": ["Python files compile"]},
     lc["actions"],
 )
-lc = force_case([failed_check("python", "Python files compile"), failed_check("signed", "Signed as this box requires")])
-check("  not when the signing level failed", not lc["actions"], lc["actions"])
-lc = force_case([{"name": H.SIGNED_OLD, "ok": False, "detail": "", "warn": False}])
-check("  nor when it failed in a state kept before the checks had IDs", not lc["actions"], lc["actions"])
+unsigned = [failed_check("python", "Python files compile"), failed_check("signed", "Signed as this box requires")]
+lc = force_case(unsigned)
+check(
+    "  a failed signature at the default levels: the button, its question naming the signature too",
+    [a["choice"] for a in lc["actions"]] == ["force-install"]
+    and msg_args({"summary": lc["actions"][0]["confirm"]}, "update.last-check.force.confirm")["n"] == 2,
+    lc["actions"],
+)
+console_levels = dict(H.secchanges.DEFAULTS, outbound="console")
+with mock.patch.object(H.secchanges, "levels", lambda: dict(console_levels)):
+    lc = force_case(unsigned)
+    old_name = force_case([{"name": H.SIGNED_OLD, "ok": False, "detail": "", "warn": False}])
+check(
+    "  with a level at console: no button, and the fix says how to sign in at the console and run it",
+    not lc["actions"] and msg_ids({"fix": lc.get("fix")}) == {"update.force.unsigned-console"},
+    lc,
+)
+check(
+    "  the same in a state kept before the checks had IDs",
+    not old_name["actions"] and msg_ids({"fix": old_name.get("fix")}) == {"update.force.unsigned-console"},
+    old_name,
+)
 lc = force_case([failed_check("python", "Python files compile")], bash_code=2)
 check("  nor when the downloaded installer does not parse", not lc["actions"], lc["actions"])
 lc = force_case([failed_check("python", "Python files compile")], sha="b" * 40)

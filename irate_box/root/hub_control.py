@@ -2652,8 +2652,9 @@ def _signature_check(src, installed, tag=None):
                 if ok
                 else M(
                     "update.verify.signed.fix",
-                    "Install anyway cannot skip this check. "
-                    "To change the signing level, open Updates, then Update verification.",
+                    "Install anyway skips this check only where this box's security levels let it: with any of "
+                    "them at console, only at the console or over SSH. To change the signing level, open "
+                    "Updates, then Update verification.",
                 )
             ),
         )
@@ -3850,22 +3851,33 @@ def _force_refusal(state, over=None):
             "update.force.parse",
             "The downloaded installer does not pass the shell syntax check. Install anyway cannot skip this check.",
         )
-    if any(c.get("id") == SIGNED_CHECK or c.get("name") == SIGNED_OLD for c in _force_failed(state)):
-        # The point of a signing level (signing.py): not even Install anyway passes it.
-        return M(
-            "update.force.unsigned",
-            "Verification failed. The downloaded version does not meet the signing level of this box. "
-            "Install anyway cannot skip this check. To change the signing level, open Updates, "
-            "then Update verification.",
-        )
-    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
     levels = secchanges.levels()
+    # Only the root command line says "console": the queue refuses it for these actions (transport.TRUSTED), and
+    # "loopback" is the hub's word, so it is not the console.
+    at_console = over == "console"
+    if any(c.get("id") == SIGNED_CHECK or c.get("name") == SIGNED_OLD for c in _force_failed(state)):
+        # Without the signature the update's own manifest proves nothing, so every kind of change is in question:
+        # Install anyway passes it only where the strictest level the owner set allows.
+        if levels.get(_strictest_level(levels)) == "console" and not at_console:
+            return M(
+                "update.force.unsigned-console",
+                "Verification failed. The downloaded version does not meet the signing level of this box, and a "
+                "security change on this box is set to need the console, so Install anyway works for it only "
+                "there. Sign in at the box's console, or over SSH (ssh ACCOUNT@{host}) as an account that can use "
+                "sudo, and run sudo /opt/irate-box/irate-box hub_control update-force-install. To change the "
+                "signing level instead, open Updates, then Update verification.",
+                host=socket.gethostname(),
+            )
+        return None
+    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
     console = any(levels.get(item["toggle"]) == "console" for item in report.get("held") or [])
-    if console and over not in ("console", "loopback"):
+    if console and not at_console:
         return M(
             "update.force.console",
-            "This update's security changes are approved at the console only. Run "
-            "sudo /opt/irate-box/irate-box hub_control update-force-install at the console or over SSH.",
+            "This update's security changes are approved at the console only. Sign in at the box's console, or "
+            "over SSH (ssh ACCOUNT@{host}) as an account that can use sudo, and run "
+            "sudo /opt/irate-box/irate-box hub_control update-force-install.",
+            host=socket.gethostname(),
         )
     return None
 
@@ -4794,9 +4806,12 @@ def updates_doctor_findings():
                             "for updates again.",
                         )
                         if any(c.get("id") == "history" for c in failed)
-                        else M(
+                        else _console_refusal(last)
+                        or M(
                             "update.last-check.fix",
-                            "Review the evidence here. Clear a broken cache or, for a trusted version with a known checker failure, select Install anyway in this doctor. Signing and installer syntax checks cannot be skipped.",
+                            "Review the evidence here. Clear a broken cache or, for a trusted version with a known "
+                            "checker failure, select Install anyway in this doctor. The installer's syntax check "
+                            "cannot be skipped, and a failed signature only where this box's security levels let it.",
                         )
                     ),
                     go=GO_SOURCE_BRANCH if any(c.get("id") == "history" for c in failed) else None,
@@ -4911,6 +4926,16 @@ def _approve_actions(state):
             ),
         )
     ]
+
+
+def _console_refusal(state):
+    """When Install anyway is held for the console, its refusal, which says how to sign in there and run it; else
+    None."""
+    try:
+        why = _force_refusal(state)
+    except Refused:
+        return None
+    return why if why and why["id"] in ("update.force.console", "update.force.unsigned-console") else None
 
 
 def _force_actions(state):

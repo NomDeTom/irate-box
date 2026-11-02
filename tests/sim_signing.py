@@ -5,7 +5,7 @@ update manager), against throwaway repositories: the owner's keys
 checked line by line; signed releases accepted only with a trusted SSH key, the newest tag
 followed; GitHub's level accepting commits signed by its key and refusing an unsigned push (a
 key of our own standing in for GitHub's; skipped where gpg is missing); the root helper's check
-and Install anyway refusing a version not signed as chosen. python3 tests/sim_signing.py"""
+and Install anyway passing a version not signed as chosen only where the levels allow. python3 tests/sim_signing.py"""
 
 import json
 import os
@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="signing-"))
@@ -157,7 +158,7 @@ check(
     c,
 )
 
-# Install anyway cannot pass a signature that failed.
+# Install anyway passes a failed signature only where the strictest level the owner set allows.
 upd = Path(hub_control.UPDATE_SRC)
 upd.mkdir(parents=True, exist_ok=True)
 (upd / "install.sh").write_text("#!/bin/bash\nexit 0\n")
@@ -174,14 +175,28 @@ hub_control._write_update_state(
         ],
     }
 )
-try:
-    hub_control.update_force_install({})
-    ok = False
-    why = "installed"
-except hub_control.Refused as exc:
-    ok, why = exc.message["id"] == "update.force.unsigned", exc.message
-check("Install anyway refuses a version not signed as required", ok, why)
-# A state kept before the checks had IDs: the signature check known by its old name, and refused the same.
+state = hub_control._read_update_state()
+defaults = dict(hub_control.secchanges.DEFAULTS)
+at_console = dict(defaults, outbound="console")
+
+
+def refusal(levels, over):
+    with mock.patch.object(hub_control.secchanges, "levels", lambda: dict(levels)):
+        why = hub_control._force_refusal(state, over)
+    return why and why["id"]
+
+
+check("Install anyway passes a failed signature over HTTPS at the default levels", refusal(defaults, "https") is None)
+check(
+    "  with any level at console, refused over HTTPS, saying how to sign in and run it there",
+    refusal(at_console, "https") == "update.force.unsigned-console",
+)
+with mock.patch.object(hub_control.secchanges, "levels", lambda: dict(at_console)):
+    text = hub_control._force_refusal(state, "https")["en"]
+check("  the refusal names SSH and the command", "ssh ACCOUNT@" in text and "update-force-install" in text, text)
+check("  and at the console, passed", refusal(at_console, "console") is None)
+check("  the hub's loopback is not the console", refusal(at_console, "loopback") == "update.force.unsigned-console")
+# A state kept before the checks had IDs: the signature check known by its old name, and treated the same.
 hub_control._write_update_state(
     {
         "available": head,
@@ -189,13 +204,11 @@ hub_control._write_update_state(
         "checks": [{"name": hub_control.SIGNED_OLD, "ok": False, "detail": "unsigned", "warn": False}],
     }
 )
-try:
-    hub_control.update_force_install({})
-    ok = False
-    why = "installed"
-except hub_control.Refused as exc:
-    ok, why = exc.message["id"] == "update.force.unsigned", exc.message
-check("  and in a state kept before the checks had IDs", ok, why)
+state = hub_control._read_update_state()
+check(
+    "  and in a state kept before the checks had IDs",
+    refusal(at_console, "https") == "update.force.unsigned-console" and refusal(defaults, "https") is None,
+)
 
 # --- off: nothing more than before ---
 hub_control.update_signing({"level": "off", "signers": ""})
@@ -258,7 +271,6 @@ check(
 
 # What may be an update source depends on the address and the signing level (update-source-policy): the same
 # function decides at every place a source is set or used; a refusal runs no git command and leaves the cache alone.
-from unittest import mock
 
 hub_control._source_protocols = REAL_PROTOCOLS  # the fixtures' file transport (above) is for the fixtures only
 OPTIONS_FILE = Path(hub_control.ETC) / "install-options"
