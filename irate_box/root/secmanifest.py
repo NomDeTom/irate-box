@@ -752,4 +752,11 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["apply-units"]:
         print("\n".join(apply_units()) or "the units have their declared sandboxes")
     else:
-        print("\n".join(apply_secrets()) or "the secrets have their declared modes and owners")
+        # A count, not the list: the list names the secrets' paths, which the code scanner reads as clear-text
+        # logging. The security doctor's manifest step says which, if any, still differ.
+        n = len(apply_secrets())
+        print(
+            f"{n} secret(s) given their declared mode or owner"
+            if n
+            else "the secrets have their declared modes and owners"
+        )
