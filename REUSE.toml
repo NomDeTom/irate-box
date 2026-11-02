@@ -30,6 +30,17 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"
 SPDX-License-Identifier = "MIT"
 
+# The country names the hub ships (tools/make-countries.py): taken from Debian's iso-codes, under its licence.
+[[annotations]]
+path = "irate_box/hub/countries.json"
+precedence = "override"
+SPDX-FileCopyrightText = [
+  "2001-2008 Alastair McKinstry",
+  "2004-2016 Christian Perrier",
+  "2005-2025 Tobias Quathamer",
+]
+SPDX-License-Identifier = "LGPL-2.1-or-later"
+
 [[annotations]]
 path = "tests/jsdom/*.json"
 precedence = "aggregate"

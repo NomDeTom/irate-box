@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The WiFi country as a setting (hub/wificountry.py, the root helper's wifi-country): the list from tzdata's
-ISO 3166 table, the saved country read back, a country applied now (iw reg set) and kept for boot (cfg80211's
+"""The WiFi country as a setting (hub/wificountry.py, the root helper's wifi-country): the list from the box's
+iso-codes, or else the list the hub ships, the saved country read back, a country applied now (iw reg set) and kept for boot (cfg80211's
 option file), an unknown one refused, iw failing (kept for boot, said so), the inventory carrying both, and a
-netplan handover's undo leaving a country chosen since. iw, the table and the folders stood in for.
+netplan handover's undo leaving a country chosen since. iw, iso-codes and the folders stood in for.
 python3 tests/sim_wificountry.py"""
 
+import json
 import os
 import subprocess
 import sys
@@ -14,12 +15,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="wificountry-"))
-(T / "zoneinfo").mkdir()
-(T / "zoneinfo/iso3166.tab").write_text(
-    "# ISO 3166 alpha-2 country codes\n#\nGB\tBritain (UK)\nUS\tUnited States\nDE\tGermany\nxx\tnot a code\n"
-)
+ISO_CODES = T / "iso-codes" / "iso_3166-1.json"  # none at first: a minimal image, as the Lyra's
 os.environ.update(
-    HUB_ISO3166=str(T / "zoneinfo/iso3166.tab"),
+    HUB_ISO_CODES=str(ISO_CODES),
     HUB_MODPROBE_DIR=str(T / "modprobe.d"),
     HUB_STATE_DIR=str(T / "state"),
     HUB_ETC_DIR=str(T / "etc"),
@@ -52,11 +50,35 @@ hub_control.run = fake_run
 hub_control.netinv.scan = lambda: {"stand-in": True}
 hub_control.netinv.write = lambda inv, path: None
 
+shipped = wificountry.countries()
 check(
-    "the list: tzdata's codes and names, comments and malformed lines left out",
-    wificountry.countries() == {"GB": "Britain (UK)", "US": "United States", "DE": "Germany"},
+    "no iso-codes on the box: the shipped list, the United Kingdom by that name",
+    len(shipped) == 249 and shipped["GB"] == "United Kingdom" and shipped["KR"] == "South Korea",
+    {k: shipped.get(k) for k in ("GB", "KR")},
+)
+check("  in code order", list(shipped) == sorted(shipped), list(shipped)[:5])
+ISO_CODES.parent.mkdir()
+ISO_CODES.write_text(
+    json.dumps(
+        {
+            "3166-1": [
+                {"alpha_2": "GB", "name": "United Kingdom", "official_name": "United Kingdom of Great Britain"},
+                {"alpha_2": "KR", "name": "Korea, Republic of", "common_name": "South Korea"},
+                {"alpha_2": "ZZ", "name": "Newland"},  # a newer iso-codes than the shipped list
+                {"alpha_2": "xx", "name": "not a code"},
+                {"name": "no code"},
+            ]
+        }
+    )
+)
+check(
+    "iso-codes on the box: its own list, the common name where there is one, malformed entries left out",
+    wificountry.countries() == {"GB": "United Kingdom", "KR": "South Korea", "ZZ": "Newland"},
     wificountry.countries(),
 )
+ISO_CODES.write_text("{not json")
+check("  an unreadable iso-codes: the shipped list again", wificountry.countries() == shipped)
+ISO_CODES.unlink()
 check("nothing saved yet", wificountry.saved() is None)
 
 said = hub_control.wifi_country({"country": "GB"})
@@ -95,10 +117,21 @@ netinv.reg_country = lambda: "US"
 inv = {
     "country": netinv.reg_country(),
     "country_saved": wificountry.saved(),
-    "countries": sorted(wificountry.countries().items(), key=lambda pair: pair[1]),
+    "countries": wificountry.by_name(),
 }
+names = [name for _, name in inv["countries"]]
 check(
-    "the inventory's shape: the list ordered by name", [code for code, _ in inv["countries"]] == ["GB", "DE", "US"], inv
+    "the inventory's list by name, accents aside: Åland with the As, Côte d'Ivoire with the Cs, Türkiye with the Ts",
+    names[:4] == ["Afghanistan", "Åland Islands", "Albania", "Algeria"]
+    and names.index("Côte d'Ivoire") < names.index("Croatia")
+    and names.index("Türkiye") < names.index("Turkmenistan")
+    and names.index("Réunion") < names.index("Romania")
+    and names.index("United Kingdom") < names.index("United States"),
+    names[:6],
+)
+check(
+    "  netinv lists them so",
+    "wificountry.by_name()" in (REPO / "irate_box/hub/netinv.py").read_text(),
 )
 netinv.reg_country = real_reg
 check(
