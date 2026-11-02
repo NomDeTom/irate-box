@@ -110,6 +110,13 @@ const AL = (() => {
   const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) { /* private window: not kept */ } };
   const folded = new Set(stored(FOLD_KEY, []));
   let auto = stored(AUTO_KEY, false) === true;
+  // Nothing folded by this viewer yet: on a phone the menu opens with only the current group shown.
+  const foldStored = (() => {
+    try {
+      const kept = JSON.parse(localStorage.getItem(FOLD_KEY) || '[]');
+      return Array.isArray(kept) && kept.length > 0;
+    } catch (_) { return false; }
+  })();
   const groups = new Map();  // name -> { head, box }
   function group(name, links) {
     const id = 'side-group-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -144,10 +151,12 @@ const AL = (() => {
     else { delete g.head.dataset.badge; g.head.removeAttribute('title'); }
   }
   // Open the groups as kept, the current one always; with auto-collapse, only the current one.
+  // On a phone with nothing folded yet, only the current one too: a screen or less to begin with.
   function fold(current) {
     // A page opened in a group folded by hand unfolds it for good: the viewer went there.
     if (current && folded.delete(current)) store(FOLD_KEY, [...folded]);
-    groups.forEach((_, name) => setOpen(name, name === current || (!auto && !folded.has(name))));
+    const onlyCurrent = narrowLayout() && !foldStored;
+    groups.forEach((_, name) => setOpen(name, name === current || (!onlyCurrent && !auto && !folded.has(name))));
   }
   const autoBtn = el('button', { type: 'button', class: 'action-btn side-auto', 'aria-pressed': String(auto) });
   const autoLabel = () => { autoBtn.textContent = `Auto-collapse: ${auto ? 'On' : 'Off'}`; autoBtn.setAttribute('aria-pressed', String(auto)); };
@@ -250,8 +259,7 @@ const AL = (() => {
     fold(cur.group);
     document.getElementById('admin-current').textContent = cur.title;
     document.title = `${cur.title} · Hub admin`;
-    side.classList.remove('open');
-    menu.setAttribute('aria-expanded', 'false');
+    closeMenu(false);
     // A target inside a folded part opens it (a link to an app's installation or access).
     for (let details = target && target.closest('details'); details; details = details.parentElement && details.parentElement.closest('details')) details.open = true;
     if (target && target !== cur.el && target !== cur.el.querySelector('.admin-pane') && target.scrollIntoView) target.scrollIntoView({ block: 'start' });
@@ -322,12 +330,42 @@ const AL = (() => {
     event.returnValue = '';
   });
 
-  menu.addEventListener('click', () => { const open = side.classList.toggle('open'); menu.setAttribute('aria-expanded', String(open)); });
+  // The ☰ menu opens the list below it; Escape or a tap on the page behind closes it, and focus returns to ☰.
+  function closeMenu(focus) {
+    if (!side.classList.contains('open')) return;
+    side.classList.remove('open');
+    menu.setAttribute('aria-expanded', 'false');
+    if (focus && menu.focus) menu.focus();
+  }
+  function narrowLayout() {
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 760px)').matches) return true;
+    const layout = side.parentElement;
+    const width = layout && layout.getBoundingClientRect ? layout.getBoundingClientRect().width : 0;
+    return width > 0 && width <= 760;
+  }
+  menu.addEventListener('click', () => {
+    const open = side.classList.toggle('open');
+    menu.setAttribute('aria-expanded', String(open));
+    if (open) fitSoon();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && side.classList.contains('open')) closeMenu(true);
+  }, true);
+  document.addEventListener('click', (event) => {
+    if (side.classList.contains('open') && !side.contains(event.target)) closeMenu(false);
+  });
   // The sticky sidebar's height, from where it is now to the window's foot: before the page has scrolled the
-  // header away it starts lower, and a height from the window's top would put its foot out of sight.
+  // header away it starts lower, and a height from the window's top would put its foot out of sight. On a phone
+  // the open list is bounded by the ☰ button's bottom instead: less the page behind it is under the panel.
   let fitPending = false;
   function fitSide() {
     fitPending = false;
+    if (narrowLayout()) {
+      const rect = menu.getBoundingClientRect ? menu.getBoundingClientRect() : null;
+      const bottom = rect && rect.height ? rect.bottom : 0;
+      if (bottom > 0) side.style.setProperty('--side-room', `${Math.max(window.innerHeight - bottom - 16, 160)}px`);
+      return;
+    }
     if (getComputedStyle(side).position !== 'sticky') { side.style.removeProperty('--side-room'); return; }
     const top = Math.max(side.getBoundingClientRect().top, 16);
     side.style.setProperty('--side-room', `${Math.max(window.innerHeight - top - 16, 160)}px`);

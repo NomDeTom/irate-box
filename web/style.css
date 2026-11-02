@@ -1909,8 +1909,11 @@ body.about h3 {
     gap: 1rem;
   }
   .admin-side {
-    position: relative;
+    /* Sticky as a whole, closed or open: the ☰ (and the open panel under it) stays in sight while
+       the page behind scrolls. Sticky on the button alone would end with its parent's one-button height. */
+    position: sticky;
     top: 0;
+    z-index: 30;
     max-height: none;
     overflow: visible;
   }
@@ -1937,6 +1940,9 @@ body.about h3 {
   }
   .admin-side.open .admin-side-list {
     display: flex;
+    /* The room from the ☰ button's bottom to the window's foot (admin-layout.js's fitSide): the list
+       scrolls by itself, the page behind it does not, and the ☰ button stays in sight above it. */
+    max-height: var(--side-room, calc(100dvh - 4.5rem));
   }
   .admin-side:not(.open) .side-foot {
     display: none;
@@ -4259,8 +4265,11 @@ html:has(> body.admin) {
     gap: 1rem;
   }
   .admin-side {
-    position: relative;
+    /* Sticky as a whole, closed or open: the ☰ (and the open panel under it) stays in sight while
+       the page behind scrolls. Sticky on the button alone would end with its parent's one-button height. */
+    position: sticky;
     top: 0;
+    z-index: 30;
     max-height: none;
     overflow: visible;
   }
@@ -4287,6 +4296,9 @@ html:has(> body.admin) {
   }
   .admin-side.open .admin-side-list {
     display: flex;
+    /* The room from the ☰ button's bottom to the window's foot (admin-layout.js's fitSide): the list
+       scrolls by itself, the page behind it does not, and the ☰ button stays in sight above it. */
+    max-height: var(--side-room, calc(100dvh - 4.5rem));
   }
   .admin-side:not(.open) .side-foot {
     display: none;
