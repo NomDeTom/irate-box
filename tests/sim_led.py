@@ -150,6 +150,36 @@ check(
     f"{(T / 'sys/class/gpio/unexport').read_text()} {(T / 'sys/bus/platform/drivers/leds-gpio/bind').read_text()}",
 )
 
+# A restart in high-impedance mode: the driver is bound again and the exported line is gone, so
+# the saved raw record is stale. It must be dropped and the line taken afresh.
+board(
+    ["sinovoip,bpi-m2-zero", "allwinner,sun8i-h2-plus"],
+    "Banana Pi BPI-M2-Zero",
+    {"bananapi-m2-zero:red:pwr": (None, "platform")},
+)
+led.set_option("show", "network")
+led.set_option("off", "float")
+put(
+    T / "etc/led-saved.json",
+    json.dumps({name: {"raw": {"device": "leds", "gpio": 362, "trigger": "none", "brightness": "0"}}}),
+)
+shutil.rmtree(T / "sys/class/gpio/gpio362")
+setter, mode = led.take(name)
+check(
+    "a stale raw record after a restart is taken afresh",
+    mode == "raw"
+    and (T / "sys/bus/platform/drivers/leds-gpio/unbind").read_text() == "leds\n"
+    and (T / "sys/class/gpio/export").read_text() == "362\n",
+    (mode, (T / "sys/bus/platform/drivers/leds-gpio/unbind").read_text(), (T / "sys/class/gpio/export").read_text()),
+)
+put(T / "sys/class/gpio/gpio362/direction", "in\n")
+check("  and its writes land", setter(True) and (T / "sys/class/gpio/gpio362/direction").read_text() == "low\n")
+kept = led._saved()[name]["raw"]
+check(
+    "  the board's own trigger and brightness are kept", kept["trigger"] == "none" and kept["brightness"] == "0", kept
+)
+check("  given back", led.give_back(name) is not None)
+
 board(
     ["raspberrypi,3-model-b-plus", "brcm,bcm2837"],
     "Raspberry Pi 3 Model B Plus Rev 1.3",

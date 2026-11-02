@@ -449,19 +449,31 @@ def take(name):
     when the owner chose it and this board's line is known; everything else falls back to LED class."""
     saved = _saved()
     was = saved.get(name)
+    kept = None
     if was and was.get("raw"):
-        if not _raw_wanted(name):
-            give_back(name)
-            was = None
-        else:
+        info = was["raw"]
+        gpio = info.get("gpio")
+        line = GPIO_CLASS / f"gpio{gpio}" if gpio is not None else None
+        # A raw record is only live while its exported line is there and the LED class (whose
+        # driver was unbound) is not. A restart rebinds the driver and takes the export away; then
+        # the record is stale, and its trigger and brightness are still the board's own.
+        if _raw_wanted(name) and line is not None and line.exists() and not (LEDS / name).exists():
             spec = _raw_spec(name)
             if spec:
                 raw = _RawLed(name, *spec)
-                raw.device, raw.gpio = was["raw"].get("device"), was["raw"].get("gpio")
+                raw.device, raw.gpio = info.get("device"), gpio
                 raw.unbound = raw.exported = True
                 return raw.set, "raw"
+        if _raw_wanted(name):
+            kept = {"trigger": info.get("trigger"), "brightness": info.get("brightness")}
+            saved.pop(name, None)
+            if saved:
+                _save_saved(saved)
+            else:
+                SAVED.unlink(missing_ok=True)
+        else:
             give_back(name)
-            was = None
+        was = None
     if _raw_wanted(name):
         spec = _raw_spec(name)
         raw = _RawLed(name, *spec)
@@ -472,8 +484,8 @@ def take(name):
                 "raw": {
                     "device": raw.device,
                     "gpio": raw.gpio,
-                    "trigger": trig.group(1) if trig else None,
-                    "brightness": read(d / "brightness"),
+                    "trigger": kept["trigger"] if kept else (trig.group(1) if trig else None),
+                    "brightness": kept["brightness"] if kept else read(d / "brightness"),
                 }
             }
             _save_saved(saved)
