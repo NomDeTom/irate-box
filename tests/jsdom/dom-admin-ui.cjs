@@ -264,6 +264,12 @@ setTimeout(() => {
     d.querySelector('[data-inv="builtin"]').click();
     const built = [...d.querySelectorAll('#inv-list .inv-row')];
     check('  Built in shows only the hub\'s own parts', built.length && built.every((r) => /Built-in app/.test(r.textContent)), built.length);
+    d.querySelector('[data-inv="not-installed"]').click();
+    const notInstalled = [...d.querySelectorAll('#inv-list .inv-row')];
+    check('  Not installed shows the apps that are not installed, including one whose state is unknown',
+      notInstalled.length
+      && notInstalled.every((r) => ![...r.querySelectorAll('.inv-fact')].some((f) => f.textContent === 'Installed'))
+      && notInstalled.some((r) => /Installation status unavailable/.test(r.textContent)), notInstalled.length);
     d.querySelector('[data-inv="all"]').click();
     const q = d.getElementById('inv-q');
     q.value = 'kiwix'; q.dispatchEvent(new w.Event('input'));

@@ -253,13 +253,20 @@ firewall.loaded = lambda: True
 f = security.share_findings()
 chips = lambda x: [(a["choice"], a["on"]) for a in x["actions"]]  # noqa: E731
 check(
-    "contained: one ok setting naming the level, each part a row of On (as it is) and Off (asked first)",
+    "contained: one ok setting naming the level, each protection a row of On and Off, identification last",
     [x["status"] for x in f] == ["ok"]
     and f[0]["summary"]["id"] == f"guest-net.level.{share.load()['level']}"
     and chips(f[0])
-    == [c for k in share.CONTAIN for c in ((f"share-contain-{k}-on", True), (f"share-contain-{k}-off", False))]
+    == [
+        c
+        for k in ("lan", "tunnels", "dns_hold", "by_mac")
+        for c in ((f"share-contain-{k}-on", True), (f"share-contain-{k}-off", False))
+    ]
     and len({str(a["group"]) for a in f[0]["actions"]}) == len(share.CONTAIN)
-    and all(a.get("confirm") for a in f[0]["actions"] if a["choice"].endswith("-off")),
+    and all(a.get("confirm") for a in f[0]["actions"] if a["choice"].endswith("-off"))
+    and [a["label"]["en"] for a in f[0]["actions"] if a["choice"].startswith("share-contain-by_mac")]
+    == ["By hardware address", "By IP address"]
+    and f[0]["actions"][-2]["group"]["en"] == "How the box identifies a guest",
     f,
 )
 ran.clear()

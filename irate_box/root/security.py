@@ -3110,8 +3110,26 @@ def share_findings():
             )
         )
     chips = []
-    for k in share.CONTAIN:
+    for k in ("lan", "tunnels", "dns_hold", "by_mac"):
         on = st["contain"][k]
+        if k == "by_mac":
+            group = M("guest-net.identify", "How the box identifies a guest")
+            chips += [
+                _chip(group, f"share-contain-{k}-on", M("guest-net.by-mac.device", "By hardware address"), on),
+                _chip(
+                    group,
+                    f"share-contain-{k}-off",
+                    M("guest-net.by-mac.ip", "By IP address"),
+                    not on,
+                    M(
+                        "guest-net.by-mac.ip.confirm",
+                        "The box identifies each guest by IP address. A new device given an address that another "
+                        "device had in the last 12 hours also gets that device's internet access, without the "
+                        "welcome page.",
+                    ),
+                ),
+            ]
+            continue
         chips += [
             _chip(CONTAIN_HEADING[k], f"share-contain-{k}-on", ON, on),
             _chip(
