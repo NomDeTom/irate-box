@@ -3903,7 +3903,7 @@ function scanButtons(finding, busy) {
     const b = el("button", {
       type: "button",
       className: "action-btn" + (secChosen(finding.id, action) ? " pending" : ""),
-      dataset: { wait: `sec:${finding.id}:${action.choice || action.label}` },
+      dataset: { wait: `secscan:${finding.id}:${action.choice || action.label}` },
       textContent: action.label,
       disabled: busy,
       title: secChosen(finding.id, action)
@@ -4791,7 +4791,7 @@ function jointDo(i, data, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
-          dataset: { wait: `sec:${finding.id}:${action.choice || action.label}` },
+          dataset: { wait: `secjoint:${finding.id}:${action.choice || action.label}` },
           textContent: action.label,
           disabled: busy,
           onclick: (event) => secFix(finding.id, action, event.currentTarget),
