@@ -19,6 +19,7 @@ changed, by which run. It also reads the update machinery itself:
 Read only. Repairs are the owner's, on the page that owns the part; stdlib only.
 """
 
+import fcntl
 import json
 import os
 import re
@@ -28,6 +29,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from irate_box import durable
 from irate_box.finding import finding
 from irate_box.msg import M, when
 
@@ -37,6 +39,7 @@ PARTS = Path(os.environ.get("HUB_PARTS_STATE", CONTROL / "parts.json"))
 DPKG_LOG = Path(os.environ.get("HUB_DPKG_LOG", "/var/log/dpkg.log"))
 KERNELS = Path(os.environ.get("HUB_KERNEL_MODULES", "/lib/modules"))
 UNATTENDED = Path(os.environ.get("HUB_UNATTENDED_LOG", "/var/log/unattended-upgrades/unattended-upgrades.log"))
+APT_LOCK = Path(os.environ.get("HUB_APT_LOCK", "/var/lib/dpkg/lock-frontend"))
 
 # The parts an image brings, watched whether or not a toolkit owns them. An installed toolkit's
 # packages are added from its manifest, so the image-parts work needs no second list here.
@@ -93,9 +96,7 @@ def _read(path, default):
 
 def _write(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data, indent=1, sort_keys=True))
-    os.replace(tmp, path)
+    durable.write(path, json.dumps(data, indent=1, sort_keys=True) + "\n")
 
 
 def _installed_versions():
@@ -228,16 +229,42 @@ def _removed():
     return out
 
 
+def _apt_running():
+    """Whether apt or dpkg holds the frontend lock now: True, False, or None when it cannot be told."""
+    try:
+        fh = APT_LOCK.open("a")
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return None
+    try:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fh, fcntl.LOCK_UN)
+        return False
+    finally:
+        fh.close()
+
+
 def _broken():
     try:
         audit = run("dpkg", "--audit", timeout=120)
-        check = run("apt-get", "check", "-q", timeout=180)
     except (OSError, subprocess.SubprocessError):
         return []
-    lines = [ln for ln in (audit.stdout + check.stdout + audit.stderr + check.stderr).splitlines() if ln.strip()]
-    if audit.returncode == 0 and check.returncode == 0 and not lines:
+    audit_lines = [ln for ln in audit.stdout.splitlines() if ln.strip()]
+    running = _apt_running()
+    check = None
+    if not audit_lines and running is not True:
+        try:
+            check = run("apt-get", "check", "-q", timeout=180)
+        except (OSError, subprocess.SubprocessError):
+            check = None
+    lines = audit_lines + ([ln for ln in (check.stdout + check.stderr).splitlines() if ln.strip()] if check else [])
+    if not audit_lines and (check is None or check.returncode == 0):
         return []
-    count = len([ln for ln in audit.stdout.splitlines() if ln.strip()])
+    count = len(audit_lines) or (1 if check and check.returncode else 0)
     return [
         finding(
             "packages-broken",
@@ -261,6 +288,9 @@ def _broken():
                 "Let dpkg finish the packages, then let apt repair what depends on them. The commands here do "
                 "both, and keep nothing that was not already installed.",
             ),
+            notes=[M("update.parts-broken.running", "An update is running now. The check waits for it to finish.")]
+            if running is True
+            else [],
             commands=["dpkg --configure -a", "apt-get -f install"],
             evidence=lines[-6:],
             go=GO["updates"],
@@ -275,7 +305,10 @@ def _unattended():
     except OSError:
         text = ""
     if text:
-        lines = [ln for ln in text.splitlines() if re.search(r"\b(error|failed|could not)\b", ln, re.I)]
+        whole = text.splitlines()
+        starts = [i for i, ln in enumerate(whole) if "starting unattended upgrades script" in ln.lower()]
+        last = whole[starts[-1] + 1 :] if starts else whole
+        lines = [ln for ln in last if re.search(r"\b(error|failed|could not)\b", ln, re.I)]
         if lines:
             out.append(
                 finding(
@@ -343,7 +376,7 @@ def _version_key(name):
     return tuple(int(x) if x.isdigit() else x for x in re.split(r"[._+-]", name))
 
 
-def _newest_kernel():
+def _newest_kernel(installed=None):
     try:
         names = [p.name for p in KERNELS.iterdir() if p.is_dir() and not p.is_symlink()]
     except OSError:
@@ -352,10 +385,17 @@ def _newest_kernel():
     if not names:
         return None, []
     try:
-        names.sort(key=_version_key)
+        installed = installed if installed is not None else _installed_versions()
+    except OSError:
+        installed = {}
+    packages = [n[len("linux-image-") :] for n in installed if n.startswith("linux-image-")]
+    matched = [n for n in names if any(n in package or package.endswith(n) for package in packages)]
+    use = matched or names
+    try:
+        use.sort(key=_version_key)
     except TypeError:
-        names.sort()
-    return names[-1], names
+        use.sort()
+    return use[-1], use
 
 
 def _kernel():
@@ -439,6 +479,10 @@ def _services(installed=None):
                 "-p",
                 "Result",
                 "-p",
+                "StateChangeTimestamp",
+                "-p",
+                "InactiveEnterTimestamp",
+                "-p",
                 "ActiveEnterTimestamp",
                 unit,
                 timeout=30,
@@ -447,7 +491,11 @@ def _services(installed=None):
             continue
         props = dict(line.partition("=")[::2] for line in said.stdout.splitlines() if "=" in line)
         state, result = props.get("ActiveState"), props.get("Result")
-        started = _parse_systemd_time(props.get("ActiveEnterTimestamp"))
+        started = (
+            _parse_systemd_time(props.get("StateChangeTimestamp"))
+            or _parse_systemd_time(props.get("InactiveEnterTimestamp"))
+            or _parse_systemd_time(props.get("ActiveEnterTimestamp"))
+        )
         if state != "failed" and result not in ("failed", "exit-code", "signal"):
             continue
         if since and started and started < since - 60:

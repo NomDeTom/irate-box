@@ -93,6 +93,29 @@ check(
     found,
 )
 
+# An apt run in progress: its lock is held, so apt-get check is not asked.
+import fcntl
+
+lock = T / "apt.lock"
+fh = lock.open("a")
+fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+partswatch.APT_LOCK = lock
+
+
+def locked_run(*cmd, timeout=120, **kw):
+    if cmd[:2] == ("dpkg", "--audit"):
+        return done(0, "")
+    raise AssertionError(f"asked {cmd} while apt holds the lock")
+
+
+try:
+    with mock.patch.object(partswatch, "run", locked_run):
+        found = ids(partswatch._broken())
+finally:
+    fcntl.flock(fh, fcntl.LOCK_UN)
+    fh.close()
+check("an apt run in progress: no false broken-packages finding", not found, found)
+
 # A failed automatic update: the log's error, and the unit's result.
 unattended.write_text(
     "2026-11-02 06:00:01 INFO Starting unattended upgrades script\n"
@@ -115,6 +138,14 @@ check(
     and found["unattended-failed"]["go"]["section"] == "updates",
     found,
 )
+unattended.write_text(
+    unattended.read_text()
+    + "2026-11-02 12:00:01 INFO Starting unattended upgrades script\n"
+    + "2026-11-02 12:00:09 INFO All upgrades installed\n"
+)
+with mock.patch.object(partswatch, "run", unattended_run):
+    found = ids(partswatch._unattended())
+check("  a later run that finished: the older error is not repeated", "unattended-failed" not in found, found)
 
 # The newest kernel, and a DKMS module that built only for the one before it.
 (modules / "6.1.110").mkdir()
@@ -127,7 +158,12 @@ def dkms_run(*cmd, timeout=120, **kw):
     return done()
 
 
-with mock.patch.object(partswatch, "run", dkms_run):
+with (
+    mock.patch.object(partswatch, "run", dkms_run),
+    mock.patch.object(
+        partswatch, "_installed_versions", lambda: {"linux-image-6.1.110-armmp": "1", "linux-image-6.1.120-armmp": "1"}
+    ),
+):
     found = ids(partswatch._kernel())
 check(
     "a new kernel without its DKMS driver: a problem before any reboot",
@@ -135,15 +171,33 @@ check(
     and found["kernel-dkms"]["summary"]["args"] == {"kernel": "6.1.120", "modules": "aic8800"},
     found,
 )
+(modules / "6.9.999").mkdir()  # a folder left by a kernel the box no longer has installed
+with (
+    mock.patch.object(partswatch, "run", dkms_run),
+    mock.patch.object(
+        partswatch, "_installed_versions", lambda: {"linux-image-6.1.110-armmp": "1", "linux-image-6.1.120-armmp": "1"}
+    ),
+):
+    found = ids(partswatch._kernel())
+check(
+    "  the newest installed kernel, not merely the highest folder under /lib/modules",
+    found["kernel-dkms"]["summary"]["args"]["kernel"] == "6.1.120",
+    found,
+)
 
 # A service that failed after the last dpkg run.
 log.write_text(f"{time.strftime('%Y-%m-%d %H:%M:%S')} upgrade chrony:armhf 4.6.1-1 4.6.1-1\n")
 started = time.strftime("%a %Y-%m-%d %H:%M:%S", time.localtime(time.time() - 10))
+active = time.strftime("%a %Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3600))
 
 
 def service_run(*cmd, timeout=120, **kw):
     if cmd[0] == "systemctl":
-        return done(0, f"ActiveState=failed\nResult=exit-code\nActiveEnterTimestamp={started} UTC\n")
+        return done(
+            0,
+            f"ActiveState=failed\nResult=exit-code\nStateChangeTimestamp={started} UTC\n"
+            f"InactiveEnterTimestamp={started} UTC\nActiveEnterTimestamp={active} UTC\n",
+        )
     return done()
 
 
