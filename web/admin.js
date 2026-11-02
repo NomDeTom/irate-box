@@ -3187,7 +3187,7 @@ const upd = {
 };
 const MARK = { ok: "✅", note: "•", warn: "⚠️", problem: "❌" };
 // evidence: what a check saw (an error line, a file), as data; note: what the check does not show.
-const checkItem = (status, title, detail, fix, evidence = [], note = "") =>
+const checkItem = (status, title, detail, fix, evidence = [], note = "", go = null) =>
   el(
     "li",
     { className: `check check-${status}` },
@@ -3197,6 +3197,7 @@ const checkItem = (status, title, detail, fix, evidence = [], note = "") =>
     fix ? el("span", { className: "setting-desc", textContent: fix }) : null,
     note ? el("span", { className: "setting-desc", textContent: note }) : null,
     evidenceList(evidence),
+    go ? el("div", { className: "library-buttons" }, goLink(go)) : null,
   );
 const UPD_DOING = {
   check: "Checking for updates",
@@ -3310,7 +3311,15 @@ function renderUpdoctor(report, stale) {
         type: "button",
         className: "action-btn",
         textContent: action.label,
-        onclick: () => {
+        onclick: async (event) => {
+          if (
+            action.confirm &&
+            !(await AW.confirmHere(said(action.confirm), {
+              anchor: event.currentTarget,
+              label: said(action.label),
+            }))
+          )
+            return;
           requestUpdate(action.choice, null, {}, true);
         },
       }),
@@ -3395,6 +3404,7 @@ function renderUpdate(data) {
         c.ok ? "" : c.fix,
         c.ok ? [] : c.evidence || [],
         c.note,
+        c.ok ? null : c.go,
       ),
     ),
   );
@@ -3506,6 +3516,7 @@ async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = 
           "Downloading the update. The box verifies it and caches its downloads…",
         install: "Installing the update…",
         "force-install": "Installing the downloaded version anyway…",
+        "approve-install": "Approving the security changes and installing the update…",
         doctor: "Running the update doctor. It can take up to two minutes…",
         "poll-target": "Asking the repository for its branches…",
         "poll-source": "Asking the repository for its branches…",

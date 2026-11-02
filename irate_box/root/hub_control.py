@@ -2295,7 +2295,7 @@ class Progress:
 # block. A state kept from before the messages has name and detail as English text: the page and Install anyway read both.
 
 
-def _check(cid, ok, name, detail, warn=False, fix=None, evidence=(), note=None):
+def _check(cid, ok, name, detail, warn=False, fix=None, evidence=(), note=None, go=None):
     return {
         "id": cid,
         "name": name,
@@ -2305,6 +2305,7 @@ def _check(cid, ok, name, detail, warn=False, fix=None, evidence=(), note=None):
         "fix": fix,
         "evidence": [str(e) for e in evidence if e],
         **({"note": note} if note else {}),
+        **({"go": go} if go else {}),
     }
 
 
@@ -2715,8 +2716,9 @@ def update_signing(req):
 
 
 def update_approve_security(req):
-    """Approve the widenings the update's check holds. A tree that does not match its own manifest cannot be
-    approved here: only Install anyway gets past that. At the console level, only the console command may."""
+    """Approve the widenings the update's check holds, and with `install` (the Updates doctor's one button) install
+    the same version at once. A tree that does not match its own manifest cannot be approved here: only Install
+    anyway gets past that. At the console level, only the console command may."""
     if not (UPDATE_SRC / "install.sh").is_file():
         raise Refused(
             M(
@@ -2747,7 +2749,10 @@ def update_approve_security(req):
         raise Refused(M("update.security.nothing", "This update has no security changes to approve."))
     levels = secchanges.levels()
     console = any(levels.get(item["toggle"]) == "console" for item in held)
-    if console and not req.get("console"):
+    # Only the root command line says "console": the queue refuses it for these actions (transport.TRUSTED), and
+    # "loopback" is the hub's word, so it is not the console. A request's own "console" field is the hub's, not proof.
+    at_console = req.get("over") == "console"
+    if console and not at_console:
         raise Refused(
             M(
                 "update.security.console",
@@ -2759,12 +2764,16 @@ def update_approve_security(req):
         full,
         full[:7],
         [item["text"] for item in held],
-        "console" if console else "https",
-        "the console" if console else "an administrator over HTTPS",
+        "console" if at_console else "https",
+        "the console" if at_console else "an administrator over HTTPS",
         levels,
     )
     state["security_approved_sha"] = full
     _write_update_state(state)
+    if req.get("install"):
+        # One click from the Updates doctor: approve the named changes, then install the version they were
+        # checked against. update_install's own rule reads the approval just written.
+        return update_install(req)
     return M(
         "update.security.approved",
         {
@@ -2833,16 +2842,26 @@ def security_report(src, installed):
             changes["widenings"] = [
                 item for item in changes["widenings"] if "secmanifest.py" not in item.get("text", "")
             ]
+            shown = differences[:20]
+            found = (
+                ", and found "
+                + f"{len(differences)} difference{'' if len(differences) == 1 else 's'} "
+                + "between the update and its manifest: "
+                + "; ".join(shown)
+                + (f"; and {len(differences) - len(shown)} more" if len(differences) > len(shown) else "")
+                if differences
+                else ", and found no differences between the update and its manifest"
+            )
             changes["widenings"].append(
                 {
                     "kind": "widening",
                     "toggle": _strictest_level(levels),
-                    "text": "this update changes how its security is checked"
-                    + (
-                        f" (the installed checker sees {len(differences)} difference"
-                        f"{'' if len(differences) == 1 else 's'} between the update and its manifest)"
-                        if differences
-                        else ""
+                    "text": (
+                        "this update changes the code that checks updates' security "
+                        "(irate_box/root/secmanifest.py); the box checked the update with the code it has, "
+                        f"not with the new checker{found}. Nothing else widens its reach. "
+                        "Approve and install: it installs as checked, and the new checking code is used "
+                        "from the next update on"
                     ),
                 }
             )
@@ -2875,6 +2894,7 @@ def _security_check(src, installed):
                 "The update has no security manifest, so its security changes cannot be checked.",
             ),
             evidence=[detail],
+            go=GO_UPDATE_DOCTOR,
         )
     problems = report["problems"]
     if problems:
@@ -2888,6 +2908,7 @@ def _security_check(src, installed):
                 problems=problems[:8],
             ),
             evidence=problems,
+            go=GO_UPDATE_DOCTOR,
         )
     widenings = report["changes"]["widenings"]
     held = report["held"]
@@ -2913,9 +2934,10 @@ def _security_check(src, installed):
             if console
             else M(
                 "update.verify.security.widens.fix",
-                "Approve the changes on Updates, or use Install anyway only if you meant them.",
+                "Approve and install the changes in the Updates doctor, or use Install anyway only if you meant them.",
             ),
             evidence=[item["text"] for item in held] + list(report.get("builder_differences") or [])[:8],
+            go=GO_UPDATE_DOCTOR,
         )
     if widenings:
         return _check(
@@ -4021,6 +4043,7 @@ GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access
 # The Update source form's two fields: the link opens the fold, scrolls to the field and marks it.
 GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
 GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")
+GO_UPDATE_DOCTOR = _go("updoctor", M("go.updates-doctor", "Updates doctor"))
 GO_TOOLKITS = _go("toolkits", M("go.toolkits", "Toolkits"))
 GO_SECURITY = _go("security", M("go.security", "Security"))
 GO_APPSTORE = _go("appstore", M("go.appstore", "App store"))
@@ -4788,6 +4811,7 @@ def updates_doctor_findings():
     # 10. The last fetch, as the page last saw it.
     try:
         last = json.loads(UPDATE_STATE.read_text())
+        approved = _security_approved(last)
         failed = [
             c for c in last.get("checks", []) if not c.get("ok") and (not c.get("warn") or c.get("id") == "nginx")
         ]
@@ -4814,17 +4838,31 @@ def updates_doctor_findings():
                         )
                         if any(c.get("id") == "history" for c in failed)
                         else _console_refusal(last)
-                        or M(
-                            "update.last-check.fix",
-                            "Review the evidence here. Clear a broken cache or, for a trusted version with a known "
-                            "checker failure, select Install anyway in this doctor. The installer's syntax check "
-                            "cannot be skipped, and a failed signature only where this box's security levels let it.",
+                        or (
+                            M(
+                                "update.last-check.fix.approved",
+                                "The security changes are approved for this downloaded version. Install it from "
+                                "Updates when you are ready.",
+                            )
+                            if approved
+                            else M(
+                                "update.last-check.fix",
+                                "Review the evidence here. Clear a broken cache or, for a trusted version with a "
+                                "known checker failure, select Install anyway in this doctor. The installer's syntax "
+                                "check cannot be skipped, and a failed signature only where this box's security "
+                                "levels let it.",
+                            )
                         )
                     ),
                     go=GO_SOURCE_BRANCH if any(c.get("id") == "history" for c in failed) else None,
                     notes=[
                         *(_said_check(c) for c in failed),
                         *(c["fix"] for c in failed if is_message(c.get("fix"))),
+                        *(
+                            [M("update.security.approved-note", "Approved for this downloaded version.")]
+                            if approved
+                            else []
+                        ),
                     ],
                     evidence=[e for c in failed for e in c.get("evidence", [])][:6],
                     actions=[*_approve_actions(last), *_force_actions(last)],
@@ -4910,24 +4948,46 @@ def _security_record_finding():
     ]
 
 
-def _approve_actions(state):
-    """Approve the widenings the last check held, when the level allows it over HTTPS and the tree matches
-    its own manifest. A tree that does not match is only for Install anyway."""
+def _security_only_held(state):
+    """The security check is the only failed one, and what it holds can be approved: the tree matches its own
+    manifest, and there is a held widening. A tree that does not match is only for Install anyway."""
     report = state.get("security") or {}
-    held = report.get("held") or []
-    if not report.get("manifest") or report.get("problems") or not held:
+    failed = _force_failed(state)
+    return (
+        bool(failed)
+        and all(c.get("id") == "security" for c in failed)
+        and bool(report.get("manifest"))
+        and not report.get("problems")
+        and bool(report.get("held"))
+    )
+
+
+def _security_approved(state):
+    """Whether the held changes are already approved for the downloaded version."""
+    sha = state.get("security_approved_sha")
+    return bool(sha) and sha == state.get("checked_sha")
+
+
+def _approve_actions(state):
+    """Approve and install, when the security hold is the only failed check and the level allows it over HTTPS.
+    An approval that is already recorded leaves no button: the page says it is approved instead."""
+    if not _security_only_held(state) or _security_approved(state):
         return []
+    report = state["security"]
+    held = report["held"]
     if any((report.get("levels") or {}).get(item["toggle"]) == "console" for item in held):
         return []
     return [
         finding_action(
-            "approve-security",
-            M("update.security.approve", "Approve these changes"),
+            "approve-install",
+            M("update.security.approve-install", "Approve and install"),
             M(
-                "update.security.approve.confirm",
+                "update.security.approve-install.confirm",
                 {
-                    "one": "Approve this security change: {changes}? The update installs after it.",
-                    "other": "Approve these {n} security changes: {changes}? The update installs after it.",
+                    "one": "Approve this security change and install the update: {changes}? "
+                    "It installs as checked. The new checking code is used from the next update on.",
+                    "other": "Approve these {n} security changes and install the update: {changes}? "
+                    "It installs as checked. The new checking code is used from the next update on.",
                 },
                 n=len(held),
                 changes=[item["text"] for item in held],
@@ -4948,8 +5008,11 @@ def _console_refusal(state):
 
 def _force_actions(state):
     """Install anyway, for the last download's failed checks, only when update_force_install would run: the button's
-    question lists exactly the checks it skips."""
+    question lists exactly the checks it skips. A security hold that can be approved has its own button instead, so
+    the two are never offered side by side for the same case."""
     skipped = _force_failed(state)
+    if _security_only_held(state):
+        return []
     try:
         if not skipped or _force_refusal(state):
             return []
@@ -8703,7 +8766,7 @@ def main():
     return 0
 
 
-UPDATES = ("update-install", "update-force-install", "update-reach")
+UPDATES = ("update-install", "update-force-install", "update-reach", "update-approve-security")
 
 # A notebook per login (hub/notebooks.py): the hub lists which should run; this makes it so.
 NOTEBOOK_RE = re.compile(r"^[a-z0-9_-][a-z0-9._-]{2,31}$")
@@ -8860,7 +8923,7 @@ if __name__ == "__main__":
         if os.geteuid() != 0:
             sys.exit("run as root: sudo ./irate-box hub_control update-authorise")
         try:
-            print(render(update_approve_security({"console": True, "over": "console"})))
+            print(render(update_approve_security({"over": "console"})))
         except (ValueError, OSError) as exc:
             sys.exit(f"update-authorise: {exc}")
         sys.exit(0)

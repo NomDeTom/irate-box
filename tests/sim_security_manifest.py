@@ -136,8 +136,15 @@ check(
     said,
 )
 check(
-    "  and says so",
-    any("how its security is checked" in e for e in said["evidence"]),
+    "  the failed check points to the Updates doctor",
+    said.get("go", {}).get("section") == "updoctor",
+    said.get("go"),
+)
+check(
+    "  and says so, naming the builder and that nothing else was found",
+    any("changes the code that checks updates' security" in e for e in said["evidence"])
+    and any("irate_box/root/secmanifest.py" in e for e in said["evidence"])
+    and any("no differences between the update and its manifest" in e for e in said["evidence"]),
     said["evidence"],
 )
 
@@ -149,7 +156,7 @@ check(
     "a changed builder over a tree that differs from its manifest: held, the difference shown",
     not said["ok"]
     and said["detail"]["id"] == "update.verify.security.widens"
-    and any("installed checker sees 1 difference" in e for e in said["evidence"])
+    and any("found 1 difference between the update and its manifest" in e for e in said["evidence"])
     and any("late.example" in e for e in said["evidence"]),
     said["evidence"],
 )
@@ -197,14 +204,32 @@ report = {
     "held": [{"toggle": "root_actions", "text": "a new root action, evil"}],
     "levels": {"root_actions": "authorise"},
 }
+security_only = {"security": report, "checks": [{"id": "security", "ok": False, "warn": False}]}
 check(
-    "the doctor offers an approval for a held widening",
-    [a["choice"] for a in H._approve_actions({"security": report})] == ["approve-security"],
-    H._approve_actions({"security": report}),
+    "the doctor offers an approval and install for a held widening that is the only failure",
+    [a["choice"] for a in H._approve_actions(security_only)] == ["approve-install"],
+    H._approve_actions(security_only),
 )
 check(
     "  but not when the level needs the console",
-    H._approve_actions({"security": {**report, "levels": {"root_actions": "console"}}}) == [],
+    H._approve_actions({**security_only, "security": {**report, "levels": {"root_actions": "console"}}}) == [],
+)
+check(
+    "  nor when another check failed too: Install anyway covers that case",
+    H._approve_actions(
+        {
+            **security_only,
+            "checks": [
+                {"id": "security", "ok": False, "warn": False},
+                {"id": "python", "ok": False, "warn": False},
+            ],
+        }
+    )
+    == [],
+)
+check(
+    "  nor when the change is already approved for this commit",
+    H._approve_actions({**security_only, "checked_sha": "a" * 40, "security_approved_sha": "a" * 40}) == [],
 )
 said = H.update_approve_security({})
 check(
@@ -212,6 +237,35 @@ check(
     said["id"] == "update.security.approved" and "evil" in " ".join(said["args"]["changes"]),
     said,
 )
+installed = []
+with mock.patch.object(H, "update_install", lambda req: installed.append(req) or H.M("test.installed", "Installed.")):
+    said = H.update_approve_security({"install": True})
+check(
+    "  the doctor's one button approves and installs at once",
+    said["id"] == "test.installed" and len(installed) == 1,
+    said,
+)
+# The console rule counts how the request came, not a "console" field the hub writes: a queued request that claims
+# the console over HTTPS is refused, even with the one-step install.
+console_levels = dict(H.secchanges.DEFAULTS, root_actions="console")
+installed_console = []
+with (
+    mock.patch.object(H.secchanges, "levels", lambda: dict(console_levels)),
+    mock.patch.object(
+        H, "update_install", lambda req: installed_console.append(req) or H.M("test.installed", "Installed.")
+    ),
+):
+    try:
+        H.update_approve_security({"console": True, "over": "https", "install": True})
+        check("a queued request claiming the console over HTTPS is refused at a console level", False)
+    except H.Refused as exc:
+        check(
+            "a queued request claiming the console over HTTPS is refused at a console level",
+            exc.message["id"] == "update.security.console" and not installed_console,
+            exc.message,
+        )
+    said = H.update_approve_security({"over": "console"})
+check("  the console command still approves it", said["id"] == "update.security.approved", said)
 (T / "etc/install-options").write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
 with (
     mock.patch.object(H, "_run_install", lambda *args, **kwargs: 3),

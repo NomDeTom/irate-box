@@ -129,6 +129,20 @@ setTimeout(() => {
     && items.some((i) => /^❌ Shell syntax of uninstall\.sh — The shell finds a syntax error in it\..*line 2/.test(i))
     && items.some((i) => /Python files compile — 1 file compiles\..*does not prove that the update is safe/.test(i)), items.join(' | '));
 
+  // A failed security check carries the Updates doctor's link, as the verification notice does.
+  w.renderUpdate({ ...data, state: { ...data.state, checks: [
+    { id: 'security', name: 'Security changes', ok: false, warn: false,
+      detail: 'The update changes how its security is checked. It is held.',
+      fix: 'Approve and install the changes in the Updates doctor.',
+      evidence: ['this update changes the code that checks updates\' security'],
+      go: { section: 'updoctor', where: { id: 'go.updates-doctor', en: 'Updates doctor' } } }] } });
+  const securityRow = [...d.querySelectorAll('#update-checks li')].find((li) => /Security changes/.test(li.textContent));
+  const securityGo = securityRow && [...securityRow.querySelectorAll('a.go-btn')];
+  check('a failed security check carries the Updates doctor\'s link',
+    !!securityGo && securityGo.some((a) => a.textContent === 'Go to Updates doctor →' && a.getAttribute('href') === '#updoctor'),
+    securityRow && securityRow.textContent);
+  w.renderUpdate(data);
+
   const all = ['doctor-findings', 'updoctor-fine', 'update-checks'].map((id) => d.getElementById(id).textContent).join(' ');
   // An update found and downloaded: Check for updates stays open (the branch can move on after the download);
   // Download is done, so it is not.
