@@ -1379,6 +1379,83 @@ check(
 )
 U.run, U._uplink_profile = real_run, real_prof
 
+# 10. Each manager's repairs: the command the watchdog runs for the steps it has, not NetworkManager alone.
+calls = []
+
+
+def record(*cmd, timeout=60):
+    calls.append(cmd)
+    return 0, "ran"
+
+
+_real_active, _real_ifup, _real_netd, _real_which = (
+    U.netinv.active,
+    U.netinv.ifupdown_ifaces,
+    U.netinv.networkd_ifaces,
+    U.shutil.which,
+)
+U.run = record
+U.netinv.active = lambda unit: unit == "wpa_supplicant@wlan0"
+U.netinv.ifupdown_ifaces = lambda: {"wlan0"}
+U.netinv.networkd_ifaces = lambda: {"wlan0"}
+try:
+    for backend, reconnect, restart in (
+        (
+            "wpa_supplicant",
+            [("wpa_cli", "-i", "wlan0", "reassociate")],
+            [("systemctl", "restart", "wpa_supplicant@wlan0")],
+        ),
+        (
+            "ifupdown",
+            [("ifdown", "--force", "wlan0"), ("ifup", "wlan0")],
+            [("systemctl", "restart", "networking")],
+        ),
+        (
+            "networkd",
+            [("networkctl", "reconfigure", "wlan0")],
+            [("systemctl", "restart", "systemd-networkd")],
+        ),
+        (
+            "dhcpcd",
+            [],
+            [("systemctl", "restart", "dhcpcd")],
+        ),
+    ):
+        actor = U.Actor("wlan0", backend)
+        calls.clear()
+        said = actor._reconnect()
+        got_reconnect = list(calls)
+        calls.clear()
+        said_restart = actor._restart()
+        got_restart = list(calls)
+        check(
+            f"{backend}: reconnect runs {reconnect or 'nothing (no way to reconnect)'}",
+            got_reconnect == reconnect and (said == "no way to reconnect here" if not reconnect else said == "ran"),
+            (got_reconnect, said),
+        )
+        check(
+            f"  restart runs {restart}, said so",
+            got_restart == restart and said_restart == "ran",
+            (got_restart, said_restart),
+        )
+    check(
+        "the steps offered per manager: reconnect and restart, less dhcpcd's reconnect",
+        U.repairs_for("wpa_supplicant", "wlan0") >= {"reconnect", "restart"}
+        and U.repairs_for("ifupdown", "wlan0") >= {"reconnect", "restart"}
+        and U.repairs_for("networkd", "wlan0") >= {"reconnect", "restart"}
+        and U.repairs_for("dhcpcd", "wlan0") >= {"restart"}
+        and "reconnect" not in U.repairs_for("dhcpcd", "wlan0"),
+        {b: U.repairs_for(b, "wlan0") for b in ("wpa_supplicant", "ifupdown", "networkd", "dhcpcd")},
+    )
+finally:
+    U.run = real_run
+    U.netinv.active, U.netinv.ifupdown_ifaces, U.netinv.networkd_ifaces, U.shutil.which = (
+        _real_active,
+        _real_ifup,
+        _real_netd,
+        _real_which,
+    )
+
 # A radio reset by the ladder filed as crash watch files a failure, with the kernel's last lines.
 from irate_box.root import crashwatch as CW
 
