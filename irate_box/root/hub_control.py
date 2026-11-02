@@ -2749,7 +2749,10 @@ def update_approve_security(req):
         raise Refused(M("update.security.nothing", "This update has no security changes to approve."))
     levels = secchanges.levels()
     console = any(levels.get(item["toggle"]) == "console" for item in held)
-    if console and not req.get("console"):
+    # Only the root command line says "console": the queue refuses it for these actions (transport.TRUSTED), and
+    # "loopback" is the hub's word, so it is not the console. A request's own "console" field is the hub's, not proof.
+    at_console = req.get("over") == "console"
+    if console and not at_console:
         raise Refused(
             M(
                 "update.security.console",
@@ -2761,8 +2764,8 @@ def update_approve_security(req):
         full,
         full[:7],
         [item["text"] for item in held],
-        "console" if console else "https",
-        "the console" if console else "an administrator over HTTPS",
+        "console" if at_console else "https",
+        "the console" if at_console else "an administrator over HTTPS",
         levels,
     )
     state["security_approved_sha"] = full
@@ -8920,7 +8923,7 @@ if __name__ == "__main__":
         if os.geteuid() != 0:
             sys.exit("run as root: sudo ./irate-box hub_control update-authorise")
         try:
-            print(render(update_approve_security({"console": True, "over": "console"})))
+            print(render(update_approve_security({"over": "console"})))
         except (ValueError, OSError) as exc:
             sys.exit(f"update-authorise: {exc}")
         sys.exit(0)

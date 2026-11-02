@@ -245,6 +245,27 @@ check(
     said["id"] == "test.installed" and len(installed) == 1,
     said,
 )
+# The console rule counts how the request came, not a "console" field the hub writes: a queued request that claims
+# the console over HTTPS is refused, even with the one-step install.
+console_levels = dict(H.secchanges.DEFAULTS, root_actions="console")
+installed_console = []
+with (
+    mock.patch.object(H.secchanges, "levels", lambda: dict(console_levels)),
+    mock.patch.object(
+        H, "update_install", lambda req: installed_console.append(req) or H.M("test.installed", "Installed.")
+    ),
+):
+    try:
+        H.update_approve_security({"console": True, "over": "https", "install": True})
+        check("a queued request claiming the console over HTTPS is refused at a console level", False)
+    except H.Refused as exc:
+        check(
+            "a queued request claiming the console over HTTPS is refused at a console level",
+            exc.message["id"] == "update.security.console" and not installed_console,
+            exc.message,
+        )
+    said = H.update_approve_security({"over": "console"})
+check("  the console command still approves it", said["id"] == "update.security.approved", said)
 (T / "etc/install-options").write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
 with (
     mock.patch.object(H, "_run_install", lambda *args, **kwargs: 3),
