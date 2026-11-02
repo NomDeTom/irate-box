@@ -52,10 +52,13 @@ const dom = new JSDOM(html, { url: 'http://box.local/admin/#git', runScripts: 'o
 const w = dom.window;
 require("./answer-asks.cjs")(w); // its questions on the page answered by its confirm stub
 const posted = [];
+let holdGit = false, failGit = false, releaseGit = null;
 w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST') {
     const body = JSON.parse(opts.body);
     posted.push([u, body]);
+    if (failGit) return new Response('{}', { status: 503 });
+    if (holdGit) return new Promise((resolve) => { releaseGit = () => resolve(new Response(JSON.stringify(u === '/admin/git' ? gitData : { id: 'x' }), { status: 200 })); });
     // As the hub would: a moved repository is in its new area (its card and drawer follow it).
     if (body.action === 'move') Object.assign(gitData.repos.find((r) => r.name === body.name), { area: body.to, url: `/git-private/${body.name}.git/` });
     if (u === '/admin/ci') return new Response(JSON.stringify(body.action === 'build' ? { branch: 'main', commit: 'c'.repeat(40), queued: true, snapshot: ciData }
@@ -134,6 +137,21 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
   await wait();
   check('Git there: the links are back', !!d.querySelector('.git-card h4 a') && !/Git is removed/.test(t(d.getElementById('git-usage'))));
+  // A mirror action's button waits while the request is in flight, and clears on the answer or a refusal.
+  holdGit = true;
+  const update = [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror');
+  update.click();
+  await wait();
+  check('a Git action: its button waits while the hub has it', update.classList.contains('is-busy') && update.getAttribute('aria-busy') === 'true');
+  holdGit = false;
+  releaseGit();
+  await wait();
+  check('  and the wait ends with the answer', !update.classList.contains('is-busy') && !update.hasAttribute('aria-busy'));
+  failGit = true;
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
+  await wait();
+  check('  a refused request clears it too', ![...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').classList.contains('is-busy'));
+  failGit = false;
   chip('Mirrors').click();
   check('the Mirrors chip shows only mirrors', cards().map((c) => t(c.querySelector('h4'))).join() === 'meshtastic-firmware.git');
   chip('Builds').click();
