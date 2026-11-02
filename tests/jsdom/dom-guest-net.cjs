@@ -30,6 +30,22 @@ const wait = (ms = 20) => new Promise((r) => setTimeout(r, ms));
   release();
   await wait();
   check('accepted: the button goes, the paragraph says done', !button() && /Done\. This device can reach the internet/.test(d.getElementById('guest-net').textContent));
+  // A refused POST: the button comes back, no ring, and the paragraph says to try again.
+  const dom2 = new JSDOM('<!doctype html><body><div id="guest-net"></div></body>', { runScripts: 'outside-only', url: 'http://box/' });
+  const w2 = dom2.window, d2 = w2.document;
+  w2.fetch = async (url, opts = {}) => ((opts.method || 'GET').toUpperCase() === 'POST'
+    ? new Response(JSON.stringify({ error: 'No room on the hotspot.' }), { status: 503 })
+    : new Response(JSON.stringify({ here: true, out: false, level: 'sheet-all', hours: 4, signed_in: true }), { status: 200 }));
+  w2.eval(fs.readFileSync(path.resolve(__dirname, '../../web/guest-net.js'), 'utf8'));
+  await wait();
+  const failedButton = () => d2.querySelector('#guest-net button');
+  failedButton().click();
+  await wait();
+  check('refused: the button is enabled again, without the wait', failedButton() && !failedButton().disabled
+    && !failedButton().classList.contains('is-busy') && !failedButton().hasAttribute('aria-busy'),
+  failedButton() && failedButton().outerHTML);
+  check('  and the paragraph says to try again', /Request failed: No room on the hotspot\.+ Select the button to try again\./.test(d2.getElementById('guest-net').textContent),
+    d2.getElementById('guest-net').textContent);
   console.log(fails ? `failures: ${fails}` : 'all passed');
   process.exit(fails ? 1 : 0);
 })();
