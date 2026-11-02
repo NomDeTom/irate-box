@@ -284,6 +284,7 @@ WIDGET_HTML = {
         <span class="desc" id="factory-now">Built on this box</span>
         <span class="bar" id="factory-bar" hidden><span id="factory-progress"></span></span>
         <span class="factory-downloads" id="factory-downloads"></span>
+        <span class="factory-releases" id="factory-releases"></span>
       </div>""",
     "system": """      <div class="service-card system-card" id="system-card">
         <span class="icon">💽💾</span>
@@ -5927,7 +5928,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(404, refused.say(NOT_SHOWN))
                 return
             if path == "/factory.json":
-                self.send_json(200, factory.public_view())
+                show_releases = access.mode_of(access.read(ACCESS_STATE), "flasher") == "public"
+                self.send_json(200, factory.public_view(releases=show_releases))
                 return
             query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
             name = unquote(query.get("name", ""))

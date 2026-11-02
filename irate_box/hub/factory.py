@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 from irate_box import confine
-from irate_box.hub import ci, gitrepos
+from irate_box.hub import ci, flasher, gitrepos
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -723,10 +723,37 @@ def public_files(run):
     ]
 
 
-def public_view(limit=12):
+RELEASES_LIMIT = 8  # what the tile shows of the flasher's releases
+
+
+def public_releases(limit=RELEASES_LIMIT):
+    """The flasher's releases as the tile shows them, those built here before the kept ones, each with the
+    boards it offers: [{version, built, boards, more}]. Nothing of a target beyond its name. The caller
+    shows these only while the flasher's own Access is public; the tile must not offer a page guests
+    cannot open."""
+    out = []
+    for r in flasher.releases():
+        boards = [str(t.get("board")) for t in r.get("targets") or [] if t.get("board")]
+        if not boards:
+            continue
+        out.append(
+            {
+                "version": str(r.get("version") or ""),
+                "built": bool(r.get("built")),
+                "boards": boards[:6],
+                "more": max(0, len(boards) - 6),
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def public_view(limit=12, releases=True):
     """The tile's view: what is building and how far along, what is waiting, and each target's newest
     good build with only what a guest may download. Nothing else of the runs (no logs, no sources
-    beyond the release or branch name)."""
+    beyond the release or branch name). releases: the flasher's releases too, only while its Access
+    is public (the server decides)."""
     history = runs(200)
     est = estimates(history)
     running = next((s for s in history if s.get("state") == "running"), None)
@@ -770,6 +797,7 @@ def public_view(limit=12):
         "next": [{"name": j.get("name") or j.get("env"), "family": j.get("family")} for j in jobs[:5]],
         "paused": PAUSED.exists(),
         "built": built,
+        "releases": public_releases() if releases else [],
     }
 
 

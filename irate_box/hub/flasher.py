@@ -103,6 +103,11 @@ def _built():
     return [r for r in _releases() if r["built"]]
 
 
+def releases():
+    """The releases here, newest first, those built here before the kept ones: [{version, targets, built}]."""
+    return _releases()
+
+
 # --- the light flasher: ESP Web Tools' manifests --------------------------------------------------
 # An ESP image's header: 0xE9 first, the chip's id at byte 12 (little-endian). The classic ESP32's
 # bootloader sits at 0x1000 in a merged image, the later chips' at 0.

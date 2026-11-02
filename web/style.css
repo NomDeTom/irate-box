@@ -361,7 +361,8 @@ h2 {
   width: 0;
   background: var(--accent);
 }
-.factory-downloads {
+.factory-downloads,
+.factory-releases {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -370,7 +371,8 @@ h2 {
   overflow-y: auto;
   width: 100%;
 }
-.factory-build a {
+.factory-build a,
+.factory-release a {
   margin-right: 0.35rem;
 }
 .qr-card:hover {
