@@ -2,11 +2,13 @@
 <!-- SPDX-License-Identifier: MIT -->
 <!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
 <!-- The style audit's page (tests/browser/style-audit.sh): /admin in a frame as wide as ?w= says, every pane shown in
-     turn and looked over for what makes a page look broken. Its findings go in body[data-out] as JSON.
+     turn and looked over for what makes a page look broken, including a card or button sitting on the text above or
+     below it (spacing-rules.js). Its findings go in body[data-out] as JSON.
      ?src= another page in the frame: with ?static=1, a page saved from a page test (tests/browser/card-audit.sh), its
      scripts gone and its findings drawn, each pane shown here by hand. -->
 <html><head><meta charset="utf-8"><title>style audit</title><style>body{margin:0}</style></head>
 <body><iframe id="f" style="border:0;height:2400px"></iframe>
+<script src="spacing-rules.js"></script>
 <script>
 const Q = new URLSearchParams(location.search);
 const W = Number(Q.get('w') || 1280);
@@ -22,7 +24,7 @@ const BIG_OK = 'h1, h2, h3, h4, h5, summary, legend, button, input, select, text
   + '.action-btn, .info-pill, .ok-pill, .warn-pill, .bad-pill, .admin-side, .admin-nav, .theme-picker, .tabs, [role="tab"], .aw-label, '
   + '.admin-tile, .hm-cell, code, kbd, pre, .tour-list, .krab, .admin-art, svg, .setup-steps, .net-line .net-label, .svc-name, '
   + '.inv-name, .palette-preview, .stat, strong, .admin-list';
-const CARDS = '.net-card, .setting, .findings, form, details, .admin-tile, .item-list, .net-device, .up-group, .attention';
+const CARDS = '.net-card, .setting, .findings, form, details, .admin-tile, .service-card, .item-list, .net-device, .up-group, .attention';
 // The boxes whose first line is measured, and the states looked at (a word or two, beside a title).
 const BOXES = '.net-card, .net-device, .setting, .finding, .aw-card, .git-card, .lib-card, .aw-settings';
 const STATES = '.fstate, .ok-pill, .warn-pill, .bad-pill';
@@ -103,7 +105,9 @@ f.addEventListener('load', async () => {
     }
     if (!shown(pane, win)) { findings.push({ pane: pane.id, rule: 'not shown by its own link', what: pane.id }); continue; }
     findings.push(...audit(win, doc, pane));
+    findings.push(...SpacingAudit.measurePane(win, doc, pane, pane.id));
   }
+  findings.push(...SpacingAudit.measureSidebar(win, doc, "sidebar"));
   document.body.dataset.out = JSON.stringify({ width: W, panes: panes.length, findings });
 });
 </script></body></html>

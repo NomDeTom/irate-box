@@ -185,9 +185,21 @@ h2 {
   margin-top: 1rem;
 }
 /* A card, or a list of cards, straight after a pane's words (shown or hidden): apart from them, not on them, on every
-   page. The list may sit in a container of the page's own (a div the page fills). Mock controls shows it. */
-.admin-pane > p + :is(.net-card, .setting, .aw-block),
-.admin-pane > p + div:not([class]) > .aw-block:first-child {
+   page. */
+.admin-pane > p + :is(.net-card, .setting, .aw-block) {
+  margin-top: 1rem;
+}
+/* A page's own container (a div the page fills) stands apart from what comes before it, as a card does: the words
+   above it, another container, a hidden result in between (Rockchip boards' New boards, Mock controls). The first
+   in a pane needs no room above it. */
+.admin-pane > div:not([class]) {
+  margin-top: 1rem;
+}
+.admin-pane > div:not([class]):first-child {
+  margin-top: 0;
+}
+/* Words inside a page's own container, then the cards it holds (Rockchip boards' "No setup hotspot" case). */
+.admin-pane > div:not([class]) > p + .aw-block {
   margin-top: 1rem;
 }
 /* Two panes on one page (Rockchip boards: Board, then Boards to set up): the second's heading well clear of the
@@ -782,6 +794,11 @@ h2 {
 .setting input[type="radio"] {
   margin-top: 0.15rem;
   accent-color: var(--accent);
+}
+/* A consent's words are the card's first line, after its checkbox: no gap above them (the Add-ons paste field). */
+.setting > input[type="checkbox"] + .setting-desc,
+.setting > input[type="radio"] + .setting-desc {
+  margin-top: 0;
 }
 .remote-choices {
   display: flex;
