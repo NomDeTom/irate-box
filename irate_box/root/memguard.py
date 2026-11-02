@@ -104,6 +104,10 @@ LEVELS = {
     },
     "low": {"warn_mb": 64, "act_mb": 32, "warn_swap_pct": 85, "act_swap_pct": 95},
 }
+# A box with this much memory or less builds with the small preset unless the administrator chose another. On a
+# 512 MB board (475 MB seen) little more than the default's 220 MB is free, so a build at that cap pushed the box's
+# other services into swap; at the small preset's 160 MB nothing else moved.
+SMALL_BOX_MB = 640
 DEFAULT = {
     "limits": "default",
     "levels": "standard",
@@ -150,17 +154,20 @@ def _int_file(path):
         return 0
 
 
-def load_settings():
-    """The administrator's choices, with the safe defaults for anything not set or no longer valid."""
-    out = dict(DEFAULT)
+def _stored():
+    """The settings file as written: only what the administrator chose."""
     try:
         data = json.loads(durable.read_own(SETTINGS))
     except (OSError, ValueError):
-        data = {}
-    if not isinstance(data, dict):
-        data = {}
-    if data.get("limits") in PRESETS:
-        out["limits"] = data["limits"]
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def load_settings():
+    """The administrator's choices, with the safe defaults for anything not set or no longer valid."""
+    out = dict(DEFAULT)
+    data = _stored()
+    out["limits"] = data["limits"] if data.get("limits") in PRESETS else box_limits()
     if data.get("levels") in LEVELS:
         out["levels"] = data["levels"]
     for key, values in (
@@ -178,6 +185,12 @@ def load_settings():
 def save_settings(data):
     SETTINGS.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(SETTINGS, json.dumps(data, indent=1, sort_keys=True), mode=0o644)
+
+
+def box_limits():
+    """The preset for a box whose administrator has not chosen one: small at SMALL_BOX_MB or less."""
+    total = meminfo()["total_mb"]
+    return "small" if total and total <= SMALL_BOX_MB else "default"
 
 
 def limits():
@@ -222,7 +235,8 @@ def set_option(name, value):
                 value=value,
             )
         )
-    data = load_settings()
+    # What the administrator chose, and this: a default (the box's limits among them) stays a default.
+    data = {k: v for k, v in _stored().items() if k in DEFAULT}
     data[key] = value
     if key == "fallback" and value == "earlyoom" and not shutil.which("earlyoom"):
         raise Refused(
@@ -505,7 +519,9 @@ def groups():
             "desc": M(
                 "memguard.limits.desc",
                 "A build runs in build.slice with these limits: {high} soft, {max} hard, {swap} swap, {cpu} CPU. "
-                "A hard limit kills the build, not the box.",
+                "A hard limit kills the build, not the box. Unless you select one, a box with {small} MB of memory "
+                "or less uses Small.",
+                small=SMALL_BOX_MB,
                 high=limits_now["MemoryHigh"],
                 max=limits_now["MemoryMax"],
                 swap=limits_now["MemorySwapMax"],
@@ -520,7 +536,7 @@ def groups():
                 },
                 {
                     "value": "default",
-                    "label": M("memguard.limits.default", "Box default (220 MB)"),
+                    "label": M("memguard.limits.default", "Standard (220 MB)"),
                     "choice": "memguard-limits:default",
                 },
                 {
