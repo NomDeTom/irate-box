@@ -4320,6 +4320,17 @@ html:has(> body.admin) {
   .admin-side:not(.open) .side-foot {
     display: none;
   }
+  /* The same rule as the page-width one below: the page can be narrower than the window (the admin width setting). */
+  .tab-set > .view-switch {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+  }
+  .tab-set > .view-switch > .view-switch-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 /* A wide page gives the sidebar a little more room. */
 @container page (min-width: 1200px) {
@@ -4734,6 +4745,20 @@ html[data-palette="contrast"] .help-item.down {
 }
 .tab-set > [role="tabpanel"] {
   padding-top: 0.2rem;
+}
+/* A tab set's strip scrolls by itself on a phone rather than widening the page: the Security page's five tabs do not
+   fit 390px, and a tab's words must not break inside a word. The page behind stays still. */
+@media (max-width: 760px) {
+  .tab-set > .view-switch {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+  }
+  .tab-set > .view-switch > .view-switch-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 /* The sign-in sheet's offer of the internet (guest-net.js). */
 /* The home page on plain HTTP: the certificate offered (home.js). */

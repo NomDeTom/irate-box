@@ -17995,7 +17995,15 @@ AW.bound(document.getElementById("catalogue-results"), { filter: false });
 // arrow keys move along; the choice kept in this browser; an address inside a panel opens its tab.
 function initTabs(box) {
   const tabs = [...box.querySelectorAll('[role="tab"]')];
+  const strip = box.querySelector(".view-switch");
   const key = "irate-tabs-" + box.dataset.tabs;
+  // A phone's strip scrolls by itself: an address (or a kept tab) can select one that starts off-screen.
+  const showTab = (tab) => {
+    if (!strip || !strip.getClientRects().length) return;
+    const sr = strip.getBoundingClientRect(), tr = tab.getBoundingClientRect();
+    if (tr.left < sr.left) strip.scrollLeft -= sr.left - tr.left;
+    else if (tr.right > sr.right) strip.scrollLeft += tr.right - sr.right;
+  };
   const pick = (tab, focus) => {
     tabs.forEach((x) => {
       const on = x === tab;
@@ -18004,6 +18012,7 @@ function initTabs(box) {
       x.tabIndex = on ? 0 : -1;
       document.getElementById(x.getAttribute("aria-controls")).hidden = !on;
     });
+    showTab(tab);
     if (focus) tab.focus();
     try {
       localStorage.setItem(key, tab.id);
@@ -18037,8 +18046,16 @@ function initTabs(box) {
     const tab =
       panel && tabs.find((x) => x.getAttribute("aria-controls") === panel.id);
     if (tab) pick(tab);
+    else {
+      const active = tabs.find((x) => x.getAttribute("aria-selected") === "true");
+      if (active) showTab(active);
+    }
   };
   window.addEventListener("hashchange", follow);
+  window.addEventListener("resize", () => {
+    const active = tabs.find((x) => x.getAttribute("aria-selected") === "true");
+    if (active) showTab(active);
+  });
   follow();
 }
 document.querySelectorAll("[data-tabs]").forEach(initTabs);
