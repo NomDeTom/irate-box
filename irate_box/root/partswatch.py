@@ -229,8 +229,11 @@ def _removed():
 
 
 def _broken():
-    audit = run("dpkg", "--audit", timeout=120)
-    check = run("apt-get", "check", "-q", timeout=180)
+    try:
+        audit = run("dpkg", "--audit", timeout=120)
+        check = run("apt-get", "check", "-q", timeout=180)
+    except (OSError, subprocess.SubprocessError):
+        return []
     lines = [ln for ln in (audit.stdout + check.stdout + audit.stderr + check.stderr).splitlines() if ln.strip()]
     if audit.returncode == 0 and check.returncode == 0 and not lines:
         return []
@@ -297,19 +300,22 @@ def _unattended():
                 )
             )
     props = {}
-    said = run(
-        "systemctl",
-        "show",
-        "-p",
-        "Result",
-        "-p",
-        "ExecMainStatus",
-        "-p",
-        "ActiveState",
-        "apt-daily-upgrade.service",
-        timeout=30,
-    )
-    for line in said.stdout.splitlines():
+    try:
+        said = run(
+            "systemctl",
+            "show",
+            "-p",
+            "Result",
+            "-p",
+            "ExecMainStatus",
+            "-p",
+            "ActiveState",
+            "apt-daily-upgrade.service",
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        said = None
+    for line in (said.stdout if said else "").splitlines():
         key, _, value = line.partition("=")
         props[key] = value
     if props.get("Result") == "failed" or (props.get("ExecMainStatus") or "0") not in ("0", ""):
@@ -356,7 +362,10 @@ def _kernel():
     newest, kernels = _newest_kernel()
     if not newest:
         return []
-    said = run("dkms", "status", timeout=120)
+    try:
+        said = run("dkms", "status", timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return []
     if said.returncode != 0 or not said.stdout.strip():
         return []
     installed = {}
@@ -421,18 +430,21 @@ def _services(installed=None):
     for unit, package in WATCHED_UNITS.items():
         if package not in installed:
             continue
-        said = run(
-            "systemctl",
-            "show",
-            "-p",
-            "ActiveState",
-            "-p",
-            "Result",
-            "-p",
-            "ActiveEnterTimestamp",
-            unit,
-            timeout=30,
-        )
+        try:
+            said = run(
+                "systemctl",
+                "show",
+                "-p",
+                "ActiveState",
+                "-p",
+                "Result",
+                "-p",
+                "ActiveEnterTimestamp",
+                unit,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
         props = dict(line.partition("=")[::2] for line in said.stdout.splitlines() if "=" in line)
         state, result = props.get("ActiveState"), props.get("Result")
         started = _parse_systemd_time(props.get("ActiveEnterTimestamp"))
@@ -468,7 +480,10 @@ def _services(installed=None):
 
 
 def _held():
-    said = run("apt-mark", "showhold", timeout=60)
+    try:
+        said = run("apt-mark", "showhold", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
     if said.returncode != 0:
         return []
     watched = _watched()
@@ -476,7 +491,10 @@ def _held():
     for name in (ln.strip().split(":")[0] for ln in said.stdout.splitlines()):
         if not name or name not in watched:
             continue
-        policy = run("apt-cache", "policy", name, timeout=60)
+        try:
+            policy = run("apt-cache", "policy", name, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            continue
         versions = {}
         for line in policy.stdout.splitlines():
             key, _, value = line.strip().partition(":")
@@ -555,13 +573,16 @@ def findings():
         installed = _installed_versions()
     except OSError:
         pass
-    out += _removed()
-    out += _broken()
-    out += _unattended()
-    out += _kernel()
-    out += _services(installed)
-    out += _held()
-    out += _kits_behind()
+    for check in (_removed, _broken, _unattended, _kernel):
+        try:
+            out += check()
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+            continue
+    for check in (lambda: _services(installed or {}), _held, _kits_behind):
+        try:
+            out += check()
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+            continue
     return out
 
 
