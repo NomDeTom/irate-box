@@ -3530,6 +3530,11 @@ APT::Periodic::AutocleanInterval "1";
 EOF
 HUB_CODE_DIR="$CODE" "$CODE/irate-box" pkgcache tidy >/dev/null || problem "could not tidy apt's .deb archive"
 
+# The security manifest's owners and modes for the secrets that exist now (security.json).
+if ! HUB_CODE_DIR="$CODE" "$CODE/irate-box" secmanifest apply-secrets >/dev/null; then
+	problem "could not apply the security manifest's secret modes"
+fi
+
 # --- check -----------------------------------------------------------------------
 sleep 2
 for u in "${units[@]}"; do
