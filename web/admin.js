@@ -18238,7 +18238,8 @@ function renderInventory() {
   const want = (row) =>
     invShow === "all" ||
     row.state === invShow ||
-    (invShow === "available" && row.state === "fetching");
+    (invShow === "available" && row.state === "fetching") ||
+    (invShow === "not-installed" && ["available", "fetching", "unknown"].includes(row.state));
   const shown = all.filter(
     (row) =>
       want(row) &&

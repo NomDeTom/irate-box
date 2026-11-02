@@ -110,7 +110,12 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const guest = card('guest-net');
   const offRows = guest ? [...guest.querySelectorAll('.aw-field')].filter((f) => /Off\*/.test(
     [...f.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|'))) : [];
-  check('Guest internet access: a row of On and Off for each protection, two of them off', offRows.length === 2, guest && t(guest));
+  const byRow = guest ? [...guest.querySelectorAll('.aw-field')].at(-1) : null;
+  check('Guest internet access: three protections as On and Off, two of them off', offRows.length === 2, guest && t(guest));
+  check('  how the box identifies a guest: the last row, by hardware address or IP address',
+    byRow && /How the box identifies a guest/.test(t(byRow))
+    && [...byRow.querySelectorAll('.chip')].map((b) => `${t(b)}${b.classList.contains('selected') ? '*' : ''}`).join('|')
+      === 'By hardware address*|By IP address', byRow && t(byRow));
   const onChip = (f) => [...f.querySelectorAll('.chip')].find((b) => t(b) === 'On');
   offRows.forEach((f) => onChip(f).click());
   await wait();
