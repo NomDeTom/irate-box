@@ -304,11 +304,20 @@ def headroom(settings=None):
 
 
 def build_pids():
-    """The pids in build.slice, from its own cgroup file (the kernel's answer, not a process walk)."""
+    """The pids in build.slice and every cgroup under it, from the kernel's own files (not a process walk). Under
+    cgroup v2 a process lives in a leaf: bounded-build's `systemd-run --scope` puts it in a scope below the slice, and
+    the slice's own cgroup.procs is empty (seen on a Banana Pi M2 Zero, 2026-11-02)."""
+    pids = []
     try:
-        return [int(pid) for pid in (BUILD_SLICE / "cgroup.procs").read_text().split() if pid.isdigit()]
+        files = [BUILD_SLICE / "cgroup.procs", *sorted(BUILD_SLICE.rglob("*/cgroup.procs"))]
     except OSError:
         return []
+    for path in files:
+        try:
+            pids += [int(pid) for pid in path.read_text().split() if pid.isdigit()]
+        except OSError:
+            continue
+    return sorted(set(pids))
 
 
 def _cgroup(pid):
