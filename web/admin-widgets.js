@@ -184,6 +184,8 @@ const AW = (() => {
         if (shown.label) node.textContent = shown.label;
         node.disabled = !!shown.disabled;
         node.title = shown.disabled && shown.why ? shown.why : '';
+        if (shown.busy) setBusy(node, true, shown.busy === 'helper' ? 'helper' : undefined);
+        else setBusy(node, false);
         if (shown.disabled && shown.why) whys.push({ label: shown.label || label, why: shown.why });
       }
       // One reason for every greyed button (the root helper busy, say) is said once, as a sentence; reasons of
@@ -445,6 +447,8 @@ const AW = (() => {
       const cannot = saved && dirty && !busy && opts.why ? opts.why(handle.changes(), handle.values()) || '' : '';
       saveB.disabled = !dirty || busy || !saved || !!cannot;
       discardB.disabled = !dirty || busy || !saved;
+      if (saving) setBusy(saveB, true);
+      else setBusy(saveB, !!(saved && dirty && opts.busy && opts.busy()), 'helper');
       handle.foot.classList.toggle('aw-dirty', dirty);
       saveB.classList.toggle('idle', !dirty);   // outlined while there is nothing to save
       note.textContent = !saved ? 'Reading the current settings…' : busy ? 'Saving…'

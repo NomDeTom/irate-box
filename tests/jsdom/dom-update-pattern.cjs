@@ -66,6 +66,14 @@ check('  one reason for every greyed button: said once, as a sentence',
   b.querySelector('.update-why').textContent === 'The root helper is busy with other work.', b.querySelector('.update-why').textContent);
 b.update({});
 check('  and the line goes when nothing is greyed', b.querySelector('.update-why').hidden);
+b.update({ check: { busy: true }, fetch: { disabled: true, busy: 'helper', why: 'the root helper is busy with other work.' } });
+check('a clicked button has the fast ring; one waiting on the helper has the slow one',
+  bc.classList.contains('is-busy') && !bc.classList.contains('is-helper-busy')
+  && bf.classList.contains('is-helper-busy') && !bf.classList.contains('is-busy')
+  && bc.getAttribute('aria-busy') === 'true' && bf.getAttribute('aria-busy') === 'true');
+b.update({});
+check('  the rings go when the wait does', !bc.classList.contains('is-busy') && !bf.classList.contains('is-helper-busy')
+  && !bc.hasAttribute('aria-busy') && !bf.hasAttribute('aria-busy'));
 const nb = AW.updateButtons({ check: { onclick() {} }, fetch: { onclick() {} } });
 check('a surface without Install leaves it out', [...nb.querySelectorAll('button')].map((x) => x.textContent).join('|') === 'Check now|Download');
 })().then(() => {

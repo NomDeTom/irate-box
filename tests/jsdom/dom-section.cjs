@@ -61,11 +61,13 @@ const place = (s, page = 'p1') => { d.getElementById(page).append(s.foot, s.reas
   await wait();
   check('4. "Saving…" while the root helper works, both off, picks ignored', t(btns(sv).note) === 'Saving…' && btns(sv).save.disabled && btns(sv).discard.disabled
     && (sv.set('a', 3), sv.get('a') === 2));
+  check('   the clicked Save shows its wait', btns(sv).save.classList.contains('is-busy') && btns(sv).save.getAttribute('aria-busy') === 'true');
   sv.update({ a: 1 });
   check('   the poll meanwhile changes nothing', sv.get('a') === 2);
   job.done(false, 'The disk is full.');
   await saving;
   check('   failed: the draft kept, the reason under the footer, Save on again', sv.get('a') === 2 && sv.dirty() && t(sv.reason) === 'The disk is full.' && !sv.reason.hidden && !btns(sv).save.disabled);
+  check('   and the wait ends with the answer', !btns(sv).save.classList.contains('is-busy') && !btns(sv).save.hasAttribute('aria-busy'));
   const again = sv.save();
   await wait();
   job.done(true);
@@ -79,6 +81,14 @@ const place = (s, page = 'p1') => { d.getElementById(page).append(s.foot, s.reas
   no.set('a', 2);
   await no.save();
   check('   a save that resolves false (said already): the draft kept', no.dirty());
+  const hbIdle = place(AW.section({ saved: { a: 1 }, busy: () => true, save: async () => {} }));
+  check('   an untouched section waiting on the root helper: no ring, Save off for nothing to save',
+    !hbIdle.foot.querySelector('.aw-save').classList.contains('is-helper-busy') && !hbIdle.foot.querySelector('.aw-save').classList.contains('is-busy')
+    && hbIdle.foot.querySelector('.aw-save').disabled);
+  const hb = place(AW.section({ saved: { a: 1 }, busy: () => true, save: async () => {} }));
+  hb.set('a', 2);
+  check('   a changed section held back by the root helper: the slower ring, Save off', hb.foot.querySelector('.aw-save').classList.contains('is-helper-busy')
+    && !hb.foot.querySelector('.aw-save').classList.contains('is-busy') && hb.foot.querySelector('.aw-save').disabled);
 
   // 5. Polling never overwrites a change.
   const p = place(AW.section({ id: 'poll', saved: { a: 1, b: 1 }, onChange: () => {} }));

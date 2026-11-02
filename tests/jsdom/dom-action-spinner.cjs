@@ -58,6 +58,13 @@ const one = () => d.getElementById('one');
   stop();
   check('  and can stop it', !one().classList.contains('is-busy'));
 
+  const job = AW.job();
+  AW.busy(one(), job);
+  check('a section job: busy while the helper works', one().classList.contains('is-busy'));
+  job.done(true);
+  await wait();
+  check('  and clear when the job settles', !one().classList.contains('is-busy') && !one().hasAttribute('aria-busy'));
+
   console.log(fails ? `failures: ${fails}` : 'all passed');
   process.exit(fails ? 1 : 0);
 })();
