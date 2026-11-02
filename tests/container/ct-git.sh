@@ -101,6 +101,50 @@ check "running" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; p
 echo "== fcgiwrap runs as the hub"
 check "hub" sh -c "ps -o user= -C fcgiwrap | sort -u | head -1"
 
+# The round trip: the remove command on a running box, --no-git at install (the hub running without
+# Git), an update keeping it out by the marker, then --with-git adding it back.
+echo "== remove: the command on the running box"
+/opt/irate-box/irate-box gitaddon remove --yes >"$W/remove.log" 2>&1
+grep -q "set Git access to off" "$W/remove.log" && ok "remove: Git's access set to off" || bad "remove: $(tail -2 "$W/remove.log" | tr '\n' ' ')"
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.service ] && echo yes || echo no"
+check "no" sh -c "[ -e /run/irate-box-git.sock ] && echo yes || echo no"
+check "no" sh -c "[ -e /var/lib/hub/git/cgitrc-public ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check "yes" sh -c "[ -d /var/lib/hub/git/public/demo.git ] && echo yes || echo no"
+check 404 code "http://$H/git/"
+check 404 code "$GB/git/"
+check 200 code "http://$H/status"
+git clone -q "http://$H/git/demo.git" gone 2>/dev/null && bad "clone after remove went through" || ok "clone after remove refused"
+
+echo "== --no-git: installing and running"
+bash /src/install.sh --src /src --no-git >/dev/null 2>&1
+check "yes" sh -c "grep -qx -- --no-git /etc/hub/install-options && echo yes || echo no"
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check 404 code "http://$H/git/"
+check 200 code "http://$H/status"
+check 200 code "http://$H/"
+
+echo "== an update keeps Git out"
+bash /src/install.sh --src /src >/dev/null 2>&1
+check "no" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check 404 code "http://$H/git/"
+
+echo "== --with-git: added back by a second install"
+bash /src/install.sh --src /src --with-git >/dev/null 2>&1
+check "yes" sh -c "[ -e /etc/systemd/system/irate-box-git.socket ] && echo yes || echo no"
+check "yes" sh -c "[ -e /etc/systemd/system/irate-box-git.service ] && echo yes || echo no"
+check "yes" sh -c "[ -e /var/lib/hub/git/cgitrc-public ] && echo yes || echo no"
+check "no" sh -c "[ -e /var/lib/hub/git/.git-add-on-removed ] && echo yes || echo no"
+check "no" sh -c "grep -qx -- --no-git /etc/hub/install-options && echo yes || echo no"
+check 200 code "http://$H/git/"
+check 200 code "$GB/git/"
+git clone -q "http://$H/git/demo.git" back 2>/dev/null && [ "$(cat back/README)" = hello ] && ok "clone after --with-git has the commit" || bad "clone after --with-git"
+check "running" sh -c "curl -s http://$H/status | python3 -c 'import json,sys; print([s[\"state\"] for s in json.load(sys.stdin)[\"services\"] if s[\"path\"]==\"/git/\"][0])'"
+cd "$W" || exit
+
 rm -rf "$W"
 echo "== result: $fails failed"
 exit $fails
