@@ -5,6 +5,7 @@ limits, a build outside it, the box's headroom, and the guard's one action — k
 Offline: /proc, /sys/fs/cgroup and systemd stood in.
 python3 tests/sim_low_memory.py"""
 
+import json
 import os
 import socket
 import subprocess
@@ -106,9 +107,19 @@ check(
     "[Slice]" in (T / "units" / "build.slice.d" / "limits.conf").read_text(),
 )
 check(
-    "the default preset is the one installed",
-    memguard.bounds()["preset"] == "default",
+    "a 475 MB box with no choice made builds with the small preset",
+    memguard.bounds()["preset"] == "small"
+    and "MemoryMax=160M" in (T / "units" / "build.slice.d" / "limits.conf").read_text(),
     memguard.bounds(),
+)
+mem(total=905)
+check("  a 905 MB box with the standard one", memguard.load_settings()["limits"] == "default", memguard.load_settings())
+mem()
+memguard.set_option("levels", "standard")
+check(
+    "  saving another setting does not make the box's preset a choice",
+    "limits" not in json.loads((memguard.SETTINGS).read_text()),
+    (memguard.SETTINGS).read_text(),
 )
 memguard.set_option("limits", "large")
 check(
