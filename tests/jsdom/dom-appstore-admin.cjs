@@ -117,6 +117,14 @@ const tick = () => card().querySelector('.appstore-kinds input[type=checkbox]');
   const line = t(card().querySelector('.appstore-card > p'));
   check('a failed check says its error once, with one full stop',
     line.split('rate limit reached').length === 2 && /the check failed\. GitHub API/.test(line) && !/\.\./.test(line), line);
+  const failedNote = card().querySelector('.aw-card-head .s.bad');
+  const reason = card().querySelector('.appstore-card > p.bad');
+  check('  while open: the closed-card line hidden, the reason red and linked to the Updates doctor',
+    failedNote && failedNote.hidden && reason && /the check failed\./.test(t(reason))
+      && reason.querySelector('a[href="#updoctor"]'), `${failedNote && failedNote.hidden} ${t(reason)}`);
+  card().querySelector('.aw-card-head').click();
+  check('    and closing the card brings the red line back', failedNote && !failedNote.hidden);
+  card().querySelector('.aw-card-head').click();
 
   // Remove asks first; only Confirm sends it.
   w.answerAsks = false;

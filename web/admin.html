@@ -2162,12 +2162,15 @@
                 data-i18n="admin.sources.github-lets-box-send"
               >
                 GitHub lets this box send 60 requests an hour without a token
-                and 5000 with a token. Adapt asks GitHub for its request limit.
-                The librarian then keeps its scheduled checks to a budget just
-                under that limit. When the hourly budget is spent, the checks
-                wait. If GitHub refuses several requests in a row, the box
-                halves the budget. After a run with no refusals, the box raises
-                the budget again. Adapt works with or without a token.
+                and 5000 with a token. The librarian adapts from its first
+                check: GitHub reports the requests left in each answer, and the
+                librarian keeps its scheduled checks to a budget just under
+                that shared allowance. As the allowance runs low it leaves
+                longer between checks. When the hourly budget is spent, the
+                checks wait. If GitHub refuses several requests in a row, the
+                box halves the budget. After a run with no refusals, the box
+                raises the budget again. Adapt asks GitHub now, and works with
+                or without a token.
                 <span id="library-pace-state"></span>
               </p>
               <div class="library-buttons">

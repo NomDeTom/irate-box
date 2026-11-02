@@ -234,8 +234,8 @@ setTimeout(() => {
     sb.click();
     setTimeout(() => check('  saved: off again', sb.disabled), 20);
   }
-  check('GitHub token: an Adapt to rate limit button, and the state said (not adapted, no Stop button)', !!d.getElementById('library-adapt')
-    && /Not adapted/.test(d.getElementById('library-pace-state').textContent) && d.getElementById('library-adapt-off').hidden);
+  check('GitHub token: an Adapt to rate limit button, and the state said (adapting from the first check, Stop offered)', !!d.getElementById('library-adapt')
+    && /Adapting from the first check/.test(d.getElementById('library-pace-state').textContent) && !d.getElementById('library-adapt-off').hidden);
   // Each app's page carries its slices: its own updates, what people made there, what was reported.
   check('Excalidraw\'s page: its state, Saved work, then access, tile and maintenance (its own updates)', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-head-draw saved app-access-draw app-tile-draw app-maint-draw'
     && !!d.querySelector('#app-maint-draw #app-updates-draw'),
@@ -384,7 +384,7 @@ setTimeout(() => {
     check('  the hub\'s line is what is saved', /^Checks once a day\. Installs it, between 02:00 and 05:00\./.test(t('#library-others dd')[0]), t('#library-others dd')[0]);
     check('  no editor for them here', !d.querySelector('#sources [name="hub_auto"], #sources [name="mirrors_auto"]'));
     check('  source access folded, its title saying token and pacing', d.getElementById('library-token').closest('details').id === 'library-access'
-      && t('#library-access-says')[0] === '(no token, not adapting)', t('#library-access-says')[0]);
+      && t('#library-access-says')[0] === '(no token, adapting)', t('#library-access-says')[0]);
     check('  the work now: a state line at the top', !!d.querySelector('#library-now .library-state'));
   }
   check('offline kit: Refresh export on (an export to repeat), Make the export again as saved (after each hub update)',
