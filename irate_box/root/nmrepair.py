@@ -135,7 +135,7 @@ def _restore_policy(rec):
         POLICY_RC.unlink(missing_ok=True)
     else:
         POLICY_RC.write_bytes(base64.b64decode(saved))
-        os.chmod(POLICY_RC, 0o755)
+        os.chmod(POLICY_RC, 0o755)  # nosec B103 - policy-rc.d is a script dpkg runs
 
 
 def _cancel_check(run):
@@ -273,7 +273,7 @@ def revert(run=run):
             from irate_box.root import nmhandover
 
             nmhandover.undo(rec["handover"])
-        except Exception:  # noqa: BLE001 - the netplan files below are the authoritative copy
+        except Exception:  # noqa: BLE001 - the netplan files below are the authoritative copy # nosec B110
             pass
     ok = _restore(rec, run)
     RECORD.unlink(missing_ok=True)
