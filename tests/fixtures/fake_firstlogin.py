@@ -28,8 +28,12 @@ def ask(question, key):
 
 
 def save():
-    with open(os.environ["FAKE_RECORD"], "w") as fh:
+    # Whole or not at all: the session ends with a terminate that can land mid-write, and a truncated record reads
+    # as empty.
+    path = os.environ["FAKE_RECORD"]
+    with open(path + ".tmp", "w") as fh:
         json.dump(record, fh)
+    os.replace(path + ".tmp", path)
 
 
 start = os.environ.get("FAKE_START", "firstlogin")
