@@ -6,6 +6,7 @@ two boards sharing a name counted; the box's time zone, locale and network read;
 Armbian's first-boot presets cannot hold (sourced by bash inside double quotes), and the page's check the same as
 this one. python3 tests/sim_rksetup.py"""
 
+import json
 import os
 import sys
 import tempfile
@@ -20,6 +21,7 @@ os.environ.update(
     HUB_SERIAL_BY_ID=str(T / "by-id"),
     HUB_STATE_DIR=str(T / "state"),
 )
+(T / "state" / "control").mkdir(parents=True)
 sys.path.insert(0, str(REPO))
 from irate_box.hub import netinv, rksetup, rkusb
 
@@ -157,6 +159,25 @@ check(
     and rksetup.routes([], [], []) == ["hotspot"],
     rksetup.routes([], [], []),
 )
+# The box's own pins: the root helper's copy of the status, then the serial route without an adapter.
+real_model, real_device = rksetup.board_model, rksetup.OWN_DEVICE
+rksetup.board_model, rksetup.OWN_DEVICE = (lambda: "pi"), {"pi": "/dev/null"}
+own_file = T / "state" / "control" / "ownserial.json"
+own_file.write_text(json.dumps({"on": True, "board": "pi"}))
+own = rksetup.own_serial()
+check(
+    "own pins: the root helper's status read without root's module, the device there, so not pending",
+    own["supported"] and own["on"] and not own["pending"] and own["device"] == "/dev/null" and own["warning"],
+    own,
+)
+check(
+    "  the serial route offered with its own pins and no adapter",
+    rksetup.routes([], [], [], own) == ["hotspot", "serial"],
+    rksetup.routes([], [], [], own),
+)
+own_file.write_text(json.dumps({"on": False, "board": "pi"}))
+check("  off: no serial route without an adapter", rksetup.routes([], [], [], rksetup.own_serial()) == ["hotspot"])
+rksetup.board_model, rksetup.OWN_DEVICE = real_model, real_device
 snap = rksetup.snapshot()
 check(
     "the page's snapshot: the adapters, the cards, the boards seen, the routes and ready",

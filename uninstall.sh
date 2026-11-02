@@ -212,6 +212,9 @@ fi
 if [ -f "$CODE/irate_box/root/crashwatch.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" crashwatch undo-all | sed 's/^/    /' || true
 fi
+if [ -f "$CODE/irate_box/root/ownserial.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" ownserial undo-all | sed 's/^/    /' || true
+fi
 # The status light: each LED it took back to its trigger and brightness from before.
 if [ -f "$CODE/irate_box/root/led.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" led undo-all | sed 's/^/    /' || true

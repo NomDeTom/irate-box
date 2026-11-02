@@ -380,6 +380,10 @@ page = {
 }
 act = hub_control.ACTIONS["rk-serial-setup"]
 check(
+    "the action: this box's own pins not on yet refused, saying to switch them on and restart",
+    refused(act, {"id": "rk6", "console": "own", "choices": page}) == "rkserial.own-not-ready",
+)
+check(
     "the action: an adapter not on the box refused",
     refused(act, {"id": "rk6", "console": "usb-nothing", "choices": page}) == "rkserial.no-console",
 )
