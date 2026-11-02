@@ -25,9 +25,11 @@ Stdlib only.
 """
 
 import configparser
+import fnmatch
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -36,6 +38,7 @@ from pathlib import Path
 
 BUNDLE_PREFIX = "pio-deps-"
 MANIFEST = "build-manifest.json"
+REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+-]{0,99}$")
 
 
 def _git(source, *args):
@@ -55,48 +58,153 @@ def _read_requirements(source):
             lines = path.read_text().splitlines()
         except OSError:
             continue
-        out[path.name] = [
-            line.strip() for line in lines if line.strip() and not line.strip().startswith(("#", "-r", "-c", "--"))
-        ]
+        out[path.name] = _requirements_lines(lines)
     return out
+
+
+def _requirements_lines(lines):
+    return [line.strip() for line in lines if line.strip() and not line.strip().startswith(("#", "-r", "-c", "--"))]
+
+
+ENV_KEYS = ("platform", "board", "framework", "build_flags", "extra_scripts", "lib_ldf_mode")
+
+
+def _cfg():
+    cfg = configparser.ConfigParser(interpolation=None, strict=False, comment_prefixes=(";", "#"))
+    cfg.optionxform = str
+    return cfg
+
+
+def _seg_match(pattern, path):
+    """A glob from extra_configs against a path, segment by segment ('*' never crosses a '/')."""
+    p, q = pattern.strip("/").split("/"), path.split("/")
+    return len(p) == len(q) and all(fnmatch.fnmatchcase(b, a) for a, b in zip(p, q, strict=False))
+
+
+def _libs(value):
+    return [line.strip() for line in (value or "").splitlines() if line.strip() and not line.strip().startswith(";")]
+
+
+def _resolve(cfg, section, depth=0, seen=None):
+    """An environment's settings, through `extends` (a section in another file, or env:NAME)."""
+    seen = seen or set()
+    if section in seen or depth > 12 or not cfg.has_section(section):
+        return {}
+    seen.add(section)
+    out = {}
+    base = cfg.get(section, "extends", fallback="").split(",")[0].strip()
+    if base:
+        out.update(_resolve(cfg, base[4:] if base.startswith("env:") else base, depth + 1, seen))
+    for key in ENV_KEYS:
+        if cfg.has_option(section, key):
+            out[key] = cfg.get(section, key, raw=True)
+    libs = _libs(cfg.get(section, "lib_deps", fallback="") if cfg.has_option(section, "lib_deps") else "")
+    if libs:
+        out["lib_deps"] = [*out.get("lib_deps", []), *libs]
+    return out
+
+
+def _parse(texts, commit=None, tag=None):
+    """A build manifest from the texts of platformio.ini and the files its extra_configs globs name
+    (a checkout, or one tag read with git): each environment's settings through `extends`."""
+    root = _cfg()
+    root.read_string(texts.get("platformio.ini", ""))
+    cfg = _cfg()
+    for section in root.sections():
+        if not cfg.has_section(section):
+            cfg.add_section(section)
+        for key, value in root.items(section, raw=True):
+            cfg.set(section, key, value)
+    globs = [g.strip() for g in root.get("platformio", "extra_configs", fallback="").splitlines() if g.strip()]
+    for name, text in texts.items():
+        if name in ("platformio.ini", "requirements") or not any(_seg_match(g, name) for g in globs):
+            continue
+        one = _cfg()
+        try:
+            one.read_string(text)
+        except configparser.Error:
+            continue
+        for section in one.sections():
+            if not cfg.has_section(section):
+                cfg.add_section(section)
+            for key, value in one.items(section, raw=True):
+                cfg.set(section, key, value)
+    envs = {section[4:]: _resolve(cfg, section) for section in cfg.sections() if section.startswith("env:")}
+    default = None
+    if root.has_option("platformio", "default_envs"):
+        default = [x.strip() for x in root.get("platformio", "default_envs").split(",") if x.strip()]
+    return {
+        "commit": commit,
+        "tag": tag,
+        "default_envs": default or [],
+        "envs": envs,
+        "requirements": {
+            name: _requirements_lines(text.splitlines()) for name, text in (texts.get("requirements") or {}).items()
+        },
+    }
 
 
 def manifest(source):
     """The source's build manifest: its tag/commit, each PlatformIO environment's platform, board,
-    framework, libraries and flags, and the Python requirements files. A source without a
-    platformio.ini still gives its commit and requirements."""
+    framework, libraries and flags (through extra_configs and extends), and the Python requirements
+    files. A source without a platformio.ini still gives its commit and requirements."""
     source = Path(source)
-    cfg = configparser.ConfigParser(interpolation=None, strict=False, comment_prefixes=(";", "#"))
-    cfg.optionxform = str
-    cfg.read(source / "platformio.ini")
-    envs = {}
-    for section in cfg.sections():
-        if not section.startswith("env:"):
+    root = (source / "platformio.ini").read_text(errors="replace") if (source / "platformio.ini").is_file() else ""
+    cfg = _cfg()
+    cfg.read_string(root)
+    globs = [g.strip() for g in cfg.get("platformio", "extra_configs", fallback="").splitlines() if g.strip()]
+    texts = {"platformio.ini": root, "requirements": {}}
+    for path in sorted(source.glob("requirements*.txt")):
+        try:
+            texts["requirements"][path.name] = path.read_text()
+        except OSError:
             continue
-        name = section[4:]
-        env = {}
-        for key in ("platform", "board", "framework", "build_flags", "extra_scripts", "lib_ldf_mode"):
-            if key in cfg[section]:
-                env[key] = cfg[section][key]
-        libs = [
-            line.strip()
-            for line in (cfg[section].get("lib_deps") or "").splitlines()
-            if line.strip() and not line.strip().startswith(";")
-        ]
-        if libs:
-            env["lib_deps"] = libs
-        envs[name] = env
-    default = None
-    if cfg.has_option("platformio", "default_envs"):
-        default = [x.strip() for x in cfg.get("platformio", "default_envs").split(",") if x.strip()]
-    return {
-        "source": str(source),
-        "commit": _git(source, "rev-parse", "HEAD"),
-        "tag": _git(source, "describe", "--tags", "--always"),
-        "default_envs": default or [],
-        "envs": envs,
-        "requirements": _read_requirements(source),
-    }
+    names = [p.relative_to(source).as_posix() for p in source.rglob("*") if p.is_file()]
+    for name in [n for n in names if any(_seg_match(g, n) for g in globs)][:2000]:
+        try:
+            texts[name] = (source / name).read_text(errors="replace")
+        except OSError:
+            continue
+    doc = _parse(
+        texts,
+        commit=_git(source, "rev-parse", "HEAD"),
+        tag=_git(source, "describe", "--tags", "--always"),
+    )
+    return {"source": str(source), **doc}
+
+
+def manifest_at(source, ref):
+    """A manifest read from a source's tag or branch with git, without a checkout: a bare mirror is
+    enough. The same shape as manifest(), with the tag's commit."""
+    source = Path(source)
+    if not REF_RE.match(ref or "") or ".." in ref:
+        raise ValueError("select a valid branch or tag")
+    commit = _git(source, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+    if not commit:
+        raise ValueError(f"no branch or tag {ref}")
+    names = (_git(source, "ls-tree", "-r", "--name-only", ref) or "").splitlines()
+    root = _git(source, "show", f"{ref}:platformio.ini") or ""
+    cfg = _cfg()
+    cfg.read_string(root)
+    globs = [g.strip() for g in cfg.get("platformio", "extra_configs", fallback="").splitlines() if g.strip()]
+    texts = {"platformio.ini": root, "requirements": {}}
+    for name in names:
+        if "/" in name and not any(_seg_match(g, name) for g in globs):
+            continue
+        if "/" in name:
+            text = _git(source, "show", f"{ref}:{name}")
+            if text is not None:
+                texts[name] = text
+        elif name.startswith("requirements") and name.endswith(".txt"):
+            text = _git(source, "show", f"{ref}:{name}")
+            if text is not None:
+                texts["requirements"][name] = text
+    doc = _parse(
+        texts,
+        commit=commit,
+        tag=_git(source, "describe", "--tags", "--always", commit),
+    )
+    return {"source": str(source), **doc}
 
 
 def _safe(name):

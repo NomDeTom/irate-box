@@ -1,13 +1,20 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # Build the per-family PlatformIO dependency bundles a Meshtastic release does not publish.
-# Workflow dispatch: choose the Meshtastic tag and the environments (PlatformIO target names);
-# it checks out meshtastic/firmware at the tag, installs the tools for each environment, runs
-# irate_box.hub.pio_bundle and keeps/attaches pio-deps-<env>-<tag>.zip. It needs the network and
-# can run for a long time on the larger ESP32 targets.
+#
+# Every day it looks for stable meshtastic/firmware releases that have no pio-deps-<tag> release
+# here yet, and builds one representative target per family for each: platformio-deps-<family>-<tag>.zip,
+# beside pio-deps-sha256.json. A box proving a tag downloads a bundle with a SHA-256, and its
+# proving run is the check that the published bundle really builds offline.
+#
+# Workflow dispatch remains for one tag: choose the environments (PlatformIO target names); it keeps
+# pio-deps-<env>-<tag>.zip. It needs the network and can run for a long time on the larger ESP32
+# targets.
 name: Meshtastic build bundles
 # checkov:skip=CKV_GHA_7: the operator chooses the release tag and environments for this manual job
 on:
+  schedule:
+    - cron: 17 3 * * *
   workflow_dispatch:
     inputs:
       tag:
@@ -37,9 +44,47 @@ on:
 permissions:
   contents: write
 jobs:
+  find:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tags: ${{ steps.find.outputs.tags }}
+    steps:
+      - name: Stable Meshtastic tags with no bundle release here yet
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess
+
+          def api(path):
+              return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+
+          releases = api("repos/meshtastic/firmware/releases?per_page=30")
+          mine = {r["tag_name"] for r in api(f"repos/{os.environ['REPO']}/releases?per_page=100")}
+          tags = [
+              r["tag_name"]
+              for r in releases
+              if not r.get("draft") and not r.get("prerelease")
+              and f"pio-deps-{r['tag_name']}" not in mine
+          ][:6]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("tags=" + json.dumps(tags) + "\n")
+          print("new tags:", tags)
+          PY
   bundles:
+    needs: find
+    if: always() && (github.event_name != 'schedule' || needs.find.outputs.tags != '[]')
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ github.event_name == 'schedule' && fromJSON(needs.find.outputs.tags) || fromJSON(format('["{0}"]', github.event.inputs.tag)) }}
     steps:
       - name: The box's bundle tool
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -49,7 +94,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: meshtastic/firmware
-          ref: ${{ inputs.tag }}
+          ref: ${{ github.event_name == 'schedule' && matrix.tag || inputs.tag }}
           path: firmware
           submodules: recursive
           fetch-depth: 0
@@ -58,8 +103,8 @@ jobs:
           python-version: "3.12"
       - name: PlatformIO
         env:
-          PIO_PACKAGE: ${{ inputs.pio_package }}
-          PIO_VERSION: ${{ inputs.platformio }}
+          PIO_PACKAGE: ${{ inputs.pio_package || 'platformio' }}
+          PIO_VERSION: ${{ inputs.platformio || '6.1.19' }}
         run: |
           set -euo pipefail
           case "$PIO_PACKAGE" in
@@ -67,7 +112,18 @@ jobs:
             *) echo "pio_package must be platformio or pioarduino, not: $PIO_PACKAGE" >&2; exit 1 ;;
           esac
           pip install --disable-pip-version-check "$PIO_PACKAGE==$PIO_VERSION"
+      - name: Install one target per family and pack each bundle
+        if: github.event_name == 'schedule'
+        working-directory: firmware
+        env:
+          BUNDLE_OUT: ${{ runner.temp }}/bundles
+          TAG: ${{ matrix.tag }}
+          PIO_VERSION: ${{ inputs.platformio || '6.1.19' }}
+        run: |
+          set -euo pipefail
+          bash "$GITHUB_WORKSPACE/box/scripts/pio-deps-families.sh" "$TAG" "$BUNDLE_OUT" "$PIO_VERSION"
       - name: Install each environment's tools and pack the bundle
+        if: github.event_name != 'schedule'
         working-directory: firmware
         env:
           BUNDLE_OUT: ${{ runner.temp }}/bundles
@@ -93,19 +149,23 @@ jobs:
       - name: Keep the bundles
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: pio-deps-${{ inputs.tag }}
+          name: pio-deps-${{ github.event_name == 'schedule' && matrix.tag || inputs.tag }}
           path: |
             ${{ runner.temp }}/bundles/*.zip
             ${{ runner.temp }}/bundles/pio-deps-sha256.json
           if-no-files-found: error
           retention-days: 14
-      - name: Attach to a release
-        if: inputs.release_tag != ''
+      - name: Publish the bundles as a release
+        if: github.event_name == 'schedule' || inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TAG: ${{ github.event_name == 'schedule' && format('pio-deps-{0}', matrix.tag) || inputs.release_tag }}
+          TAG: ${{ github.event_name == 'schedule' && matrix.tag || inputs.tag }}
           BUNDLE_OUT: ${{ runner.temp }}/bundles
         run: |
           set -euo pipefail
-          gh release view "$RELEASE_TAG" >/dev/null
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            printf 'PlatformIO build caches for Meshtastic %s: one representative target per family, and their SHA-256.\n' "$TAG" \
+              | gh release create "$RELEASE_TAG" --title "Build caches for $TAG" --notes-file -
+          fi
           gh release upload "$RELEASE_TAG" "$BUNDLE_OUT"/*.zip "$BUNDLE_OUT"/pio-deps-sha256.json --clobber

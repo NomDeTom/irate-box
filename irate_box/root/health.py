@@ -5308,6 +5308,14 @@ def check_builds(now=None, quick=False):
                 go=GO_BUILDS if big else None,
             )
         )
+    # The proving runs (hub/proving.py): what a new release needs that the tooling lacks, and each
+    # family's last offline proof. Nothing here when the owner has not turned proving runs on.
+    try:
+        from irate_box.hub import proving
+
+        out += proving.findings()
+    except (OSError, ValueError, ImportError):
+        pass
     return out
 
 

@@ -677,7 +677,7 @@ def run_queue():
                 path.unlink(missing_ok=True)
         if not jobs:
             return 0
-        plain = [(p, j) for p, j in jobs if j.get("kind") != "firmware"]
+        plain = [(p, j) for p, j in jobs if j.get("kind") not in ("firmware", "proving")]
         if plain:
             path, job = plain[0]
             path.unlink(missing_ok=True)
@@ -686,10 +686,19 @@ def run_queue():
             else:
                 build(job)
             continue
-        firmware = factory.order([dict(j, _path=str(p)) for p, j in jobs], factory.last_family())
-        job = firmware[0]
-        Path(job.pop("_path")).unlink(missing_ok=True)
-        build_firmware(job)
+        # An owner's build first, then its tools; a proving run waits behind both.
+        firmware = [(p, j) for p, j in jobs if j.get("kind") == "firmware"]
+        if firmware:
+            job = factory.order([dict(j, _path=str(p)) for p, j in firmware], factory.last_family())[0]
+            Path(job.pop("_path")).unlink(missing_ok=True)
+            build_firmware(job)
+            continue
+        path, job = min(
+            ((p, j) for p, j in jobs if j.get("kind") == "proving"),
+            key=lambda pair: pair[1].get("queued", 0),
+        )
+        path.unlink(missing_ok=True)
+        build_proving(job)
 
 
 # --- the Firmware Factory's builds (factory.py queues them) ------------------------------------
@@ -1090,6 +1099,221 @@ def prune_factory(runs):
         loose = [p for p in group if not _status(p).get("keep") and _status(p).get("state") != "running"]
         for old in loose[:-FACTORY_KEEP]:
             shutil.rmtree(old, ignore_errors=True)
+
+
+# --- proving runs (proving.py queues them) ----------------------------------------------------
+
+PROVING = "factory-proving"
+TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,99}$")
+
+
+def _proving_fetch(job, src, ws, env_name, family, version, log):
+    """No published cache: fetch the tools online and pack them into the family's cache. The same
+    two steps the release-side workflow runs, here on the box and only when the owner allowed it."""
+    from irate_box.hub import pio_bundle, proving
+
+    env = dict(
+        os.environ,
+        CI="1",
+        CI_REPO=PROVING,
+        CI_BRANCH=str(job.get("tag") or job.get("ref")),
+        CI_COMMIT=job["commit"],
+        CI_ARTIFACTS=str(WORK),
+        FW_ENV=env_name,
+        FW_FAMILY=family,
+        FW_TOOLS_ONLY="1",
+        PLATFORMIO_WORKSPACE_DIR=str(ws),
+    )
+    env.pop("PLATFORMIO_BUILD_CACHE_DIR", None)
+    wheelhouse = _wheelhouse()
+    if wheelhouse:
+        env["PIP_FIND_LINKS"] = str(wheelhouse)  # online: the wheelhouse first, PyPI for the rest
+    log("proving: fetching the tools online to fill the family's cache")
+    proc = subprocess.run(  # noqa: TID251
+        ["bash", "-c", FIRMWARE_SCRIPT],
+        cwd=src,
+        env=env,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        timeout=TIME_LIMIT,
+    )
+    if proc.returncode != 0:
+        log(f"proving: the tools fetch failed ({proc.returncode})")
+        return None
+    dest = WORK / "proving-bundle.zip"
+    try:
+        pio_bundle.bundle(env_name, src, dest, workspace=ws)
+        cache = proving.extract_bundle(dest, family, version, log)
+    except (OSError, ValueError) as exc:
+        log(f"proving: the tools could not be packed ({str(exc)[:200]})")
+        cache = None
+    finally:
+        dest.unlink(missing_ok=True)
+    return cache
+
+
+def build_proving(job):
+    """One proving run: one target of a family, at a release tag, built with no network at all from
+    the family's cache. The proof keeps the tag, the family, the cache's signature and the tool
+    versions. A missing cache is a tooling finding, not a failed build, unless the owner let the
+    run fetch it (proving.ensure_cache, then PlatformIO's fetch plus pio_bundle.bundle)."""
+    from irate_box.hub import pio_bundle, proving
+
+    repo = Path(job.get("repo", "")).resolve()
+    if not (str(repo) in _mirror_paths() or repo.parent == PRIVATE.resolve()):
+        return
+    env_name, family = job.get("env", ""), job.get("family", "")
+    tag = str(job.get("tag") or job.get("ref") or "")
+    version = str(job.get("version") or tag.lstrip("v"))
+    if not (
+        ENV_RE.match(env_name)
+        and FAMILY_RE.match(family)
+        and TAG_RE.match(tag)
+        and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))
+    ):
+        return
+    runs = RUNS / PROVING
+    runs.mkdir(parents=True, exist_ok=True)
+    run = runs / str(_next_number(runs))
+    (run / "artifacts").mkdir(parents=True)
+    started = time.time()
+    keep = {k: job.get(k) for k in ("source", "ref", "commit", "env", "family", "tag", "version", "batch", "queued")}
+    _write_status(
+        run,
+        kind="proving",
+        repo=PROVING,
+        branch=tag,
+        started=started,
+        state="running",
+        **keep,
+        **_started_fields(),
+    )
+    src = WORK / PROVING
+    shutil.rmtree(src, ignore_errors=True)
+    state, usage, step, detail, cache = "failed", None, None, None, None
+    with open(run / "log.txt", "w") as log:
+
+        def say(text):
+            log.write(f"== {text}\n")
+            log.flush()
+
+        say(f"proving {tag}: {family}, {env_name}, on {os.uname().nodename}")
+        try:
+            out = _git("clone", "--quiet", "--no-checkout", str(repo), str(src))
+            if out.returncode != 0:
+                raise RuntimeError(f"Clone failed: {out.stderr.strip()}")
+            out = _git("checkout", "--quiet", job["commit"], cwd=src)
+            if out.returncode != 0:
+                raise RuntimeError(f"Checkout failed: {out.stderr.strip()}")
+            probe = subprocess.run([*OFFLINE, "true"], capture_output=True, text=True)  # noqa: TID251
+            if probe.returncode != 0:
+                raise RuntimeError(
+                    f"Environment check failed. This box cannot build without the network (unshare: {probe.stderr.strip()[:200]})."
+                )
+            out = subprocess.run(  # noqa: TID251
+                [*OFFLINE, "git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+                cwd=src,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
+            if out.returncode != 0:
+                raise RuntimeError(
+                    f"Submodule download failed. The submodules need the network: {out.stderr.strip()[-300:]}"
+                )
+            ws = workspace(f"{job.get('source')}-proving")
+            ws.mkdir(parents=True, exist_ok=True)
+            cache = proving.ensure_cache(job, say)
+            if cache is None and proving.settings()["proving_tooling"] in ("fetch", "install"):
+                cache = _proving_fetch(job, src, ws, env_name, family, version, say)
+                if cache and proving.settings()["proving_tooling"] == "install":
+                    lines = [
+                        line
+                        for values in (pio_bundle.manifest(src).get("requirements") or {}).values()
+                        for line in values
+                    ]
+                    proving.install_requirements(lines, family, say)
+            if cache is None:
+                state, step = "skipped", "tooling"
+                detail = "No cache for this family at this tag, and fetching it was not allowed."
+                say(detail)
+            else:
+                for f in (ws / "build" / env_name).iterdir() if (ws / "build" / env_name).is_dir() else []:
+                    if f.is_file() and ARTIFACT_RE.match(f.name):
+                        f.unlink()
+                shutil.rmtree(ws / "build" / env_name, ignore_errors=True)
+                env = dict(
+                    os.environ,
+                    CI="1",
+                    CI_REPO=PROVING,
+                    CI_BRANCH=tag,
+                    CI_COMMIT=job["commit"],
+                    CI_ARTIFACTS=str(run / "artifacts"),
+                    FW_ENV=env_name,
+                    FW_FAMILY=family,
+                    FW_TOOLS_ONLY="",
+                    PLATFORMIO_WORKSPACE_DIR=str(ws),
+                    CI_PIO_DEPS=str(cache),
+                    CI_PIO_DEPS_TAG=tag,
+                )
+                env.pop("PLATFORMIO_BUILD_CACHE_DIR", None)
+                wheelhouse = _wheelhouse()
+                if wheelhouse:
+                    env["PIP_NO_INDEX"] = "1"
+                    env["PIP_FIND_LINKS"] = str(wheelhouse)
+                say(f"proving: building {env_name} with no network at all (time limit {TIME_LIMIT // 60} min)")
+                with Usage() as usage:
+                    proc = subprocess.run(  # noqa: TID251
+                        [*OFFLINE, "bash", "-c", FIRMWARE_SCRIPT],
+                        cwd=src,
+                        env=env,
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        stdin=subprocess.DEVNULL,
+                        timeout=TIME_LIMIT,
+                    )
+                state = "passed" if proc.returncode == 0 else "failed"
+                say(f"PlatformIO exited with {proc.returncode}")
+        except subprocess.TimeoutExpired:
+            state, step = "timed out", "time limit"
+            say(f"stopped: over the time limit of {TIME_LIMIT // 60} min")
+        except (RuntimeError, OSError) as exc:
+            state, step = "failed", "setup"
+            say(str(exc))
+        finally:
+            shutil.rmtree(src, ignore_errors=True)
+            try:
+                text = (run / "log.txt").read_text(errors="replace")
+                markers = [ln[3:].strip() for ln in text.splitlines() if ln.startswith("== ")]
+                step = step or (markers[-1][:200] if markers else None)
+                detail = "\n".join([ln for ln in text.splitlines() if ln.strip()][-5:])[:1000]
+            except OSError:
+                pass
+    res = dict(usage.result) if usage and hasattr(usage, "result") else None
+    _write_status(
+        run,
+        state=state,
+        finished=time.time(),
+        duration=round(time.time() - started),
+        step=step,
+        cache_sha256=proving.cache_signature(cache),
+        resources=res,
+        artifacts=[],
+    )
+    proving.record(
+        proving.proof_for(
+            job,
+            state,
+            run=f"{PROVING}/{run.name}",
+            cache=cache,
+            cache_sha256=proving.cache_signature(cache),
+            tool_versions=proving.pio_versions(),
+            step=step,
+            detail=detail,
+        )
+    )
+    proving.prune(runs)
 
 
 def snapshot(limit=20):

@@ -2494,6 +2494,14 @@ def firmware_action(payload):
                         "keep_alpha",
                         "keep_beta",
                         "cache",
+                        "proving",
+                        "proving_releases",
+                        "proving_families",
+                        "proving_when",
+                        "proving_tooling",
+                        "proving_keep",
+                        "proving_window_start",
+                        "proving_window_end",
                     )
                     if k in payload
                 }
@@ -6603,6 +6611,20 @@ class Handler(BaseHTTPRequestHandler):
                         env=str(payload.get("env") or "") or None,
                     )
                     self.send_json(202, dict(out, snapshot=factory.snapshot()))
+                    return
+                if action == "prove":
+                    from irate_box.hub import proving
+
+                    out = proving.prove_now(
+                        str(payload.get("family") or "") or None, str(payload.get("tag") or "") or None
+                    )
+                    self.send_json(202, dict(out, snapshot=factory.snapshot()))
+                    return
+                if action == "prove-check":
+                    from irate_box.hub import proving
+
+                    found = proving.check_now(log=lambda *_: None)
+                    self.send_json(200, {"tooling": found, "snapshot": factory.snapshot()})
                     return
                 if action == "again":
                     factory.again(str(payload.get("run", "")))

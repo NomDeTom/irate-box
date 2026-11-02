@@ -1411,6 +1411,65 @@
                 data-i18n-placeholder="admin.firmware.placeholder-filter-rak-heltec-t"
             /></label>
             <div id="fw-boards" class="fw-boards"></div>
+            <h3 data-i18n="admin.firmware.h-proving-runs">Proving runs</h3>
+            <p class="setting-desc" data-i18n="admin.firmware.proving-desc">
+              At each new release, build one representative target per family with the
+              network disabled, from the cache alone. Gaps in the tooling are found
+              before a build fails. This is off until you turn it on.
+            </p>
+            <label class="inline" data-i18n="admin.firmware.label-proving">
+              <input type="checkbox" name="proving" /> Prove new releases offline
+            </label>
+            <label data-i18n="admin.firmware.label-proving-releases">
+              Which releases
+              <select name="proving_releases">
+                <option value="stable" data-i18n="admin.firmware.proving-stable">Stable only</option>
+                <option value="stable-beta" data-i18n="admin.firmware.proving-stable-beta">Stable and beta</option>
+                <option value="all" data-i18n="admin.firmware.proving-all-tags">Every tag</option>
+              </select>
+            </label>
+            <label data-i18n="admin.firmware.label-proving-families">
+              Which families
+              <select name="proving_families">
+                <option value="chosen" data-i18n="admin.firmware.proving-selected-families">The families of my selected boards</option>
+                <option value="all" data-i18n="admin.firmware.proving-all-families">Every family</option>
+              </select>
+            </label>
+            <label data-i18n="admin.firmware.label-proving-families-list">
+              Or a list of families
+              <input name="proving_families_list" type="text" placeholder="esp32s3, nrf52840, native" data-i18n-placeholder="admin.firmware.proving-families-placeholder" />
+            </label>
+            <label data-i18n="admin.firmware.label-proving-when">
+              When
+              <select name="proving_when">
+                <option value="idle" data-i18n="admin.firmware.proving-when-idle">When the box is idle</option>
+                <option value="night" data-i18n="admin.firmware.proving-when-night">Only at night</option>
+                <option value="manual" data-i18n="admin.firmware.proving-when-manual">Only when I press Prove now</option>
+              </select>
+            </label>
+            <label data-i18n="admin.firmware.label-proving-window">
+              Night window
+              <input name="proving_window_start" type="time" value="22:00" />
+              <input name="proving_window_end" type="time" value="06:00" />
+            </label>
+            <label data-i18n="admin.firmware.label-proving-tooling">
+              Tooling a proving run finds missing
+              <select name="proving_tooling">
+                <option value="flag" data-i18n="admin.firmware.proving-tooling-flag">Flag it</option>
+                <option value="fetch" data-i18n="admin.firmware.proving-tooling-fetch">Download it</option>
+                <option value="install" data-i18n="admin.firmware.proving-tooling-install">Download and install it</option>
+              </select>
+            </label>
+            <label data-i18n="admin.firmware.label-proving-keep">
+              Proofs to keep for each family
+              <input name="proving_keep" type="number" min="1" max="10" step="1" />
+            </label>
+            <p class="setting-desc" data-i18n="admin.firmware.proving-warning">
+              Every family means about 1–3 GB of caches and hours of building on a
+              small board. Download and install changes the Building kit without asking
+              each time. On a 512 MB board the ESP32 families are heavy: build them on
+              a bigger box, or off-box.
+            </p>
             <button
               class="action-btn primary"
               type="submit"

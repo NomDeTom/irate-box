@@ -688,9 +688,12 @@ def snapshot():
             t += e
         else:
             known = False
+    from irate_box.hub import proving
+
     return {
         "sources": [{k: s[k] for k in ("name", "area", "mirror", "upstream")} for s in sources()],
         "paused": PAUSED.exists(),
+        "proving": proving.report(),
         "running": running,
         "waiting": waiting,
         "runs": history[:30],
