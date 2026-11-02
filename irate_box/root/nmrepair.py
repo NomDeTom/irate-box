@@ -164,7 +164,8 @@ def _boot_unit_text():
         f"ConditionPathExists={RECORD}\n"
         "\n[Service]\n"
         "Type=oneshot\n"
-        f"ExecStart={CODE}/irate-box nmrepair check\n"
+        "TimeoutStartSec=180\n"
+        f"ExecStart={CODE}/irate-box nmrepair check boot\n"
         "\n[Install]\n"
         "WantedBy=multi-user.target\n"
     )
@@ -302,17 +303,26 @@ def install(run=run):
     )
 
 
-def check(run=run):
-    """The two-minute check: keep the change if a WiFi device is connected, else put everything back."""
+def check(run=run, grace=0, sleep=time.sleep):
+    """Keep the change if the WiFi is connected, else put everything back. At boot, grace gives a slow
+    join the same two minutes the install's own timer allows before the box is put back."""
     rec = _load()
     if rec.get("phase") != "checking":
+        _disarm_boot_check(run)  # a stale unit from a kept record cleans itself up
         return "There is no NetworkManager change waiting."
     _cancel_check(run)
-    _disarm_boot_check(run)
-    if _nm_wifi(run, rec.get("device")):
+    found = _nm_wifi(run, rec.get("device"))
+    waited = 0
+    while not found and waited < grace:
+        step = min(5, grace - waited)
+        sleep(step)
+        waited += step
+        found = _nm_wifi(run, rec.get("device"))
+    if found:
         rec.update(phase="kept", checked=time.time())
         rec.pop("files", None)  # the netplan copy can hold a WiFi password; it is not needed once kept
         _save(rec)
+        _disarm_boot_check(run)
         return "The box is on the WiFi connection through NetworkManager. The change stays."
     revert(run=run)
     return "The box was not on a WiFi connection, so it restored the earlier network settings."
@@ -324,7 +334,6 @@ def revert(run=run):
     if not rec:
         raise Refused(M("nm-install.undo.none", "The box did not change the WiFi to NetworkManager."))
     _cancel_check(run)
-    _disarm_boot_check(run)
     if rec.get("handover"):
         try:
             from irate_box.root import nmhandover
@@ -334,6 +343,7 @@ def revert(run=run):
             pass
     ok = _restore(rec, run)
     RECORD.unlink(missing_ok=True)
+    _disarm_boot_check(run)
     if not ok:
         raise Refused(
             M(
@@ -355,7 +365,7 @@ if __name__ == "__main__":
     argv = sys.argv[1:]
     try:
         if argv[:1] == ["check"]:
-            print(check())
+            print(check(grace=120 if argv[1:2] == ["boot"] else 0))
         elif argv[:1] == ["revert"]:
             print(render(revert()))
         elif argv[:1] == ["renderer-check"]:
