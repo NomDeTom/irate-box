@@ -1004,5 +1004,72 @@ check("  an interrupted run can be deleted", not (fac_runs / "952").exists())
 ci.prune_factory(fac_runs)
 left = sorted(r["run"].split("/")[1] for r in factory.runs(200) if r.get("env") == "rak4631" and not r.get("keep"))
 check("  and pruned as any other: the target's newest two", left == ["950", "951"], left)
+
+# A target the kernel stopped for memory at today's build limit: not queued again until the limit is raised.
+MB = 2**20
+slice_dir = T / "cgroup" / "build.slice"
+slice_dir.mkdir(parents=True)
+(slice_dir / "memory.max").write_text(f"{160 * MB}\n")
+(slice_dir / "memory.swap.max").write_text(f"{32 * MB}\n")
+factory.BUILD_SLICE = slice_dir
+check("the build limit: build.slice's memory and swap", factory.build_limit() == 192 * MB, factory.build_limit())
+for n, (env, state, killed, limit) in enumerate(
+    [
+        ("pico2", "failed", 1, 160),  # stopped for memory at today's limit
+        ("picow", "failed", 1, 120),  # stopped, but under a smaller limit than today's
+        ("tbeam", "failed", 0, 160),  # failed for another reason
+    ],
+    start=960,
+):
+    d = fac_runs / str(n)
+    d.mkdir(parents=True)
+    (d / "status.json").write_text(
+        json.dumps(
+            {
+                "kind": "firmware",
+                "env": env,
+                "family": "rp2350" if env == "pico2" else "rp2040" if env == "picow" else "esp32",
+                "state": state,
+                "started": time.time() - 3600 + n,
+                "finished": time.time() - 3000 + n,
+                "resources": {"memory_killed": killed, "memory_limit": limit * MB, "swap_limit": 32 * MB},
+            }
+        )
+    )
+big = factory.too_big(factory.runs(200))
+check(
+    "too big here: only the target killed for memory at no less than today's limit",
+    set(big) == {"pico2"} and big["pico2"]["limit"] == 192 * MB,
+    big,
+)
+real_targets = factory.targets
+factory.targets = lambda src, ref: {
+    "commit": "a" * 40,
+    "targets": [{"env": e, "family": "x", "name": e} for e in ("pico2", "picow", "tbeam")],
+}
+for q in ci.QUEUE.glob("*.json"):
+    q.unlink()
+out = factory.queue("meshtastic-firmware", "main", ["pico2", "picow", "tbeam"])
+check(
+    "  queued without it, and the answer says why",
+    out["queued"] == 2
+    and out["skipped"] == ["pico2"]
+    and out["skipped_said"]["id"] == "factory.targets.too-big"
+    and out["skipped_said"]["args"]["mb"] == 192
+    and sorted(j["env"] for j in factory._jobs()) == ["picow", "tbeam"],
+    out,
+)
+try:
+    factory.queue("meshtastic-firmware", "main", ["pico2"])
+    check("  alone: refused with the reason", False)
+except factory.Refused as exc:
+    check("  alone: refused with the reason", exc.message["id"] == "factory.targets.too-big", exc.message)
+(slice_dir / "memory.max").write_text(f"{320 * MB}\n")
+check("  a larger preset lets it try again", factory.too_big(factory.runs(200)) == {})
+(slice_dir / "memory.max").write_text("max\n")
+check("  builds not bounded: nothing held back", factory.too_big(factory.runs(200)) == {})
+factory.targets = real_targets
+for q in ci.QUEUE.glob("*.json"):
+    q.unlink()
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
