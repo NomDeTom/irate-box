@@ -1595,14 +1595,15 @@ async function loadPackages() {
 }
 // True once the root helper has the request; false when cancelled or refused (said under the package).
 async function pkgAct(body, button) {
-  const waitKey = waitKeyOf(button);
-  if (button) AW.setBusy(button, true);
+  const target = button && button.nodeType === 1 ? button : null;
+  const waitKey = waitKeyOf(target);
+  if (target) AW.setBusy(target, true);
   try {
     pkgWaiting = {
       id: (await postJSON("/admin/packages", body)).id,
       at: Date.now(),
       pkg: body.package || "",
-      button,
+      button: target,
       waitKey,
     };
     pkgSay(
@@ -1613,7 +1614,7 @@ async function pkgAct(body, button) {
     setTimeout(loadPackages, 2000);
     return true;
   } catch (err) {
-    clearWait({ button, waitKey });
+    clearWait({ button: target, waitKey });
     pkgSay(body.package, err.message, false);
     return false;
   }
