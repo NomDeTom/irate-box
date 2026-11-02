@@ -918,14 +918,18 @@ function renderLibrary(snap) {
 
   const pc = snap.pace || {};
   const paceEl = document.getElementById("library-pace-state");
-  if (paceEl)
-    paceEl.textContent = pc.budget
-      ? `Adapted. The budget is ${pc.budget} requests an hour (the GitHub limit is ${pc.limit}). ${pc.left} requests are left this hour.${pc.backed_off ? " The librarian has slowed down after GitHub refused requests." : ""}`
-      : "Not adapted. The librarian sends requests at its own rate. It stops only when GitHub reports that the limit is nearly reached.";
-  document.getElementById("library-adapt-off").hidden = !pc.budget;
+  if (paceEl) {
+    if (pc.budget)
+      paceEl.textContent = `Adapting. The budget is ${pc.budget} requests an hour (the GitHub limit is ${pc.limit}). ${pc.left} requests are left this hour.${pc.backed_off ? " The librarian has slowed down after GitHub refused requests." : ""}`;
+    else if (pc.off)
+      paceEl.textContent = "Not adapting. The librarian sends requests at its own rate. It stops only when GitHub reports that the limit is nearly reached.";
+    else
+      paceEl.textContent = "Adapting from the first check. GitHub reports the requests left in each answer, and the librarian keeps its checks to a budget just under that shared allowance, stretching them out as it runs low.";
+  }
+  document.getElementById("library-adapt-off").hidden = !!pc.off;
   const access = document.getElementById("library-access-says");
   if (access)
-    access.textContent = `(${snap.token_set ? "a token is set" : "no token"}, ${pc.budget ? "adapting" : "not adapting"})`;
+    access.textContent = `(${snap.token_set ? "a token is set" : "no token"}, ${pc.off ? "not adapting" : "adapting"})`;
   drawLibraryOthers(snap.policy || {});
 
   clearTimeout(libPoll);
@@ -14268,15 +14272,16 @@ function asCard(holder) {
   const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
   // A failed check's outcome is its error already ("error: …"): said once, with its own full stop.
   const sentence = (text) => `${String(text).trim().replace(/\.+$/, "")}.`;
+  const failed = st.error && checked;
   body.append(
-    el("p", {
-      className: "setting-desc",
-      textContent: !checked
-        ? "Not checked yet."
-        : st.error
-          ? `Last checked ${checked}: the check failed. ${sentence(st.error)}`
-          : `Last checked ${checked}: ${sentence(st.outcome || "nothing")}`,
-    }),
+    el("p", { className: `setting-desc${failed ? " bad" : ""}` },
+      ...(failed
+        ? [
+            `Last checked ${checked}: the check failed. ${sentence(st.error)} `,
+            el("a", { href: "#updoctor", textContent: "Open the Updates doctor for the reason and a fix." }),
+          ]
+        : [!checked ? "Not checked yet." : `Last checked ${checked}: ${sentence(st.outcome || "nothing")}`]),
+    ),
     el("div", { className: "admin-list" },
       ...(holder.kept.length
         ? holder.kept.map((v) => el("p", { className: "setting-desc" },
@@ -14301,18 +14306,24 @@ function asCard(holder) {
     asSettingsForm(holder),
   );
   asSurveyTable(holder, body);
+  // A failed check said on the closed card too, not only inside it; opening it hides this line,
+  // since the drawer below then says the reason in full.
+  const failedNote = st.error
+    ? el("span", { className: "s bad", textContent: "The last check failed. Open for the reason." })
+    : null;
+  if (failedNote) failedNote.hidden = !body.hidden;
   const head = el("button", { type: "button", className: "aw-card-head",
     onclick: (event) => {
       const open = body.hidden;
       body.hidden = !open;
+      if (failedNote) failedNote.hidden = open;
       if (open) asOpen.add(holder.id);
       else asOpen.delete(holder.id);
       event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
     } },
     el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
     el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version${holder.kept.length === 1 ? "" : "s"}, ${size(holder.bytes)}` }),
-    // A failed check said on the closed card too, not only inside it.
-    ...(st.error ? [el("span", { className: "s bad", textContent: "The last check failed. Open for the reason." })] : []));
+    ...(failedNote ? [failedNote] : []));
   head.setAttribute("aria-expanded", body.hidden ? "false" : "true");
   return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
 }

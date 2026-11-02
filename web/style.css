@@ -3736,7 +3736,7 @@ body.appstore a {
   align-items: center;
   gap: 0.5rem 1rem;
 }
-.appstore-hold-head h3 {
+body.admin .appstore-hold-head h3 {
   margin: 0;
 }
 .appstore-kinds {
@@ -4480,6 +4480,10 @@ html:has(> body.admin) {
 /* A tile shown to someone who can't open it yet: a lock, and the sign-in at its door. */
 .service-card.locked {
   opacity: 0.85;
+}
+/* A locked tile whose app is not running still fades as a down tile (hub.js adds .down). */
+.service-card.locked.down {
+  opacity: 0.4;
 }
 .service-card .lock {
   font-size: 0.72rem;
