@@ -3084,7 +3084,10 @@ def share_findings():
                 t,
                 "problem",
                 M("guest-net.not-loaded", "Guest internet access is set, but its rules are not loaded."),
-                fix=M("guest-net.not-loaded.fix", "On Network, Hotspot, set the level again, or turn the access off."),
+                fix=M(
+                    "guest-net.not-loaded.fix",
+                    "On Security, Guest access, set the level again, or turn the access off.",
+                ),
                 notes=[SHARE_LEVEL[st["level"]]],
                 commands=["nft list table inet irate_box"],
             )
@@ -3158,8 +3161,8 @@ def share_findings():
             "warn" if shared and off else "ok",
             SHARE_LEVEL[st["level"]],
             actions=chips,
-            # The level is set with the hotspot: a link there, not a sentence.
-            go={"section": "network/hotspot", "where": M("guest-net.level-go", "the level on Network → Hotspot")},
+            # The level is on this tab, above: a link to it, not a sentence.
+            go={"section": "security/guest-access", "where": M("guest-net.level-go", "the level on Guest access")},
         )
     )
     return out

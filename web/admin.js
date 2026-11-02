@@ -3799,7 +3799,6 @@ const sec = {
   scan: document.getElementById("security-scan"),
   note: document.getElementById("security-note"),
   counts: document.getElementById("security-counts"),
-  findings: document.getElementById("security-findings"),
   listeners: document.querySelector("#security-listeners tbody"),
   output: document.getElementById("security-output"),
   log: document.getElementById("security-log"),
@@ -4246,29 +4245,22 @@ function secChipRows(finding, busy) {
     ),
   );
 }
-// The Security page's subjects: where each of the box's choices lives.
+// The Security page's tabs: where each of the box's choices lives.
 const SEC_SUBJECTS = [
-  [
-    "exposure",
-    "What guests can reach",
-    "Ports that answer, the minimum rules between guests and the box, and what the box shares with other networks.",
-  ],
-  [
-    "login",
-    "Sign-in and root",
-    "Who can sign in to the box itself, how, and what they can do as root.",
-  ],
-  [
-    "system",
-    "The system",
-    "How the system under the box software is set up: kernel, package sources, logs and services.",
-  ],
+  ["guest-access", "Guest access"],
+  ["sign-in", "Sign-in"],
+  ["process-safety", "Process safety"],
+  ["secrets", "Secrets"],
+  ["connections", "Connections"],
 ];
 function secSubject(finding) {
-  if (/^(port-|listen-|firewall|guest-net|cockpit|llmnr|share)/.test(finding.id))
-    return "exposure";
-  if (/^(ssh|sudo|root-|group-)/.test(finding.id)) return "login";
-  return "system";
+  const id = finding.id;
+  if (/^(guest-net|firewall)/.test(id)) return "guest-access";
+  if (/^(ssh|sudo|root-|group-|armbian-setup)/.test(id)) return "sign-in";
+  if (/^(port-|listen-|cockpit|llmnr|share)/.test(id)) return "connections";
+  if (/^(secret|cmdline)/.test(id)) return "secrets";
+  if (/^(proc-|kernel-|unit-|logs-|apt-)/.test(id)) return "process-safety";
+  return "process-safety";
 }
 // One of the box's settings, not a finding: what it is now, its values with the one in effect marked, and
 // Save and Discard. It stays in its place whatever it is set to. What the doctor makes of it is the
@@ -4297,7 +4289,7 @@ function secChoiceCard(finding, busy, note) {
       el("span", { className: "setting-desc", textContent: n }),
     ),
     evidenceList(parts.evidence),
-    // Where a part of it is set elsewhere (guest access's level, on Network → Hotspot): a link there.
+    // Where a part of it is set elsewhere (guest access's level, above on Guest access): a link there.
     finding.go ? el("div", { className: "library-buttons" }, goLink(finding.go)) : null,
     // What to type where the page cannot put it in effect itself (the firewall's rules not loaded, say).
     finding.status !== "ok" && parts.commands.length
@@ -4453,31 +4445,33 @@ function renderSecurity(data) {
   const choices = lines.filter((finding) => secKind(finding) === "choice");
   const waiting = choices.filter((finding) => finding.status !== "ok");
   const card = (finding) => secChoiceCard(finding, busy, noteUnder(finding.id));
-  sec.findings.replaceChildren(
-    ...(!scan
-      ? [
-          el("p", {
-            className: "setting-desc",
-            textContent: "Not scanned yet.",
-          }),
-        ]
-      : SEC_SUBJECTS.map(([key, title, words]) => {
-          const mine = choices.filter((finding) => secSubject(finding) === key);
-          return mine.length
-            ? el(
+  for (const [key] of SEC_SUBJECTS) {
+    const box = document.getElementById(`security-findings-${key}`);
+    if (!box) continue;
+    const mine = choices.filter((finding) => secSubject(finding) === key);
+    box.replaceChildren(
+      ...(!scan
+        ? [
+            el("p", {
+              className: "setting-desc",
+              textContent: "Not scanned yet.",
+            }),
+          ]
+        : mine.length
+          ? [
+              el(
                 "div",
                 { className: "sec-subject", id: `security-${key}` },
-                el("h3", { textContent: title }),
-                el("p", { className: "setting-desc", textContent: words }),
                 el(
                   "div",
                   { className: "sec-settings" },
-                  ...(key === "login" ? secCards(mine, busy) : mine.map(card)),
+                  ...(key === "sign-in" ? secCards(mine, busy) : mine.map(card)),
                 ),
-              )
-            : null;
-        }).filter(Boolean)),
-  );
+              ),
+            ]
+          : []),
+    );
+  }
   drawDebianState(lines, scan);
   drawDebianPattern(lines, busy);
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
@@ -15561,9 +15555,6 @@ if (paneShown("toolkits")) {
 }
 
 // --- HTTPS (root/tls.py, /admin/tls) ----------------------------------------------------------------
-document
-  .getElementById("security-cards")
-  .append(document.getElementById("security-https"));
 const tlsEl = {
   state: document.getElementById("tls-state"),
   make: document.getElementById("tls-make"),

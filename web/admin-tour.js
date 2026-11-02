@@ -16,7 +16,7 @@ const TOUR = (() => {
     {
       id: "visitors",
       label: "Visitor counts",
-      section: "security",
+      section: "security/connections",
       target: "#visitor_counts",
       said: "Default: on. The box counts different devices today and this week. It uses salted hashes and deletes them every day and every week. The box keeps only the counts.",
     },
@@ -44,14 +44,14 @@ const TOUR = (() => {
     {
       id: "https",
       label: "HTTP and HTTPS",
-      section: "security",
+      section: "security/connections",
       target: "#security-https",
       said: "Generate or import a certificate, then select HTTP, both transports, HTTPS with HTTP discovery, or HTTPS only. Save applies the choices. Restrictive choices require this page to be opened over HTTPS.",
     },
     {
       id: "root-policy",
       label: "Root helper security policy",
-      section: "security",
+      section: "security/sign-in",
       target: "#security-policy",
       said: "Initially the hub administrator may change security policy. Console/SSH-only locks those changes at root. Saving that choice means only a root-capable console or SSH session can restore hub access.",
     },
@@ -66,15 +66,15 @@ const TOUR = (() => {
     {
       id: "guest-net",
       label: "Guest internet access",
-      section: "network/hotspot",
-      fallback: "network",
+      section: "security/guest-access",
+      fallback: "security",
       target: "#guest-net-box",
       said: "Default: off. Guests on the hotspot reach the box and nothing else. There are five levels. Each level shows what it opens.",
     },
     {
       id: "ssh",
       label: "SSH password authentication",
-      section: "security",
+      section: "security/sign-in",
       target: "#sec-ssh-password",
       said: "The box keeps the image setting until you change it. If SSH accepts keys only and you have no key, you cannot sign in over SSH.",
     },
@@ -89,7 +89,7 @@ const TOUR = (() => {
     {
       id: "cockpit",
       label: "Cockpit (root sign-in on port 9090)",
-      section: "security",
+      section: "security/connections",
       target: "#sec-cockpit",
       only: "cockpit",
       said: "While Cockpit runs on the network, every guest can reach its sign-in page.",
@@ -117,9 +117,9 @@ const TOUR = (() => {
     {
       id: "connection",
       label: "How guests reach the box",
-      section: "security",
+      section: "security/guest-access",
       target: "#sec-firewall",
-      said: "Phones and laptops find the hub through the network that the box is on, or through the box's own hotspot. Two settings decide what a guest on the hotspot reaches: the hotspot firewall, here, and Guest internet access, a later step. Set both.",
+      said: "Phones and laptops find the hub through the network that the box is on, or through the box's own hotspot. Two settings decide what a guest on the hotspot reaches: the hotspot firewall and Guest internet access. Both are here, on Guest access.",
     },
     {
       id: "country",
@@ -131,8 +131,8 @@ const TOUR = (() => {
     {
       id: "security",
       label: "What the box exposes",
-      section: "security",
-      target: "#security-findings",
+      section: "security/guest-access",
+      target: "#security-findings-guest-access",
       said: "This step lists what a guest on the network can reach. It lists the settings that change that.",
     },
     {
