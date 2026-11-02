@@ -1911,7 +1911,7 @@ function markHelperWait(root, busy) {
   if (!root) return;
   const held = helperHeld(busy);
   root.querySelectorAll('[data-helper-wait="1"]').forEach((button) => {
-    if (!button.classList.contains("is-busy")) AW.setBusy(button, held, "helper");
+    if (!button.classList.contains("is-busy")) AW.setBusy(button, held && button.disabled, "helper");
   });
 }
 function markHelperButton(button, busy) {
@@ -8088,7 +8088,7 @@ function radioTestButton(iface, exp, label) {
     actionButton(
       label,
       (event) => netRequest({ action: "radiotest", iface, exp }, "scan", null, event.currentTarget),
-      { className: "small", disabled: busy, dataset: { wait: `net:radiotest:${iface}:${exp}` } },
+      { className: "small", disabled: busy, dataset: { wait: `net:radiotest:${iface}:${exp}`, helperWait: busy ? "1" : "0" } },
     ),
     el("span", { className: "setting-desc", textContent: ` ${RADIO_TEST_SAYS[exp]}` }),
   );
@@ -8979,7 +8979,7 @@ function renderNetwork(data) {
           el("button", {
             type: "button",
             className: "action-btn primary",
-            dataset: { wait: `net:stall:${need}` },
+            dataset: { wait: `net:stall:${need}`, helperWait: busy ? "1" : "0" },
             disabled: busy,
             textContent: `${uplink.stall.label[0].toUpperCase()}${uplink.stall.label.slice(1)} now`,
             onclick: (event) => netRequest({ action: "do", step: need }, "up", null, event.currentTarget),
@@ -9034,13 +9034,13 @@ function renderNetwork(data) {
         actionButton(
           "Enable automatic retries",
           (event) => netRequest({ action: "profile", on: true }, "up", null, event.currentTarget),
-          { disabled: busy, dataset: { wait: "net:profile:on" } },
+          { disabled: busy, dataset: { wait: "net:profile:on", helperWait: busy ? "1" : "0" } },
         ),
         " ",
         actionButton(
           "Undo",
           (event) => netRequest({ action: "profile", on: false }, "up", null, event.currentTarget),
-          { disabled: busy, dataset: { wait: "net:profile:off" } },
+          { disabled: busy, dataset: { wait: "net:profile:off", helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -9053,7 +9053,7 @@ function renderNetwork(data) {
         actionButton(
           "Undo",
           (event) => netRequest({ action: "profile", on: false }, "up", null, event.currentTarget),
-          { disabled: busy, dataset: { wait: "net:profile:off" } },
+          { disabled: busy, dataset: { wait: "net:profile:off", helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -9069,7 +9069,7 @@ function renderNetwork(data) {
           (event) => {
             netRequest({ action: "profile", on: true }, "up", null, event.currentTarget);
           },
-          { disabled: busy, dataset: { wait: "net:profile:on" } },
+          { disabled: busy, dataset: { wait: "net:profile:on", helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -9130,6 +9130,10 @@ function renderNetwork(data) {
     return;
   }
   showWait(netWaiting);
+  markHelperWait(document.getElementById("network"), busy);
+  markHelperButton(net.scan, busy);
+  markHelperButton(net.hold, busy);
+  markHelperButton(net.unhold, busy);
   clearTimeout(netPoll);
   netPoll = setTimeout(
     loadNetwork,
@@ -9531,14 +9535,14 @@ function renderWifisync(inv, data, busy) {
         on ? "Disable wifisync" : "Enable wifisync",
         (event) =>
           netRequest({ action: "wifisync", do: on ? "off" : "on" }, "wifisync", null, event.currentTarget),
-        { className: "small", disabled: busy, dataset: { wait: `net:wifisync:${on ? "off" : "on"}` } },
+        { className: "small", disabled: busy, dataset: { wait: `net:wifisync:${on ? "off" : "on"}`, helperWait: busy ? "1" : "0" } },
       ),
       rec.was ? " " : null,
       rec.was
         ? actionButton(
             `Undo: ${unitWord(rec.was)}, as the image had it`,
             (event) => netRequest({ action: "wifisync", do: "undo" }, "wifisync", null, event.currentTarget),
-            { className: "small", disabled: busy, dataset: { wait: "net:wifisync:undo" } },
+            { className: "small", disabled: busy, dataset: { wait: "net:wifisync:undo", helperWait: busy ? "1" : "0" } },
           )
         : null,
     ),
@@ -9586,7 +9590,7 @@ function renderOtherAp(inv, data, busy) {
                 null,
                 event.currentTarget,
               ),
-            { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:undo` } },
+            { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:undo`, helperWait: busy ? "1" : "0" } },
           ),
         ),
       );
@@ -9613,7 +9617,7 @@ function renderOtherAp(inv, data, busy) {
                 event.currentTarget,
               );
           },
-          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:remove` } },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:remove`, helperWait: busy ? "1" : "0" } },
         ),
         " ",
         actionButton(
@@ -9625,7 +9629,7 @@ function renderOtherAp(inv, data, busy) {
               null,
               event.currentTarget,
             ),
-          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:leave` } },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:leave`, helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -9640,7 +9644,7 @@ function renderOtherAp(inv, data, busy) {
         actionButton(
           "Restore profile",
           (event) => netRequest({ action: "otherap", uuid, do: "undo" }, "otherap", null, event.currentTarget),
-          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${uuid}:undo` } },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${uuid}:undo`, helperWait: busy ? "1" : "0" } },
         ),
         " ",
         actionButton(
@@ -9685,7 +9689,7 @@ function renderVisible(inv, busy) {
   const scanAgain = actionButton(
     "Run scan",
     (event) => netRequest({ action: "scan", rescan: true }, "scan", null, event.currentTarget),
-    { disabled: busy, className: "small", dataset: { wait: "net:scan:rescan" } },
+    { disabled: busy, className: "small", dataset: { wait: "net:scan:rescan", helperWait: busy ? "1" : "0" } },
   );
   const fields = joinForm.elements;
   box.replaceChildren(
@@ -10011,7 +10015,7 @@ function connSettings(profile, inv, data, busy, radio) {
                   event.currentTarget,
                 );
             },
-            { disabled: busy, dataset: { wait: `net:connection:${profile.uuid}:undo` } },
+            { disabled: busy, dataset: { wait: `net:connection:${profile.uuid}:undo`, helperWait: busy ? "1" : "0" } },
           ),
         )
       : null,
@@ -10063,7 +10067,7 @@ function renderHandover(inv, busy) {
               (event) => {
                 netRequest({ action: "handover", name: file.name }, "handover", null, event.currentTarget);
               },
-              { disabled: busy, dataset: { wait: `net:handover:${file.name}:on` } },
+              { disabled: busy, dataset: { wait: `net:handover:${file.name}:on`, helperWait: busy ? "1" : "0" } },
             ),
           ),
         );
@@ -10105,7 +10109,7 @@ function renderHandover(inv, busy) {
                   event.currentTarget,
                 );
             },
-            { disabled: busy, dataset: { wait: `net:handover:${handover.name}:undo` } },
+            { disabled: busy, dataset: { wait: `net:handover:${handover.name}:undo`, helperWait: busy ? "1" : "0" } },
           ),
         ),
       );
@@ -12986,7 +12990,7 @@ function renderUsb(data) {
                     ? el("button", {
                         type: "button",
                         className: "action-btn small",
-                        dataset: { wait: `usb:import:${device.name}:${z.file}` },
+                        dataset: { wait: `usb:import:${device.name}:${z.file}`, helperWait: busy ? "1" : "0" },
                         textContent: "Copy book to library",
                         disabled: busy,
                         onclick: (event) =>
@@ -13014,7 +13018,7 @@ function renderUsb(data) {
                 el("button", {
                   type: "button",
                   className: "action-btn",
-                  dataset: { wait: `usb:export:${device.name}` },
+                  dataset: { wait: `usb:export:${device.name}`, helperWait: busy ? "1" : "0" },
                   textContent: "Export book to USB drive",
                   disabled: busy,
                   onclick: (event) =>
@@ -13045,6 +13049,8 @@ function renderUsb(data) {
     usb.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
   }
   showWait(usbWaiting);
+  markHelperWait(usb.devices, busy);
+  markHelperButton(usb.scan, busy);
   clearTimeout(usbPoll);
   if (busy) usbPoll = setTimeout(loadUsb, 1000);
 }
@@ -15406,7 +15412,7 @@ async function loadKitsUsb() {
                     ? el("button", {
                         type: "button",
                         className: "action-btn small",
-                        dataset: { wait: `kits:usb:import:${device.name}:${k.kit}` },
+                        dataset: { wait: `kits:usb:import:${device.name}:${k.kit}`, helperWait: busy ? "1" : "0" },
                         textContent: "Import toolkit",
                         disabled: busy,
                         onclick: (event) =>
@@ -15437,7 +15443,7 @@ async function loadKitsUsb() {
                 el("button", {
                   type: "button",
                   className: "action-btn",
-                  dataset: { wait: `kits:usb:export:${device.name}` },
+                  dataset: { wait: `kits:usb:export:${device.name}`, helperWait: busy ? "1" : "0" },
                   textContent: "Export toolkit to USB drive",
                   disabled: busy,
                   onclick: (event) =>
@@ -15463,6 +15469,8 @@ async function loadKitsUsb() {
       : []),
   );
   showWait(kitsUsbWait);
+  markHelperWait(noteEl("kits-usb"), busy);
+  markHelperButton(document.getElementById("kits-usb-scan"), busy);
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
 // confirmText: only where the box cannot go on without a decision (an import with the clock unknown).
