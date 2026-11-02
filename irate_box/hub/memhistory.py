@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box.hub import jsonlog, svchistory
+from irate_box.hub import jsonlog, storage, svchistory
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 FILE = STATE / "memory-history.json"
@@ -36,18 +36,28 @@ def memory():
 
 
 def disk():
-    """The hub's storage, as the disk meter reads it: the filesystem of the state folder."""
-    try:
-        st = os.statvfs(STATE)
-    except OSError:
+    """The card, as the disk meter reads it: the filesystem holding `/`, not the state folder."""
+    card = storage.places().get("card") or {}
+    total = card.get("total") or 0
+    return {"disk_total": total, "disk_free": card.get("free") or 0} if total else {}
+
+
+def state():
+    """The state's own storage when it is not the card's (the NAND on a Lyra), as its own series."""
+    place = storage.places().get("state")
+    total = (place or {}).get("total") or 0
+    if not total:
         return {}
-    total = st.f_blocks * st.f_frsize
-    return {"disk_total": total, "disk_free": min(st.f_bavail * st.f_frsize, total)} if total else {}
+    return {
+        "state_total": total,
+        "state_free": place.get("free") or 0,
+        "state_kind": place.get("kind") or "other",
+    }
 
 
-def _disk_ok(sample):
-    """A sample's disk fields when they are sound; a sample from before they were kept, or with bad ones, keeps its memory."""
-    t, f = sample.get("disk_total"), sample.get("disk_free")
+def _pair_ok(sample, prefix):
+    """A size and its free space: numbers, positive total, free within it."""
+    t, f = sample.get(f"{prefix}_total"), sample.get(f"{prefix}_free")
     return (
         isinstance(t, (int, float))
         and isinstance(f, (int, float))
@@ -56,6 +66,25 @@ def _disk_ok(sample):
         and t > 0
         and 0 <= f <= t
     )
+
+
+def _disk_ok(sample):
+    """A sample's card fields when they are sound; an older sample, or one with bad values, keeps its memory."""
+    return _pair_ok(sample, "disk")
+
+
+def _clean(sample):
+    """A sample with each unsound storage series left out, never a zero or a wrong free."""
+    out = dict(sample)
+    if not _pair_ok(out, "disk"):
+        out.pop("disk_total", None)
+        out.pop("disk_free", None)
+    if not _pair_ok(out, "state"):
+        for key in ("state_total", "state_free", "state_kind"):
+            out.pop(key, None)
+    elif out.get("state_kind") not in ("flash", "usb", "other"):
+        out.pop("state_kind", None)
+    return out
 
 
 def processes():
@@ -101,11 +130,7 @@ def load():
         and 0 <= sample["available"] <= sample["total"]
         and 0 <= sample["swap_free"] <= sample["swap_total"]
     ][-LIMIT:]
-    return {
-        "samples": [
-            s if _disk_ok(s) else {k: v for k, v in s.items() if k not in ("disk_total", "disk_free")} for s in kept
-        ]
-    }
+    return {"samples": [_clean(s) for s in kept]}
 
 
 def record(hist, mem, now):
@@ -151,7 +176,7 @@ class Sampler(threading.Thread):
         now = time.time() if now is None else now
         hist = load()
         mem = memory()
-        if not record(hist, {**mem, **disk()} if mem else {}, now):
+        if not record(hist, {**mem, **disk(), **state()} if mem else {}, now):
             return False
         sample = hist["samples"][-1]
         _processes.update(at=sample["at"], list=processes())

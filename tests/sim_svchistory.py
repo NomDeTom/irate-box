@@ -199,7 +199,7 @@ check(
     and got[3]["disk_free"] == 3000,
     got,
 )
-with mock.patch.object(M, "STATE", T / "no-such-folder"):
+with mock.patch.object(M.storage, "places", lambda: {"card": {}}):
     check("disk: no filesystem to read: nothing said, the memory sample still taken", M.disk() == {})
 check(
     "disk: read from a real folder: total over zero, free within it",

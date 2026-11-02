@@ -2013,6 +2013,16 @@ body.about h3 {
 .memory-disk-key {
   color: var(--ok);
 }
+.memory-state-line {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 2;
+  stroke-dasharray: 6 3;
+  stroke-linecap: round;
+}
+.memory-state-key {
+  color: var(--warn);
+}
 .memory-cursor {
   stroke: var(--muted);
   stroke-width: 1;

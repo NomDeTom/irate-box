@@ -59,6 +59,7 @@ from irate_box.hub import (
     pagehistory,
     reach,
     refused,
+    storage,
     store,
     svchistory,
     transport,
@@ -1594,10 +1595,8 @@ def _preset_facts():
     flash_free = any(
         g.get("key") == "journal" and any(o.get("value") == "flash" for o in g.get("options") or []) for g in groups
     )
-    try:
-        free_mb = shutil.disk_usage(STATE_DIR).free // (1 << 20)
-    except OSError:
-        free_mb = 0
+    card = storage.places().get("card") or {}
+    free_mb = (card.get("free") or 0) // (1 << 20)
     return {
         "arch": _preset_arch(platform.machine()),
         "memory_mb": _preset_memory_mb(),
@@ -4304,14 +4303,16 @@ def system_status():
         out["swap_total"], out["swap_free"] = mem.get("SwapTotal", 0), mem.get("SwapFree", 0)
     except (OSError, KeyError, ValueError):
         pass
-    try:
-        st = os.statvfs(STATE_DIR)
-        out["disk_total"], out["disk_free"] = (
-            st.f_blocks * st.f_frsize,
-            st.f_bavail * st.f_frsize,
-        )
-    except OSError:
-        pass
+    places = storage.places()
+    card = places.get("card") or {}
+    if card:
+        out["disk_total"], out["disk_free"] = card["total"], card["free"]
+        out["disk_kind"] = card["kind"]
+    state = places.get("state")
+    if state:
+        out["state_total"], out["state_free"] = state["total"], state["free"]
+        out["state_kind"] = state["kind"]
+        out["state_device"] = state.get("device")
     return out
 
 
