@@ -11,6 +11,7 @@ path = [
   "holders/*.json",
   "toolkits/*.json",
   "packages.d/*.json",
+  "presets.d/*.json",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 NomDeTom"

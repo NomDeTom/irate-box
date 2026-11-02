@@ -16886,6 +16886,171 @@ async function loadCardWrites() {
   );
 }
 loadCardWrites();
+
+// ---- Quick setup (presets.d/, server.py's preset_*): two independent dials -------------------------
+// What the box is for, and how hard it writes. The page previews every line before it applies
+// anything; Apply sends the hub's own settings itself and the rest to root through one request.
+const presetState = { data: null, purpose: null, durability: null, busy: false, poll: null };
+function presetValue(value, type) {
+  if (type === "addon" || type === "kit") return value ? "installed" : "not installed";
+  if (value === true) return "on";
+  if (value === false) return "off";
+  if (value == null) return "not known yet";
+  return String(value);
+}
+function presetTile(preset, kind) {
+  const selected = presetState[kind] === preset.id;
+  return el("button", {
+    type: "button",
+    className: `preset-tile${selected ? " selected" : ""}`,
+    "aria-pressed": String(selected),
+    onclick: () => {
+      presetState[kind] = preset.id;
+      drawQuickSetup();
+      presetPreview();
+    },
+  },
+    el("strong", { textContent: preset.title }),
+    el("span", { textContent: preset.summary }),
+    kind === "purpose" && preset.suggested_durability
+      ? el("span", { className: "preset-suggested", textContent: `Suggests ${presetTitle(preset.suggested_durability, "durability")}` })
+      : preset.auto_return_hours
+        ? el("span", { className: "preset-suggested", textContent: `Returns by itself after ${preset.auto_return_hours} hours` })
+        : null);
+}
+function presetTitle(id, kind) {
+  const list = presetState.data ? (kind === "durability" ? presetState.data.durabilities : presetState.data.purposes) : [];
+  return (list.find((p) => p.id === id) || {}).title || id;
+}
+function drawQuickSetup() {
+  const data = presetState.data;
+  if (!data) return;
+  document.getElementById("preset-purpose-tiles").replaceChildren(...data.purposes.map((p) => presetTile(p, "purpose")));
+  document.getElementById("preset-durability-tiles").replaceChildren(...data.durabilities.map((p) => presetTile(p, "durability")));
+  const record = data.record || {};
+  const active = record.status === "done";
+  const line = document.getElementById("preset-current");
+  if (active && record.purpose_title) {
+    const own = (data.own_changes || []).length;
+    line.textContent = `This box: ${record.purpose_title}, ${record.durability_title}.` +
+      (own ? ` With ${own} change${own === 1 ? "" : "s"} of your own: ${(data.own_changes || []).map((x) => x.label).join(", ")}.` : "");
+  } else if (data.suggested && (data.suggested.purpose || data.suggested.durability)) {
+    line.textContent = "The install recorded a suggested preset. Select it below, or select another.";
+  } else {
+    line.textContent = "No preset has been applied yet. Select what this box is for and how hard it can write.";
+  }
+  const apply = el("button", {
+    type: "button",
+    className: "action-btn primary",
+    textContent: "Preview and apply",
+    disabled: presetState.busy || !presetState.purpose || !presetState.durability,
+    onclick: () => presetApply(),
+  });
+  const undo = active
+    ? el("button", {
+        type: "button",
+        className: "action-btn",
+        textContent: "Undo preset",
+        disabled: presetState.busy,
+        onclick: () => presetUndo(),
+      })
+    : null;
+  document.getElementById("preset-buttons").replaceChildren(apply, ...(undo ? [undo] : []));
+}
+async function loadPresets() {
+  let data;
+  try {
+    data = await getJSON("/admin/presets");
+  } catch (_) {
+    return;
+  }
+  presetState.data = data;
+  if (!presetState.purpose) presetState.purpose = (data.current || {}).purpose || null;
+  if (!presetState.durability) presetState.durability = (data.current || {}).durability || null;
+  drawQuickSetup();
+  const record = data.record || {};
+  if (["applying", "undoing"].includes(record.status) && !presetState.poll) {
+    presetState.poll = setTimeout(() => { presetState.poll = null; loadPresets(); }, 2500);
+  }
+}
+function presetPreviewLine(item) {
+  const before = presetValue(item.before, item.type);
+  const after = presetValue(item.after, item.type);
+  return el("li", {},
+    el("strong", { textContent: item.label ? `${item.label}: ` : "" }),
+    el("span", { className: "before", textContent: before }),
+    " → ",
+    el("span", { className: "after", textContent: after }),
+    item.why ? el("span", { className: "setting-desc", textContent: ` ${item.why}.` }) : null);
+}
+async function presetPreview() {
+  if (!presetState.purpose || !presetState.durability) return;
+  const box = document.getElementById("preset-preview");
+  try {
+    const plan = await postJSON("/admin/presets", {
+      action: "preview",
+      purpose: presetState.purpose,
+      durability: presetState.durability,
+    });
+    const parts = [el("p", { className: "setting-desc", textContent: plan.summary })];
+    if ((plan.changes || []).length) {
+      parts.push(el("p", { className: "setting-name", textContent: "Settings" }));
+      parts.push(el("ul", { className: "preset-preview" }, ...plan.changes.map(presetPreviewLine)));
+    }
+    if ((plan.installs || []).length) {
+      parts.push(el("p", { className: "setting-name", textContent: "Apps and toolkits" }));
+      parts.push(el("ul", { className: "preset-preview" }, ...plan.installs.map(presetPreviewLine)));
+    }
+    if ((plan.left_out || []).length) {
+      parts.push(el("p", { className: "setting-name", textContent: "Left out on this box" }));
+      parts.push(el("ul", { className: "preset-preview" }, ...plan.left_out.map((x) =>
+        el("li", {}, el("strong", { textContent: `${x.label}: ` }), el("span", { textContent: x.why })))));
+    }
+    if (plan.automatic_undo) {
+      parts.push(el("p", { className: "setting-desc", textContent: `Full logging returns to the durability this box had after ${plan.automatic_undo} hours, unless you keep it.` }));
+    }
+    box.replaceChildren(...parts);
+  } catch (err) {
+    box.replaceChildren(el("p", { className: "setting-desc bad", textContent: err.message }));
+  }
+}
+async function presetApply() {
+  if (!presetState.purpose || !presetState.durability || presetState.busy) return;
+  presetState.busy = true;
+  drawQuickSetup();
+  const note = document.getElementById("preset-note");
+  say("Applying the preset. Settings that need the root helper wait for it.", true, note);
+  try {
+    const record = await postJSON("/admin/presets", {
+      action: "apply",
+      purpose: presetState.purpose,
+      durability: presetState.durability,
+    });
+    if ((record.failed || []).length) say(record.failed.join(" "), false, note);
+    else say("Applied. The page updates as the root helper answers.", true, note);
+  } catch (err) {
+    say(err.message, false, note);
+  }
+  presetState.busy = false;
+  await loadPresets();
+}
+async function presetUndo() {
+  if (presetState.busy) return;
+  presetState.busy = true;
+  drawQuickSetup();
+  const note = document.getElementById("preset-note");
+  say("Putting back each setting the preset changed, unless you changed it since.", true, note);
+  try {
+    const record = await postJSON("/admin/presets", { action: "undo" });
+    const kept = (record.kept || []).length;
+    say(kept ? `Undone. ${kept} setting${kept === 1 ? "" : "s"} you changed since ${kept === 1 ? "was" : "were"} left.` : "Undone.", true, note);
+  } catch (err) {
+    say(err.message, false, note);
+  }
+  presetState.busy = false;
+  await loadPresets();
+}
+loadPresets();
 // The card's writes since boot, and per day at that rate: the evidence for the ladder.
 function cardRate(sys) {
   if (!sys || sys.card_written == null || !sys.boot_uptime) return null;

@@ -597,9 +597,12 @@ check(
     got.get("card-flash"),
 )
 journal = {g["key"]: g for g in health.card_groups()}["journal"]
+journal_opts = {o["value"]: o for o in journal["options"]}
 check(
-    "  System journal offers On the onboard flash, asking first",
-    [o["value"] for o in journal["options"]] == ["card", "memory", "flash"] and journal["options"][2].get("confirm"),
+    "  System journal offers the card synced every 5 minutes, and the onboard flash, asking first",
+    [o["value"] for o in journal["options"]] == ["card", "card5", "memory", "flash"]
+    and journal_opts["card5"].get("confirm")
+    and journal_opts["flash"].get("confirm"),
 )
 ran.clear()
 health.fix("card-set:journal:flash")

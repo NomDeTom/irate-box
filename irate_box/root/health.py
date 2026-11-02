@@ -3948,6 +3948,18 @@ def _journal_storage():
     return "volatile" if storage in ("volatile", "none") else "persistent"
 
 
+def _journal_sync_seconds():
+    """The journal's SyncIntervalSec in irate-box's drop-in, or None when it is journald's own (5 minutes)."""
+    try:
+        text = JOURNAL_CONF.read_text()
+    except OSError:
+        return None
+    m = re.search(r"^SyncIntervalSec=(\d+)([smh]?)$", text, re.M)
+    if not m:
+        return None
+    return int(m[1]) * {"": 1, "s": 1, "m": 60, "h": 3600}[m[2]]
+
+
 def card_groups():
     """The system's write settings as choice groups, as setting_groups(): the first option is the system's own."""
     from irate_box.hub import cardhistory
@@ -3982,11 +3994,28 @@ def card_groups():
             "label": M("cs.journal", "System journal"),
             "desc": M(
                 "cs.journal.desc",
-                "The system's log. In memory, nothing of it is written to the SD card, but a restart or a crash loses it.",
+                "The system's log. In memory, nothing of it is written to the SD card, but a restart or a crash loses it. "
+                "On the card it can be synced at most every 5 minutes, which bounds what a power cut can lose.",
             ),
-            "current": "flash" if NAND_STATE.exists() else "memory" if _journal_storage() == "volatile" else "card",
+            "current": "flash"
+            if NAND_STATE.exists()
+            else "memory"
+            if _journal_storage() == "volatile"
+            else "card5"
+            if (_journal_sync_seconds() or 0) <= 300
+            else "card",
             "options": [
                 {"value": "card", "label": M("cs.on-card", "On the SD card"), "choice": choice("journal", "card")},
+                {
+                    "value": "card5",
+                    "label": M("cs.on-card-5m", "On the SD card, synced every 5 minutes"),
+                    "choice": choice("journal", "card5"),
+                    "confirm": M(
+                        "cs.journal.card5.confirm",
+                        "Keep the journal on the SD card and sync it at most every 5 minutes? A power cut can lose "
+                        "about 5 minutes of logs, not the whole journal.",
+                    ),
+                },
                 {
                     "value": "memory",
                     "label": M("cs.in-memory", "In memory"),
@@ -4247,16 +4276,24 @@ def card_set(key, value):
         if NAND_STATE.exists():
             _nand_tool("off")
         JOURNAL_CONF.parent.mkdir(parents=True, exist_ok=True)
+        if value == "memory":
+            body = "Storage=volatile\nRuntimeMaxUse=24M\n"
+        elif value == "card5":
+            body = "Storage=persistent\nSyncIntervalSec=5m\n"
+        else:
+            body = "Storage=persistent\n"
         JOURNAL_CONF.write_text(
-            "# irate-box (SD card writes): where the system journal is kept. Remove to undo.\n[Journal]\n"
-            + ("Storage=volatile\nRuntimeMaxUse=24M\n" if value == "memory" else "Storage=persistent\n")
+            "# irate-box (SD card writes): where the system journal is kept. Remove to undo.\n[Journal]\n" + body
         )
         _systemctl("restart", "systemd-journald")
-        return (
-            M("repair.card-set.journal-memory", "The system journal is now kept in memory.")
-            if value == "memory"
-            else M("repair.card-set.journal-card", "The system journal is now kept on the SD card.")
-        )
+        if value == "memory":
+            return M("repair.card-set.journal-memory", "The system journal is now kept in memory.")
+        if value == "card5":
+            return M(
+                "repair.card-set.journal-card5",
+                "The system journal is on the SD card, synced at most every 5 minutes.",
+            )
+        return M("repair.card-set.journal-card", "The system journal is now kept on the SD card.")
     if key == "box_state":
         if value == "flash":
             if not NAND_STATE.exists():
