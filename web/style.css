@@ -4320,6 +4320,17 @@ html:has(> body.admin) {
   .admin-side:not(.open) .side-foot {
     display: none;
   }
+  /* The same rule as the page-width one below: the page can be narrower than the window (the admin width setting). */
+  .tab-set > .view-switch {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+  }
+  .tab-set > .view-switch > .view-switch-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 /* A wide page gives the sidebar a little more room. */
 @container page (min-width: 1200px) {
