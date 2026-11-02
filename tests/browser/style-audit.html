@@ -7,6 +7,7 @@
      scripts gone and its findings drawn, each pane shown here by hand. -->
 <html><head><meta charset="utf-8"><title>style audit</title><style>body{margin:0}</style></head>
 <body><iframe id="f" style="border:0;height:2400px"></iframe>
+<script src="spacing-rules.js"></script>
 <script>
 const Q = new URLSearchParams(location.search);
 const W = Number(Q.get('w') || 1280);
@@ -103,7 +104,9 @@ f.addEventListener('load', async () => {
     }
     if (!shown(pane, win)) { findings.push({ pane: pane.id, rule: 'not shown by its own link', what: pane.id }); continue; }
     findings.push(...audit(win, doc, pane));
+    findings.push(...SpacingAudit.measurePane(win, doc, pane, pane.id));
   }
+  findings.push(...SpacingAudit.measureSidebar(win, doc, "sidebar"));
   document.body.dataset.out = JSON.stringify({ width: W, panes: panes.length, findings });
 });
 </script></body></html>

@@ -39,7 +39,7 @@ HUB_STATE_DIR="$state" PORT=$port HUB_BIND=127.0.0.1 HUB_FRONT_SECRET="$secret" 
 hub=$!
 for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$port/status" && break; sleep 0.1; done
 cp -rL web/. "$work/site/"
-cp tests/browser/style-audit.html "$work/site/"
+cp tests/browser/style-audit.html tests/browser/spacing-rules.js "$work/site/"
 curl -s -H "X-Irate-Front: $secret" "http://127.0.0.1:$port/layout.css" >"$work/site/layout.css"
 pages=()
 for t in dom-health dom-box-findings dom-secdoctor dom-security-findings dom-updoctor dom-update-findings dom-net; do
