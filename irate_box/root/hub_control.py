@@ -3750,7 +3750,7 @@ def update_reach(req):
     if state.get("checked_sha") != full:
         result = update_fetch(req)
         state = _read_update_state()
-    if state.get("verified_sha") != full:
+    if state.get("verified_sha") != full and not (endpoint == "install" and _approved_only(state, full)):
         raise Refused(
             M("update.reach.blocked", "Verification did not pass. Open the Updates doctor to review the failure.")
         )
@@ -3771,9 +3771,7 @@ def update_install(req):
     # The whole hash of what is checked out, against the whole hash that passed.
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     if not state.get("verified_sha") or state.get("verified_sha") != full:
-        failed = _force_failed(state)
-        approved = _security_approval(state, full)
-        if not approved or not failed or any(c.get("id") != "security" for c in failed):
+        if not _approved_only(state, full):
             raise Refused(
                 M(
                     "update.install.not-verified",
@@ -3781,6 +3779,14 @@ def update_install(req):
                 )
             )
     return _install_fetched(state, how="console" if req.get("over") == "console" else "https")
+
+
+def _approved_only(state, full):
+    """Whether a download that did not pass may install all the same: its only failed check is the security one, and
+    the changes it holds are approved for this very commit. The one rule for the Updates page's Install
+    (update_reach) and the root helper's update-install."""
+    failed = _force_failed(state)
+    return bool(failed) and all(c.get("id") == "security" for c in failed) and bool(_security_approval(state, full))
 
 
 def _security_approval(state, full):
