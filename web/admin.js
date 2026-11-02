@@ -2483,8 +2483,14 @@ window.addEventListener("resize", () => {
 });
 
 let lastBox = null; // /admin/box: the services, for each app page's header
+let helperBusy = false, helperStuck = false; // the root helper, as /admin/box last said
 function renderBox(data) {
   lastBox = data;
+  const helper = data.helper || {};
+  helperBusy = !!helper.busy;
+  helperStuck = !!helper.stuck;
+  document.documentElement.dataset.helperBusy = String(helperBusy);
+  document.documentElement.dataset.helperStuck = String(helperStuck);
   if (data.hub_port) {
     const changed = !hubPorts || hubPorts.plain !== data.hub_port || hubPorts.tls !== data.hub_tls_port;
     hubPorts = { plain: data.hub_port, tls: data.hub_tls_port };

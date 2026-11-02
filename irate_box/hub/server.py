@@ -2955,6 +2955,7 @@ def admin_box(proxied):
         "hub_tls_port": int(os.environ.get("HUB_PUBLIC_TLS_PORT", "443")),
         "results": control_results(),
         "pending": (len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0),
+        "helper": helper_signal(),
     }
 
 
@@ -3544,6 +3545,28 @@ def helper_queue(done=8):
         for r in control_results(done)
     ]
     return {"running": running, "waiting": waiting, "done": finished}
+
+
+def helper_signal():
+    """The helper's busy or stuck state, for the pages' buttons: the same reading as helper_state()
+    without its busy log or commands. No request waiting means no root work to wait on, so it asks
+    systemd nothing."""
+    oldest = None
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            m = path.stat().st_mtime
+        except OSError:
+            continue
+        oldest = m if oldest is None or m < oldest else oldest
+    age = time.time() - oldest if oldest else 0
+    busy = helper_busy() if age > HELPER_STUCK_AFTER else None
+    working = busy is not None and busy < HELPER_BUSY_UP_TO
+    return {
+        "waiting": _pending_actions(""),
+        "oldest": round(age),
+        "busy": round(busy) if working else None,
+        "stuck": age > HELPER_STUCK_AFTER and not working,
+    }
 
 
 def helper_state():

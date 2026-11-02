@@ -51,6 +51,18 @@ check(
     h["stuck"] is False and 230 <= h["busy"] <= 250,
     h,
 )
+signal = server.helper_signal()
+check(
+    "the slim signal: busy, not stuck; the same as the page's",
+    signal["stuck"] is False and 230 <= signal["busy"] <= 250 and signal["waiting"] == 1,
+    signal,
+)
+check(
+    "  and /admin/box carries it",
+    server.admin_box(False)["helper"]["busy"] is not None and server.admin_box(False)["helper"]["stuck"] is False,
+    server.admin_box(False).get("helper"),
+)
+
 import json
 
 log = json.loads(server.HELPER_BUSY_LOG.read_text())
@@ -91,6 +103,8 @@ req.unlink()
 unit.update(state="activating", since=time.monotonic() - 60)
 h = server.helper_state()
 check("nothing waiting: neither", h["stuck"] is False and h["busy"] is None, h)
+signal = server.helper_signal()
+check("  the slim signal too", signal["stuck"] is False and signal["busy"] is None and signal["waiting"] == 0, signal)
 
 # The queue as the page shows it: what runs, what waits (oldest first), what finished; a request's
 # other fields (a passphrase) never shown.
