@@ -2951,6 +2951,7 @@ UPDATE_ACTIONS = {
     "poll-source": "update-poll-target",
     "set-source": "update-set-source",
     "approve-security": "update-approve-security",
+    "approve-install": "update-approve-security",
     "security-record-read": "security-record-read",
 }
 # Terminal colour codes, in logs written before install.sh stopped sending them to files.
@@ -6421,6 +6422,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, refused.say(UNKNOWN_ACTION))
                     return
                 request.update(endpoint=payload["endpoint"], candidate=payload.get("candidate"))
+            if action == "update-approve-security" and payload.get("action") == "approve-install":
+                request.update(install=True)
             if action in ("update-poll-target", "update-set-source"):
                 request.update(repo=str(payload.get("repo") or "")[:300])
             if action == "update-set-source":

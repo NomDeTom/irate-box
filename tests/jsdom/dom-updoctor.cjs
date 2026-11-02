@@ -88,10 +88,33 @@ check('the cache finding has a Clear the update cache button, and the last check
   doctorButton('Clear the update cache').length === 1 && doctorButton('Install anyway').length === 1, t('#doctor-findings .finding'));
 const asks = [];
 const sentBefore = posted.length;
-w.confirm = (text) => { asks.push(text); return true; };
+w.answerAsks = false;
+const answer = () => {
+  const box = d.querySelector('.aw-ask');
+  asks.push(box.querySelector('p').textContent.replace(/\s+/g, ' ').trim());
+  box.querySelector('button.primary').click();
+};
 doctorButton('Clear the update cache')[0].click();
+answer();
 doctorButton('Install anyway')[0].click();
-check('  pressed: each acts at once, no question (an action that can be undone)', posted.length - sentBefore === 2 && asks.length === 0, [posted.length - sentBefore, asks]);
+answer();
+check("  pressed: each asks first, in the action's own words (the checks Install anyway skips, named)",
+  asks.length === 2 && /Delete the cached copy/.test(asks[0]) && /Python files compile and Shell syntax/.test(asks[1]),
+  asks);
+w.eval(`renderUpdoctor({ at: 1790950000, findings: [
+  { id: 'last-check', title: 'Last update check', status: 'problem', summary: 'The security change is the only failed check.',
+    actions: [{ choice: 'approve-install', label: 'Approve and install',
+      confirm: 'Approve this security change and install the update: this update changes how security is checked? It installs as checked. The new checking code is used from the next update on.' }] }] })`);
+check('a security hold that is the only failure: one Approve and install button, not Install anyway',
+  doctorButton('Approve and install').length === 1 && !doctorButton('Install anyway').length, t('#doctor-findings .finding'));
+doctorButton('Approve and install')[0].click();
+{
+  const box = d.querySelector('.aw-ask');
+  const question = box.querySelector('p').textContent.replace(/\s+/g, ' ').trim();
+  box.querySelector('button.primary').click();
+  check('  its question says what approving does, and that the new checker is used from the next update on',
+    /installs as checked/.test(question) && /next update on/.test(question), question);
+}
 w.eval(`renderUpdoctor({ at: 1790950000, findings: [
   { id: 'last-check', title: 'Last update check', status: 'problem', summary: 'The downloaded version failed 1 check: Signed.' }] })`);
 check('Install anyway is absent when the finding does not offer it (signing or installer syntax failed)', !doctorButton('Install anyway').length

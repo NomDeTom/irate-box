@@ -519,6 +519,59 @@ lc = force_case([failed_check("python", "Python files compile")], sha="b" * 40)
 check("  nor when the checked version is not the one downloaded", not lc["actions"], lc["actions"])
 lc = force_case([failed_check("nginx", "nginx accepts it", warn=True)])
 check("  nor when only a warning failed: nothing to skip", not lc["actions"], lc["actions"])
+
+# A security hold that is the only failure has its own button: Approve and install, never Install anyway beside it.
+security_hold = {
+    "manifest": True,
+    "problems": [],
+    "held": [{"toggle": "root_actions", "text": "a new root action, evil"}],
+    "levels": {"root_actions": "authorise"},
+}
+security_check = failed_check("security", "Security changes")
+H.UPDATE_STATE.write_text(json.dumps({"checked_sha": "a" * 40, "checks": [security_check], "security": security_hold}))
+lc = doctor(head_sha="a" * 40)["last-check"]
+check(
+    "a security hold that is the only failed check: Approve and install, not Install anyway",
+    [a["choice"] for a in lc["actions"]] == ["approve-install"]
+    and lc["actions"][0]["label"]["id"] == "update.security.approve-install"
+    and msg_args({"summary": lc["actions"][0]["confirm"]}, "update.security.approve-install.confirm")["n"] == 1,
+    lc["actions"],
+)
+H.UPDATE_STATE.write_text(
+    json.dumps(
+        {
+            "checked_sha": "a" * 40,
+            "checks": [security_check, failed_check("python", "Python files compile")],
+            "security": security_hold,
+        }
+    )
+)
+lc = doctor(head_sha="a" * 40)["last-check"]
+check(
+    "  another check failed too: Install anyway only, its question naming every check it skips",
+    [a["choice"] for a in lc["actions"]] == ["force-install"]
+    and msg_args({"summary": lc["actions"][0]["confirm"]}, "update.last-check.force.confirm")
+    == {"n": 2, "checks": ["Security changes", "Python files compile"]},
+    lc["actions"],
+)
+H.UPDATE_STATE.write_text(
+    json.dumps(
+        {
+            "checked_sha": "a" * 40,
+            "security_approved_sha": "a" * 40,
+            "checks": [security_check],
+            "security": security_hold,
+        }
+    )
+)
+lc = doctor(head_sha="a" * 40)["last-check"]
+check(
+    "  an approval already recorded: said, and no button to approve it again",
+    not lc["actions"]
+    and lc["fix"]["id"] == "update.last-check.fix.approved"
+    and "update.security.approved-note" in msg_ids(lc),
+    lc,
+)
 (T / "cache" / "src" / "install.sh").unlink()
 
 # The certificate refused; GitHub's rate used up; the branch gone; the clock two hours fast.
