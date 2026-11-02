@@ -3874,10 +3874,15 @@ body.account a {
   .action-btn.action-btn.is-busy::after,
   .action-btn.action-btn.is-helper-busy::after {
     content: "⌛";
-    width: 0.75em;
+    content: "⌛" / "";
+    width: 1em;
+    height: 1em;
+    margin-left: 0.5333em;
     border: 0;
     font-size: 0.75em;
-    line-height: 0.75em;
+    line-height: 1em;
+    text-align: center;
+    vertical-align: -0.1067em;
     animation: none;
   }
 }

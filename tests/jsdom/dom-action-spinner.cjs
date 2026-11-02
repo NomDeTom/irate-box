@@ -17,6 +17,16 @@ const one = () => d.getElementById('one');
 (async () => {
   check('the primitive is exported', typeof AW.setBusy === 'function' && typeof AW.busy === 'function');
   check('an idle action button has neither state', !one().classList.contains('is-busy') && !one().classList.contains('is-helper-busy') && !one().hasAttribute('aria-busy'));
+  const off = d.createElement('button');
+  off.className = 'action-btn';
+  off.disabled = true;
+  off.textContent = 'Already installed';
+  d.body.append(off);
+  check('an ordinary disabled button gets neither state', !off.classList.contains('is-busy') && !off.classList.contains('is-helper-busy') && !off.hasAttribute('aria-busy'));
+  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
+  const disabledRules = [...css.matchAll(/([^{}]*:disabled[^{}]*)\{([^{}]*)\}/g)].map((m) => m[0]);
+  check('  and no :disabled rule shows the ring', !disabledRules.some((rule) => /is-(?:helper-)?busy|action-spin|visibility:\s*visible/.test(rule)));
+  check('the reduced-motion hourglass has empty alternative text', /content:\s*"⌛"\s*\/\s*""/.test(css));
 
   const clear = AW.setBusy(one(), true);
   check('clicked: the faster state and aria-busy', one().classList.contains('is-busy') && !one().classList.contains('is-helper-busy') && one().getAttribute('aria-busy') === 'true');
