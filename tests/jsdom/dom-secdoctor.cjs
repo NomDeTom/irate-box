@@ -31,6 +31,7 @@ const sec = { hub: [{ id: 'plain-http', title: 'Plain HTTP only', status: 'warn'
     actions: [], do: { go: 'security-https', where: 'Security → HTTPS' } }], accepted: {}, scan: { at: now, listeners: [{ proto: 'udp', port: 5355, addr: '0.0.0.0', name: 'LLMNR', unit: 'systemd-resolved.service' }], findings: [
     F('port-udp-5355', 'LLMNR (systemd-resolved)', 'warn', [{ choice: 'llmnr-on-now', label: 'On', group: 'LLMNR', on: true },
       { choice: 'llmnr-off', label: 'Off', group: 'LLMNR', on: false }]),
+    F('firewall', 'Hotspot firewall', 'warn', []),
     F('kernel-links', 'Kernel link protections', 'problem', [{ choice: 'kernel-links-debian', label: "Install Debian's defaults" }]),
     F('ssh-password', 'SSH password login', 'warn', [{ choice: 'ssh-password-off', label: 'Turn password login off' }]),
     F('sudo-nopasswd', 'Passwordless sudo', 'problem', [{ choice: 'sudo-undo:90-lyra', label: 'On', group: 'Passwordless sudo (90-lyra)', on: true },
@@ -195,8 +196,20 @@ const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
   // Each line of the scan where it belongs, in the same shape.
   const ids = (sel) => [...d.querySelectorAll(`${sel} .ftitle`)].map(t).join('|');
   const titlesIn = (sel) => [...d.querySelectorAll(`${sel} .sec-choice > .setting-name`)].map((n) => n.textContent.trim()).join('|');
-  check('Security: the choices by subject, in the scan\'s order', titlesIn('#security-exposure') === 'Cockpit' && titlesIn('#security-login') === 'SSH|Root and sudo',
-    `${titlesIn('#security-exposure')} / ${titlesIn('#security-login')}`);
+  check('Security: the choices by tab, in the scan\'s order', titlesIn('#security-findings-connections') === 'Cockpit'
+    && titlesIn('#security-findings-sign-in') === 'SSH|Root and sudo',
+    `${titlesIn('#security-findings-connections')} / ${titlesIn('#security-findings-sign-in')}`);
+  check('  each container inside its tab', !!d.getElementById('security/connections').querySelector('#security-findings-connections')
+    && !!d.getElementById('security/sign-in').querySelector('#security-findings-sign-in'));
+  const opens = (hash, panel) => {
+    w.location.hash = hash;
+    w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+    return !d.getElementById(panel).hidden
+      && [...d.querySelectorAll('[data-tabs="security"] [role="tabpanel"]')].filter((x) => x !== d.getElementById(panel)).every((x) => x.hidden);
+  };
+  check('a doctor setting opens its tab: firewall on Guest access', opens('#sec-firewall', 'security/guest-access'));
+  check('  SSH password sign-in on Sign-in', opens('#sec-ssh-password', 'security/sign-in'));
+  check('  HTTP / HTTPS on Connections', opens('#security-https', 'security/connections'));
   check('  settings, not findings: no status word on any (To fix, To select, Set), no why, no link to the doctor (its own)',
     !d.querySelector('#security-findings .fstate') && !d.querySelector('#security-findings .fwhy')
     && !d.getElementById('sec-ssh-password').querySelector('a[href="#secdoctor"]'));

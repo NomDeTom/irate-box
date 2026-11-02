@@ -80,7 +80,8 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   check('  every row its state as a pill, the filter\'s words', [...d.querySelectorAll('#security-listeners tbody tr')]
     .every((tr) => tr.querySelector('[class$="-pill"]') && t(tr.querySelector('[class$="-pill"]')) === tr.dataset.tags));
   check('the doctor\'s links to a port land in its program\'s row', !!rp.querySelector('#sec-port-tcp-111') && !!rp.querySelector('#sec-port-udp-111'));
-  check('  and no card of its own among the settings (rpcbind was a "To fix" card)', !d.querySelector('#security-findings [id^="sec-port-"]'));
+  check('  and no card of its own among the settings (rpcbind was a "To fix" card)',
+    !d.querySelector('#security-findings .sec-settings [id^="sec-port-"]'));
   const av = row('avahi-daemon.service');
   check('Avahi: Stop and disable once, then each port a row of Open and Closed, Closed marked',
     av && [...av.querySelectorAll('button')].filter((b) => /^Stop and disable/.test(t(b))).length === 1

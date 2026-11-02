@@ -582,8 +582,16 @@ DO = [
             ),
         },
     ),
-    ("*", r"^(page-)?firewall$", {"go": "sec-firewall", "where": M("go.sec-firewall", "Security → Hotspot firewall")}),
-    ("*", r"^tls|^accounts-http$", {"go": "security-https", "where": M("go.security-https", "Security → HTTPS")}),
+    (
+        "*",
+        r"^(page-)?firewall$",
+        {"go": "sec-firewall", "where": M("go.sec-firewall", "Security → Guest access → Hotspot firewall")},
+    ),
+    (
+        "*",
+        r"^tls|^accounts-http$",
+        {"go": "security-https", "where": M("go.security-https", "Security → Connections → HTTP/HTTPS")},
+    ),
     ("*", r"^(page-)?unattended$", {"go": "updates-debian", "where": UPDATES_DEBIAN}),
     (
         "*",
@@ -614,7 +622,7 @@ DO = [
     (
         "*",
         r"^reach-ssh$",
-        {"go": "sec-ssh-password", "where": M("go.sec-ssh-password", "Security → SSH password sign-in")},
+        {"go": "sec-ssh-password", "where": M("go.sec-ssh-password", "Security → Sign-in → SSH password sign-in")},
     ),
     ("*", r"^reach-web$", {"go": "access", "where": M("go.network-tailscale", "Access → Remote access")}),
     # ASLR and core dumps, from whichever source said so (the CIS checks' own scripts state no plain
@@ -639,11 +647,11 @@ DO = [
         r"^lynis-HTTP-6710$",
         {
             "go": "security-https",
-            "where": M("go.security-https", "Security → HTTPS"),
+            "where": M("go.security-https", "Security → Connections → HTTP/HTTPS"),
             "say": M(
                 "do.lynis-http",
                 "Lynis looks for HTTPS in the sites of nginx. The hub's HTTPS is its "
-                "own web server, set on Security → HTTPS.",
+                "own web server, set on Security → Connections.",
             ),
         },
     ),

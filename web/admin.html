@@ -4336,42 +4336,15 @@
                 role="status"
                 hidden
               ></p>
-              <h4 data-i18n="admin.network.h-guest-internet-access">
-                Guest internet access
-              </h4>
               <p
                 class="setting-desc"
-                data-i18n="admin.network.setting-decides-whether-guests"
+                id="guest-net-moved"
+                data-i18n="admin.network.guest-access-moved"
               >
-                This setting decides whether guests on the hotspot can use the
-                box's connection to reach the internet. The levels run from no
-                access to full access. The default is the safest. Each level
-                says what it opens. Guest traffic leaves as the traffic of the
-                box, so what guests do online comes from your connection. At
-                every level, the box keeps guests out of your own network and
-                the box's Tailscale. It lets them out by the hardware address of
-                their device. It does not let them look up names before they
-                pass the sign-in page. You can turn off each of these on
-                <a href="#security">Security</a>. The doctor warns while one is
-                off.
+                Guest internet access, the level and its four protections, is on
+                <a href="#security/guest-access">Security → Guest access</a>.
+                The hotspot keeps its own name, password and encryption above.
               </p>
-              <div id="guest-net-box">
-                <div
-                  class="chip-group"
-                  role="radiogroup"
-                  aria-label="Guest internet access"
-                  id="guest-net-chips"
-                  data-i18n-aria-label="admin.network.aria-guest-internet-access"
-                ></div>
-                <p class="setting-desc" id="guest-net-said"></p>
-                <div id="guest-net-foot"></div>
-              </div>
-              <p
-                class="setting-desc action-note"
-                id="guest-net-note"
-                role="status"
-                hidden
-              ></p>
             </div>
           </div>
         </section>
@@ -4414,8 +4387,141 @@
             role="status"
             hidden
           ></p>
-          <!-- The box's choices by subject, each in its place whether it waits for a choice or is set. -->
-          <div id="security-findings"></div>
+          <!-- The page in tabs by what each setting is about. Each tab has an address of its own
+             (#security/guest-access …), so a doctor's or the tour's link lands on its setting. -->
+          <div id="security-findings">
+            <div class="tab-set" data-tabs="security">
+              <div
+                class="view-switch"
+                role="tablist"
+                aria-label="Security"
+                data-i18n-aria-label="admin.security.aria-security"
+              >
+                <button
+                  type="button"
+                  class="view-switch-btn"
+                  role="tab"
+                  id="tab-sec-guest-access"
+                  aria-controls="security/guest-access"
+                  data-i18n="admin.security.tab-guest-access"
+                >
+                  Guest access
+                </button>
+                <button
+                  type="button"
+                  class="view-switch-btn"
+                  role="tab"
+                  id="tab-sec-sign-in"
+                  aria-controls="security/sign-in"
+                  data-i18n="admin.security.tab-sign-in"
+                >
+                  Sign-in
+                </button>
+                <button
+                  type="button"
+                  class="view-switch-btn"
+                  role="tab"
+                  id="tab-sec-process-safety"
+                  aria-controls="security/process-safety"
+                  data-i18n="admin.security.tab-process-safety"
+                >
+                  Process safety
+                </button>
+                <button
+                  type="button"
+                  class="view-switch-btn"
+                  role="tab"
+                  id="tab-sec-secrets"
+                  aria-controls="security/secrets"
+                  data-i18n="admin.security.tab-secrets"
+                >
+                  Secrets
+                </button>
+                <button
+                  type="button"
+                  class="view-switch-btn"
+                  role="tab"
+                  id="tab-sec-connections"
+                  aria-controls="security/connections"
+                  data-i18n="admin.security.tab-connections"
+                >
+                  Connections
+                </button>
+              </div>
+
+              <div
+                role="tabpanel"
+                id="security/guest-access"
+                aria-labelledby="tab-sec-guest-access"
+              >
+                <h3 data-i18n="admin.security.h-guest-internet-access">
+                  Guest internet access
+                </h3>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.security.guest-access-intro"
+                >
+                  This tab decides whether guests on the hotspot can use the
+                  box's connection to reach the internet. The levels run from no
+                  access to full access. The default is the safest. Each level
+                  says what it opens. Guest traffic leaves as the traffic of the
+                  box, so what guests do online comes from your connection. At
+                  every level, the box keeps guests out of your own network and
+                  the box's Tailscale. It lets them out by the hardware address
+                  of their device. It does not let them look up names before
+                  they pass the sign-in page. The four protections below can
+                  each be turned off. The doctor warns while one is off.
+                </p>
+                <div id="guest-net-box">
+                  <div
+                    class="chip-group"
+                    role="radiogroup"
+                    aria-label="Guest internet access"
+                    id="guest-net-chips"
+                    data-i18n-aria-label="admin.network.aria-guest-internet-access"
+                  ></div>
+                  <p class="setting-desc" id="guest-net-said"></p>
+                  <div id="guest-net-foot"></div>
+                </div>
+                <p
+                  class="setting-desc action-note"
+                  id="guest-net-note"
+                  role="status"
+                  hidden
+                ></p>
+                <div
+                  id="security-findings-guest-access"
+                  class="security-cards"
+                ></div>
+              </div>
+
+              <div
+                role="tabpanel"
+                id="security/sign-in"
+                aria-labelledby="tab-sec-sign-in"
+                hidden
+              >
+                <section
+                  class="sec-block"
+                  id="signin-identity"
+                  aria-labelledby="signin-identity-title"
+                >
+                  <h2 id="signin-identity-title" data-i18n="admin.signin.title">
+                    Sign-in and identity
+                  </h2>
+                  <p class="setting-desc" data-i18n="admin.signin.intro">
+                    How the box slows wrong passwords, how it knows a returning
+                    device, and how much one person can do on their own. On an
+                    open hotspot a device can copy another device's address, or
+                    get a new one, so these limits slow people down. They never
+                    lock anyone out for long.
+                  </p>
+                  <div id="signin-identity-box"></div>
+                </section>
+                <div
+                  id="security-findings-sign-in"
+                  class="security-cards"
+                ></div>
           <div class="security-cards" id="security-cards">
             <div
               class="setting sec-choice security-setting"
@@ -4482,6 +4588,136 @@
               ></p>
             </div>
           </div>
+              </div>
+
+              <div
+                role="tabpanel"
+                id="security/process-safety"
+                aria-labelledby="tab-sec-process-safety"
+                hidden
+              >
+                <div
+                  id="security-findings-process-safety"
+                  class="security-cards"
+                ></div>
+                <div
+                  class="setting sec-choice security-setting"
+                  id="security-units"
+                >
+                  <span
+                    class="setting-name"
+                    data-i18n="admin.security.units-title"
+                    >The units' sandboxes</span
+                  >
+                  <p
+                    class="setting-desc"
+                    data-i18n="admin.security.units-sandboxes"
+                  >
+                    Each of the box's services runs with the sandbox lines that
+                    the box's security manifest declares. The Security doctor
+                    checks them, names any that is missing, and says what an
+                    update of irate-box will add.
+                  </p>
+                  <div class="library-buttons">
+                    <a
+                      class="action-btn go-btn"
+                      href="#secdoctor"
+                      data-i18n="admin.security.go-doctor-units"
+                      >Go to Security doctor →</a
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <div
+                role="tabpanel"
+                id="security/secrets"
+                aria-labelledby="tab-sec-secrets"
+                hidden
+              >
+                <div
+                  id="security-findings-secrets"
+                  class="security-cards"
+                ></div>
+                <div
+                  class="setting sec-choice security-setting"
+                  id="security-secrets"
+                >
+                  <span
+                    class="setting-name"
+                    data-i18n="admin.security.secrets-title"
+                    >The secrets' modes and readers</span
+                  >
+                  <p
+                    class="setting-desc"
+                    data-i18n="admin.security.secrets-modes"
+                  >
+                    The box's security manifest declares each file that holds a
+                    secret: its mode, its administrator and group, and who can
+                    read it.
+                    The installer applies them, the Security doctor checks them,
+                    and an update that would widen them is held at the level set
+                    on Updates.
+                  </p>
+                  <div class="library-buttons">
+                    <a
+                      class="action-btn go-btn"
+                      href="#update-security-changes"
+                      data-i18n="admin.security.go-updates-security"
+                      >Go to Updates → Security changes in an update →</a
+                    >
+                    <a
+                      class="action-btn go-btn"
+                      href="#secdoctor"
+                      data-i18n="admin.security.go-doctor-secrets"
+                      >Go to Security doctor →</a
+                    >
+                  </div>
+                </div>
+                <div
+                  class="setting sec-choice security-setting"
+                  id="security-cmdlines"
+                >
+                  <span
+                    class="setting-name"
+                    data-i18n="admin.security.cmdlines-title"
+                    >Secrets in process arguments</span
+                  >
+                  <p
+                    class="setting-desc"
+                    data-i18n="admin.security.cmdlines"
+                  >
+                    The Security doctor checks whether a running process shows a
+                    secret on its command line. Process visibility, which hides
+                    other accounts' command lines, is on Process safety.
+                  </p>
+                  <div class="library-buttons">
+                    <a
+                      class="action-btn go-btn"
+                      href="#security/process-safety"
+                      data-i18n="admin.security.go-process-safety"
+                      >Go to Process safety →</a
+                    >
+                    <a
+                      class="action-btn go-btn"
+                      href="#secdoctor"
+                      data-i18n="admin.security.go-doctor-cmdlines"
+                      >Go to Security doctor →</a
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <div
+                role="tabpanel"
+                id="security/connections"
+                aria-labelledby="tab-sec-connections"
+                hidden
+              >
+                <div
+                  id="security-findings-connections"
+                  class="security-cards"
+                ></div>
           <p
             class="setting-desc"
             id="security-elsewhere"
@@ -4731,23 +4967,9 @@
             </summary>
             <pre class="admin-log" id="security-log"></pre>
           </details>
-        </section>
-
-        <section
-          class="admin-pane"
-          id="signin-identity"
-          aria-labelledby="signin-identity-title"
-        >
-          <h2 id="signin-identity-title" data-i18n="admin.signin.title">
-            Sign-in and identity
-          </h2>
-          <p class="setting-desc" data-i18n="admin.signin.intro">
-            How the box slows wrong passwords, how it knows a returning device,
-            and how much one person can do on their own. On an open hotspot a
-            device can copy another device's address, or get a new one, so these
-            limits slow people down. They never lock anyone out for long.
-          </p>
-          <div id="signin-identity-box"></div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section

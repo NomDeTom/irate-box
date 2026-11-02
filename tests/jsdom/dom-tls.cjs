@@ -255,8 +255,9 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
   await wait();
   const sd = secure.d;
   check(
-    "both security controls are adjacent cards",
-    sd.querySelectorAll("#security-cards > .security-setting").length === 2,
+    "the security policy and HTTP / HTTPS are settings, each on its tab",
+    !!sd.getElementById("security/sign-in").querySelector("#security-policy") &&
+      !!sd.getElementById("security/connections").querySelector("#security-https"),
   );
   sd.querySelector('#tls-transport [data-value="discovery"]').click();
   check(

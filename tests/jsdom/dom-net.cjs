@@ -107,8 +107,12 @@ setTimeout(() => {
   const panel = (id) => d.getElementById(id);
   check('  each part in its tab: devices on Hardware, the watchdog on access, guests\' security on Hotspot, the log on Status',
     panel('network/hardware').contains(d.getElementById('net-devices')) && panel('network/access').contains(d.getElementById('up-pace'))
-    && panel('network/hotspot').contains(d.getElementById('hs-modes')) && panel('network/hotspot').contains(d.getElementById('guest-net-box'))
+    && panel('network/hotspot').contains(d.getElementById('hs-modes'))
     && panel('network/status').contains(d.getElementById('up-events')));
+  check('  the hotspot keeps its encryption, and says where guest internet access is now',
+    !panel('network/hotspot').contains(d.getElementById('guest-net-box'))
+    && !!panel('network/hotspot').querySelector('#guest-net-moved a[href="#security/guest-access"]')
+    && panel('security/guest-access').contains(d.getElementById('guest-net-box')), panel('network/hotspot').textContent);
   const sc = [...d.querySelectorAll('#net-status-cards .net-card')];
   check('Status: a card per link, with its uptime', sc.length === 1 && /wlan0/.test(sc[0].querySelector('h4').textContent) && !!sc[0].querySelector('.net-uptime')
     && /The box's link/.test(sc[0].textContent) && sc[0].querySelector('h4').textContent === 'wlan0', sc.map((c) => c.textContent.slice(0, 80)));
