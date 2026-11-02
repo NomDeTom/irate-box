@@ -72,16 +72,12 @@ def hotspots(nets=None):
     return sorted(out, key=lambda x: -x["signal"])
 
 
-def next_name(candidates=None, spots=None):
-    """The next free lyra-N: the smallest number no board on the network or setup hotspot already has, so a
-    second new board does not start as the first one's name. Names that are not lyra-N are left alone."""
+def taken_names(candidates=None, spots=None):
+    """The names already in sight, lower-cased: the boards the box can see and the setup hotspots in range. The page
+    picks a made-up name that is not one of them."""
     seen = boardfind.candidates() if candidates is None else candidates
     here = hotspots() if spots is None else spots
-    used = {str(x.get("host") or "").lower() for x in [*(seen or []), *(here or [])]}
-    n = 1
-    while f"lyra-{n}" in used:
-        n += 1
-    return f"lyra-{n}"
+    return sorted({str(x.get("host") or "").lower() for x in [*(seen or []), *(here or [])] if x.get("host")})
 
 
 def _read(path):
@@ -177,6 +173,6 @@ def snapshot():
         "cards": cards,
         "boards": seen,
         "routes": routes(found, cards, seen),
-        "name": next_name(seen, spots),
+        "taken": taken_names(seen, spots),
         "ready": True,
     }

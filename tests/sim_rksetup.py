@@ -18,6 +18,7 @@ os.environ.update(
     HUB_SYSETC_DIR=str(T / "etc"),
     HUB_MODPROBE_DIR=str(T / "modprobe.d"),
     HUB_SERIAL_BY_ID=str(T / "by-id"),
+    HUB_STATE_DIR=str(T / "state"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.hub import netinv, rksetup, rkusb
@@ -54,14 +55,10 @@ check(
     next(x for x in got if x["host"] == "luckfox-lyra-zero-w")["boards"] == 2,
 )
 check(
-    "the next free lyra-N: the first, then the smallest number no board on the network or hotspot has",
-    rksetup.next_name([], []) == "lyra-1"
-    and rksetup.next_name([{"host": "lyra-1"}, {"host": "lyra-4"}, {"host": "bpi"}], [{"host": "lyra-2"}]) == "lyra-3"
-    and rksetup.next_name([{"host": "box"}, {"host": ""}], [{"host": "luckfox-lyra-zero-w"}]) == "lyra-1",
-    (
-        rksetup.next_name([], []),
-        rksetup.next_name([{"host": "lyra-1"}, {"host": "lyra-4"}, {"host": "bpi"}], [{"host": "lyra-2"}]),
-    ),
+    "the names in sight, lower-cased: the boards seen and the setup hotspots, once each, blanks left out",
+    rksetup.taken_names([{"host": "Lyra-4"}, {"host": ""}, {"host": "lyra-4"}], [{"host": "LYRA-ULTRA"}, {"host": ""}])
+    == ["lyra-4", "lyra-ultra"],
+    rksetup.taken_names([{"host": "Lyra-4"}, {"host": ""}], [{"host": "LYRA-ULTRA"}]),
 )
 asked = []
 real_run = netinv.run
@@ -168,7 +165,7 @@ check(
     and snap["ready"] is True
     and "serial" in snap["routes"]
     and "card" in snap["routes"]
-    and snap["name"] == "lyra-1",
+    and isinstance(snap["taken"], list),
     snap,
 )
 

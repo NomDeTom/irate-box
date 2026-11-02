@@ -427,15 +427,27 @@
   const OTHER = 'other';
   const picked = new Map();   // hotspot name -> the choices made for that board
   let setupShown = '';
+  // A board's name: two made-up words (names.js), not one the box can already see in a lease or a setup hotspot.
+  function pickName(setup, avoid) {
+    const taken = new Set(((setup && setup.taken) || []).map((x) => String(x).toLowerCase()));
+    if (avoid) taken.add(String(avoid).toLowerCase());
+    for (let i = 0; i < 1000; i++) {
+      const name = window.HubNames ? window.HubNames.username() : 'salty-parrot';
+      if (!taken.has(name)) return name;
+    }
+    return 'salty-parrot';
+  }
   function choicesFor(id, defaults, setup) {
     if (!picked.has(id)) {
-      picked.set(id, {
+      const c = {
         route: id === OTHER ? 'serial' : 'hotspot', boardAddress: '', network: defaults.ssid ? 'same' : 'other', wifiPass: '', otherSsid: '', otherPass: '',
         rootPass: 'generated', rootTyped: '', userName: 'armbian', userPass: 'generated', userTyped: '', lockRoot: false, key: '',
-        hostname: (setup && setup.name) || 'lyra-1', place: 'box', locale: defaults.locale || 'en_GB.UTF-8', timezone: defaults.timezone || 'Etc/UTC',
+        hostname: '', place: 'box', locale: defaults.locale || 'en_GB.UTF-8', timezone: defaults.timezone || 'Etc/UTC',
         country: defaults.country || 'GB', address: 'dhcp', ip: '', mask: '255.255.255.0', gateway: '', dns: '',
         board: 'auto', card: '', after: 'leave',
-      });
+      };
+      c.hostname = pickName(setup, c.userName);
+      picked.set(id, c);
     }
     return picked.get(id);
   }
@@ -684,6 +696,7 @@
   // A board the box already found, finished or given irate-box over SSH: for the card and hotspot routes, the
   // board joins the network after the choices are sent, so the finish is a step of its own.
   let finishShown = '';
+  const finishNames = new Map();   // address -> the name picked for it, kept while the page is open
   function renderFinish(setup) {
     const at = document.getElementById('rk-finish');
     if (!at || !setup) return;
@@ -698,8 +711,10 @@
     const first = boards[0];
     const address = h('input', { type: 'text', name: 'rk-finish-address', autocomplete: 'off', spellcheck: false, placeholder: '192.168.1.60' });
     address.value = first.address;
-    const name = h('input', { type: 'text', name: 'rk-finish-name', autocomplete: 'off', spellcheck: false, placeholder: 'lyra-1' });
-    name.value = setup.name || 'lyra-1';
+    const name = h('input', { type: 'text', name: 'rk-finish-name', autocomplete: 'off', spellcheck: false, placeholder: 'salty-parrot' });
+    if (!finishNames.has(first.address)) finishNames.set(first.address, pickName(setup));
+    name.value = finishNames.get(first.address);
+    name.addEventListener('input', () => finishNames.set(first.address, name.value));
     const key = h('textarea', { name: 'rk-finish-key', autocomplete: 'off', spellcheck: false, rows: 2, placeholder: 'ssh-ed25519 AAAA… you@laptop' });
     const result = document.getElementById('rk-setup-result');
     const send = async (body, said) => {
