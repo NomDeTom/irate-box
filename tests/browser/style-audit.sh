@@ -4,7 +4,8 @@
 # The style audit: every /admin pane of this checkout, drawn in headless Chromium (the irate-chrome image) at a
 # desktop width and a phone's, looked over for what makes a page look broken: a link in the browser's default colour,
 # loose text at the page's full size, a gap above a card's first line, something wider than its pane, a list of terms
-# loose in a pane (in no card). The hub runs in a container with throwaway state, behind a stand-in for
+# loose in a pane (in no card), and a card or button sitting on the text above or below it. The hub runs in a
+# container with throwaway state, behind a stand-in for
 # the web server (front-proxy.py) on a network of their own; nothing on the machine is touched.
 #
 #   tests/browser/style-audit.sh            all panes, both widths

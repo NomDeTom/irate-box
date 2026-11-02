@@ -99,6 +99,21 @@ else
 	echo "   skipped: NO_BROWSER=1"
 fi
 
+# Spacing (tests/browser/spacing-audit.sh): every admin page and the sidebar, at desktop and phone widths, through
+# Playwright (no Docker). Counted: a card or button sitting on the text above or below it is the recurring fault this
+# guards, so a new one fails here. NO_BROWSER=1 skips it; without Playwright it says so.
+step "Spacing (tests/browser/spacing-audit.sh)"
+if [ "${NO_BROWSER:-0}" != 1 ]; then
+	if out=$(bash tests/browser/spacing-audit.sh 2>&1); then
+		printf '%s\n' "$out" | tail -2 | sed 's/^/   /'
+	else
+		printf '%s\n' "$out" | tail -40 | sed 's/^/   /'
+		rc=$((rc + 1))
+	fi
+else
+	echo "   skipped: NO_BROWSER=1"
+fi
+
 if [ "$QUICK" = 1 ]; then
 	echo; echo "local-ci (--quick, no .deb): $rc failed"; exit $rc
 fi
