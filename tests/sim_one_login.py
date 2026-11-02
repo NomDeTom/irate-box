@@ -190,7 +190,7 @@ try:
         page[:600],
     )
     # Until the box has an owner, /admin is the set-up page alone, to anyone; nothing else of it answers.
-    for path in ("/admin", "/admin/", "/admin/factory.html", "/admin/mesh.html"):
+    for path in ("/admin", "/admin/", "/admin/factory.html", "/admin/git.html", "/admin/mesh.html"):
         code, _, h = req(path, raw=True)
         check(
             f"  {path}: sent to the set-up page",

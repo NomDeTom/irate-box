@@ -5773,6 +5773,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/admin/factory.html":
             # The Firmware Factory's own page: behind /admin's login, as /admin is.
             path = "/admin-factory.html"
+        elif path == "/admin/git.html":
+            # Git's Builds on its own page (ci.py, the build cache): behind /admin's login too.
+            path = "/admin-git.html"
         elif path == "/admin/mesh.html":
             # Mesh's Heard, the messages' texts too (as the Factory's page): behind /admin's login.
             path = "/admin-mesh.html"

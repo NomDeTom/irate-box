@@ -2722,80 +2722,21 @@
             ></p>
           </div>
           <h3 data-i18n="admin.git.h-builds">Builds</h3>
-          <p class="setting-desc" id="ci-about"></p>
-          <form id="ci-cache-form" class="library-form">
-            <fieldset class="choice-tiles">
-              <legend
-                data-i18n="admin.git.legend-firmware-build-cache-platformio"
-              >
-                Firmware build cache: PlatformIO packages for the newest
-                Meshtastic release. With the cache, firmware builds here need no
-                internet access.
-              </legend>
-              <label
-                class="choice-tile"
-                data-i18n="admin.git.label-no-cache-each-build"
-                ><input type="radio" name="cache" value="discard" /><span
-                  class="choice-text"
-                  ><span class="setting-name">No cache</span
-                  ><span class="setting-desc"
-                    >Each build downloads what it needs from the internet.</span
-                  ></span
-                ></label
-              >
-              <label
-                class="choice-tile"
-                data-i18n="admin.git.label-headless-build-cache-about"
-                ><input type="radio" name="cache" value="native" /><span
-                  class="choice-text"
-                  ><span class="setting-name">Headless build cache</span
-                  ><span class="setting-desc">About 215 MB.</span></span
-                ></label
-              >
-              <label
-                class="choice-tile"
-                data-i18n="admin.git.label-full-build-cache-about"
-                ><input type="radio" name="cache" value="whole" /><span
-                  class="choice-text"
-                  ><span class="setting-name">Full build cache</span
-                  ><span class="setting-desc"
-                    >About 700 MB. It includes the touchscreen UI.</span
-                  ></span
-                ></label
-              >
-            </fieldset>
-            <button
+          <p class="setting-desc" data-i18n="admin.git.builds-own-page">
+            Builds run on this box when an administrator pushes to an
+            administrators-only repository whose commit has a .irate-ci.sh.
+            Builds has its own page for the build cache, the queue, the
+            finished runs and the setup templates.
+          </p>
+          <p class="library-buttons">
+            <a
               class="action-btn primary"
-              type="submit"
-              data-i18n="admin.git.btn-save"
+              href="/admin/git.html"
+              id="git-builds-open"
+              data-i18n="admin.git.open-builds"
+              >Open Builds →</a
             >
-              Save
-            </button>
-          </form>
-          <p class="setting-desc" id="ci-cache-status"></p>
-          <p
-            class="setting-desc action-note"
-            id="ci-cache-note"
-            role="status"
-            hidden
-          ></p>
-          <p class="setting-desc" id="ci-limits"></p>
-          <form id="ci-keep-form" class="library-form inline-form">
-            <label data-i18n="admin.git.label-build-runs-retain-each"
-              >Build runs to retain for each repository
-              <input name="keep" type="number" min="1" max="50"
-            /></label>
-            <button
-              class="action-btn primary"
-              type="submit"
-              data-i18n="admin.git.btn-save"
-            >
-              Save
-            </button>
-          </form>
-          <p class="setting-desc" id="ci-offline"></p>
-          <div id="ci-runs" class="admin-list"></div>
-          <div id="ci-run-view" class="git-manage" hidden></div>
+          </p>
         </section>
 
         <section

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="admin-git.head.title">Git builds · Hub administration</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-git.header.tip-quick-help" data-i18n="admin-git.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/hub" title="Back to the hub" data-i18n-title="admin-git.header.tip-back-hub" data-i18n="admin-git.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-git.header.heading">Git builds</h1>
+    <p class="subtitle" data-i18n="admin-git.header.subtitle">Builds on push, the queue, the build cache and the finished runs. <a href="/admin/#git">Git repositories</a></p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-git.header.aria-theme"></div>
+  </header>
+
+  <main class="admin-main">
+    <section class="admin-pane" id="git-builds" aria-label="Git builds" data-i18n-aria-label="admin-git.main.aria-git-builds">
+          <h3 data-i18n="admin-git.h-builds">Builds</h3>
+          <p class="setting-desc" id="ci-about"></p>
+          <p class="setting-desc action-note" id="ci-note" role="status" hidden></p>
+          <form id="ci-cache-form" class="library-form">
+            <fieldset class="choice-tiles">
+              <legend
+                data-i18n="admin-git.legend-firmware-build-cache-platformio"
+              >
+                Firmware build cache: PlatformIO packages for the newest
+                Meshtastic release. With the cache, firmware builds here need no
+                internet access.
+              </legend>
+              <label
+                class="choice-tile"
+                data-i18n="admin-git.label-no-cache-each-build"
+                ><input type="radio" name="cache" value="discard" /><span
+                  class="choice-text"
+                  ><span class="setting-name">No cache</span
+                  ><span class="setting-desc"
+                    >Each build downloads what it needs from the internet.</span
+                  ></span
+                ></label
+              >
+              <label
+                class="choice-tile"
+                data-i18n="admin-git.label-headless-build-cache-about"
+                ><input type="radio" name="cache" value="native" /><span
+                  class="choice-text"
+                  ><span class="setting-name">Headless build cache</span
+                  ><span class="setting-desc">About 215 MB.</span></span
+                ></label
+              >
+              <label
+                class="choice-tile"
+                data-i18n="admin-git.label-full-build-cache-about"
+                ><input type="radio" name="cache" value="whole" /><span
+                  class="choice-text"
+                  ><span class="setting-name">Full build cache</span
+                  ><span class="setting-desc"
+                    >About 700 MB. It includes the touchscreen UI.</span
+                  ></span
+                ></label
+              >
+            </fieldset>
+            <button
+              class="action-btn primary"
+              type="submit"
+              data-i18n="admin-git.btn-save"
+            >
+              Save
+            </button>
+          </form>
+          <p class="setting-desc" id="ci-cache-status"></p>
+          <p
+            class="setting-desc action-note"
+            id="ci-cache-note"
+            role="status"
+            hidden
+          ></p>
+          <p class="setting-desc" id="ci-limits"></p>
+          <form id="ci-keep-form" class="library-form inline-form">
+            <label data-i18n="admin-git.label-build-runs-retain-each"
+              >Build runs to retain for each repository
+              <input name="keep" type="number" min="1" max="50"
+            /></label>
+            <button
+              class="action-btn primary"
+              type="submit"
+              data-i18n="admin-git.btn-save"
+            >
+              Save
+            </button>
+          </form>
+          <p class="setting-desc" id="ci-offline"></p>
+          <div id="ci-setup"></div>
+          <div id="ci-runs" class="admin-list"></div>
+          <div id="ci-run-view" class="git-manage" hidden></div>
+    </section>
+  </main>
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/admin-widgets.js"></script>
+  <script src="/admin-git.js"></script>
+</body>
+</html>

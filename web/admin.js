@@ -1822,6 +1822,7 @@ const size = (bytes) => {
     : `${Math.max(0.1, bytes / 2 ** 20).toFixed(1)} MB`;
 };
 // Ages come from the hub's powered-on clock (seconds), never this browser's.
+const minutes = (seconds) => (seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`);
 const ago = (secs) => {
   if (secs < 90) return "just now";
   const m = Math.round(secs / 60);
@@ -12849,6 +12850,13 @@ const PUSH_WORDS = {
 };
 const builds = (repo) => repo.can_build && repo.build && repo.has_script;
 const repoKey = (repo) => `${repo.area}/${repo.name}`;
+const STATE_ICON = {
+  passed: "✅",
+  failed: "❌",
+  "timed out": "⏱",
+  interrupted: "⏹",
+  running: "⏳",
+};
 const GIT_KINDS = [
   ["all", "All", () => true],
   ["mine", "Local repositories", (repo) => !repo.mirror_of],
@@ -12951,7 +12959,6 @@ function renderGit(data) {
   cards.push(newCard());
   if (gitView.open === "new") cards.push(newPanel("git-drawer"));
   git.grid.replaceChildren(...cards);
-  if (ciData) renderCi(ciData); // its line on Git's removal follows
 }
 
 function newCard() {
@@ -13264,7 +13271,6 @@ function managePanel(repo, data, cls) {
                 true,
                 git.note,
               );
-              renderCi(out.snapshot);
             } catch (err) {
               say(err.message, false, git.note);
             }
@@ -13303,14 +13309,13 @@ function managePanel(repo, data, cls) {
       className: "setting-desc",
       textContent: repo.can_build
         ? repo.has_script
-          ? "Its newest commit has a .irate-ci.sh. A build runs as a dedicated user in a sandbox at the lowest priority (Builds, below)."
+          ? "Its newest commit has a .irate-ci.sh. A build runs as a dedicated user in a sandbox at the lowest priority (its own page, Builds)."
           : "Its newest commit has no .irate-ci.sh yet. Add one at the top of the repository to build."
         : repo.area === "public"
           ? "Repositories that guests can push to never build, because anyone could push code that runs."
           : "Only for repositories that only administrators can push to.",
     }),
     buildNow,
-    repo.can_build ? buildSetup() : null,
   );
   // Its description: a section of one value (a redraw of the list keeps what is being typed).
   const desc = el("textarea", {
@@ -13797,103 +13802,25 @@ git.form.addEventListener("submit", async (event) => {
 });
 loadGit();
 
-// --- builds on push (ci.py): the newest runs, refreshed while one is going -----------------
-const ciAbout = noteEl("ci-about");
-const ciRuns = noteEl("ci-runs");
-let ciPoll = null;
-const STATE_ICON = {
-  passed: "✅",
-  failed: "❌",
-  "timed out": "⏱",
-  interrupted: "⏹",
-  running: "⏳",
-};
-const minutes = (seconds) => (seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`);
-
-let ciData = null;
-let ciViewing = null; // { run, next, log } while a run's view is open
-function renderCi(data) {
-  ciData = data;
-  if (!data.installed) {
-    ciAbout.textContent =
-      "Builds are not set up on this box. Run install.sh again.";
+// --- builds on push: its page, and the menu's mark for a failed build ------------------------
+// Builds has its own page now (admin-git.js). The menu keeps a mark for builds that failed since
+// /admin last showed them; the Builds page clears it when it opens.
+let ciBadgePoll = null;
+async function loadCiBadge() {
+  let data;
+  try {
+    data = await getJSON("/admin/ci");
+  } catch (_) {
     return;
   }
-  ciAbout.textContent =
-    `A push to an administrator-only repository builds here when its commit has a ${data.script} at the top. ` +
-    `The box makes a fresh clone and runs bash ${data.script} as a dedicated user at the lowest priority. Repositories that guests can push to never build. ` +
-    "Set up builds, or select Build now, under Manage on the card of a repository." +
-    (data.queued ? ` ${data.queued} waiting.` : "") +
-    (gitRemoved() ? ` Git is removed from this box, so nothing can be pushed and no push builds. ${GIT_ADD_BACK}` : "");
-  const mem = data.memory || {};
-  const memText = /^\d+$/.test(mem.max || "")
-    ? `memory limit ${size(Number(mem.max))}`
-    : "no memory limit";
-  noteEl("ci-limits").textContent =
-    `Each build: up to ${Math.round(data.time_limit / 3600)} hours, ${memText}, ` +
-    `the lowest CPU priority. The runs use ${size(data.runs_bytes || 0)}. The box retains the newest ${data.keep_runs} runs for each repository, and every run marked Retain run.`;
-  ciKeep.fill({ keep: data.keep_runs });
-  noteEl("ci-offline").textContent =
-    "Without internet access: " +
-    ((data.mirrored || []).length
-      ? `git downloads of ${data.mirrored.length} URL${data.mirrored.length === 1 ? "" : "s"} in a build use the mirrors of this box (${data.mirrored
-          .slice(0, 3)
-          .map((url) => url.replace(/^https:\/\//, ""))
-          .join(", ")}${data.mirrored.length > 3 ? "…" : ""}).`
-      : "no mirrors exist yet, so a build that downloads from the internet needs internet access (Git → Mirrors).") +
-    (data.pio_deps
-      ? " PlatformIO packages come from the cache of the library (CI_PIO_DEPS)."
-      : " No PlatformIO cache is kept (Builds above, the firmware build cache).") +
-    (data.wheelhouse
-      ? " pip installs (platformio itself) use the wheelhouse of the Building toolkit (PIP_NO_INDEX, PIP_FIND_LINKS)."
-      : " The Building toolkit has no wheelhouse yet, so a pip install in a build still needs internet access.");
-  ciRuns.replaceChildren(
-    ...(data.runs.length
-      ? data.runs.map((run) =>
-          el(
-            "div",
-            { className: "admin-item" },
-            el(
-              "span",
-              {},
-              el("strong", {
-                textContent:
-                  `${STATE_ICON[run.state] || ""} ${run.repo} · ${run.branch} · ${run.commit.slice(0, 7)}` +
-                  (run.keep ? " · retained" : ""),
-              }),
-              el("span", {
-                className: "setting-desc",
-                textContent: [
-                  run.state,
-                  run.by === "build-now" ? "built manually" : null,
-                  run.duration != null ? minutes(run.duration) : null,
-                  run.started ? commitDate(run.started) : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · "),
-              }),
-            ),
-            el(
-              "span",
-              { className: "library-buttons" },
-              actionButton("View", () => openRun(run.run), {
-                className: "small",
-              }),
-            ),
-          ),
-        )
-      : [
-          el("p", { className: "setting-desc", textContent: "No builds yet." }),
-        ]),
-  );
-  // A build that failed since this page last showed the Git pane: a mark on its side-bar link.
   let seen = 0;
   try {
     seen = Number(localStorage.getItem("irate-ci-seen")) || 0;
   } catch (_) {
     /* no storage */
   }
-  const newBad = data.runs.filter(
+  const runs = Array.isArray(data.runs) ? data.runs : [];
+  const newBad = runs.filter(
     (run) => run.finished && run.finished > seen && run.state !== "passed",
   ).length;
   if (paneShown("git")) {
@@ -13904,210 +13831,11 @@ function renderCi(data) {
     }
   }
   badge("git", !paneShown("git") && newBad ? String(newBad) : "");
-  clearTimeout(ciPoll);
-  if (data.queued || data.runs.some((run) => run.state === "running"))
-    ciPoll = setTimeout(loadCi, 5000);
+  clearTimeout(ciBadgePoll);
+  if (data.queued || runs.some((run) => run.state === "running"))
+    ciBadgePoll = setTimeout(loadCiBadge, 5000);
 }
-
-const ciFile = (run, name) =>
-  `/admin/ci/file?run=${encodeURIComponent(run)}&name=${encodeURIComponent(name)}`;
-async function openRun(run) {
-  ciViewing = { run, next: 0, log: "" };
-  await followRun();
-}
-async function followRun() {
-  if (!ciViewing) return;
-  const box = noteEl("ci-run-view");
-  let v;
-  try {
-    v = await getJSON(
-      `/admin/ci/run?run=${encodeURIComponent(ciViewing.run)}&from=${ciViewing.next}`,
-    );
-  } catch (err) {
-    box.hidden = false;
-    box.replaceChildren(
-      el("p", { className: "setting-desc bad", textContent: err.message }),
-    );
-    return;
-  }
-  ciViewing.log += v.log;
-  ciViewing.next = v.next;
-  const st = v.status;
-  const running = st.state === "running";
-  const pre = el("pre", {
-    className: "admin-log ci-log",
-    textContent: ciViewing.log.slice(-200000),
-  });
-  box.hidden = false;
-  box.replaceChildren(
-    el(
-      "div",
-      { className: "git-manage-head" },
-      el("strong", {
-        textContent: `${STATE_ICON[st.state] || ""} ${st.repo} · ${st.branch} · ${st.commit.slice(0, 7)}`,
-      }),
-      actionButton(
-        "Close",
-        () => {
-          ciViewing = null;
-          box.hidden = true;
-        },
-        { className: "small" },
-      ),
-    ),
-    el("p", {
-      className: "setting-desc",
-      textContent: [
-        st.state,
-        st.duration != null
-          ? minutes(st.duration)
-          : running
-            ? `running for ${minutes(Math.round(Date.now() / 1000 - st.started))}`
-            : null,
-        st.keep ? "retained" : null,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    }),
-    v.steps.length
-      ? el(
-          "ol",
-          { className: "ci-steps" },
-          ...v.steps.map((x) => el("li", { textContent: x })),
-        )
-      : null,
-    pre,
-    v.artifacts.length
-      ? el(
-          "p",
-          { className: "library-buttons" },
-          el("span", { className: "setting-desc", textContent: "Artifacts: " }),
-          ...v.artifacts.map((artifact) =>
-            el("a", {
-              href: ciFile(v.run, artifact.name),
-              className: "button-link small",
-              textContent: `${artifact.name} (${size(artifact.size)})`,
-            }),
-          ),
-        )
-      : null,
-    el(
-      "p",
-      { className: "library-buttons" },
-      el("a", {
-        href: ciFile(v.run, "log.txt"),
-        target: "_blank",
-        className: "button-link small",
-        textContent: "Download full log",
-      }),
-      running
-        ? null
-        : actionButton(
-            st.keep ? "Stop retaining run" : "Retain run",
-            () => ciChange(v.run, st.keep ? "unkeep" : "keep"),
-            { className: "small" },
-          ),
-      running
-        ? null
-        : actionButton(
-            "Delete run",
-            async (event) => {
-              if (await AW.confirmHere("Delete this run, its log and its artifacts?", { anchor: event.currentTarget }))
-                ciChange(v.run, "delete");
-            },
-            { className: "small danger" },
-          ),
-    ),
-  );
-  pre.scrollTop = pre.scrollHeight;
-  if (running) setTimeout(followRun, 2000);
-}
-async function ciChange(run, action) {
-  try {
-    await postJSON("/admin/ci", { action, run });
-    say(
-      action === "delete"
-        ? "Queued. The builder deletes the run after any build in progress."
-        : "Queued. The builder applies the change when it is free.",
-      true,
-      git.note,
-    );
-    if (action === "delete") {
-      ciViewing = null;
-      noteEl("ci-run-view").hidden = true;
-    }
-    setTimeout(loadCi, 1500);
-  } catch (err) {
-    say(err.message, false, git.note);
-  }
-}
-const ciKeep = AW.form(document.getElementById("ci-keep-form"), {
-  label: "Runs kept",
-  save: async (c) => {
-    const out = await postJSON("/admin/ci", {
-      action: "settings",
-      keep_runs: Number(c.keep),
-    });
-    setTimeout(() => renderCi(out));
-    return "Saved.";
-  },
-});
-
-// "Set up builds", in a repository's Manage: what a script gets, and templates to start from.
-function buildSetup() {
-  if (!ciData || !ciData.templates) return null;
-  return el(
-    "details",
-    { className: "ci-setup" },
-    el("summary", {
-      textContent: "Set up builds: script environment and templates",
-    }),
-    el("p", {
-      className: "setting-desc",
-      textContent: `Put a ${ciData.script} at the top of the repository. Each push to a branch runs it with bash in a fresh clone of that commit.`,
-    }),
-    el(
-      "dl",
-      { className: "ci-env" },
-      ...Object.entries(ciData.env || {}).flatMap(([k, v]) => [
-        el("dt", {}, el("code", { textContent: k })),
-        el("dd", { textContent: v }),
-      ]),
-    ),
-    ...Object.values(ciData.templates).map((t) => {
-      const pre = el("pre", { className: "admin-log", textContent: t.script });
-      return el(
-        "div",
-        { className: "ci-template" },
-        el("strong", { textContent: t.title }),
-        actionButton(
-          "Copy",
-          () =>
-            navigator.clipboard?.writeText(t.script).then(
-              () =>
-                say(
-                  `Copied the ${t.title} template: save it as ${ciData.script}.`,
-                  true,
-                  git.note,
-                ),
-              () => say("Select the text and copy it.", false, git.note),
-            ),
-          { className: "small" },
-        ),
-        pre,
-      );
-    }),
-  );
-}
-
-async function loadCi() {
-  try {
-    renderCi(await getJSON("/admin/ci"));
-  } catch (_) {
-    ciAbout.textContent = "Could not read the builds.";
-  }
-}
-loadCi();
+loadCiBadge();
 
 // --- firmware for the web flasher (firmware.py) ---------------------------------------------
 // The board picker lists what the newest kept release offers; until a first check has run,
@@ -14120,9 +13848,6 @@ const fw = {
   filter: noteEl("fw-filter"),
   kept: noteEl("fw-kept"),
   source: noteEl("fw-source"),
-  cacheForm: document.getElementById("ci-cache-form"),
-  cacheStatus: noteEl("ci-cache-status"),
-  cacheNote: noteEl("ci-cache-note"),
 };
 // The firmware's source, as a mirror: what the Mirror the source button adds.
 const FW_SOURCE_MIRROR = {
@@ -14177,37 +13902,6 @@ function renderFirmware(data) {
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter(
     (t) => !q || t.board.includes(q) || t.platform.includes(q),
-  );
-  fwCache.fill({ cache: cfg.cache });
-  fw.cacheStatus.replaceChildren(
-    ...(st.cache
-      ? [
-          `Stored firmware: ${st.cache.version}, ${st.cache.mode === "native" ? "headless" : "complete"}, ${size(st.cache.bytes)}. `,
-          actionButton(
-            "Remove cache",
-            async () => {
-              try {
-                fwData = await postJSON("/admin/firmware", {
-                  action: "flush-cache",
-                });
-                renderFirmware(fwData);
-                say(
-                  "Cache removed. The next check or update downloads it again if the policy requires a cache.",
-                  true,
-                  fw.cacheNote,
-                );
-              } catch (err) {
-                say(err.message, false, fw.cacheNote);
-              }
-            },
-            { className: "small" },
-          ),
-        ]
-      : [
-          cfg.cache === "discard"
-            ? ""
-            : "No cache stored yet. The library downloads it on its schedule, or select Update now on the Firmware page.",
-        ]),
   );
   fw.source.replaceChildren(
     ...(data.source
@@ -14363,17 +14057,6 @@ const fwSec = AW.form(fw.form, {
     });
     setTimeout(() => renderFirmware(fwData));
     return "Saved. Select Update now to download the missing files. The schedule handles the rest.";
-  },
-});
-const fwCache = AW.form(fw.cacheForm, {
-  label: "Build cache",
-  save: async (c) => {
-    fwData = await postJSON("/admin/firmware", {
-      action: "settings",
-      cache: c.cache,
-    });
-    setTimeout(() => renderFirmware(fwData));
-    return "Saved. The library downloads or removes the cache on its schedule. Update now on the Firmware page does it now.";
   },
 });
 for (const [id, action] of [

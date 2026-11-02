@@ -16,6 +16,7 @@ const STANDALONE = [
   ['Pin map', '/admin/pins.html'],
   ['Setup steps', '/admin/setup.html'],
   ['Factory', '/admin/factory.html'],
+  ['Git builds', '/admin/git.html'],
   ['Mesh', '/admin/mesh.html'],
   ['Rockchip boards', '/admin/rockchip.html'],
 ];

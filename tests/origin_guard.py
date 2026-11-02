@@ -216,6 +216,7 @@ check(
             "admin-setup.html",
             "admin-mesh.html",
             "admin-factory.html",
+            "admin-git.html",
             "admin-rockchip.html",
             "admin-pins.html",
         )
