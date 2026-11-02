@@ -138,6 +138,18 @@ check(
     st,
 )
 
+# As on a real box (a Banana Pi M2 Zero, 2026-11-02): bounded-build's systemd-run --scope puts the build in a scope
+# below the slice, and the slice's own cgroup.procs stays empty. The guard still sees it.
+scope = T / "cgroup" / "build.slice" / "run-u42.scope"
+scope.mkdir(parents=True, exist_ok=True)
+(scope / "cgroup.procs").write_text("201\n202\n")
+check(
+    "a build in a scope under the slice is seen, though the slice's own cgroup.procs is empty",
+    memguard.build_pids() == [201, 202],
+    memguard.build_pids(),
+)
+(scope / "cgroup.procs").write_text("")
+
 mem(available=300, swap_free=200)
 memguard.WARN_MB, memguard.ACT_MB = 96, 64
 memguard.WARN_SWAP_PCT, memguard.ACT_SWAP_PCT = 80, 90
