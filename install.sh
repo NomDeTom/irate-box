@@ -3326,8 +3326,13 @@ elif [ -e "$STATE/git/.git-add-on-removed" ]; then
 fi
 
 # --- start -----------------------------------------------------------------------
-say "Starting services"
+# The security manifest's sandboxes for the units written above, before any of them start, so a wrong
+# one is caught by this run's check rather than at the next restart (security.json).
+if ! HUB_CODE_DIR="$CODE" HUB_SYSTEMD_ETC=/etc/systemd "$CODE/irate-box" secmanifest apply-units >/dev/null; then
+	problem "could not apply the security manifest's unit sandboxes"
+fi
 systemctl daemon-reload
+say "Starting services"
 units=(irate-box "$WEB")
 [ "$NO_GIT" = 1 ] || units+=(irate-box-git.socket)
 [ "$WITH_NOTES" = 1 ] && units+=(silverbullet irate-box-notebooks.path)
