@@ -2487,7 +2487,7 @@ let helperBusy = false, helperStuck = false; // the root helper, as /admin/box l
 function renderBox(data) {
   lastBox = data;
   const helper = data.helper || {};
-  helperBusy = !!helper.busy;
+  helperBusy = !!(helper.working ?? helper.busy);
   helperStuck = !!helper.stuck;
   document.documentElement.dataset.helperBusy = String(helperBusy);
   document.documentElement.dataset.helperStuck = String(helperStuck);

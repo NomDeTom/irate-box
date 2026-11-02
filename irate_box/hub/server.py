@@ -3561,10 +3561,12 @@ def helper_signal():
     age = time.time() - oldest if oldest else 0
     busy = helper_busy() if age > HELPER_STUCK_AFTER else None
     working = busy is not None and busy < HELPER_BUSY_UP_TO
+    waiting = _pending_actions("")
     return {
-        "waiting": _pending_actions(""),
+        "waiting": waiting,
         "oldest": round(age),
         "busy": round(busy) if working else None,
+        "working": waiting > 0 and not (age > HELPER_STUCK_AFTER and not working),
         "stuck": age > HELPER_STUCK_AFTER and not working,
     }
 

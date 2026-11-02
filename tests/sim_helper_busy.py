@@ -54,7 +54,7 @@ check(
 signal = server.helper_signal()
 check(
     "the slim signal: busy, not stuck; the same as the page's",
-    signal["stuck"] is False and 230 <= signal["busy"] <= 250 and signal["waiting"] == 1,
+    signal["stuck"] is False and 230 <= signal["busy"] <= 250 and signal["waiting"] == 1 and signal["working"] is True,
     signal,
 )
 check(
@@ -100,6 +100,16 @@ h = server.helper_state()
 check("a job running 5 hours: stuck too", h["stuck"] is True and h["busy"] is None, h)
 check("  and not logged as a busy spell", len(json.loads(server.HELPER_BUSY_LOG.read_text())) == 1)
 req.unlink()
+fresh = server.CONTROL_REQUESTS / "fresh.json"
+fresh.write_text('{"action": "health-scan"}')
+unit.update(state="activating", since=time.monotonic() - 1)
+signal = server.helper_signal()
+check(
+    "a request a second old: working, not stuck, even before the 90 s alarm",
+    signal["working"] is True and signal["stuck"] is False and signal["busy"] is None,
+    signal,
+)
+fresh.unlink()
 unit.update(state="activating", since=time.monotonic() - 60)
 h = server.helper_state()
 check("nothing waiting: neither", h["stuck"] is False and h["busy"] is None, h)
