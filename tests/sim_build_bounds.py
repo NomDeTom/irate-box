@@ -67,7 +67,11 @@ check("an unbounded build has no misleading kill button", not f[-1]["actions"], 
 health.memguard.unbounded_builds = list
 health.memguard.bounds = lambda: bounds(supported=False)
 f = health.check_build_bounds()
-check("a kernel without cgroup v2 is a note, not a fault", f[0]["status"] == "note" and not f[0]["actions"], f)
+check(
+    "a kernel without cgroup v2 is a note, not a fault",
+    f[0]["status"] == "note" and not f[0]["actions"],
+    f,
+)
 
 
 def head(level):
@@ -91,30 +95,47 @@ check(
 
 health.memguard.headroom = lambda: head("warn")
 f = health.check_memory_headroom()
-check("a warning says the numbers and offers no kill", f[0]["status"] == "warn" and not f[0]["actions"], f)
+check(
+    "a warning says the numbers and offers no kill",
+    f[0]["status"] == "warn" and not f[0]["actions"],
+    f,
+)
 
 health.memguard.headroom = lambda: head("act")
 f = health.check_memory_headroom()
 check(
-    "the act level offers the build-only stop", f[0]["status"] == "problem" and "memguard-kill-builds" in choices(f), f
+    "the act level offers the build-only stop",
+    f[0]["status"] == "problem" and "memguard-kill-builds" in choices(f),
+    f,
 )
 
 called = []
 health.memguard.install_bounds = lambda: called.append("install")
 health.memguard.kill_builds = lambda: "build.slice killed"
-check("the repair puts the bounds back", health.fix("build-bounds-install") and called == ["install"])
-check("the repair kills only the build slice", health.fix("memguard-kill-builds")["id"] == "repair.memguard.killed")
+check(
+    "the repair puts the bounds back",
+    health.fix("build-bounds-install") and called == ["install"],
+)
+check(
+    "the repair kills only the build slice",
+    health.fix("memguard-kill-builds")["id"] == "repair.memguard.killed",
+)
 
 units = [w[0] for w in health._watchdogs()]
-check("the memory guard is one of the watchdogs the doctor checks", "irate-box-memory-guard.service" in units, units)
+check(
+    "the memory guard is one of the watchdogs the doctor checks",
+    "irate-box-memory-guard.service" in units,
+    units,
+)
 
 repo = Path(__file__).resolve().parents[1]
 inst = (repo / "install.sh").read_text()
 uninst = (repo / "uninstall.sh").read_text()
 check(
-    "install.sh writes the slice, the wrapper and the memory guard",
-    "build.slice.d/limits.conf" in inst
-    and "bounded-build" in inst
+    "install.sh applies the slice, the wrapper and the memory guard",
+    "memguard install-bounds" in inst
+    and "memguard liveness-apply" in inst
+    and "memguard apt-apply" in inst
     and "irate-box-memory-guard.service" in inst
     and "WatchdogSec=30" in inst,
 )

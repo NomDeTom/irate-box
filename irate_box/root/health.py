@@ -6520,6 +6520,7 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    groups += memguard.groups()
     return groups
 
 
@@ -7025,6 +7026,7 @@ def check_build_bounds():
                 M("build-bounds.title", "Build bounds"),
                 "ok",
                 M("build-bounds.ok", "Builds run inside build.slice, with its memory, CPU and I/O limits."),
+                go=_go("health-settings", RECOVERY, "health-settings-memguard-limits"),
                 evidence=[b["dropin"], b["wrapper"]],
             )
         )
@@ -7045,6 +7047,7 @@ def check_build_bounds():
                 ),
                 M("build-bounds.fix", "Put the build bounds back."),
                 actions=[action("build-bounds-install", M("build-bounds.install", "Put the build bounds back"))],
+                go=_go("health-settings", RECOVERY, "health-settings-memguard-limits"),
                 commands=["sudo bounded-build make -C ..."],
                 evidence=[b["dropin"], b["wrapper"]],
             )
@@ -7065,7 +7068,11 @@ def check_build_bounds():
                     "build-unbounded.why",
                     "The build can take the memory, CPU and storage that sshd and the hub need.",
                 ),
-                M("build-unbounded.fix", "Stop the build, then start it with bounded-build."),
+                M(
+                    "build-unbounded.fix",
+                    "Stop the build, then start it with bounded-build, or set how package updates build.",
+                ),
+                go=_go("health-settings", RECOVERY, "health-settings-memguard-apt"),
                 commands=["sudo bounded-build ..."],
                 evidence=[f"{b['name']} ({b['pid']}) in {b['cgroup']}" for b in unbounded],
             )
@@ -7120,6 +7127,7 @@ def check_memory_headroom():
             detail,
             why,
             M("memory-headroom.fix", "Stop the build or select a smaller one. The memory guard does this by itself."),
+            go=_go("health-settings", RECOVERY, "health-settings-memguard-action"),
             actions=actions,
             commands=["sudo systemctl status irate-box-memory-guard --no-pager"],
             evidence=[f"{k}={v}" for k, v in sorted(m["slice_events"].items())],
@@ -7154,6 +7162,11 @@ def check_watchdogs_alive(now=None):
             if at
             else M("alive.never", "{name} runs, but has not reported since it started.", name=name)
         )
+        policy = M(
+            "alive.policy",
+            "A watchdog that stops is handled by {choice}.",
+            choice=memguard.load_settings()["watchdog_failure"],
+        )
         out.append(
             finding(
                 f"alive:{unit.removesuffix('.service')}",
@@ -7170,9 +7183,13 @@ def check_watchdogs_alive(now=None):
                     "Restart the box. If the restart does not finish, switch the box off and on. Then look in the "
                     "kernel's log of that boot for a blocked task.",
                 ),
-                notes=[M("alive.in-kernel", "It is waiting in the kernel, as below: a lock that is not released.")]
-                if stuck
-                else [],
+                notes=[policy]
+                + (
+                    [M("alive.in-kernel", "It is waiting in the kernel, as below: a lock that is not released.")]
+                    if stuck
+                    else []
+                ),
+                go=_go("health-settings", RECOVERY, "health-settings-memguard-watchdog"),
                 commands=["journalctl -k -b -1 | grep -A 20 'blocked for more than'"],
                 evidence=stuck or [str(status)],
             )
@@ -7779,6 +7796,8 @@ def fix(choice):
         return M("repair.build-bounds.installed", "The build bounds are back in place.")
     if kind == "memguard-kill-builds":
         return M("repair.memguard.killed", "{detail}.", detail=memguard.kill_builds())
+    if kind.startswith("memguard-"):
+        return memguard.set_option(kind[len("memguard-") :], arg)
     if kind == "recommended-apply":
         from irate_box.root import recommended
 

@@ -99,10 +99,16 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-notebooks.path irate-box-notebooks.service; do
 	systemctl disable --now "$u" >/dev/null 2>&1 || true
 done
-# The build guards: the slice, its wrapper and the memory guard's record are irate-box's, so they go.
+# The build guards: the slice, its wrapper, the liveness and apt drop-ins, and the memory
+# guard's record are irate-box's, so they go.
 systemctl stop build.slice >/dev/null 2>&1 || true
 rm -f /usr/local/sbin/bounded-build
 rm -rf /etc/systemd/system/build.slice.d
+for u in irate-box-crashwatch.service irate-box-uplink.service irate-box-memory-guard.service \
+	apt-daily-upgrade.service unattended-upgrades.service; do
+	rm -f "$UNITDIR/$u.d/irate-box-memory.conf"
+	rmdir "$UNITDIR/$u.d" 2>/dev/null || true
+done
 # The notebooks per login that are running (a template, started by irate-box-notebooks.service): stopped.
 systemctl stop 'irate-box-notebook@*.service' >/dev/null 2>&1 || true
 # Guests' onward internet (root/share.py): its rules went with irate-box-firewall.service above (one
