@@ -202,6 +202,7 @@ run sim_secdoctor_joint.py
 run sim_secdoctor_lyra.py
 run sim_signing.py
 run sim_update_doctor.py
+run install_defaults_guard.py
 run sim_security_manifest.py
 run sim_security_changes.py
 run sim_update_parts.py

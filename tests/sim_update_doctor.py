@@ -939,6 +939,39 @@ with (
         check("failed verification never silently retries or installs", False)
     except H.Refused:
         check("failed verification never silently retries or installs", not pipeline_calls)
+    # Held only by the security check, and those changes approved for this commit: Install goes ahead (the page's
+    # Install is update_reach; it used to refuse here though update-install would not).
+    held = dict(
+        pipeline_state,
+        checked_sha=candidate,
+        checks=[{"id": "security", "name": "Security changes", "ok": False, "warn": False}],
+    )
+    H._write_update_state(held)
+    pipeline_calls.clear()
+    with mock.patch.object(H, "_security_approval", lambda state, full: {"commit": full[:7]}):
+        H.update_reach({"endpoint": "install"})
+    check("an approved security hold installs from the Updates page", pipeline_calls == ["install"], pipeline_calls)
+    pipeline_calls.clear()
+    with mock.patch.object(H, "_security_approval", lambda state, full: None):
+        try:
+            H.update_reach({"endpoint": "install"})
+            check("  not approved: refused", False)
+        except H.Refused as exc:
+            check("  not approved: refused", exc.message["id"] == "update.reach.blocked" and not pipeline_calls)
+    H._write_update_state(
+        dict(held, checks=held["checks"] + [{"id": "python", "name": "Python", "ok": False, "warn": False}])
+    )
+    with mock.patch.object(H, "_security_approval", lambda state, full: {"commit": full[:7]}):
+        try:
+            H.update_reach({"endpoint": "install"})
+            check("  approved, but another check failed too: refused", False)
+        except H.Refused:
+            check("  approved, but another check failed too: refused", not pipeline_calls)
+    try:
+        H.update_reach({"endpoint": "download"})
+        check("  a download is never let through by an approval", False)
+    except H.Refused:
+        check("  a download is never let through by an approval", not pipeline_calls)
     pipeline_calls.clear()
     H.UPDATE_STATE.unlink()
     with mock.patch.object(H, "update_check", lambda req: H._write_update_state(dict(pipeline_state, up_to_date=True))):
