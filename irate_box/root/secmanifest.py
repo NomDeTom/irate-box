@@ -679,4 +679,9 @@ if __name__ == "__main__":
         sys.exit("usage: irate-box secmanifest apply-secrets")
     if os.geteuid() != 0:
         sys.exit("run as root")
-    print("\n".join(apply_secrets()) or "the secrets have their declared modes and owners")
+    # A count, not the list: the list names the secrets' paths, which the code scanner reads as clear-text logging.
+    # The security doctor's manifest step says which, if any, still differ.
+    n = len(apply_secrets())
+    print(
+        f"{n} secret(s) given their declared mode or owner" if n else "the secrets have their declared modes and owners"
+    )
