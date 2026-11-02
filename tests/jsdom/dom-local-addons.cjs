@@ -31,8 +31,14 @@ vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom
 const dom = new JSDOM(html, { url: 'http://box/admin/#addons', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 const posted = [];
+let holdPost = false, failPost = false, releasePost = null;
 w.fetch = async (u, opts = {}) => {
-  if (opts.method === 'POST') { posted.push([u, JSON.parse(opts.body), opts.headers]); return new Response('{"added":"x"}', { status: 202 }); }
+  if (opts.method === 'POST') {
+    posted.push([u, JSON.parse(opts.body), opts.headers]);
+    if (failPost) return new Response('{}', { status: 503 });
+    if (holdPost) return new Promise((resolve) => { releasePost = () => resolve(new Response('{"added":"x"}', { status: 202 })); });
+    return new Response('{"added":"x"}', { status: 202 });
+  }
   if (u === '/admin/local-addons') return new Response(JSON.stringify(local), { status: 200 });
   if (u === '/admin/access') return new Response(JSON.stringify(accessData), { status: 200 });
   if (u === '/admin/addons') return new Response(JSON.stringify({ addons: [], progress: null, pending: 0, results: [], log: [] }), { status: 200 });
@@ -86,6 +92,25 @@ const tickAndPress = (win, row, label) => {
   await sleep(100);
   const add = posted.find(([u, b]) => u === '/admin/local-addons' && b.action === 'add');
   check('Add posts the id, agreed, with the admin header', add && add[1].id === 'mqttx' && add[1].agree === true && add[2]['X-Irate-Admin'] === '1', JSON.stringify(add));
+  // A web add-on's button waits while the request is in flight, and clears on the answer or a refusal.
+  holdPost = true;
+  const rowNow = () => [...d.querySelectorAll('#local-catalogue .library-source')].find((r) => /MQTT explorer/.test(r.textContent));
+  const addButton = () => [...rowNow().querySelectorAll('button')].find((b) => b.textContent === 'Add web add-on');
+  const akey = addButton().dataset.wait;
+  addButton().click();
+  await sleep(50);
+  const afresh = () => [...d.querySelectorAll('[data-wait]')].find((n) => n.dataset.wait === akey);
+  check('a web add-on action: its button waits while the request is in flight', afresh() && afresh().classList.contains('is-busy')
+    && afresh().getAttribute('aria-busy') === 'true', akey);
+  holdPost = false;
+  releasePost();
+  await sleep(150);
+  check('  and the wait ends with the answer', afresh() && !afresh().classList.contains('is-busy') && !afresh().hasAttribute('aria-busy'));
+  failPost = true;
+  addButton().click();
+  await sleep(100);
+  check('  a refused request clears it too', afresh() && !afresh().classList.contains('is-busy') && !afresh().hasAttribute('aria-busy'));
+  failPost = false;
   check('the paste warning is there', /Add a pasted manifest only if you have read it/.test(d.querySelector('#local-paste .danger-box').textContent));
   d.getElementById('local-paste-text').value = JSON.stringify({ id: 'x', addon: { title: 'X', consent: 'Take it?' } });
   d.getElementById('local-paste-go').click(); await sleep(50);
