@@ -87,6 +87,8 @@ The installer keeps user data and the administrator password.
                         #lobby and the same limits. Choose one IRC server, not both.
   --with-collab         install live collaboration in /draw/: Debian's nodejs and the room relay
                         from --apps DIR/room. Build the relay on a desktop (ARMv7 and up).
+  --with-tailscale      install Tailscale from its signed repository, stopped. Remote access is
+                        switched on under Access → Remote access; it needs a Tailscale account.
   --with-term           enable the ttyd terminal at /term/. The installer always installs the
                         terminal and keeps it disabled without this option. When enabled, the terminal
                         asks for the administrator sign-in, then for an operating-system account on the box.
@@ -121,12 +123,17 @@ The installer keeps user data and the administrator password.
                         onboard flash or in memory, the longer write-back delay, a reboot
                         after a kernel panic, the hardware watchdog), each changeable later
                         on Recovery. Recorded, so updates keep it.
+  --no-default-kits     at a first install, do not install the System and Radios toolkits.
+                        Without it they are installed from the toolkit cache, so a minimal
+                        image has the everyday tools and Bluetooth. Recorded, so updates
+                        keep it.
   --no-git              leave out the Git add-on: no cgit or fcgiwrap, no Git servers, no Git
                         tiles. The repositories' folder and the librarian's mirrors stay (git
                         itself is in every install). Recorded, so updates keep it; so does
                         "irate-box gitaddon remove" on a running box.
   --with-git            add the Git add-on back after --no-git or "irate-box gitaddon remove".
-  --remove NAME         remove an add-on: notes, sync, mqtt, irc, term, collab or kiwix
+  --remove NAME         remove an add-on: notes, sync, mqtt, irc, inspircd, term, collab, kiwix
+                        or tailscale
                         (repeatable). This stops its service and removes its unit and
                         configuration. Its data (the notes folder, Syncthing's state)
                         and packages stay. The Add-ons page in the administration pages runs this.
@@ -183,7 +190,7 @@ EOF
 
 SRC="" REPO="https://github.com/NomDeTom/irate-box" REPO_GIVEN=0 BRANCH="main" APPS_SRC="" DL_CACHE=""
 MAKE_BUNDLE="" BUNDLE_ARCHS="aarch64,armv7l"
-APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_INSPIRCD=0 WITH_COLLAB=0 WITH_KIWIX=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
+APPS_FROM_ACTIONS=0 WITH_TOOLS=0 WITH_NOTES=0 WITH_SYNC=0 WITH_TERM=0 WITH_MQTT=0 WITH_IRC=0 WITH_INSPIRCD=0 WITH_COLLAB=0 WITH_KIWIX=0 WITH_TAILSCALE=0 ADMIN_PW="" HUB_URL="/" ZIMS=()
 HUB_PORT="" TAKE_PORT_80=0 REMOVE=() WEB="" UPLINK="" RTC=auto NO_HTTPS=0 ALLOW_ADMIN_HTTP=0 NO_GIT=0 WITH_GIT=0 KEEP_SYSTEM=0
 # The arguments as given, for the install record, with the password masked.
 ARGS_SHOWN="" _mask=0
@@ -259,12 +266,21 @@ while [ $# -gt 0 ]; do
 		WITH_KIWIX=1
 		shift
 		;;
+	--with-tailscale)
+		WITH_TAILSCALE=1
+		shift
+		;;
 	--no-https)
 		NO_HTTPS=1
 		shift
 		;;
 	--keep-system-defaults)
 		KEEP_SYSTEM=1
+		shift
+		;;
+	--no-default-kits)
+		NO_DEFAULT_KITS=1
+		shift
 		;;
 	--allow-admin-http)
 		ALLOW_ADMIN_HTTP=1
@@ -326,7 +342,7 @@ while [ $# -gt 0 ]; do
 		shift 2
 		;;
 	--remove)
-		case "$2" in notes | sync | mqtt | irc | inspircd | term | collab | kiwix) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, inspircd, term, collab or kiwix" ;; esac
+		case "$2" in notes | sync | mqtt | irc | inspircd | term | collab | kiwix | tailscale) REMOVE+=("$2") ;; eliza) ;; *) die "--remove takes notes, sync, mqtt, irc, inspircd, term, collab, kiwix or tailscale" ;; esac
 		shift 2
 		;;
 	--download-cache)
@@ -398,7 +414,7 @@ fi
 # An add-on being removed is not installed by this run, whatever else asks for it.
 for r in "${REMOVE[@]}"; do
 	case "$r" in
-	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; inspircd) WITH_INSPIRCD=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;; kiwix) WITH_KIWIX=0 ;;
+	notes) WITH_NOTES=0 ;; sync) WITH_SYNC=0 ;; mqtt) WITH_MQTT=0 ;; irc) WITH_IRC=0 ;; inspircd) WITH_INSPIRCD=0 ;; term) WITH_TERM=0 ;; collab) WITH_COLLAB=0 ;; kiwix) WITH_KIWIX=0 ;; tailscale) WITH_TAILSCALE=0 ;;
 	esac
 done
 
@@ -496,6 +512,7 @@ keep_addon inspircd WITH_INSPIRCD /etc/inspircd/irate-box.conf inspircd
 keep_addon term WITH_TERM /etc/systemd/system/ttyd.service ttyd
 keep_addon collab WITH_COLLAB /etc/systemd/system/excalidraw-room.service excalidraw-room
 keep_addon kiwix WITH_KIWIX /etc/systemd/system/kiwix.service kiwix
+keep_addon tailscale WITH_TAILSCALE /etc/apt/sources.list.d/tailscale.list tailscaled
 
 # Bold on a terminal only: from /admin the output goes to a log file that a page shows.
 # Decided now, before the output is also copied to the install log (below).
@@ -1041,6 +1058,7 @@ hub_site_in() {
 # Administration over plain HTTP stays allowed once chosen, now or at an earlier install (recorded).
 [ "$ALLOW_ADMIN_HTTP" = 0 ] && grep -qx -- --allow-admin-http "$ETC/install-options" 2>/dev/null && ALLOW_ADMIN_HTTP=1
 [ "$KEEP_SYSTEM" = 0 ] && grep -qx -- --keep-system-defaults "$ETC/install-options" 2>/dev/null && KEEP_SYSTEM=1
+[ "$NO_DEFAULT_KITS" = 0 ] && grep -qx -- --no-default-kits "$ETC/install-options" 2>/dev/null && NO_DEFAULT_KITS=1
 # A first install: no record of an earlier one (the recommended settings are given only then).
 FIRST_INSTALL=0
 [ -f "$ETC/install-options" ] || FIRST_INSTALL=1
@@ -1340,6 +1358,36 @@ else
 	git clone --depth 1 -b "$BRANCH" "$REPO" "$CODE"
 fi
 
+# --- Tailscale, as an add-on ---------------------------------------------------------------
+# Its package comes from Tailscale's own signed repository, not Debian's. It is added stopped: the
+# remote-access switch on Access starts it, and a box that already had it keeps its state.
+if [ "$WITH_TAILSCALE" = 1 ]; then
+	say "Installing Tailscale from its signed repository"
+	ts_suite="$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release | tr -d '\"')"
+	case "$ts_suite" in
+	trixie | bookworm | bullseye) ;;
+	*)
+		notice "Tailscale's repository has no suite for this image ($ts_suite); Tailscale was not installed."
+		ts_suite=""
+		;;
+	esac
+	if [ -n "$ts_suite" ]; then
+		install -d -m 755 /usr/share/keyrings
+		install -m 644 "$CODE/config/signing/tailscale.gpg" /usr/share/keyrings/tailscale-archive-keyring.gpg
+		printf 'deb [signed-by=%s] https://pkgs.tailscale.com/stable/debian %s main\n' \
+			/usr/share/keyrings/tailscale-archive-keyring.gpg "$ts_suite" >/etc/apt/sources.list.d/tailscale.list
+		chmod 644 /etc/apt/sources.list.d/tailscale.list
+		ts_was=0
+		dpkg-query -W -f='${Status}' tailscale 2>/dev/null | grep -q 'ok installed' && ts_was=1
+		if apt_update && apt-get install -y -q --no-install-recommends tailscale; then
+			# Added now, it starts off: the switch on Access is where it is turned on.
+			[ "$ts_was" = 1 ] || systemctl disable --now tailscaled >/dev/null 2>&1 || true
+		else
+			problem "Tailscale was not installed from its repository"
+		fi
+	fi
+fi
+
 # What /admin reports as the installed version: the commit, and when it was installed. A
 # source with no git history but a VERSION (a copy of the installed code, as the Add-ons page
 # uses) keeps the version it already had.
@@ -1415,12 +1463,14 @@ fi
 	[ "$WITH_TERM" = 1 ] && echo --with-term
 	[ "$WITH_COLLAB" = 1 ] && echo --with-collab
 	[ "$WITH_KIWIX" = 1 ] && echo --with-kiwix
+	[ "$WITH_TAILSCALE" = 1 ] && echo --with-tailscale
 	[ "$HUB_URL" != / ] && printf '%s\n' --hub-url "$HUB_URL"
 	[ "$HUB_PORT" != 80 ] && printf '%s\n' --port "$HUB_PORT"
 	[ "$NO_HTTPS" = 1 ] && echo --no-https
 	[ "$ALLOW_ADMIN_HTTP" = 1 ] && echo --allow-admin-http
 	[ "$NO_GIT" = 1 ] && echo --no-git
 	[ "$KEEP_SYSTEM" = 1 ] && echo --keep-system-defaults
+	[ "$NO_DEFAULT_KITS" = 1 ] && echo --no-default-kits
 	true
 } | write_if_changed "$ETC/install-options" 644
 # A copy the hub can read ($ETC is 750: it holds the admin password), for /admin's Add-ons
@@ -3259,7 +3309,6 @@ HUB_STATE_DIR="$STATE" "$CODE/scripts/visitors-apply.sh" || problem "visitor cou
 # service and comes under the switch on /admin: the hub records the choice in
 # $STATE/tailscale.want, and the path unit applies it as root (tailscale-apply.sh).
 # Its current state is never changed here -- this may be running over Tailscale.
-WITH_TAILSCALE=0
 if systemctl cat tailscaled.service >/dev/null 2>&1; then
 	WITH_TAILSCALE=1
 	say "Putting Tailscale under the remote-access switch on /admin"
@@ -3509,9 +3558,36 @@ for r in "${REMOVE[@]}"; do
 		systemctl disable --now excalidraw-room >/dev/null 2>&1 || true
 		rm -f /etc/systemd/system/excalidraw-room.service
 		;;
+	tailscale)
+		say "Removing the Tailscale add-on; its state in /var/lib/tailscale stays"
+		systemctl disable --now tailscaled irate-box-tailscale.path irate-box-tailscale.service irate-box-tailscale-boot.service >/dev/null 2>&1 || true
+		rm -f /etc/systemd/system/tailscaled.service.d/irate-box.conf \
+			/etc/systemd/system/irate-box-tailscale.service /etc/systemd/system/irate-box-tailscale.path \
+			/etc/systemd/system/irate-box-tailscale-boot.service
+		rmdir /etc/systemd/system/tailscaled.service.d 2>/dev/null || true
+		apt-get remove -y -q tailscale >/dev/null 2>&1 || true
+		rm -f /etc/apt/sources.list.d/tailscale.list /usr/share/keyrings/tailscale-archive-keyring.gpg
+		;;
 	esac
 done
 [ ${#REMOVE[@]} -eq 0 ] || systemctl daemon-reload
+
+# --- the System and Radios toolkits, at a first install ------------------------------------
+# A minimal image (stock Armbian) lacks the everyday tools and Bluetooth. Both kits are installed from
+# the toolkit cache, so their packages are checked against Debian's signed indexes and the box keeps
+# them. --no-default-kits leaves them out; Toolkits offers them later.
+if [ "$FIRST_INSTALL" = 1 ] && [ "$NO_DEFAULT_KITS" = 0 ]; then
+	say "The System and Radios toolkits"
+	for kit in system radios; do
+		if ! HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" \
+			python3 -m irate_box.root.kits fetch "$kit" 2>&1 | sed 's/^/    /'; then
+			notice "The $kit toolkit's packages were not downloaded (no internet, or Debian could not be read); it is installed only if its cache is already on the box."
+		fi
+		HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" \
+			python3 -m irate_box.root.kits install "$kit" never 2>&1 | sed 's/^/    /' ||
+			notice "The $kit toolkit is not installed yet; Toolkits offers it when the box is online or its cache is on the box."
+	done
+fi
 
 # --- the recommended settings for writes and recovery, at a first install ------------------
 # (root/recommended.py; notes: recommended-defaults). An existing box is offered them in Box doctor instead.

@@ -91,6 +91,10 @@ ARCHIVE = {
     "python3-protobuf": ("3.21.12-11", []),
     "protobuf-compiler": ("3.21.12-11", []),
     "libffi-dev": ("3.4.8-2", []),
+    "pipx": ("1.7.1-1", ["python3-venv"]),
+    "bison": ("3.8.2+dfsg-1", ["m4"]),
+    "flex": ("2.6.4-8.2", ["m4"]),
+    "m4": ("1.4.19-4", []),
 }
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
@@ -777,7 +781,19 @@ except ValueError as exc:
 sec = toolkits.definitions()["security"]
 check(
     "the security kit: Lynis, debsecan, fail2ban, nmap and the rest; debian-cis from git; debsecan's feed; daily",
-    {"lynis", "debsecan", "python3-apt", "fail2ban", "nmap", "tcpdump", "tshark", "strace", "socat", "python3-scapy"}
+    {
+        "lynis",
+        "debsecan",
+        "python3-apt",
+        "fail2ban",
+        "nmap",
+        "tcpdump",
+        "tshark",
+        "strace",
+        "socat",
+        "python3-scapy",
+        "iptables",
+    }
     == set(sec["packages"])
     and sec["git"][0]["upstream"] == "https://github.com/ovh/debian-cis"
     and sec["feeds"] == ["debsecan"]
@@ -1008,6 +1024,26 @@ check(
     left,
 )
 kitdefs.SYSFS, kitdefs.ROOTFS = real_paths
+radios = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "radios.json").read_text())
+check(
+    "the Radios kit loads, kept installed, with Bluetooth's service",
+    kitdefs._ok(radios, "radios")
+    and radios["remove_after_hours"] is None
+    and {"bluez", "bluez-tools", "bluetooth", "rfkill"} <= set(radios["packages"])
+    and radios["services"] == ["bluetooth.service"],
+)
+network = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "network.json").read_text())
+check(
+    "Network gains net-tools, aria2 and hostapd",
+    {"net-tools", "aria2", "hostapd"} <= set(network["packages"]) and kitdefs._ok(network, "network"),
+)
+build = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "build.json").read_text())
+check(
+    "Building gains pipx, bison, flex and m4",
+    {"pipx", "bison", "flex", "m4"} <= set(build["packages"]),
+)
+security = json.loads((Path(__file__).resolve().parents[1] / "toolkits" / "security.json").read_text())
+check("Security gains iptables for tools that still call it", "iptables" in security["packages"])
 for bad in ({"alternatives": ["gdb"]}, {"only_where": {"gdb": "moon"}}, {"only_where": {"notinkit": "pci"}}):
     check(f"  a kit with {bad} is refused", not kitdefs._ok({"id": "x", "packages": ["gdb"], **bad}, "x"))
 # Kits overlap (Recovery and System both list smartmontools): removing one keeps what another lists,

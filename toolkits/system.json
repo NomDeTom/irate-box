@@ -1,7 +1,7 @@
 {
  "id": "system",
  "title": "System",
- "summary": "Minimum system tools from Debian. A minimal image can lack them. The toolkit has kernel defaults, the clock tool, the firewall, security updates, small network checks, USB drive filesystems, the archive tools (zip, unzip, xz, zstd, bzip2), the manual pages, and everyday tools: tmux (a session that survives a dropped SSH connection), jq (JSON) and xxd (bytes in hex). The box keeps the toolkit installed. It also caches the alternative network and time tools. It does not install them.",
+ "summary": "Minimum system tools from Debian. A minimal image can lack them. The toolkit has kernel defaults, the clock tool, the firewall, security updates, small network checks, USB drive filesystems, the archive tools (zip, unzip, xz, zstd, bzip2), the manual pages, and everyday tools: tmux (a session that survives a dropped SSH connection), vim, jq and yq (JSON and YAML), file (what a file is), xxd (bytes in hex) and i2c-tools (the I2C bus). The box keeps the toolkit installed. It also caches the alternative network and time tools. It does not install them.",
  "packages": [
   "linux-sysctl-defaults",
   "util-linux-extra",
@@ -32,7 +32,11 @@
   "dmidecode",
   "tmux",
   "jq",
-  "xxd"
+  "xxd",
+  "i2c-tools",
+  "vim",
+  "file",
+  "yq"
  ],
  "needs_64bit": [
   "dmidecode"
@@ -49,12 +53,13 @@
   "dhcpcd-base",
   "systemd-timesyncd"
  ],
- "consent": "These are Debian packages. A full Debian install has them. A minimal board image does not. A package is installed only if the box does not already have it. The installation changes the box in these ways. At the next boot, the kernel defaults turn on the link protections of Debian and the other kernel settings of Debian. unattended-upgrades is included. It can install security updates without internet when the packages are in the cache. It does nothing until you set it on Updates → Debian's security updates. There you select Flag, Download or Install (daily). needrestart lists the programs that still run old code after an update. The box keeps this toolkit installed. It never removes it after a time, as it does for the other toolkits.",
+ "consent": "These are Debian packages. A full Debian install has them. A minimal board image does not. A package is installed only if the box does not already have it. The installation changes the box in these ways. At the next boot, the kernel defaults turn on the link protections of Debian and the other kernel settings of Debian. unattended-upgrades is included. It can install security updates without internet when the packages are in the cache. It does nothing until you set it on Updates \u2192 Debian's security updates. There you select Flag, Download or Install (daily). needrestart lists the programs that still run old code after an update. The box keeps this toolkit installed. It never removes it after a time, as it does for the other toolkits.",
  "notes": [
   "The box installs each package only where it fits. Debian kernel defaults: only where the image lacks them (newer Armbian board packages have their own). pciutils: only with PCI. smartmontools: only with a disk that reports SMART. AppArmor: only on a kernel that has it. dmidecode: only on 64-bit boards.",
   "The box caches the alternatives (ifupdown, dhcpcd-base, systemd-timesyncd). It never installs them with the toolkit. A box without internet cannot download them after the network manager or the time manager of the image fails. They wait in the cache until an administrator decides to install one.",
   "USB drives: exfatprogs and ntfs-3g add exFAT and NTFS. FAT and ISO 9660 are already available.",
-  "wtmpdb keeps the sign-in and boot record (last, last reboot). Debian trixie moved this record out of util-linux."
+  "wtmpdb keeps the sign-in and boot record (last, last reboot). Debian trixie moved this record out of util-linux.",
+  "i2c-tools lists and reads the I2C bus: i2cdetect shows the addresses, i2cget reads a register. vim, file and yq are the editor, the file-type check and YAML reader that a minimal image leaves out."
  ],
  "remove_after_hours": null,
  "services": [

@@ -81,8 +81,10 @@ check(
 )
 v = netinv.ap_verdicts(inv({"owner": "wpa_supplicant"}, uplink_iface="eth0", nm=False, hostapd=False))[0]
 check(
-    "hostapd needed and missing: a needs line",
-    v["backend"] == "hostapd" and kinds(v)[-1] == "needs" and "apt install hostapd" in v["detail"],
+    "hostapd needed and missing: a needs line, saying enabling the hotspot installs it",
+    v["backend"] == "hostapd"
+    and kinds(v)[-1] == "needs"
+    and "installs hostapd when you enable the hotspot" in v["detail"],
     v,
 )
 v = netinv.ap_verdicts(inv({"owner": "iwd"}, uplink_iface="eth0"))[0]

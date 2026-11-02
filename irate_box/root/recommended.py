@@ -12,6 +12,8 @@ install, and what Box doctor offers an existing box, one change at a time listed
   Box doctor's timer     on                 (a down service is found without anyone on /admin)
   lost writes at boot    on                 (a card that drops its newest writes is named at once)
   UBIFS data checks      on                 (a damaged read from the onboard flash is an error)
+  the clock              chrony             (the internet's pool, as the Clock page offers it)
+  security updates       every day, install (as mPWRD-OS has them; a rebuild of DKMS drivers comes with them)
 
 The SD card writes level (gentle) is the hub's own setting: its default for new installs is in hub/server.py, and an
 existing box is pointed to it. HTTPS stays as the installer sets it: on, administration over HTTPS only.
@@ -112,7 +114,39 @@ def _items():
                 lambda: health.set_canary(False),
             )
         )
+    out += _service_items()
     return out
+
+
+def _service_items():
+    """The clock and automatic security updates, each through its own page's setter."""
+    from irate_box.root import clock, security
+
+    said = []
+    now = clock.image_daemon()
+    said.append(
+        (
+            "clock-chrony",
+            M("rec.chrony", "chrony, with the internet's pool"),
+            "chrony",
+            "chrony" if now == "chrony" else "the image's own",
+            lambda: clock.apply("clock-sources:chrony:1:0:0:0:-"),
+        )
+    )
+    pattern = security.chosen_pattern(security.load_record())
+    said.append(
+        (
+            "autoupdate",
+            M(
+                "rec.autoupdate",
+                "automatic security updates every day, installed (which also rebuilds DKMS drivers)",
+            ),
+            "24-2",
+            f"{pattern[0]}-{pattern[1]}" if pattern else "the image's settings",
+            lambda: security.fix("autoupdate-set:24-2", lambda _line="": None),
+        )
+    )
+    return said
 
 
 def differences():

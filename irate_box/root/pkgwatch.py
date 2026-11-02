@@ -135,6 +135,21 @@ def arch():
     return run(["dpkg", "--print-architecture"]).stdout.strip() or "?"
 
 
+def _deb_suite(d):
+    """The maker's suite name for this box: Debian_13 for the OBS repositories, trixie for a Debian one."""
+    return (d.get("suite_names") or {}).get(suite(), suite())
+
+
+def _source_line(d, key, channel):
+    """One apt source line for a channel. A repository with a component (Tailscale's Debian one) is
+    `deb URL SUITE COMPONENT`; the OBS repositories are flat (`deb URL /`)."""
+    url = d["channels"][channel].replace("{suite}", _deb_suite(d))
+    component = d.get("component")
+    if component:
+        return f"deb [signed-by={key}] {url.rstrip('/')} {_deb_suite(d)} {component}\n"
+    return f"deb [signed-by={key}] {url} /\n"
+
+
 def installed(pkg):
     r = run(["dpkg-query", "-W", "-f", "${Status}\t${Version}", pkg])
     status, _, ver = r.stdout.partition("\t")
@@ -260,8 +275,7 @@ def check(pid, now=None, log=print, fetch=False):
     (root / "lists" / "partial").mkdir(parents=True, exist_ok=True)
     (root / "debs").mkdir(parents=True, exist_ok=True)
     key = CODE / d["key"]
-    url = d["channels"][s["channel"]].replace("{suite}", suite())
-    _write(root / "sources.list", f"deb [signed-by={key}] {url} /\n")
+    _write(root / "sources.list", _source_line(d, key, s["channel"]))
     r = run(["apt-get", *_apt(pid), "update", "-q"])
     if r.returncode:
         raise Refused(
@@ -504,7 +518,7 @@ def _switch_image_channel(d, channel):
     for ch in d["channels"]:
         (IMAGE_ROOT / img["list"].format(channel=ch)).unlink(missing_ok=True)
         (IMAGE_ROOT / img["key"].format(channel=ch)).unlink(missing_ok=True)
-    url = d["channels"][channel].replace("{suite}", suite())
+    url = d["channels"][channel].replace("{suite}", _deb_suite(d))
     _write(IMAGE_ROOT / img["list"].format(channel=channel), f"deb {url} /\n")
     key = IMAGE_ROOT / img["key"].format(channel=channel)
     key.parent.mkdir(parents=True, exist_ok=True)

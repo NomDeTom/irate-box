@@ -41,7 +41,7 @@ import urllib.parse
 from pathlib import Path
 
 from irate_box.hub import kitdefs
-from irate_box.msg import M, Refused, duration, sentences, when
+from irate_box.msg import M, Refused, duration, render, sentences, when
 from irate_box.root import aptram
 
 ROOT = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
@@ -921,6 +921,65 @@ def _purgeable(go, keep):
                 rest.remove(p)
                 more = True
     return ok
+
+
+def install_from_cache(names, run=run, log=print):
+    """Packages a kit has already cached, installed from the local repository alone (no internet): for a
+    tool the box needs now, such as hostapd for a hotspot. The names must be in a cached kit's manifest.
+    Services the packages bring stay stopped. Returns the names installed."""
+    wanted = [n for n in names if isinstance(n, str) and PKG_RE.match(n)]
+    missing = [n for n in wanted if n not in _installed_packages()]
+    if not missing:
+        return []
+    cached = _referenced()
+    absent = [n for n in missing if n not in cached]
+    if absent:
+        raise Refused(
+            M(
+                "kits.install-packages.not-cached",
+                "The toolkits' cache does not have {packages}.",
+                packages=", ".join(absent),
+            )
+        )
+    if not (ROOT / "kits.list").is_file():
+        raise Refused(
+            M(
+                "kits.install-packages.no-index",
+                "The toolkits' cache has no index to install {packages} from.",
+                packages=", ".join(missing),
+            )
+        )
+    for kid, kit in definitions().items():
+        if any(n in kit["packages"] for n in missing):
+            bad = verify(kid)
+            if bad:
+                raise Refused(
+                    M(
+                        "kits.install-packages.cache-bad",
+                        "The toolkits' cache did not verify: {problems}.",
+                        problems="; ".join(bad[:3]),
+                    )
+                )
+    if POLICY_RC.exists():
+        raise Refused(
+            M(
+                "kits.install.policy-rc",
+                "{path} exists already. Another install is running, or the box has its own file.",
+                path=str(POLICY_RC),
+            )
+        )
+    POLICY_RC.write_text("#!/bin/sh\n# irate-box: a toolkit is being installed; its services stay stopped.\nexit 101\n")
+    os.chmod(POLICY_RC, 0o755)  # policy-rc.d is a script dpkg runs. # nosec B103
+    try:
+        run(["apt-get", *_apt_offline(), "update", "-q"], timeout=300)
+        log(f"installing from the toolkits' cache: {', '.join(missing)}")
+        run(
+            ["apt-get", *_apt_offline(), "install", "-y", "-q", "--no-install-recommends", *missing],
+            timeout=1800,
+        )
+    finally:
+        POLICY_RC.unlink(missing_ok=True)
+    return missing
 
 
 def remove(kit_id, log=print):
@@ -1856,9 +1915,23 @@ if __name__ == "__main__":
             safeio.write(state / "control" / "kits.json", json.dumps(status()))
         except OSError:
             pass
+    elif len(args) in (2, 3) and args[0] in ("fetch", "install"):
+        try:
+            if args[0] == "fetch":
+                budget = int(args[2]) if len(args) == 3 else 500
+                said = fetch(args[1], budget_mb=budget, log=lambda *_: None)
+            else:
+                hours = None if len(args) == 2 or args[2] == "never" else int(args[2])
+                said = install(args[1], hours=hours, log=lambda *_: None)
+        except (Refused, ValueError) as exc:
+            print(render(exc.message) if isinstance(getattr(exc, "message", None), dict) else exc)
+            sys.exit(1)
+        print(render(said) if isinstance(said, dict) else said)
     else:
         sys.exit(
             "usage: kits.py import-dir DIR [--unknown-time]\n"
+            "       kits.py fetch KIT [BUDGET_MB]\n"
+            "       kits.py install KIT [HOURS|never]\n"
             "  --unknown-time  import releases this box's clock cannot date (no network time, not set by an\n"
             "                  administrator): their freshness is not checked, and each such kit says so"
         )

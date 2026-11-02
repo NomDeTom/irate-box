@@ -1772,7 +1772,29 @@ def check_inventory():
     found = inv.get("findings")
     if found is not None:
         out = [
-            dict(f, id=f"net:{f['id']}", notes=[*(f.get("notes") or ()), *old])
+            dict(
+                f,
+                id=f"net:{f['id']}",
+                notes=[*(f.get("notes") or ()), *old],
+                **(
+                    {
+                        "actions": [
+                            action(
+                                "nm-install",
+                                M("nm-install.label", "Use NetworkManager"),
+                                M(
+                                    "nm-install.confirm",
+                                    "Install NetworkManager and give it the WiFi? The WiFi drops while it changes "
+                                    "over. The box keeps the change when a WiFi connection is up two minutes later, "
+                                    "and otherwise puts everything back. Do it where the box has a console.",
+                                ),
+                            )
+                        ]
+                    }
+                    if f.get("id") == "networkmanager"
+                    else {}
+                ),
+            )
             for f in found
             if f.get("status") in ("warn", "problem")
         ]
@@ -7831,6 +7853,14 @@ def fix(choice):
     if not CHOICE_RE.match(choice):
         raise Refused(M("repair.unknown", "The Box doctor has no repair called {choice}.", choice=choice))
     kind, _, arg = choice.partition(":")
+    if kind == "nm-install":
+        from irate_box.root import nmrepair
+
+        return nmrepair.install()
+    if kind == "nm-revert":
+        from irate_box.root import nmrepair
+
+        return nmrepair.revert()
     if kind == "clock-sources":
         from irate_box.root import clock
 

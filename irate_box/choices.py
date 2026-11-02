@@ -7,7 +7,7 @@ import re
 
 CHOICE_RE = re.compile(
     r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
-    r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan)$"
+    r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan|nm-install|nm-revert)$"
     r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"
     r"|^crashwatch-(snapshots|panic|watchdog|undervoltage):(on|off)$|^crashwatch-undervoltage-mv:(3000|4630|11000)$|^crashwatch-power-action:(log|sync|shutdown)$"
     r"|^clock-set:\d{10}$|^(rtc-find|rtc-look|rtc-save|rtc-remove)$|^rtc-setup:[a-z0-9]{3,12}:\d{1,3}:0x[0-9a-f]{2}$"

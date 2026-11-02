@@ -1,0 +1,21 @@
+{
+ "id": "radios",
+ "title": "Radios",
+ "summary": "Bluetooth: bluez, bluetoothctl and the Bluetooth service, with rfkill to see and free a radio switch. Kept apart from the SDR and LoRa tools of the Radio toolkit.",
+ "packages": [
+  "bluez",
+  "bluez-tools",
+  "bluetooth",
+  "rfkill"
+ ],
+ "consent": "bluez runs the Bluetooth service on the box. A device that pairs can use it until it is removed. The toolkit starts the service and leaves it on.",
+ "notes": [
+  "bluetoothctl lists the adapter, scans, pairs and connects. rfkill lists the radio switches and unblocks one that is off.",
+  "This toolkit is for Bluetooth. The Radio toolkit has the SDR, APRS and LoRa tools, and Meshtastic radios use meshtasticd and the Meshtastic page.",
+  "The Box doctor checks Bluetooth only while bluetooth.service runs."
+ ],
+ "remove_after_hours": null,
+ "services": [
+  "bluetooth.service"
+ ]
+}

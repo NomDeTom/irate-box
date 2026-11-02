@@ -1,7 +1,7 @@
 {
  "id": "security",
  "title": "Security",
- "summary": "Security auditing. Audit the box and look at it as an attacker would. The toolkit has Lynis, nmap and debsecan.",
+ "summary": "Security auditing. Audit the box and look at it as an attacker would. The toolkit has Lynis, nmap, debsecan and iptables for tools that still call it (the box itself uses nftables).",
  "packages": [
   "lynis",
   "debsecan",
@@ -12,13 +12,15 @@
   "tshark",
   "strace",
   "socat",
-  "python3-scapy"
+  "python3-scapy",
+  "iptables"
  ],
  "consent": "Some of these tools probe networks. Some of them read packets. fail2ban installs stopped. Enable it on the Security page.",
  "notes": [
   "The box refreshes this toolkit daily when the box is online. The vulnerability data comes from outside the box.",
   "Greenbone/OpenVAS is not on the box. It needs gigabytes of RAM and has no armhf build. Run it from a PC on the hotspot against the box.",
-  "The librarian keeps the data of debsecan (the security tracker of Debian, about 2 MB). It downloads the data daily when the box is online. Without internet, debsecan uses the last copy. The page shows the age of the last download. Old data can miss new vulnerabilities."
+  "The librarian keeps the data of debsecan (the security tracker of Debian, about 2 MB). It downloads the data daily when the box is online. Without internet, debsecan uses the last copy. The page shows the age of the last download. Old data can miss new vulnerabilities.",
+  "iptables is here for a program or script that still calls it. The box's own firewall and the audits use nftables, which the System toolkit brings."
  ],
  "remove_after_hours": 24,
  "refresh_hours": 24,
