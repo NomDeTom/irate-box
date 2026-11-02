@@ -16,6 +16,7 @@ Stdlib only.
 """
 
 import os
+import re
 from pathlib import Path
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -55,6 +56,48 @@ def _mount_for(path, mounts=None):
     return best
 
 
+PSEUDO = {
+    "proc",
+    "sysfs",
+    "devtmpfs",
+    "devpts",
+    "tmpfs",
+    "ramfs",
+    "cgroup",
+    "cgroup2",
+    "securityfs",
+    "pstore",
+    "debugfs",
+    "tracefs",
+    "configfs",
+    "fusectl",
+    "mqueue",
+    "hugetlbfs",
+    "bpf",
+    "autofs",
+    "overlay",
+    "nsfs",
+    "binfmt_misc",
+}
+
+
+def _drive(mount):
+    """A mounted device a person thinks of as a drive, not a kernel or container filesystem."""
+    source = str(mount.get("source") or "")
+    name = source.rsplit("/", 1)[-1]
+    if mount.get("fstype") in PSEUDO:
+        return False
+    if name.startswith(("loop", "zram")):
+        return False
+    return source.startswith("/dev/") or source.startswith(("ubi", "mtd"))
+
+
+def _base(source):
+    """The disk a partition is on: mmcblk0p1 -> mmcblk0, nvme0n1p1 -> nvme0n1, sda1 -> sda."""
+    name = str(source or "").rsplit("/", 1)[-1]
+    return re.sub(r"p?\d+$", "", name) if name.startswith(("mmcblk", "nvme")) else re.sub(r"\d+$", "", name)
+
+
 def _kind(source):
     name = str(source or "").rsplit("/", 1)[-1]
     if name.startswith(("ubi", "mtd")) or "nand" in name.lower():
@@ -87,13 +130,30 @@ def place(path, mounts=None):
 
 
 def places(state=None):
-    """{card, state?}: the card always; the state only when its filesystem is not the card's."""
+    """{card, state?, drives?}: the card always; the state when its filesystem is not the card's;
+    drives for every other mounted device (a USB disk, a second card), each once."""
     mounts = _mounts()
     card = place("/", mounts)
-    state = place(STATE if state is None else state, mounts)
+    state_path = STATE if state is None else state
+    state = place(state_path, mounts)
     if state and card and (state.get("mount") == card.get("mount") or state.get("device") == card.get("device")):
         state = None
     out = {"card": card}
+    seen = {card.get("device")}
+    card_disk = _base(card.get("device"))
+    drives = []
     if state:
         out["state"] = state
+        seen.add(state.get("device"))
+        drives.append(state)
+    for mount in mounts:
+        if not _drive(mount) or mount.get("source") in seen or _base(mount.get("source")) == card_disk:
+            continue
+        found = place(mount["mount"], mounts)
+        if not found or not found.get("total"):
+            continue
+        seen.add(mount["source"])
+        drives.append(found)
+    if drives:
+        out["drives"] = drives
     return out

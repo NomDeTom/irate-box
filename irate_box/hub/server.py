@@ -4314,6 +4314,17 @@ def system_status(admin=False):
         out["state_total"], out["state_free"] = state["total"], state["free"]
         out["state_kind"] = state["kind"]
         out["state_device"] = state.get("device")
+    if admin and places.get("drives"):
+        out["drives"] = [
+            {
+                "kind": p.get("kind"),
+                "device": p.get("device"),
+                "mount": p.get("mount"),
+                "total": p.get("total"),
+                "free": p.get("free"),
+            }
+            for p in places["drives"]
+        ]
     return out
 
 

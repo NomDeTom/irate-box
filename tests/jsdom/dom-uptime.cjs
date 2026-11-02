@@ -41,7 +41,10 @@ svcWithMesh.units['meshtasticd.service'] = svcWithMesh.units['kiwix.service'];
 const box = { meshtasticd: { active: 'failed', sub: 'failed', result: 'start-limit-hit', restarts: 5, burst: 5, interval: '3min 20s' },
   system: { boot_uptime: 7500, mem_total: 1024, mem_available: 512, swap_total: 256, swap_free: 128,
     disk_total: 58 * 2 ** 30, disk_free: 33 * 2 ** 30, disk_kind: 'card',
-    state_total: 223 * 2 ** 20, state_free: 145 * 2 ** 20, state_kind: 'flash', state_device: 'ubi9:logs' },
+    state_total: 223 * 2 ** 20, state_free: 145 * 2 ** 20, state_kind: 'flash', state_device: 'ubi9:logs',
+    drives: [
+      { kind: 'flash', device: 'ubi9:logs', mount: '/var/lib/hub', total: 223 * 2 ** 20, free: 145 * 2 ** 20 },
+      { kind: 'usb', device: '/dev/sda1', mount: '/media/usb', total: 64 * 2 ** 30, free: 60 * 2 ** 30 }] },
   memory_history: { now, every: 300, samples: [
     { at: now - 2 * 86400, total: 1024, available: 800, swap_total: 256, swap_free: 256 },
     { at: now - 900, total: 1024, available: 700, swap_total: 256, swap_free: 256 },
@@ -151,10 +154,10 @@ setTimeout(() => {
     const tiles = d.getElementById('box-tiles'), table = d.getElementById('service-table');
     check('Overview separates current boot uptime from the recorded total',
       /Since boot.*0 d 2 h 5 min/.test(t(tiles)) && /Total recorded powered-on time.*11 d 5 h across boots/.test(t(tiles)), t(tiles));
-    check('Overview tiles: the Card is the card, with the NAND as another row on it',
-      /Card.*33\.0 GB free of 58\.0 GB.*NAND: 145\.0 MB free of 223\.0 MB/.test(t(tiles)), t(tiles));
-    w.renderBox({ ...box, system: { ...box.system, state_total: undefined, state_free: undefined, state_kind: undefined } });
-    check('  no NAND row when the state is on the card', !/NAND/.test(t(tiles)), t(tiles));
+    check('Overview tiles: the Card is the card, with the NAND and a USB disk as further rows',
+      /Card.*33\.0 GB free of 58\.0 GB.*NAND: 145\.0 MB free of 223\.0 MB.*USB \(sda1\): 60\.0 GB free of 64\.0 GB/.test(t(tiles)), t(tiles));
+    w.renderBox({ ...box, system: { ...box.system, state_total: undefined, state_free: undefined, state_kind: undefined, drives: [] } });
+    check('  no NAND row when the state is on the card and no other drive is mounted', !/NAND/.test(t(tiles)) && !/USB/.test(t(tiles)), t(tiles));
     w.renderBox(box);
     const memory = d.getElementById('memory-graph'), memoryFold = d.getElementById('memory-history');
     check('Overview memory history is collapsed by default', !memoryFold.open && !memory.querySelector('svg'));

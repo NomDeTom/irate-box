@@ -34,19 +34,33 @@ NAND_BYTES = 223 * 1000**2
 NAND_FREE = 145 * 1000**2
 CARD = "/dev/mmcblk0p1"
 NAND = "ubi9:logs"
+USB = "/dev/sda1"
+USB_BYTES = 64 * 1000**3
+USB_FREE = 60 * 1000**3
 
 
-def mountinfo(path, state_source=NAND, state_mount="/var/lib/hub"):
-    path.write_text(
+def mountinfo(path, state_source=NAND, state_mount="/var/lib/hub", usb=True):
+    text = (
         f"36 25 179:1 / / rw,relatime shared:1 - ext4 {CARD} rw\n"
         f"37 36 0:30 / {state_mount} rw - ubifs {state_source} rw\n"
         f"38 36 179:1 /var/lib/hub/ci /var/lib/hub/ci rw - ext4 {CARD} rw\n"
         f"39 36 179:1 /var/lib/hub/drop /var/lib/hub/drop rw - ext4 {CARD} rw\n"
+        f"40 36 179:2 /boot /boot rw - vfat /dev/mmcblk0p2 rw\n"
     )
+    if usb:
+        text += f"41 36 8:1 / /media/usb rw - vfat {USB} rw\n"
+    path.write_text(text)
 
 
 def statvfs(path):
-    total, free = (CARD_BYTES, CARD_FREE) if os.path.realpath(path) == "/" else (NAND_BYTES, NAND_FREE)
+    real = os.path.realpath(path)
+    total, free = (
+        (CARD_BYTES, CARD_FREE)
+        if real == "/"
+        else (USB_BYTES, USB_FREE)
+        if real == "/media/usb"
+        else (NAND_BYTES, NAND_FREE)
+    )
     return SimpleNamespace(f_blocks=total, f_frsize=1, f_bavail=free)
 
 
@@ -74,6 +88,15 @@ with (
         and places["state"]["free"] == NAND_FREE,
         places.get("state"),
     )
+    drives = {d["kind"]: d for d in places["drives"]}
+    check(
+        "  a mounted USB disk is a drive of its own; /boot on the card's disk is not another drive",
+        drives["usb"]["device"] == USB
+        and drives["usb"]["free"] == USB_FREE
+        and drives["flash"]["device"] == NAND
+        and len(places["drives"]) == 2,
+        places.get("drives"),
+    )
     # A bind of the card under the state does not make the state the card's.
     check(
         "  a bind of the card inside the state does not change the state's place",
@@ -97,9 +120,15 @@ with (
         status,
     )
     check(
-        "the public status: the card only, the state's storage not sent to guests",
-        "state_total" not in server.system_status(),
-        server.system_status(),
+        "the admin status lists every extra drive, the state and the USB disk",
+        [(d["kind"], d["device"]) for d in status["drives"]] == [("flash", NAND), ("usb", USB)],
+        status.get("drives"),
+    )
+    public = server.system_status()
+    check(
+        "the public status: the card only, no state and no other drive sent to guests",
+        "state_total" not in public and "drives" not in public,
+        public,
     )
     # The presets judge the room where their things go: the card.
     check(
@@ -121,11 +150,11 @@ with (
         )
 
     # Both on the card: one place, no state fields.
-    mountinfo(mounts, state_source=CARD)
+    mountinfo(mounts, state_source=CARD, usb=False)
     with mock.patch.object(storage, "MOUNTINFO", mounts):
         one = storage.places()
-        status = server.system_status()
-    check("state on the card: one place only", set(one) == {"card"} and "state_total" not in status, (one, status))
+        status = server.system_status(admin=True)
+    check("state on the card: the card only", set(one) == {"card"} and "state_total" not in status, (one, status))
 
 # A state folder on a USB disk is named as such, not as flash.
 mountinfo(mounts, state_source="/dev/sda1")

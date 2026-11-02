@@ -1872,12 +1872,15 @@ let waitingFor = null; // { id, at }: a control request, and the note its answer
 const controlNote = noteEl("control-note");
 
 function tile(label, value, detail) {
+  const lines = Array.isArray(detail) ? detail : detail ? [detail] : [];
   return el(
     "div",
     { className: "admin-tile" },
     el("span", { className: "setting-desc", textContent: label }),
     el("span", { className: "setting-name", textContent: value }),
-    detail ? el("span", { className: "setting-desc", textContent: detail }) : null,
+    ...lines.map((line) =>
+      el("span", { className: "setting-desc", textContent: line }),
+    ),
   );
 }
 
@@ -2465,9 +2468,23 @@ function renderBox(data) {
       sys.disk_total
         ? `${size(sys.disk_free)} free of ${size(sys.disk_total)}`
         : "—",
-      sys.state_total
-        ? `${sys.state_kind === "flash" ? "NAND" : "State"}: ${size(sys.state_free)} free of ${size(sys.state_total)}`
-        : null,
+      Array.isArray(sys.drives) && sys.drives.length
+        ? sys.drives.map((drive) => {
+            const kind =
+              drive.kind === "flash"
+                ? "NAND"
+                : drive.kind === "usb"
+                  ? "USB"
+                  : drive.kind === "card"
+                    ? "Card"
+                    : "Disk";
+            const device = String(drive.device || "").replace(/^\/dev\//, "");
+            const named = drive.kind === "flash" ? "" : device ? ` (${device})` : "";
+            return `${kind}${named}: ${size(drive.free)} free of ${size(drive.total)}`;
+          })
+        : sys.state_total
+          ? `${sys.state_kind === "flash" ? "NAND" : "State"}: ${size(sys.state_free)} free of ${size(sys.state_total)}`
+          : null,
     ),
     tile("Since boot", bootTime),
       tile(
