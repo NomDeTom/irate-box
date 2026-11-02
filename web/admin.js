@@ -12092,11 +12092,12 @@ AL.onBuild(() => {
 const agreedTo = new Set(); // "kind:id" of the consent texts ticked, kept across redraws
 let adoAsking = null; // the add-on whose Uninstall… is open
 // A text to agree to on the page: the text, a box to tick, and the button, which waits for the tick.
-function agreeRow(key, text, label, disabled, go) {
+function agreeRow(key, text, label, disabled, go, wait) {
   const button = el("button", {
     type: "button",
     className: "action-btn",
     textContent: label,
+    dataset: wait ? { wait } : undefined,
     disabled: disabled || !agreedTo.has(key),
     onclick: go,
   });
@@ -12122,7 +12123,7 @@ function agreeRow(key, text, label, disabled, go) {
   );
 }
 // A change asked for on the page: what it does, then the button and Cancel.
-function askRow(text, label, go, cancel, disabled) {
+function askRow(text, label, go, cancel, disabled, wait) {
   return el(
     "span",
     { className: "agree-row" },
@@ -12130,7 +12131,7 @@ function askRow(text, label, go, cancel, disabled) {
     el(
       "span",
       { className: "library-buttons" },
-      actionButton(label, go, { disabled: !!disabled }),
+      actionButton(label, go, { disabled: !!disabled, dataset: wait ? { wait } : undefined }),
       actionButton("Cancel", cancel),
     ),
   );
@@ -12158,20 +12159,21 @@ function addonButtons(addon, busy) {
     return askRow(
       `Uninstall ${addon.title}? ${ADDON_REMOVE_SAYS}`,
       "Uninstall add-on",
-      () => {
+      (event) => {
         adoAsking = null;
-        addonSet(addon, false);
+        addonSet(addon, false, event.currentTarget);
       },
       () => {
         adoAsking = null;
         redraw();
       },
       busy,
+      `addon:remove:${addon.id}`,
     );
   }
-  const install = () => addonSet(addon, true);
+  const install = (event) => addonSet(addon, true, event.currentTarget);
   if (addon.consent)
-    return agreeRow(`addon:${addon.id}`, `${addon.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install);
+    return agreeRow(`addon:${addon.id}`, `${addon.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install, `addon:install:${addon.id}`);
   return el(
     "span",
     { className: "agree-row" },
@@ -12179,7 +12181,7 @@ function addonButtons(addon, busy) {
     el(
       "span",
       { className: "library-buttons" },
-      actionButton("Install add-on", install, { disabled: busy }),
+      actionButton("Install add-on", install, { disabled: busy, dataset: { wait: `addon:install:${addon.id}` } }),
     ),
   );
 }
@@ -12248,6 +12250,7 @@ function renderAddons(data) {
         text: resultSaid(done),
         ok: done.ok,
       };
+      clearWait(adoWaiting);
       adoWaiting = null;
       return renderAddons(data);
     }
@@ -12300,6 +12303,7 @@ function renderAddons(data) {
       : "None installed. The hub works without them.",
     "ok",
   );
+  showWait(adoWaiting);
   clearTimeout(adoPoll);
   if (busy) adoPoll = setTimeout(loadAddons, 1500);
 }
@@ -12314,11 +12318,15 @@ async function loadAddons() {
 }
 
 // Asked on the card first (addonButtons): its consent ticked, or Uninstall… then Uninstall.
-async function addonSet(addon, on) {
+async function addonSet(addon, on, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     adoWaiting = {
       id: (await postJSON("/admin/addons", { addon: addon.id, on })).id,
       addon: addon.id,
+      button,
+      waitKey,
     };
     adoNote = {
       addon: addon.id,
@@ -12327,6 +12335,7 @@ async function addonSet(addon, on) {
     };
     loadAddons();
   } catch (err) {
+    clearWait({ button, waitKey });
     adoNote = { addon: addon.id, text: err.message, ok: false };
     loadAddons();
   }
@@ -12437,14 +12446,16 @@ function renderLocal(data) {
                 ? askRow(
                     `Remove ${addon.title}? The box deletes its files. Adding it again downloads it again.`,
                     "Remove web add-on",
-                    () => {
+                    (event) => {
                       locAsking = null;
-                      localRemove(addon);
+                      localRemove(addon, event.currentTarget);
                     },
                     () => {
                       locAsking = null;
                       renderLocal(data);
                     },
+                    false,
+                    `local:remove:${addon.id}`,
                   )
                 : null,
               note(addon.id),
@@ -12498,7 +12509,8 @@ function renderLocal(data) {
                 `${c.consent || ""} It starts disabled. Enable it here after the installation.`.trim(),
                 "Add web add-on",
                 fetching,
-                () => localAdd(c),
+                (event) => localAdd(c, event.currentTarget),
+                `local:add:${c.id}`,
               ),
               note(c.id),
             ),
@@ -12564,10 +12576,11 @@ function approveRow(addon, data) {
       `${changed} The new text: ${c.consent || ""} ${capsText(c.capabilities)}`,
       "Approve",
       false,
-      () => {
+      (event) => {
         locAsking = null;
-        localAccept(addon);
+        localAccept(addon, event.currentTarget);
       },
+      `local:approve:${addon.id}`,
     ),
     actionButton("Cancel", () => {
       locAsking = null;
@@ -12607,11 +12620,12 @@ function catalogueNote(addon) {
 }
 
 // Agreed on its card first (approveRow).
-function localAccept(addon) {
+function localAccept(addon, button) {
   localPost(
     { action: "accept", id: addon.id, agree: true },
     addon.id,
     `${addon.title}: the changed permissions are approved. Downloading the new version…`,
+    button,
   );
 }
 
@@ -12623,29 +12637,33 @@ async function loadLocal() {
   }
 }
 
-async function localPost(body, id, doing) {
+async function localPost(body, id, doing, button) {
+  if (button) AW.setBusy(button, true);
   try {
     await postJSON("/admin/local-addons", body);
     locNote = { id, text: doing, ok: true };
   } catch (err) {
     locNote = { id, text: err.message, ok: false };
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
   loadLocal();
   loadAccess();
 }
 
 // Agreed on its card first (agreeRow); its permissions are on the card.
-function localAdd(c) {
+function localAdd(c, button) {
   localPost(
     { action: "add", id: c.id, agree: true },
     c.id,
     `Adding ${c.title}. Downloading it…`,
+    button,
   );
 }
 
 // Asked on its card first (Remove web add-on…).
-function localRemove(addon) {
-  localPost({ action: "remove", id: addon.id }, addon.id, `${addon.title} removed.`);
+function localRemove(addon, button) {
+  localPost({ action: "remove", id: addon.id }, addon.id, `${addon.title} removed.`, button);
 }
 
 // A pasted manifest: read, then its consent text and permissions shown under the box, with Add and Cancel.
@@ -12671,12 +12689,15 @@ loc.pasteGo.addEventListener("click", () => {
     askRow(
       `Add "${addon.title}" from this manifest? ${addon.consent || ""} ${capsText(manifest.capabilities)}`,
       "Add web add-on",
-      () => pasteAdd(manifest, bad),
+      (event) => pasteAdd(manifest, bad, event.currentTarget),
       () => loc.pasteNote.replaceChildren(),
+      false,
+      "local:paste",
     ),
   );
 });
-async function pasteAdd(manifest, bad) {
+async function pasteAdd(manifest, bad, button) {
+  if (button) AW.setBusy(button, true);
   try {
     await postJSON("/admin/local-addons", {
       action: "paste",
@@ -12689,6 +12710,8 @@ async function pasteAdd(manifest, bad) {
     loc.pasteOk.checked = false;
   } catch (err) {
     bad(err.message);
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
   loadLocal();
   loadAccess();
