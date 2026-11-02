@@ -2232,8 +2232,10 @@ TimeoutStartSec=infinity
 Nice=19
 CPUWeight=10
 IOSchedulingClass=idle
-MemoryHigh=50%
-MemoryMax=65%
+# Every build here (pushes and the Firmware Factory) runs inside build.slice: the administrator's build limits,
+# swap included, apply to it, and the memory guard stops it there. A cap of its own (half the memory, any swap)
+# let a build fill the swap and starve the box.
+Slice=build.slice
 # Only the namespaces an offline build needs (ci.py OFFLINE: a user namespace, and a network one
 # with only loopback). Not IPAccounting nor IPAddressDeny: vendor kernels such as the Luckfox
 # Lyra's can't attach systemd's cgroup programs (bpf-firewall, error 524), so they count nothing
