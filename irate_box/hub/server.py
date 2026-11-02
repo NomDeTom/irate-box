@@ -2841,7 +2841,7 @@ def admin_box(proxied):
         )
     now = CLOCK.ticks()
     return {
-        "system": system_status(),
+        "system": system_status(admin=True),
         "uptime": now,
         "online": online_count(now),
         "memory_history": memhistory.snapshot(),
@@ -4285,9 +4285,10 @@ def card_written():
         return None
 
 
-def system_status():
+def system_status(admin=False):
     """Memory and disk for the box tile, in bytes. MemAvailable, not MemFree: the page
-    cache Kiwix leans on counts as available, and is the first thing to go."""
+    cache Kiwix leans on counts as available, and is the first thing to go. The state's own
+    storage (the NAND beside a card) is for the administrator only: the public meter is the card."""
     out = {}
     try:
         out["boot_uptime"] = float(Path("/proc/uptime").read_text().split()[0])
@@ -4309,7 +4310,7 @@ def system_status():
         out["disk_total"], out["disk_free"] = card["total"], card["free"]
         out["disk_kind"] = card["kind"]
     state = places.get("state")
-    if state:
+    if admin and state:
         out["state_total"], out["state_free"] = state["total"], state["free"]
         out["state_kind"] = state["kind"]
         out["state_device"] = state.get("device")

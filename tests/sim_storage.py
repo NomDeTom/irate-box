@@ -82,7 +82,7 @@ with (
     )
 
     # The status: disk_* stay the card; state_* appears only when the state is elsewhere.
-    status = server.system_status()
+    status = server.system_status(admin=True)
     check(
         "the status: the card's figures under the names every page reads as the card",
         status["disk_total"] == CARD_BYTES and status["disk_free"] == CARD_FREE and status["disk_kind"] == "card",
@@ -95,6 +95,11 @@ with (
         and status["state_kind"] == "flash"
         and status["state_device"] == NAND,
         status,
+    )
+    check(
+        "the public status: the card only, the state's storage not sent to guests",
+        "state_total" not in server.system_status(),
+        server.system_status(),
     )
     # The presets judge the room where their things go: the card.
     check(
