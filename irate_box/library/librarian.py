@@ -57,6 +57,7 @@ Stdlib only: it runs on the board's Python with nothing installed.
 """
 
 import argparse
+import contextlib
 import fcntl
 import fnmatch
 import hashlib
@@ -1078,14 +1079,48 @@ PACE_FLOOR = 5
 PACE_STRETCH_FROM = 0.5  # no extra gap below this share of the allowance used
 PACE_STRETCH_MAX = 60  # seconds, at the whole allowance used
 _pace_failed_run = False
+_pace_stretch = False  # only a scheduled run leaves the gap; a hand-started one goes ahead
+
+
+@contextlib.contextmanager
+def _pace_run(scheduled):
+    """Mark a run as scheduled (stretch requests) or by hand (do not), for _api to see."""
+    global _pace_stretch
+    was, _pace_stretch = _pace_stretch, bool(scheduled)
+    try:
+        yield
+    finally:
+        _pace_stretch = was
 
 
 def pace():
     return _read_json(PACE_FILE, {})
 
 
-def _pace_hit():
+def _pace_roll(now=None):
+    """Start a new hour when GitHub's window has reset: the budget is the full limit less RESERVE
+    again, not the small one learned from the end of the previous hour. Hits from that hour go."""
     p = pace()
+    if p.get("off") or not p.get("budget") or not p.get("limit"):
+        return p
+    now = time.time() if now is None else now
+    window = p.get("reset")
+    if not window or window > now:
+        return p
+    left = rate()
+    if left.get("reset", 0) > now:
+        limit = left.get("limit") or p["limit"]
+        p["reset"] = left["reset"]
+    else:
+        limit = p["limit"]
+        p.pop("reset", None)
+    p.update(budget=max(PACE_FLOOR, limit - RESERVE), limit=limit, hits=[])
+    _write_json(PACE_FILE, p)
+    return p
+
+
+def _pace_hit():
+    p = _pace_roll()
     if not p.get("budget"):
         return
     now = time.time()
@@ -1095,7 +1130,7 @@ def _pace_hit():
 
 def pace_left():
     """Requests left of this hour's budget, or None before the first answer or after Stop adapting."""
-    p = pace()
+    p = _pace_roll()
     if not p.get("budget"):
         return None
     now = time.time()
@@ -1108,7 +1143,7 @@ def _budget_from(limit, remaining):
     return max(PACE_FLOOR, left - RESERVE)
 
 
-def _learn_pace(limit, remaining):
+def _learn_pace(limit, remaining, reset):
     """Start adapting from the first answer, unless the owner stopped it."""
     p = pace()
     if p.get("budget") or p.get("off"):
@@ -1116,6 +1151,7 @@ def _learn_pace(limit, remaining):
     p.update(
         budget=_budget_from(limit, remaining),
         limit=limit,
+        reset=reset,
         failures=0,
         adapted=int(time.time()),
         hits=[],
@@ -1155,7 +1191,7 @@ def _pace_fail():
 
 
 def _pace_clean_run():
-    p = pace()
+    p = _pace_roll()
     if not p.get("budget") or not p.get("limit"):
         return
     now = time.time()
@@ -1181,10 +1217,12 @@ def adapt_rate():
         raise LibrarianError(M("library.github.rate-unreadable", "The box cannot read the GitHub rate limit.")) from exc
     limit = int(core["limit"])
     remaining = int(core.get("remaining", limit))
+    reset = int(core.get("reset", 0))
     p = {}
     p.update(
         budget=_budget_from(limit, remaining),
         limit=limit,
+        reset=reset,
         failures=0,
         adapted=int(time.time()),
         # The remaining count already leaves out everything spent this hour, this box's own
@@ -1208,7 +1246,7 @@ def _note_rate(headers):
     except (KeyError, TypeError, ValueError):
         return
     _rate.update(limit=limit, remaining=remaining, reset=reset, at=int(time.time()))
-    _learn_pace(limit, remaining)
+    _learn_pace(limit, remaining, reset)
 
 
 def rate():
@@ -1224,7 +1262,9 @@ def _api(path, auth=None):
     kept = API_CACHE / f"{hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest()}.json"
     hit = _read_json(kept, {})
     hit = hit if hit.get("url") == url and hit.get("etag") else None
-    gap = _pace_gap()
+    # Only a scheduled run leaves the gap: one started by hand goes ahead, as a metered network's
+    # downloads do, rather than hold the librarian's lock while the page waits.
+    gap = _pace_gap() if _pace_stretch else 0
     if gap:
         time.sleep(gap)
     try:
@@ -2039,7 +2079,7 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
     _memo.clear()  # a run asks afresh (ETags keep that cheap), then once per address
     global _pace_failed_run
     _pace_failed_run = False
-    with Lock():
+    with _pace_run(scheduled), Lock():
         status = load_status()
         # A scheduled run takes the most overdue first, and stops asking GitHub while a few of
         # its hourly requests are left: the rest wait for the next run (spread across the day).

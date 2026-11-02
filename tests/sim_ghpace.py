@@ -132,6 +132,46 @@ L._pace_clean_run()
 check(
     "a clean run gives some back, up to what GitHub allows", L.PACE_FLOOR < L.pace()["budget"] <= 50, L.pace()["budget"]
 )
+# A budget learned near the end of a busy hour is not stuck small after GitHub's window resets.
+L._write_json(L.PACE_FILE, {})
+L._rate.clear()
+reset = int(time.time()) + 600
+L._note_rate({"X-RateLimit-Limit": "60", "X-RateLimit-Remaining": "12", "X-RateLimit-Reset": str(reset)})
+check("a budget learned with 12 left is 5", L.pace()["budget"] == L.PACE_FLOOR, L.pace())
+p = L.pace()
+p["reset"] = int(time.time()) - 1
+p["hits"] = [int(time.time())]
+L._write_json(L.PACE_FILE, p)
+L._rate.update(limit=60, remaining=60, reset=int(time.time()) - 1)
+L._pace_clean_run()
+check(
+    "  after its reset, a clean run starts the new hour at 50",
+    L.pace()["budget"] == 50 and not L.pace().get("hits"),
+    L.pace(),
+)
+p = L.pace()
+p["budget"] = L.PACE_FLOOR
+p["reset"] = int(time.time()) - 1
+p["hits"] = [int(time.time())]
+L._write_json(L.PACE_FILE, p)
+L._rate.clear()
+check("  and pace_left does it too", L.pace_left() == 50, L.pace_left())
+# The gap belongs to the timer's run: one started by hand goes ahead.
+L._write_json(L.PACE_FILE, {"budget": 50, "limit": 60, "hits": []})
+L._rate.update(limit=60, remaining=15, reset=int(time.time()) + 1800)
+slept = []
+real_sleep = L.time.sleep
+L.time.sleep = lambda seconds: slept.append(seconds)
+try:
+    L._memo.clear()
+    L._api("/repos/a/b/releases?per_page=20&hand=1")
+    check("a hand run with three quarters used does not wait", not slept, slept)
+    L._memo.clear()
+    with L._pace_run(True):
+        L._api("/repos/a/b/releases?per_page=20&scheduled=1")
+    check("  a scheduled run waits 30 seconds", slept == [30], slept)
+finally:
+    L.time.sleep = real_sleep
 limit["n"] = 5000
 check("with a token's allowance: 4990", L.adapt_rate()["budget"] == 4990)
 L.clear_pace()
