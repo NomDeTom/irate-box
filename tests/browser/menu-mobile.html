@@ -30,6 +30,12 @@ f.addEventListener('load', async () => {
   list.scrollTop = list.scrollHeight;
   await wait(100);
   const lr = last.getBoundingClientRect(), br = list.getBoundingClientRect(), mr = menu.getBoundingClientRect();
+  // Closed, then the page scrolled far down: the ☰ is still in sight (the sidebar is the sticky one).
+  menu.click();
+  await wait(100);
+  win.scrollTo(0, 2500);
+  await wait(200);
+  const after = menu.getBoundingClientRect();
   document.body.dataset.out = JSON.stringify({
     open: side.classList.contains('open'),
     menuInView: mr.top >= 0 && mr.bottom <= win.innerHeight,
@@ -37,6 +43,8 @@ f.addEventListener('load', async () => {
     lastInList: lr.top >= br.top - 1 && lr.bottom <= br.bottom + 1,
     pageStill: win.scrollY === before,
     menuStillInView: menu.getBoundingClientRect().top >= 0,
+    pageScrolled: win.scrollY > 1000,
+    menuAfterScroll: after.top >= 0 && after.bottom <= win.innerHeight,
     clientHeight: list.clientHeight,
     scrollHeight: list.scrollHeight,
   });

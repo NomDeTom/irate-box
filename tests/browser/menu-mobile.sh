@@ -41,6 +41,8 @@ checks = [
     ("  its last link scrolls into view within the list", d["lastInList"]),
     ("  the page behind it does not move", d["pageStill"]),
     ("  the ☰ stays in view", d["menuStillInView"]),
+    ("closed, the page scrolled far down", d["pageScrolled"]),
+    ("  the ☰ is still in view", d["menuAfterScroll"]),
 ]
 fails = 0
 for name, ok in checks:

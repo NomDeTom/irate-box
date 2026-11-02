@@ -1909,15 +1909,15 @@ body.about h3 {
     gap: 1rem;
   }
   .admin-side {
-    position: relative;
+    /* Sticky as a whole, closed or open: the ☰ (and the open panel under it) stays in sight while
+       the page behind scrolls. Sticky on the button alone would end with its parent's one-button height. */
+    position: sticky;
     top: 0;
+    z-index: 30;
     max-height: none;
     overflow: visible;
   }
   .admin-menu {
-    position: sticky;
-    top: 0;
-    z-index: 30;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -4255,15 +4255,15 @@ html:has(> body.admin) {
     gap: 1rem;
   }
   .admin-side {
-    position: relative;
+    /* Sticky as a whole, closed or open: the ☰ (and the open panel under it) stays in sight while
+       the page behind scrolls. Sticky on the button alone would end with its parent's one-button height. */
+    position: sticky;
     top: 0;
+    z-index: 30;
     max-height: none;
     overflow: visible;
   }
   .admin-menu {
-    position: sticky;
-    top: 0;
-    z-index: 30;
     display: flex;
     align-items: center;
     gap: 0.5rem;
