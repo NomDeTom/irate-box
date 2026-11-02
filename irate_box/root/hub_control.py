@@ -220,6 +220,7 @@ from irate_box.root import (
     aptram,
     health,
     kits,
+    partswatch,
     safeio,
     secchanges,
     secdoctor,
@@ -4829,6 +4830,7 @@ def updates_doctor_findings():
     findings += scheduled_findings()
     findings += kits_findings()
     findings += appstore_findings()
+    findings += partswatch.findings()
     return findings
 
 

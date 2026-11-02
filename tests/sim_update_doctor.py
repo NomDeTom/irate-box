@@ -129,6 +129,7 @@ def world(
         mock.patch.object(H.kits, "definitions", lambda: {}),
         mock.patch.object(H.kits, "installed_state", lambda: {}),
         mock.patch.object(H.kits, "pool_bytes", lambda: 0),
+        mock.patch.object(H.partswatch, "findings", lambda: []),
     ]
 
 

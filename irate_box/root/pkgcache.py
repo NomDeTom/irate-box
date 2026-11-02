@@ -116,6 +116,14 @@ def tidy(log=print):
         total -= path.stat().st_size
         path.unlink(missing_ok=True)
         removed += 1
+    # The image's parts, beside this record, for the Updates doctor (partswatch.py): after every
+    # dpkg run, which is when this hook runs.
+    try:
+        from irate_box.root import partswatch
+
+        partswatch.snapshot(versions=versions)
+    except Exception:  # noqa: BLE001 - a snapshot is a courtesy; the cache tidy must not fail for it # nosec B110
+        pass
     log(
         M(
             "pkgcache.tidy",

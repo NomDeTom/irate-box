@@ -203,6 +203,7 @@ run sim_signing.py
 run sim_update_doctor.py
 run sim_security_manifest.py
 run sim_security_changes.py
+run sim_update_parts.py
 run sim_updates_addons.py
 run sim_update_source_view.py
 run sim_share.py
