@@ -144,7 +144,7 @@ try:
     post = next((x for x in mod["queue"] if x["key"].startswith("board:")), {})
     check(
         "  in the queue for the owner, with what it said",
-        post.get("text") == "Saturday at the gate" and post.get("where") == "Board: Meet up",
+        post.get("text") == "Saturday at the gate" and post.get("where") == "Hub board: Meet up",
         post,
     )
     go("POST", "/admin/moderation", {"action": "delete_thread", "id": tid}, admin=True)

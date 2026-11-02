@@ -2923,7 +2923,7 @@ async function loadModeration() {
     renderModeration(await getJSON("/admin/moderation"));
   } catch (_) {
     document.getElementById("mod-messages").textContent =
-      "Could not read the shoutbox and board.";
+      "Could not read the hub shoutbox and hub board.";
   }
 }
 
@@ -10577,11 +10577,11 @@ let bkPlan = null,
 const BK_WORDS = {
   settings: [
     "Settings archive",
-    "The settings of the hub, the accounts, the settings of apps and add-ons, and the sources of the library and the mirrors. It does not include notes, saved work, the board, the shoutbox, dropped files or git repositories.",
+    "The settings of the hub, the accounts, the settings of apps and add-ons, and the sources of the library and the mirrors. It does not include notes, saved work, the hub board, the hub shoutbox, dropped files or git repositories.",
   ],
   data: [
     "Settings and shared-data archive",
-    "The settings archive, plus the data made on the box: notes, saved work, the board, the shoutbox, dropped files and the git repositories of the box.",
+    "The settings archive, plus the data made on the box: notes, saved work, the hub board, the hub shoutbox, dropped files and the git repositories of the box.",
   ],
   image: [
     "Full storage image",
@@ -16548,8 +16548,8 @@ async function loadAppearance() {
       [
         row("page_width", "Hub", "the tiles, the menu and its pages"),
         row("admin_width", "Admin", "these pages"),
-        row("shout_width", "Shoutbox", "its tab on the hub page"),
-        row("board_width", "Forum", "its tab on the hub page"),
+        row("shout_width", "Hub shoutbox", "its tab on the hub page"),
+        row("board_width", "Hub board", "its tab on the hub page"),
       ],
       {
         id: "appearance-widths",

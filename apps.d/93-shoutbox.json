@@ -2,7 +2,7 @@
   "id": "shoutbox",
   "order": 93,
   "admin": {
-    "title": "Shoutbox",
+    "title": "Hub shoutbox",
     "icon": "📣",
     "page": true,
     "width": "shout_width",

@@ -2,7 +2,7 @@
   "id": "board",
   "order": 94,
   "admin": {
-    "title": "Board",
+    "title": "Hub board",
     "icon": "📌",
     "page": true,
     "width": "board_width",
