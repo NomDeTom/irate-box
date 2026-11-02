@@ -348,6 +348,20 @@ check(
     [x["id"] for x in security.share_findings()] == ["guest-net"] and share.load()["contain"] == ALL,
 )
 
+security.fix("share-contain-by_mac-off", None)
+f = {x["id"]: x for x in security.share_findings()}
+check(
+    "by_mac off: its own words, not the old protection heading",
+    f["guest-net-by_mac"]["title"]["en"] == "Guest internet access: guests are identified by IP address"
+    and f["guest-net-by_mac"]["actions"][0]["label"]["en"] == "Identify guests by hardware address",
+    f.get("guest-net-by_mac"),
+)
+security.fix("share-contain-by_mac-on", None)
+check(
+    "  back on: the setting alone again",
+    [x["id"] for x in security.share_findings()] == ["guest-net"] and share.load()["contain"] == ALL,
+)
+
 # --- devices let out stay out when the ruleset is written again (a level changed, the hotspot back up) ---
 listed = {
     "nftables": [
