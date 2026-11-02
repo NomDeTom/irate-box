@@ -11141,7 +11141,6 @@ kitEl.when.addEventListener("change", async () => {
     );
     say("Saved.", true, kitEl.note);
   } catch (err) {
-    clearWait({ button, waitKey });
     say(err.message, false, kitEl.note);
   }
 });
