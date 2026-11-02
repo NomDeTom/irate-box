@@ -823,6 +823,11 @@ check(
     and all(set(r) == {"version", "built", "boards", "more"} for r in view["releases"]),
     view["releases"],
 )
+check(
+    "  without them (the flasher is not public): the releases left out",
+    factory.public_view(releases=False)["releases"] == [],
+    factory.public_view(releases=False)["releases"],
+)
 run_heltec = next(b["run"] for b in view["built"] if b["env"] == "heltec-v3")
 run_rak = next(b["run"] for b in view["built"] if b["env"] == "rak4631")
 check("  a file it lists: served", factory.public_file(run_heltec, "firmware-heltec-v3.factory.bin") is not None)
@@ -838,10 +843,13 @@ import urllib.error
 import urllib.request
 
 
-def serve(show):
-    st = T / f"hub-{show}"
+def serve(show, flasher=None):
+    st = T / f"hub-{show}-{flasher}"
     st.mkdir()
     (st / "settings.json").write_text(json.dumps({"factory_tile": show}))
+    if flasher:
+        (st / "control").mkdir()
+        (st / "control" / "access.json").write_text(json.dumps({"flasher": flasher}))
     s_ = socket.socket()
     s_.bind(("127.0.0.1", 0))
     port = s_.getsockname()[1]
@@ -874,19 +882,36 @@ def get(port, path):
         return e.code, b""
 
 
-hub, port = serve(True)
+hub, port = serve(True, "public")
 try:
     code, home = get(port, "/")
     check("shown: the tile on the front page", code == 200 and b'id="factory-card"' in home)
     code, body = get(port, "/factory.json")
     check("  its view, to anyone", code == 200 and any(b["env"] == "heltec-v3" for b in json.loads(body)["built"]))
+    check(
+        "  the flasher public: its releases listed",
+        [r["version"] for r in json.loads(body)["releases"]] == ["2.9.0.1234567-built", "2.8.2.abcdef1"],
+        json.loads(body)["releases"],
+    )
     code, body = get(port, f"/factory/file?run={run_heltec}&name=firmware-heltec-v3.uf2")
     check("  a file, as a download", code == 200 and body == b"x\n")
     check("  a log or another file: no", get(port, f"/factory/file?run={run_heltec}&name=log.txt")[0] == 404)
 finally:
     hub.terminate()
     hub.wait()
-hub, port = serve(False)
+for mode in ("off", "private"):
+    hub, port = serve(True, mode)
+    try:
+        code, body = get(port, "/factory.json")
+        check(
+            f"the flasher {mode}: the tile shown, but no releases to offer",
+            code == 200 and json.loads(body)["built"] and json.loads(body)["releases"] == [],
+            (code, json.loads(body) if body else b""),
+        )
+    finally:
+        hub.terminate()
+        hub.wait()
+hub, port = serve(False, "public")
 try:
     code, home = get(port, "/")
     check(

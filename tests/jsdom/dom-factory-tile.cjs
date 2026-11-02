@@ -25,7 +25,7 @@ w.eval(fs.readFileSync(`${WEB}/hub.js`, 'utf8'));
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-setTimeout(() => {
+setTimeout(async () => {
   const d = w.document;
   check('what is building, how far, what waits', t(d.getElementById('factory-now')) === 'Build in progress: Heltec V3 (esp32s3), about 42 %. Queued: 3', t(d.getElementById('factory-now')));
   check('  the bar', !d.getElementById('factory-bar').hidden && d.getElementById('factory-progress').style.width === '42%');
@@ -39,6 +39,15 @@ setTimeout(() => {
   const ra = rels[0].querySelector('a');
   check('  each opens the web flasher', ra.getAttribute('href') === '/flasher/' && ra.title === '2.9.0.1234567-built, built on this box: open the web flasher');
   check('  the word before them', t(d.getElementById('factory-releases')).startsWith('Flash: '), t(d.getElementById('factory-releases')));
+  // The flasher not public: the hub sends no releases, and the tile says nothing of them.
+  const dom2 = new JSDOM(`<!doctype html><body><div class="services">${card}</div></body>`, { url: 'http://box.local/', runScripts: 'outside-only', virtualConsole: vc });
+  const w2 = dom2.window;
+  const noReleases = { ...view, releases: [] };
+  w2.fetch = async (u) => (u === '/factory.json' ? new Response(JSON.stringify(noReleases), { status: 200 }) : new Response('{}', { status: 404 }));
+  w2.eval(fs.readFileSync(`${WEB}/hub.js`, 'utf8'));
+  await new Promise((r) => setTimeout(r, 200));
+  const d2 = w2.document;
+  check('no releases (the flasher not public): no rows and no Flash line', !d2.querySelector('.factory-release') && !t(d2.getElementById('factory-releases')), t(d2.getElementById('factory-releases')));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
