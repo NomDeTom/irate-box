@@ -399,11 +399,15 @@ async function libPost(body) {
 // at the top. "Already running" (409) stays until the librarian is free, then goes.
 let libNote = null; // { key, text, busy }
 
-async function libAct(key, body) {
+async function libAct(key, body, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   libNote = null;
   try {
     renderLibrary(await libPost(body));
+    clearWait({ button, waitKey });
   } catch (error) {
+    clearWait({ button, waitKey });
     libNote =
       error.status === 409
         ? {
@@ -437,8 +441,8 @@ function sourceRow(src, st, busy) {
       textContent: label,
       disabled: busy || !!opts.off,
       title: opts.title || "",
-      onclick: () => {
-        libAct(key, body);
+      onclick: (event) => {
+        libAct(key, body, event.currentTarget);
       },
     });
   // Check finds a newer version; Download downloads and checks it beside the book in use;
@@ -536,7 +540,7 @@ function renderApps(snap, busy) {
   const sources = Object.fromEntries(
     snap.sources.filter((source) => source.kind === "app").map((source) => [source.name, source]),
   );
-  const post = (key, body) => () => libAct(key, body);
+  const post = (key, body) => (event) => libAct(key, body, event.currentTarget);
   const row = (name, app, withAccess) => {
     const inst = app.installed;
     const src = sources[name];
@@ -1033,8 +1037,8 @@ function fillSurfaces(policy) {
 document
   .querySelectorAll("[data-mirrors-all]")
   .forEach((b) =>
-    b.addEventListener("click", () =>
-      libAct("all", { action: b.dataset.mirrorsAll, names: ["mirrors"] }),
+    b.addEventListener("click", (event) =>
+      libAct("all", { action: b.dataset.mirrorsAll, names: ["mirrors"] }, event.currentTarget),
     ),
   );
 // The token is never read back: its field starts empty, and empties again once saved.
@@ -1049,19 +1053,23 @@ const libToken = AW.form(lib.token, {
 libToken.fill({ value: "" });
 document
   .getElementById("library-token-clear")
-  .addEventListener("click", async () => {
+  .addEventListener("click", async (event) => {
+    const button = event.currentTarget;
     const at = noteEl("library-token-note");
+    AW.setBusy(button, true);
     try {
       renderLibrary(await libPost({ action: "token", value: "" }));
       say("Token cleared.", true, at);
     } catch (err) {
       say(err.message, false, at);
+    } finally {
+      AW.setBusy(button, false);
     }
   });
 document
   .querySelectorAll("[data-all]")
   .forEach((b) =>
-    b.addEventListener("click", () => libAct("all", { action: b.dataset.all })),
+    b.addEventListener("click", (event) => libAct("all", { action: b.dataset.all }, event.currentTarget)),
   );
 
 // --- the books, a page at a time (/admin/books) -------------------------------------------------
@@ -1311,7 +1319,7 @@ document.querySelectorAll("[data-bulk]").forEach((b) =>
       loadBooks();
       return;
     }
-    libAct("all", { action: b.dataset.bulk, names });
+    libAct("all", { action: b.dataset.bulk, names }, event.currentTarget);
   }),
 );
 
@@ -1352,7 +1360,9 @@ async function searchCatalogue(more) {
         el(
           "span",
           { className: "library-buttons" },
-          actionButton("Track releases", async () => {
+          actionButton("Track releases", async (event) => {
+            const button = event.currentTarget;
+            AW.setBusy(button, true);
             try {
               await libPost({
                 action: "add",
@@ -1371,6 +1381,8 @@ async function searchCatalogue(more) {
               loadBooks();
             } catch (err) {
               say(err.message, false, cat.note);
+            } finally {
+              AW.setBusy(button, false);
             }
           }),
         ),
@@ -1458,7 +1470,9 @@ function drawSuggested(sources) {
                 className: "setting-desc",
                 textContent: "Already tracked.",
               })
-            : actionButton("Track releases", async () => {
+            : actionButton("Track releases", async (event) => {
+                const button = event.currentTarget;
+                AW.setBusy(button, true);
                 try {
                   await libPost({
                     action: "add",
@@ -1478,6 +1492,8 @@ function drawSuggested(sources) {
                   loadBooks();
                 } catch (err) {
                   say(err.message, false, cat.note);
+                } finally {
+                  AW.setBusy(button, false);
                 }
               }),
         ),
@@ -1535,6 +1551,7 @@ async function loadPackages() {
         done.ok || done.msg ? resultSaid(done) : done.error || done.message,
         done.ok,
       );
+      clearWait(pkgWaiting);
       pkgWaiting = null;
     } else if (Date.now() - pkgWaiting.at < 600000)
       setTimeout(loadPackages, 3000);
@@ -1568,20 +1585,25 @@ async function loadPackages() {
           el(
             "p",
             { className: "library-buttons" },
-            actionButton("Check now", () =>
-              pkgAct({ action: "check", package: "" }),
-            ),
+            actionButton("Check now", (event) =>
+              pkgAct({ action: "check", package: "" }, event.currentTarget),
+            { dataset: { wait: "pkg:check:" } }),
           ),
         ]),
   );
+  showWait(pkgWaiting);
 }
 // True once the root helper has the request; false when cancelled or refused (said under the package).
-async function pkgAct(body) {
+async function pkgAct(body, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     pkgWaiting = {
       id: (await postJSON("/admin/packages", body)).id,
       at: Date.now(),
       pkg: body.package || "",
+      button,
+      waitKey,
     };
     pkgSay(
       body.package,
@@ -1591,6 +1613,7 @@ async function pkgAct(body) {
     setTimeout(loadPackages, 2000);
     return true;
   } catch (err) {
+    clearWait({ button, waitKey });
     pkgSay(body.package, err.message, false);
     return false;
   }
@@ -1775,31 +1798,34 @@ function pkgCard(id, pkg) {
       el(
         "span",
         { className: "library-buttons" },
-        actionButton("Check now", () =>
-          pkgAct({ action: "check", package: id }),
-        ),
+        actionButton("Check now", (event) =>
+          pkgAct({ action: "check", package: id }, event.currentTarget),
+        { dataset: { wait: `pkg:check:${id}` } }),
         flag
-          ? actionButton(`Download ${flag.version}`, () =>
-              pkgAct({ action: "fetch", package: id }),
-            )
+          ? actionButton(`Download ${flag.version}`, (event) =>
+              pkgAct({ action: "fetch", package: id }, event.currentTarget),
+            { dataset: { wait: `pkg:fetch:${id}` } })
           : null,
         newest && newest.version !== pkg.installed
           ? actionButton(
               `Install ${newest.version}`,
-              () =>
-                pkgAct({
-                  action: "install",
-                  package: id,
-                  version: newest.version,
-                }),
-              { className: "primary" },
+              (event) =>
+                pkgAct(
+                  {
+                    action: "install",
+                    package: id,
+                    version: newest.version,
+                  },
+                  event.currentTarget,
+                ),
+              { className: "primary", dataset: { wait: `pkg:install:${id}` } },
             )
           : null,
         pkg.previous
           ? actionButton(
               `Roll back to ${pkg.previous}`,
-              () => pkgAct({ action: "rollback", package: id }),
-              { title: `This downgrades ${pkg.title} to version ${pkg.previous}.` },
+              (event) => pkgAct({ action: "rollback", package: id }, event.currentTarget),
+              { title: `This downgrades ${pkg.title} to version ${pkg.previous}.`, dataset: { wait: `pkg:rollback:${id}` } },
             )
           : null,
       ),
@@ -14585,6 +14611,7 @@ const REMOVE_AFTER = [
 const dayOf = (unix) =>
   unix ? new Date(unix * 1000).toISOString().slice(0, 10) : "";
 const kitsWaiting = new Set();
+const kitWaits = new Map(); // a request id -> the button that asked (and its data-wait key), for the redraw
 let kitsData = null;
 let kitsPoll = null;
 
@@ -14604,10 +14631,15 @@ function hoursPicker(value) {
 const pickedHours = (sel) => (sel.value === "never" ? null : Number(sel.value));
 
 // True once the hub or the root helper has it; false when cancelled or refused (said in the note).
-async function kitAct(body, quiet) {
+async function kitAct(body, quiet, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     const data = await postJSON("/admin/kits", body);
-    if (data.id) kitsWaiting.add(data.id);
+    if (data.id) {
+      kitsWaiting.add(data.id);
+      kitWaits.set(data.id, { button, waitKey });
+    } else clearWait({ button, waitKey });
     if (!quiet)
       say(
         data.id
@@ -14619,6 +14651,7 @@ async function kitAct(body, quiet) {
     renderKits(data);
     return true;
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitsEl.note);
     return false;
   }
@@ -14634,6 +14667,8 @@ function renderKits(data) {
   for (const result of data.results || []) {
     if (kitsWaiting.has(result.id)) {
       kitsWaiting.delete(result.id);
+      clearWait(kitWaits.get(result.id));
+      kitWaits.delete(result.id);
       say(resultSaid(result), result.ok, kitsEl.note);
     }
   }
@@ -14699,6 +14734,7 @@ function renderKits(data) {
       );
     if (again) again.click();
   }
+  for (const id of kitsWaiting) showWait(kitWaits.get(id));
   clearTimeout(kitsPoll);
   if (kitsWaiting.size) kitsPoll = setTimeout(loadKits, 3000);
 }
@@ -14784,8 +14820,8 @@ function kitBody(k, st, cfg, setDirty) {
     jobRow(
       actionButton(
         "Check for updates",
-        () => kitAct({ action: "check", kit: k.id }),
-        { className: "small" },
+        (event) => kitAct({ action: "check", kit: k.id }, false, event.currentTarget),
+        { className: "small", dataset: { wait: `kit:check:${k.id}` } },
       ),
     ),
     el("p", { className: "setting-desc", textContent: kitCheckLine(kitState.check) }),
@@ -14796,8 +14832,8 @@ function kitBody(k, st, cfg, setDirty) {
       jobRow(
         actionButton(
           "Remove toolkit",
-          () => kitAct({ action: "remove", kit: k.id }),
-          { className: "small" },
+          (event) => kitAct({ action: "remove", kit: k.id }, false, event.currentTarget),
+          { className: "small", dataset: { wait: `kit:remove:${k.id}` } },
         ),
         el("span", {
           className: "setting-desc",
@@ -14806,8 +14842,8 @@ function kitBody(k, st, cfg, setDirty) {
         keep,
         actionButton(
           "Extend installation period",
-          () => kitAct({ action: "keep", kit: k.id, hours: pickedHours(keep) }),
-          { className: "small" },
+          (event) => kitAct({ action: "keep", kit: k.id, hours: pickedHours(keep) }, false, event.currentTarget),
+          { className: "small", dataset: { wait: `kit:keep:${k.id}` } },
         ),
       ),
     );
@@ -14841,13 +14877,17 @@ function kitBody(k, st, cfg, setDirty) {
           hours,
           actionButton(
             "Install toolkit",
-            () =>
-              kitAct({
-                action: "install",
-                kit: k.id,
-                hours: pickedHours(hours),
-              }),
-            { className: "small" },
+            (event) =>
+              kitAct(
+                {
+                  action: "install",
+                  kit: k.id,
+                  hours: pickedHours(hours),
+                },
+                false,
+                event.currentTarget,
+              ),
+            { className: "small", dataset: { wait: `kit:install:${k.id}` } },
           ),
           actionButton(
             "Cancel",
@@ -14906,16 +14946,16 @@ function kitBody(k, st, cfg, setDirty) {
     jobRow(
       actionButton(
         "Download",
-        () => kitAct({ action: "fetch", kit: k.id }),
-        { className: "small" },
+        (event) => kitAct({ action: "fetch", kit: k.id }, false, event.currentTarget),
+        { className: "small", dataset: { wait: `kit:fetch:${k.id}` } },
       ),
       kitState.previous
         ? actionButton(
             `Roll back to ${dayOf(kitState.previous.fetched)}`,
-            () => {
-              kitAct({ action: "rollback", kit: k.id });
+            (event) => {
+              kitAct({ action: "rollback", kit: k.id }, false, event.currentTarget);
             },
-            { className: "small" },
+            { className: "small", dataset: { wait: `kit:rollback:${k.id}` } },
           )
         : null,
       kitState.previous
@@ -14926,7 +14966,7 @@ function kitBody(k, st, cfg, setDirty) {
                 await AW.confirmHere(
                   `Remove the older set of ${k.title}, downloaded ${dayOf(kitState.previous.fetched)}? This frees ${size(kitState.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
               )
-                kitAct({ action: "drop-previous", kit: k.id });
+                kitAct({ action: "drop-previous", kit: k.id }, false, event.currentTarget);
             },
             { className: "small" },
           )
@@ -14939,7 +14979,7 @@ function kitBody(k, st, cfg, setDirty) {
             "Delete toolkit",
             async (event) => {
               if (await AW.confirmHere(`Delete ${k.title} and its cache?`, { anchor: event.currentTarget }))
-                kitAct({ action: "undefine", kit: k.id });
+                kitAct({ action: "undefine", kit: k.id }, false, event.currentTarget);
             },
             {
               className: "small",
@@ -15331,15 +15371,21 @@ const kitsBudget = AW.form(kitsEl.budget, {
 });
 document
   .getElementById("kits-check-all")
-  .addEventListener("click", async () => {
-    kitAct({ action: "check-all" });
+  .addEventListener("click", async (event) => {
+    kitAct({ action: "check-all" }, false, event.currentTarget);
     say("Checking every toolkit. The root helper asks apt what a download would bring; nothing is downloaded.", true, kitsEl.note);
   });
 document
   .getElementById("kits-refresh-all")
-  .addEventListener("click", async () => {
-    for (const k of Object.keys((kitsData || {}).kits || {}))
-      await kitAct({ action: "fetch", kit: k }, true);
+  .addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    AW.setBusy(button, true);
+    try {
+      for (const k of Object.keys((kitsData || {}).kits || {}))
+        await kitAct({ action: "fetch", kit: k }, true);
+    } finally {
+      AW.setBusy(button, false);
+    }
     say(
       "Queued a refresh for each toolkit. The root helper refreshes them one after another. Each takes several minutes.",
       true,
@@ -15352,7 +15398,7 @@ document.getElementById("kits-drop-all").addEventListener("click", async (event)
     await AW.confirmHere(
       "Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.", { anchor: event.currentTarget })
   ) {
-    kitAct({ action: "drop-all-previous" });
+    kitAct({ action: "drop-all-previous" }, false, event.currentTarget);
   }
 });
 window.addEventListener("hashchange", () => {
