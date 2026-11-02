@@ -1900,6 +1900,23 @@ function clearWait(waiting) {
   const node = waitNode(waiting.waitKey);
   if (node) AW.setBusy(node, false);
 }
+// A button held by the root helper, rather than by its own click: only when the pane is busy, the helper
+// is known busy, and it is not stuck. Buttons that say so carry data-helper-wait; a static one is marked
+// in place when it has no click of its own.
+const helperHeld = (busy) =>
+  !!busy &&
+  document.documentElement.dataset.helperBusy === "true" &&
+  document.documentElement.dataset.helperStuck !== "true";
+function markHelperWait(root, busy) {
+  if (!root) return;
+  const held = helperHeld(busy);
+  root.querySelectorAll("[data-helper-wait]").forEach((button) => {
+    if (!button.classList.contains("is-busy")) AW.setBusy(button, held, "helper");
+  });
+}
+function markHelperButton(button, busy) {
+  if (button && !button.classList.contains("is-busy")) AW.setBusy(button, helperHeld(busy), "helper");
+}
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = {
@@ -3544,6 +3561,9 @@ function renderUpdate(data) {
   upd.fetch.disabled = busy || fetched;
   upd.install.disabled = busy || (fetched && !ready);
   showWait(updWaiting);
+  markHelperWait(document.getElementById("updoctor"), busy);
+  for (const b of [upd.check, upd.fetch, upd.install, upd.doctor, upd.clear])
+    markHelperButton(b, busy);
   clearTimeout(updPoll);
   if (busy) updPoll = setTimeout(loadUpdate, progress ? 1000 : 2000);
 }
@@ -3949,7 +3969,7 @@ function scanButtons(finding, busy) {
     const b = el("button", {
       type: "button",
       className: "action-btn" + (secChosen(finding.id, action) ? " pending" : ""),
-      dataset: { wait: `secscan:${finding.id}:${action.choice || action.label}` },
+      dataset: { wait: `secscan:${finding.id}:${action.choice || action.label}`, helperWait: busy ? "1" : "0" },
       textContent: action.label,
       disabled: busy,
       title: secChosen(finding.id, action)
@@ -4766,6 +4786,10 @@ function renderSecurity(data) {
     return;
   }
   showWait(secWaiting);
+  markHelperWait(document.getElementById("security"), busy);
+  markHelperButton(sec.scan, busy);
+  markHelperButton(sec.auditRun, busy);
+  markHelperButton(sec.auditDeep, busy);
   clearTimeout(secPoll);
   if (busy) secPoll = setTimeout(loadSecurity, 2000);
 }
@@ -4837,7 +4861,7 @@ function jointDo(i, data, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
-          dataset: { wait: `secjoint:${finding.id}:${action.choice || action.label}` },
+          dataset: { wait: `secjoint:${finding.id}:${action.choice || action.label}`, helperWait: busy ? "1" : "0" },
           textContent: action.label,
           disabled: busy,
           onclick: (event) => secFix(finding.id, action, event.currentTarget),
@@ -4851,7 +4875,7 @@ function jointDo(i, data, busy) {
       el("button", {
         type: "button",
         className: "action-btn",
-        dataset: { wait: "health:repair:rerun-install" },
+        dataset: { wait: "health:repair:rerun-install", helperWait: busy ? "1" : "0" },
         textContent: "Run the installer again",
         disabled: busy,
         onclick: (event) =>
@@ -4870,7 +4894,7 @@ function jointDo(i, data, busy) {
       el("button", {
         type: "button",
         className: "action-btn",
-        dataset: { wait: `health:repair:${todo.health.choice}` },
+        dataset: { wait: `health:repair:${todo.health.choice}`, helperWait: busy ? "1" : "0" },
         textContent: todo.health.label,
         disabled: busy,
         onclick: (event) =>
@@ -5551,6 +5575,8 @@ function drawDebianPattern(lines, busy) {
       why: busy ? "the root helper is busy with other work." : "",
     },
   });
+  for (const button of deb.box.querySelectorAll("button[data-update]"))
+    markHelperButton(button, busy);
 }
 // Saved once the root helper has done it: until then "Saving…", and a refusal or a failure keeps the choice.
 const debSec = AW.form(deb.form, {
@@ -5828,7 +5854,7 @@ function healthDo(finding, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
-          dataset: { wait: `health:${finding.id}:${action.choice || action.label}` },
+          dataset: { wait: `health:${finding.id}:${action.choice || action.label}`, helperWait: busy ? "1" : "0" },
           textContent: action.label,
           disabled: busy,
           onclick: (event) => hlFix(finding.id, action, event.currentTarget),
@@ -6532,6 +6558,9 @@ function renderHealth(data) {
   badge("health", h.stuck ? "!" : problems ? String(problems) : "");
   showWait(hlWaiting);
   showWait(secRepair);
+  markHelperWait(document.getElementById("health"), busy || h.stuck);
+  markHelperButton(hl.scan, busy || h.stuck);
+  markHelperButton(hl.clockScan, busy || h.stuck);
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
   const here = paneShown("health") || paneShown("clock");

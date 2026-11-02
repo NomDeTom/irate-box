@@ -170,6 +170,18 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const waitKeys = [...d.querySelectorAll('[data-wait]')].map((n) => n.dataset.wait);
   check('no two connected buttons share a wait key', new Set(waitKeys).size === waitKeys.length,
     waitKeys.filter((k, i) => waitKeys.indexOf(k) !== i));
+  // The helper busy: the Debian card's buttons show the slower ring.
+  sec.pending = 1;
+  d.documentElement.dataset.helperBusy = 'true';
+  d.documentElement.dataset.helperStuck = 'false';
+  w.eval('loadSecurity')();
+  await wait(150);
+  const held = d.querySelector('#debian-buttons button[data-update]');
+  check('a Security action held by the busy helper: the slower ring', held && held.classList.contains('is-helper-busy')
+    && !held.classList.contains('is-busy') && held.disabled, held && held.className);
+  sec.pending = 0;
+  d.documentElement.dataset.helperBusy = 'false';
+
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);

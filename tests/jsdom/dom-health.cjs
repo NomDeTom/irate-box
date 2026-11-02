@@ -143,6 +143,13 @@ setTimeout(async () => {
   w.renderHealth({ ...calm, results: [{ id: 'x', ok: true, message: 'Done.' }] });
   await new Promise((r) => setTimeout(r, 20));
   check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
+  // The helper busy: a doctor action disabled by that work shows the slower ring, not the clicked one.
+  d.documentElement.dataset.helperBusy = 'true';
+  d.documentElement.dataset.helperStuck = 'false';
+  w.renderHealth({ ...calm, pending: 1, helper: { busy: 120, stuck: false, waiting: 1 } });
+  const held = d.querySelector('#hl-kiwix-down .fdo-controls button.action-btn');
+  check('a doctor action held by the busy helper: the slower ring', held && held.classList.contains('is-helper-busy')
+    && !held.classList.contains('is-busy') && held.getAttribute('aria-busy') === 'true', held && held.className);
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);
