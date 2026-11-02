@@ -810,8 +810,18 @@ check(
 )
 check(
     "  nothing of the runs beyond what it shows",
-    set(view) == {"running", "waiting", "next", "paused", "built"}
+    set(view) == {"running", "waiting", "next", "paused", "built", "releases"}
     and all(set(b) == {"run", "env", "name", "family", "ref", "finished", "files"} for b in view["built"]),
+)
+check(
+    "  the flasher's releases beside them: built here first, then the kept one, each with its boards",
+    view["releases"]
+    == [
+        {"version": "2.9.0.1234567-built", "built": True, "boards": ["heltec-v3", "tbeam", "rak4631"], "more": 0},
+        {"version": "2.8.2.abcdef1", "built": False, "boards": ["heltec-v3"], "more": 0},
+    ]
+    and all(set(r) == {"version", "built", "boards", "more"} for r in view["releases"]),
+    view["releases"],
 )
 run_heltec = next(b["run"] for b in view["built"] if b["env"] == "heltec-v3")
 run_rak = next(b["run"] for b in view["built"] if b["env"] == "rak4631")

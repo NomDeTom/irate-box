@@ -240,6 +240,7 @@ if (factoryCard) {
   const fBar = document.getElementById('factory-bar');
   const fDone = document.getElementById('factory-progress');
   const fFiles = document.getElementById('factory-downloads');
+  const fReleases = document.getElementById('factory-releases');
   const kind = (name) => (name.endsWith('.uf2') ? 'UF2' : name.endsWith('.factory.bin') ? 'factory .bin' : name.endsWith('.zip') ? '.zip'
     : name.startsWith('littlefs') ? 'littlefs .bin' : '.bin');
   const refreshFactory = async () => {
@@ -269,6 +270,19 @@ if (factoryCard) {
       });
       return row;
     }));
+    const releases = data.releases || [];
+    fReleases.replaceChildren(...releases.map((r) => {
+      const row = document.createElement('span');
+      row.className = 'factory-release';
+      const link = document.createElement('a');
+      link.href = '/flasher/';
+      link.title = `${r.version}${r.built ? ', built on this box' : ''}: open the web flasher`;
+      link.textContent = r.version;
+      const boards = r.boards && r.boards.length ? ` (${r.boards.join(', ')}${r.more ? `, +${r.more}` : ''})` : '';
+      row.append(link, document.createTextNode(`${r.built ? ' built here' : ''}${boards}`));
+      return row;
+    }));
+    if (releases.length) fReleases.prepend(document.createTextNode('Flash: '));
   };
   refreshFactory();
   setInterval(refreshFactory, 30000);

@@ -284,6 +284,7 @@ WIDGET_HTML = {
         <span class="desc" id="factory-now">Built on this box</span>
         <span class="bar" id="factory-bar" hidden><span id="factory-progress"></span></span>
         <span class="factory-downloads" id="factory-downloads"></span>
+        <span class="factory-releases" id="factory-releases"></span>
       </div>""",
     "system": """      <div class="service-card system-card" id="system-card">
         <span class="icon">💽💾</span>
