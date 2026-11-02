@@ -77,7 +77,10 @@ crash_status.write_text(json.dumps({"at": NOW - 1200}))
 f = doctor().get("alive:irate-box-crashwatch")
 check(
     "crash watch active but silent 20 min (3 rounds are 15): a problem, saying since when",
-    f and f["status"] == "problem" and "has not reported since" in str(f["summary"]) and not f["notes"],
+    f
+    and f["status"] == "problem"
+    and "has not reported since" in str(f["summary"])
+    and not any(n["id"] == "alive.in-kernel" for n in f["notes"]),
     f,
 )
 
