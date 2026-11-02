@@ -1,0 +1,16 @@
+{
+  "wifiSsid": "GOODNET",
+  "wifiPass": "eight888",
+  "wifiCountryCode": "GB",
+  "ethEnabled": false,
+  "useStaticIp": false,
+  "locale": "en_GB.UTF-8",
+  "timezone": "Europe/London",
+  "rootPass": "Root16charsAbcd1",
+  "rootKey": "",
+  "userName": "salty-parrot",
+  "userPass": "User16charsAbcd2",
+  "userKey": "",
+  "realName": "Salty Parrot",
+  "userShell": "/bin/bash"
+}

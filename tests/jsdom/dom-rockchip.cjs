@@ -163,7 +163,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   const drawer = card.querySelector('.aw-drawer');
   const tile = (value) => drawer.querySelector(`input[type=radio][value="${value}"]`);
   check('  its drawer: Route, Network, Accounts, Name and place, After setup, Steps', drawer && ['Route', 'Network', 'Accounts', 'Name and place', 'After setup', 'Steps'].every((t) => [...drawer.querySelectorAll('h3')].some((h) => h.textContent === t)));
-  check('  the hotspot route chosen; the routes not built folded under Other ways in, each saying why', tile('hotspot').checked && tile('card').disabled && tile('card').closest('details.sec-fold') && !tile('hotspot').closest('details') && /Not available here: the box cannot write a card yet/.test(drawer.textContent) && /only Raspberry Pi images take it/.test(drawer.textContent));
+  check('  the hotspot route chosen; the routes that need something not here folded under Other ways in, each saying why', tile('hotspot').checked && tile('card').disabled && tile('card').closest('details.sec-fold') && !tile('hotspot').closest('details') && /Not available here: no card is in a reader on this box/.test(drawer.textContent) && /only Raspberry Pi images take it/.test(drawer.textContent));
   check('  a part for another choice hidden: the typed passwords, while Generated and the box\'s own network are chosen', ['rk-wifiPass', 'rk-rootTyped', 'rk-userTyped'].every((n) => drawer.querySelector(`[name="${n}"]`).closest('[data-rk-only]').hidden));
   check("  this box's network chosen, named, with the warning beside it", tile('same').checked && /SKYTB1H1: the box sends the password/.test(drawer.textContent) && !drawer.querySelector('.warn-text').closest('[data-rk-only]').hidden);
   tile('other').click();
@@ -196,7 +196,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   const otile = (value) => od.querySelector(`input[type=radio][value="${value}"]`);
   check('a board not listed: serial, card, SSH and USB first, serial chosen; the hotspot folded, saying why', otile('serial').checked && ['serial', 'card', 'ssh', 'usb'].every((v) => !otile(v).closest('details')) && otile('hotspot').closest('details.sec-fold') && /a board that raises its setup hotspot shows as a card of its own/.test(od.textContent));
   check("  the serial route's steps and its wiring line", /Find the board's console/.test(od.querySelector('.rk-steps').textContent) && /Read them back/.test(od.textContent) && !od.querySelector('[data-rk-only="route:serial"]').hidden && /TX to the board's RX/.test(od.textContent));
-  check("  Armbian's default password at an address: offered, not yet choosable, saying why; its address field kept for it", otile('ssh').disabled && /Not available here: the box does not look for such a board yet/.test(od.textContent) && od.querySelector('input[name="rk-boardAddress"]').closest('[data-rk-only]').hidden);
+  check("  Armbian's default password at an address: folded while no board is seen, saying why; its address field kept for it", otile('ssh').disabled && /Not available here: no board is seen on this box's own network/.test(od.textContent) && od.querySelector('input[name="rk-boardAddress"]').closest('[data-rk-only]').hidden);
   check('  no serial adapter on the box: Set up off, saying to connect one; the tile saying why', /Connect a USB serial adapter to this box/.test(od.textContent) && /Not available here: no USB serial adapter is connected to this box/.test(od.textContent));
   otherCard.querySelector('.aw-card-head').click();
   // A serial adapter on the box: the route offered, the adapter named, Set up sends the serial request.
@@ -219,7 +219,64 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   const res = d.getElementById('rk-setup-result');
   check('  set up: said above the boards, its passwords shown once, the secret asked for once', !res.hidden && /set up as lyra-1, at 192.168.1.77/.test(res.textContent) && /Root16charsAbcd1/.test(res.textContent) && /salty-parrot's password/.test(res.textContent) && /Shown once/.test(res.textContent) && posted.filter((x) => x.action === 'secret').length === 1, res.textContent);
   sCard.querySelector('.aw-card-head').click();
+  // Every route the box can do now: the card, the default password on a cable, and the setup hotspot.
+  w.rkRenderSetup(setup([spot], {
+    consoles: ['usb-1a86_USB2.0-Serial-if00-port0'],
+    routes: ['hotspot', 'card', 'ssh', 'serial'],
+    cards: [sdcard],
+    boards: [{ address: '192.168.1.60', host: 'bpi', vendor: 'Allwinner', board: true }],
+  }));
+  const allCard = [...d.querySelectorAll('#rk-setup .aw-card')].find((c) => /luckfox-lyra-zero-w/.test(c.textContent));
+  allCard.querySelector('.aw-card-head').click();
+  await wait(20);
+  const ad = allCard.querySelector('.aw-drawer');
+  const atile = (value) => ad.querySelector(`input[type=radio][value="${value}"]`);
+  check('a box with every way in: the card and the default password offered, not folded', !atile('card').disabled && !atile('ssh').disabled && !atile('card').closest('details') && !atile('ssh').closest('details'));
+  atile('card').click();
+  await wait(10);
+  check('  the card route: the card in a reader chosen, its name, size and serial sent with the choices', ad.querySelector('input[type=radio][value="sda"]').checked && ![...ad.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board').disabled);
+  posted.length = 0;
+  [...ad.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board').click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
+  await wait(40);
+  const cardSent = posted.find((x) => x.action === 'setup' && x.route === 'card');
+  check('  Set up: the card route with the card, its size and serial', cardSent && cardSent.card === 'sda' && cardSent.size === 15634268160 && cardSent.serial === '000000001206' && cardSent.choices.hostname === 'lyra-1', cardSent);
+  atile('ssh').click();
+  await wait(10);
+  check("  the default password route: the board the box found chosen, its address", ad.querySelector('input[type=radio][value="192.168.1.60"]').checked);
+  posted.length = 0;
+  [...ad.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board').click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
+  await wait(40);
+  check("  Set up: the SSH route with the board's address", posted.some((x) => x.action === 'setup' && x.route === 'ssh' && x.address === '192.168.1.60'), posted);
+  atile('hotspot').click();
+  await wait(10);
+  posted.length = 0;
+  [...ad.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board').click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
+  await wait(40);
+  check('  Set up: the hotspot route with the hotspot\'s name', posted.some((x) => x.action === 'setup' && x.route === 'hotspot' && x.hotspot === spot.ssid), posted);
+  allCard.querySelector('.aw-card-head').click();
   w.rkRenderSetup(setup([{ ...spot, boards: 2 }]));
+  // A board on the box's own network: finishing it, and installing irate-box, as steps of their own.
+  await show({ boards: [], setup: setup([spot], { routes: ['hotspot'], boards: [{ address: '192.168.1.60', host: 'bpi', vendor: 'Allwinner', board: true }] }) });
+  const fin = d.querySelector('#rk-finish .net-card');
+  check('a board on the network: its address, a name, Finish over SSH and Install irate-box', fin && /The board's address/.test(fin.textContent) && /Name on the network/.test(fin.textContent) && fin.querySelector('input[name="rk-finish-address"]').value === '192.168.1.60' && /Finish over SSH/.test(fin.textContent) && /Install irate-box/.test(fin.textContent), fin && fin.textContent);
+  posted.length = 0;
+  [...fin.querySelectorAll('button')].find((b) => b.textContent === 'Finish over SSH').click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Finish the board').click();
+  await wait(40);
+  check('  Finish: the finish action with the address, the name and the administrator\'s key', posted.some((x) => x.action === 'finish' && x.address === '192.168.1.60' && x.choices.hostname === 'lyra-1'), posted);
+  posted.length = 0;
+  [...fin.querySelectorAll('button')].find((b) => b.textContent === 'Install irate-box').click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Install irate-box').click();
+  await wait(40);
+  check('  Install: the install action with the same address', posted.some((x) => x.action === 'board-install' && x.address === '192.168.1.60'), posted);
   check('two boards with the same name: said, one at a time', /2 boards share this hotspot's name/.test(text('rk-setup')));
   check('the check as rksetup.problem: a quote, a backtick, a line break; a fair password passes',
     /double quote/.test(w.rkProblem('a"b', 'text')) && /backtick/.test(w.rkProblem('a`b', 'text')) && /line break/.test(w.rkProblem('a\nb', 'text')) && w.rkProblem('Fair-pass-123', 'password') === '');

@@ -116,14 +116,21 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
    "rescue": {"image": "alpine-rescue.img", "sha256": "<64 hex>", "card": "sda", "size": <bytes>, "serial": "..."}|null}
   {"id": ..., "action": "rk-write", "image": "<name>.img.xz", "sha256": "<64 hex>", "loader": "rk3506b"|null}
   {"id": ..., "action": "rk-serial-setup", "console": "<by-id name>", "choices": {...}}
+  {"id": ..., "action": "rk-card-setup", "card": "sda", "size": <bytes>, "serial": "...", "choices": {...}}
+  {"id": ..., "action": "rk-hotspot-setup", "hotspot": "armbiansetup-<host>", "choices": {...}}
+  {"id": ..., "action": "rk-ssh-setup", "address": "<the board's address>", "choices": {...}}
+  {"id": ..., "action": "rk-finish", "address": "<the board's address>", "choices": {...}}
+  {"id": ..., "action": "board-install", "address": "<the board's address>"}
   {"id": ..., "action": "rk-card-check"|"rk-card-genuine", "card": "sda", "size": <bytes>, "serial": "..."}
   {"id": ..., "action": "rk-card-flash", "card": "sda", "size": <bytes>, "serial": "...", "image": "...", "sha256": "..."}
       A Rockchip board on the box's USB (rkboard.py): one running its own system restarted into Loader mode;
       the board's onboard flash read, erased (in Maskrom mode, the named loader sent first), refused when its loader
       shows the SD card; a bootloader from <state>/rk-bootloaders written to the onboard flash, with the Alpine
       rescue optionally written to a card in a reader; or an image from <state>/rk-images written to the card the
-      loader shows, read back as it goes. A new board
-      set up over its serial console (rkserial.py). A board's SD card in a reader (rkcard.py): read and checked,
+      loader shows, read back as it goes. A new board set up over its serial console (rkserial.py), its setup hotspot
+      (rkspot.py), or Armbian's default password on a cable (rkssh.py); the presets and this box's key written to an
+      Armbian card (rkpresets.py); the finish over SSH and irate-box installed on it (rkfinish.py, board-install).
+      A board's SD card in a reader (rkcard.py): read and checked,
       tested as genuine (f3probe, erasing it), or an image written to it and read back.
       control/rkboard.json after.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
@@ -7631,14 +7638,12 @@ def _box_wifi(name):
     return ssid.strip(), password.strip()
 
 
-def _rk_serial_setup(req):
+def _board_choices(c, generate=False):
+    """The board-neutral choices of a setup request, checked again here (rksetup.problem). The network comes from
+    this box's own NetworkManager where the page asks for it, never from the hub."""
     from irate_box.hub import rksetup
     from irate_box.root import rkserial
 
-    c = req.get("choices") or {}
-    console = str(req.get("console") or "")
-    if not CONSOLE_RE.match(console) or not (SERIAL_BY_ID / console).exists():
-        raise Refused(M("rkserial.no-console", "That serial adapter is not connected to the box."))
     network = c.get("network")
     if network == "same":
         ssid, wifi_password = _box_wifi("")
@@ -7651,11 +7656,10 @@ def _rk_serial_setup(req):
     else:
         ssid, wifi_password = "", ""
     if c.get("address") == "fixed":
-        raise Refused(
-            M("rkserial.fixed", "A fixed address is not set over the serial console yet: select From the network.")
-        )
+        raise Refused(M("rkserial.fixed", "A fixed address is not set on a new board yet: select From the network."))
+    user = str(c.get("userName") or "armbian")
     choices = {
-        "user": str(c.get("userName") or "armbian"),
+        "user": user,
         "real_name": str(c.get("userName") or "armbian").replace("-", " ").title(),
         "root_password": str(c.get("rootTyped") or "") if c.get("rootPass") == "typed" else "",
         "user_password": str(c.get("userTyped") or "") if c.get("userPass") == "typed" else "",
@@ -7667,7 +7671,13 @@ def _rk_serial_setup(req):
         "wifi_password": wifi_password,
         "keys": [k.strip() for k in str(c.get("key") or "").splitlines() if k.strip()],
         "lock_root": bool(c.get("lockRoot")),
+        "board": str(c.get("board") or "auto"),
+        "speed": c.get("speed") or "auto",
+        "after": str(c.get("after") or "leave"),
     }
+    if generate:
+        choices["root_password"] = choices["root_password"] or rkserial.generated()
+        choices["user_password"] = choices["user_password"] or rkserial.generated()
     kinds = {"user": "user", "hostname": "hostname", "wifi_password": "wifi-password"}  # nosec B105
     for field in (
         "user",
@@ -7687,27 +7697,201 @@ def _rk_serial_setup(req):
     for key in choices["keys"]:
         if (why := rksetup.problem(key, "text")) is not None:
             raise Refused(M("rkserial.value", "{field}: {why}", field="SSH key", why=why))
-    con = rkserial.Console.open(str(SERIAL_BY_ID / console))
+    if choices["board"] not in (*rkserial.BOARD_SPEEDS, "auto"):
+        raise Refused(M("rkserial.board-unknown", "Select a board family, or let the box find its console."))
+    return choices
+
+
+def _keep_secrets(req, root, user, user_password):
+    """The passwords made for a board, kept once for the page (rk-secrets/<id>.json, the hub's to read and delete)."""
+    if not root:
+        return
+    hub = pwd.getpwnam(HUB_USER)
+    safeio.mkdir(RK_SECRETS, gid=hub.pw_gid, mode=0o770)
+    with safeio.create(RK_SECRETS / f"{req['id']}.json", mode=0o640, gid=hub.pw_gid) as fh:
+        fh.write(json.dumps({"root": root, "user": user, "user_password": user_password}).encode())
+
+
+def _finish_after(choices, address, said, password=None):
+    """The shared finish over SSH, after a route that has the board's address. A finish that cannot run is said,
+    and does not undo a setup that already worked."""
+    from irate_box.root import rkfinish
+
+    if not address or choices.get("after") == "skip":
+        return said
+    try:
+        got = rkfinish.finish(
+            address,
+            {
+                "hostname": choices["hostname"],
+                "user": choices["user"],
+                "keys": choices["keys"],
+                "lock_root": choices["lock_root"],
+            },
+            password=password,
+        )
+    except Refused as exc:
+        said.append(f"finish not done: {exc.message.get('en', '')}")
+        return said
+    said.extend(got["said"])
+    if choices.get("after") == "install":
+        try:
+            rkfinish.install(address)
+            said.append("irate-box installed, unclaimed")
+        except Refused as exc:
+            said.append(f"install not done: {exc.message.get('en', '')}")
+    return said
+
+
+def _rk_serial_setup(req):
+    from irate_box.root import rkserial
+
+    c = req.get("choices") or {}
+    console = str(req.get("console") or "")
+    if not CONSOLE_RE.match(console) or not (SERIAL_BY_ID / console).exists():
+        raise Refused(M("rkserial.no-console", "That serial adapter is not connected to the box."))
+    choices = _board_choices(c)
+    choices["keys"] = [*choices["keys"], _box_key()]
+    con = rkserial.open_for(str(SERIAL_BY_ID / console), choices["board"], choices["speed"])
     try:
         got = rkserial.setup(con, choices)
     finally:
         con.close()
-    if got["root_password"]:
-        hub = pwd.getpwnam(HUB_USER)
-        safeio.mkdir(RK_SECRETS, gid=hub.pw_gid, mode=0o770)
-        with safeio.create(RK_SECRETS / f"{req['id']}.json", mode=0o640, gid=hub.pw_gid) as fh:
-            fh.write(
-                json.dumps(
-                    {"root": got["root_password"], "user": choices["user"], "user_password": got["user_password"]}
-                ).encode()
-            )
+    _keep_secrets(req, got["root_password"], choices["user"], got["user_password"])
+    said = _finish_after(choices, got["address"], list(got["said"]))
     return M(
         "rkserial.done",
         "The board is set up as {name}, at {address}: {said}.",
         name=choices["hostname"],
         address=got["address"] or "an address not read yet",
+        said=", ".join(said),
+    )
+
+
+def _box_key():
+    """This box's own SSH public key for a new board (rkfinish.box_key): the finish signs in with it."""
+    from irate_box.root import rkfinish
+
+    return rkfinish.box_key()
+
+
+def _rk_card_setup(req):
+    """A card route: the presets and this box's key written to an Armbian card already in a reader."""
+    from irate_box.root import rkpresets
+
+    try:
+        size = int(req.get("size"))
+    except (TypeError, ValueError):
+        raise Refused(M("rkcard.name", "Select a card.")) from None
+    choices = _board_choices(req.get("choices") or {}, generate=True)
+    wrote = rkpresets.write_card(str(req.get("card") or ""), size, str(req.get("serial") or ""), choices, _box_key())
+    _keep_secrets(req, choices["root_password"], choices["user"], choices["user_password"])
+    return M(
+        "rkpresets.done",
+        "The card is ready for {name}: {said}. Put it in the board and start it.",
+        name=choices["hostname"],
+        said=wrote,
+    )
+
+
+def _rk_ssh_setup(req):
+    """Stock Armbian's default password: the board found on the box's own network, signed in once, and set up."""
+    from irate_box.root import rkssh
+
+    choices = _board_choices(req.get("choices") or {}, generate=True)
+    choices["keys"] = [*choices["keys"], _box_key()]
+    got = rkssh.setup(str(req.get("address") or ""), choices)
+    _keep_secrets(req, got["root_password"], choices["user"], got["user_password"])
+    said = _finish_after(choices, got["address"], list(got["said"]))
+    return M(
+        "rkssh.done",
+        "The board is set up as {name}, at {address}: {said}.",
+        name=choices["hostname"],
+        address=got["address"] or "an address not read yet",
+        said=", ".join(said),
+    )
+
+
+def _wait_for_board(before, hostname="", seconds=60):
+    """A board that was not on the box's network before the setup hotspot answered: its lease, its name or a
+    board-like address. Polled fresh, so a new lease is seen. Returns its address, or ""."""
+    from irate_box.hub import boardfind
+
+    end = time.time() + seconds
+    while time.time() < end:
+        for one in boardfind.candidates(fresh=True):
+            if hostname and (one.get("host") or "").split(".")[0] == hostname:
+                return one["address"]
+            if one["address"] not in before and one["board"]:
+                return one["address"]
+        time.sleep(3)
+    return ""
+
+
+def _rk_hotspot_setup(req):
+    """The board's own setup hotspot: joined, checked, sent the choices, then left (rkspot.py)."""
+    from irate_box.hub import boardfind
+    from irate_box.root import rkspot
+
+    choices = _board_choices(req.get("choices") or {}, generate=True)
+    before = {b["address"] for b in boardfind.candidates(fresh=True)}
+    got = rkspot.setup(str(req.get("hotspot") or ""), choices)
+    _keep_secrets(req, choices["root_password"], choices["user"], choices["user_password"])
+    said = [f"choices sent to {got['ssid']}"]
+    address = _wait_for_board(before, choices["hostname"], 0 if choices.get("after") == "skip" else 60)
+    if address:
+        said = _finish_after(choices, address, said, choices["root_password"])
+    else:
+        said.append("not seen on the network yet")
+    return M(
+        "rkspot.done",
+        "The choices are sent to {ssid}. The board joins {network} next: {said}.",
+        ssid=got["ssid"],
+        network=choices["ssid"] or "its own network",
+        said=", ".join(said),
+    )
+
+
+def _rk_finish(req):
+    """The shared finish over SSH (rkfinish.py): the name, the setup page stopped, the keys, the OS read back."""
+    from irate_box.hub import boardfind, rksetup
+    from irate_box.root import rkfinish
+
+    c = req.get("choices") or {}
+    address = str(req.get("address") or "")
+    if not any(one["address"] == address for one in boardfind.candidates(fresh=True)):
+        raise Refused(M("rkfinish.not-found", "That address is not a board the box can see on its own network."))
+    keys = [k.strip() for k in str(c.get("key") or "").splitlines() if k.strip()]
+    for key in keys:
+        if (why := rksetup.problem(key, "text")) is not None:
+            raise Refused(M("rkserial.value", "{field}: {why}", field="SSH key", why=why))
+    got = rkfinish.finish(
+        address,
+        {
+            "hostname": str(c.get("hostname") or ""),
+            "user": str(c.get("userName") or "armbian"),
+            "keys": keys,
+            "lock_root": bool(c.get("lockRoot")),
+        },
+    )
+    return M(
+        "rkfinish.done",
+        "The board at {address} is finished as {name}: {said}.",
+        address=got["address"],
+        name=got["name"],
         said=", ".join(got["said"]),
     )
+
+
+def _board_install(req):
+    """irate-box on the new board, over SSH, its output for the page."""
+    from irate_box.hub import boardfind
+    from irate_box.root import rkfinish
+
+    address = str(req.get("address") or "")
+    if not any(one["address"] == address for one in boardfind.candidates(fresh=True)):
+        raise Refused(M("rkfinish.not-found", "That address is not a board the box can see on its own network."))
+    return rkfinish.install(address)
 
 
 def _rk_card(req, what):
@@ -8270,6 +8454,11 @@ ACTIONS = {
     "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
+    "rk-card-setup": _rk_card_setup,
+    "rk-hotspot-setup": _rk_hotspot_setup,
+    "rk-ssh-setup": _rk_ssh_setup,
+    "rk-finish": _rk_finish,
+    "board-install": _board_install,
     "rk-card-check": lambda req: _rk_card(req, "check"),
     "rk-card-genuine": lambda req: _rk_card(req, "genuine"),
     "rk-card-flash": lambda req: _rk_card(req, "flash"),

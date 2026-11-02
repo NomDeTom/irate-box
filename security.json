@@ -86,6 +86,12 @@
       "reads": [],
       "writes": []
     },
+    "board-install": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "box-hostname": {
       "https_only": false,
       "policy": false,
@@ -340,8 +346,26 @@
       "reads": [],
       "writes": []
     },
+    "rk-card-setup": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "rk-erase": {
       "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-finish": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-hotspot-setup": {
+      "https_only": true,
       "policy": false,
       "reads": [],
       "writes": []
@@ -365,7 +389,13 @@
       "writes": []
     },
     "rk-serial-setup": {
-      "https_only": false,
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "rk-ssh-setup": {
+      "https_only": true,
       "policy": false,
       "reads": [],
       "writes": []
@@ -1133,6 +1163,25 @@
       ],
       "User": "root",
       "source": "code"
+    },
+    "irate-box-memory-guard.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "/run/irate-box-memguard",
+        "/var/lib/irate-box-root",
+        "-/var/log.nand",
+        "-/sys/fs/cgroup/build.slice",
+        "-/proc/sysrq-trigger"
+      ],
+      "StateDirectory": [
+        "irate-box-root"
+      ],
+      "User": "root",
+      "source": "install.sh"
     },
     "irate-box-nginx-recover.service": {
       "NoNewPrivileges": "yes",

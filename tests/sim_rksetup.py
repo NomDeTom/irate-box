@@ -14,9 +14,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="rksetup-"))
 (T / "etc" / "default").mkdir(parents=True)
-os.environ.update(HUB_SYSETC_DIR=str(T / "etc"), HUB_MODPROBE_DIR=str(T / "modprobe.d"))
+os.environ.update(
+    HUB_SYSETC_DIR=str(T / "etc"),
+    HUB_MODPROBE_DIR=str(T / "modprobe.d"),
+    HUB_SERIAL_BY_ID=str(T / "by-id"),
+)
 sys.path.insert(0, str(REPO))
-from irate_box.hub import netinv, rksetup
+from irate_box.hub import netinv, rksetup, rkusb
 
 fails = 0
 
@@ -130,6 +134,32 @@ for words in [
     "A password here is at least 8 characters.",
 ]:
     check(f"  the page says: {words}", words in js)
+
+# What the page can offer now: an adapter and a card in a reader, and the routes they make possible.
+(T / "by-id").mkdir()
+(T / "by-id" / "usb-1a86_USB2.0-Serial-if00-port0").write_text("")
+(T / "by-id" / "not a console").write_text("")
+check(
+    "serial adapters: by-id names only", rksetup.consoles() == ["usb-1a86_USB2.0-Serial-if00-port0"], rksetup.consoles()
+)
+rkusb.cards = lambda: [{"name": "sda", "size": 1, "serial": "S1", "mounted": False}]
+check(
+    "routes: the hotspot always, SSH when a board is seen, serial with an adapter, card with a card",
+    rksetup.routes(["usb-1a86_USB2.0-Serial-if00-port0"], [{"name": "sda"}], [{"address": "192.168.4.2"}])
+    == ["hotspot", "ssh", "serial", "card"]
+    and rksetup.routes([], [], []) == ["hotspot"],
+    rksetup.routes([], [], []),
+)
+snap = rksetup.snapshot()
+check(
+    "the page's snapshot: the adapters, the cards, the boards seen, the routes and ready",
+    snap["consoles"] == ["usb-1a86_USB2.0-Serial-if00-port0"]
+    and snap["cards"]
+    and snap["ready"] is True
+    and "serial" in snap["routes"]
+    and "card" in snap["routes"],
+    snap,
+)
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

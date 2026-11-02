@@ -77,6 +77,8 @@ run sim_wifijoin.py
 run sim_nmconf.py
 run sim_nmhandover.py
 run sim_watchdogs_alive.py
+run sim_low_memory.py
+run sim_build_bounds.py
 run sim_nmconnection.py
 run sim_netpolicy.py
 run sim_otherap.py
@@ -176,6 +178,12 @@ run sim_rkboard.py
 run sim_rksetup.py
 run sim_rkserial.py
 run sim_rkcard.py
+run sim_rkpresets.py
+run sim_rkspot.py
+run sim_rkssh.py
+run sim_rkfinish.py
+run sim_rkactions.py
+run sim_boarddoctor.py
 run sim_aptram.py
 run sim_kits_usb.py
 run sim_bundle_apps.py

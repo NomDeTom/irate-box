@@ -18,7 +18,7 @@ import re
 import time
 from pathlib import Path
 
-from irate_box.hub import netinv, wificountry
+from irate_box.hub import boardfind, netinv, rkusb, wificountry
 
 ETC = Path(os.environ.get("HUB_SYSETC_DIR", "/etc"))
 # armbian-web-config's name for its hotspot, and the first login's banner's (which has it the other way round).
@@ -28,6 +28,8 @@ UNSAFE = {'"': "a double quote", "$": "a dollar sign", "`": "a backtick", "\\": 
 HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 SCAN_KEEP = 15  # seconds the list is reused: the page asks every few seconds
+SERIAL_BY_ID = Path(os.environ.get("HUB_SERIAL_BY_ID", "/dev/serial/by-id"))
+CONSOLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$")
 _scan = {"at": 0.0, "nets": []}
 
 
@@ -125,7 +127,42 @@ def defaults():
     return dict(_defaults["values"])
 
 
+def consoles():
+    """The USB serial adapters on the box, by the /dev/serial/by-id name the root helper opens."""
+    try:
+        names = sorted(p.name for p in SERIAL_BY_ID.iterdir() if p.is_file() and not p.is_symlink())
+    except OSError:
+        return []
+    return [name for name in names if CONSOLE_RE.match(name)]
+
+
+def routes(consoles_in_range=None, cards_in_reader=None, boards_on_network=None):
+    """The ways in this box can set a new board up now. A card needs one in a reader; a console needs an adapter; the
+    SSH route needs a board the box can see on its own network; the hotspot route needs nothing, as the hotspot
+    itself is in range."""
+    found = consoles() if consoles_in_range is None else consoles_in_range
+    cards = rkusb.cards() if cards_in_reader is None else cards_in_reader
+    seen = boardfind.candidates() if boards_on_network is None else boards_on_network
+    out = ["hotspot"]
+    if seen:
+        out.append("ssh")
+    if found:
+        out.append("serial")
+    if cards:
+        out.append("card")
+    return out
+
+
 def snapshot():
-    """/admin/rkboard's "setup": the hotspots in range, the defaults, and whether the box can set a board up yet (the
-    root helper's half, joining the hotspot and sending the presets, is not built: the page says so)."""
-    return {"hotspots": hotspots(), "defaults": defaults(), "ready": False}
+    """/admin/rkboard's "setup": the hotspots in range, the box's own values, the serial adapters and cards it can
+    use, and the routes built for them."""
+    found, cards, seen = consoles(), rkusb.cards(), boardfind.candidates()
+    return {
+        "hotspots": hotspots(),
+        "defaults": defaults(),
+        "consoles": found,
+        "cards": cards,
+        "boards": seen,
+        "routes": routes(found, cards, seen),
+        "ready": True,
+    }

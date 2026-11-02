@@ -1,0 +1,6 @@
+BOARD=bananapim2zero
+BOARD_NAME="Banana Pi M2 Zero"
+BOARD_TYPE=conf
+LINUXFAMILY=sunxi
+ARCH=armhf
+VERSION=26.11.0
