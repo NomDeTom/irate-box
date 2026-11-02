@@ -42,6 +42,39 @@ async function measure(page, width, pageName) {
   }, pageName);
   add(width, pageName, findings);
 }
+const SECURITY_ADDRESSES = ['guest-access', 'sign-in', 'process-safety', 'secrets', 'connections'];
+// The Security page's five addresses, as a doctor's link, the tour or a bookmark opens them: the selected tab must be
+// inside the strip at a phone's width, not left off-screen at its start.
+async function securityTabs(page, width) {
+  let visited = 0;
+  for (const name of SECURITY_ADDRESSES) {
+    await page.evaluate((hash) => { location.hash = hash; }, `#security/${name}`);
+    await page.waitForTimeout(250);
+    const found = await page.evaluate(({ label, wanted }) => {
+      const strip = document.querySelector('#security .view-switch');
+      const tab = document.querySelector('#security [role="tab"][aria-selected="true"]');
+      const panel = [...document.querySelectorAll('#security [role="tabpanel"]')].find((x) => !x.hidden);
+      const out = [];
+      if (!strip || !tab) {
+        out.push({ pane: 'security', page: label, rule: 'a Security tab address did not select a tab', what: label, gap: 0, expected: { min: 0, max: 0 }, pair: 'tab' });
+        return out;
+      }
+      const sr = strip.getBoundingClientRect(), tr = tab.getBoundingClientRect();
+      if (tr.left < sr.left - 1 || tr.right > sr.right + 1) {
+        out.push({ pane: 'security', page: label, rule: 'the selected tab is outside the strip',
+          what: `${(tab.textContent || '').trim()} at ${Math.round(tr.left)}-${Math.round(tr.right)} in ${Math.round(sr.left)}-${Math.round(sr.right)}`,
+          gap: 0, expected: { min: 0, max: 0 }, pair: 'tab' });
+      }
+      if (!panel || panel.id !== wanted) {
+        out.push({ pane: 'security', page: label, rule: 'the address did not open its panel', what: panel ? panel.id : 'none', gap: 0, expected: { min: 0, max: 0 }, pair: 'tab' });
+      }
+      return out;
+    }, { label: `admin: Security / ${name}`, wanted: `security/${name}` });
+    add(width, `admin: Security / ${name}`, found);
+    visited += 1;
+  }
+  return visited;
+}
 // A page in tabs shows one panel at a time; each tab is a page view of its own for the audit.
 async function measureTabs(page, width, pageName) {
   const tabs = await page.evaluate(() => [...document.querySelectorAll('.admin-page:not([hidden]) [role="tab"]')]
@@ -96,6 +129,7 @@ async function sidebar(page, width) {
       await measure(page, width, `admin: ${title}`);
       views += 1 + await measureTabs(page, width, `admin: ${title}`);
     }
+    views += await securityTabs(page, width);
     await sidebar(page, width);
 
     for (const [title, url] of STANDALONE) {
