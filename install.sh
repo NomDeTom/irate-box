@@ -3576,6 +3576,8 @@ if [ "$FIRST_INSTALL" = 1 ] && [ -n "$DURABILITY" ]; then
 	say "The durability preset: $DURABILITY"
 	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.presets durability "$DURABILITY" | sed 's/^/    /' ||
 		problem "could not apply the durability preset (System > Quick setup offers it)"
+	# The hub's own settings file, written by root here: it is the hub's to read and change from now on.
+	[ ! -f "$STATE/settings.json" ] || chown "$HUB_USER:$HUB_USER" "$STATE/settings.json"
 fi
 
 # apt keeps every .deb it downloads (unattended-upgrades included); the startup packages' installed

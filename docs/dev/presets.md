@@ -35,18 +35,20 @@ minutes).
 
 A guard, `tests/sim_presets.py`, checks that every entry is a hub setting the server keeps, a
 choice `choices.CHOICE_RE` accepts, an add-on `install.sh` can add, or a toolkit this box ships.
-Root checks every choice again before it acts.
+The hub names the preset to root; root resolves it from `presets.d/` with its own facts, and
+checks every choice again before it acts.
 
 ## The record and Undo
 
-Root writes `$HUB_STATE_DIR/preset-last.json` with each choice's before and after. The hub writes
+Root writes `$ROOT_STATE/presets/last.json` with each choice's before and after. The hub writes
 `$HUB_STATE_DIR/preset-applied.json` with the whole application, the requests root is running, and
 the selected purpose and durability. Undo puts back a setting only while it still has the value
 the preset gave it; a setting the administrator changed since is named and left alone. Removing an
 add-on is never part of a preset: moving down switches its access off.
 
-`full` logging writes `returns_at` (24 hours), and the hub's background loop applies the durability
-the box had before it, so a debug level is not left on by mistake.
+`full` logging writes `returns_at` (24 hours), and the hub's background loop applies only the
+durability the box had before it, so a debug level is not left on by mistake and the day's purpose
+choices and add-ons are left alone.
 
 ## Install and first use
 

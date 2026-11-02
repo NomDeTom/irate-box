@@ -16923,18 +16923,18 @@ function presetTitle(id, kind) {
   return (list.find((p) => p.id === id) || {}).title || id;
 }
 function drawQuickSetup() {
-  const d = presetState.data;
-  if (!d) return;
-  document.getElementById("preset-purpose-tiles").replaceChildren(...d.purposes.map((p) => presetTile(p, "purpose")));
-  document.getElementById("preset-durability-tiles").replaceChildren(...d.durabilities.map((p) => presetTile(p, "durability")));
-  const record = d.record || {};
+  const data = presetState.data;
+  if (!data) return;
+  document.getElementById("preset-purpose-tiles").replaceChildren(...data.purposes.map((p) => presetTile(p, "purpose")));
+  document.getElementById("preset-durability-tiles").replaceChildren(...data.durabilities.map((p) => presetTile(p, "durability")));
+  const record = data.record || {};
   const active = record.status === "done";
   const line = document.getElementById("preset-current");
   if (active && record.purpose_title) {
-    const own = (d.own_changes || []).length;
+    const own = (data.own_changes || []).length;
     line.textContent = `This box: ${record.purpose_title}, ${record.durability_title}.` +
-      (own ? ` With ${own} change${own === 1 ? "" : "s"} of your own: ${(d.own_changes || []).map((x) => x.label).join(", ")}.` : "");
-  } else if (d.suggested && (d.suggested.purpose || d.suggested.durability)) {
+      (own ? ` With ${own} change${own === 1 ? "" : "s"} of your own: ${(data.own_changes || []).map((x) => x.label).join(", ")}.` : "");
+  } else if (data.suggested && (data.suggested.purpose || data.suggested.durability)) {
     line.textContent = "The install recorded a suggested preset. Select it below, or select another.";
   } else {
     line.textContent = "No preset has been applied yet. Select what this box is for and how hard it can write.";

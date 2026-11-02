@@ -21,19 +21,19 @@ from irate_box.msg import M, Refused, sentences
 from irate_box.root import safeio
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
-RECORD = STATE / "preset-last.json"
+RECORD = safeio.ROOT_STATE / "presets" / "last.json"
 
 
 def load_record():
     try:
-        data = json.loads(RECORD.read_text())
+        data = json.loads(safeio.read_own(RECORD))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
 def save_record(data):
-    safeio.mkdir(STATE, mode=0o755)
+    safeio.root_dir("presets")
     safeio.write(RECORD, json.dumps(data, indent=1, sort_keys=True) + "\n", mode=0o600)
 
 
@@ -135,7 +135,7 @@ def _inverse(choice, before):
     return None
 
 
-def apply_choices(choices_list):
+def apply_choices(choices_list, save=True):
     """Apply each choice in turn. One that fails leaves the others to go ahead. Returns the record."""
     entries, said = [], []
     for choice in choices_list or []:
@@ -176,11 +176,12 @@ def apply_choices(choices_list):
                     "said": message if isinstance(message, dict) else str(message)[:300],
                 }
             )
-    record = load_record()
-    record["at"] = time.time()
-    record["entries"] = entries
-    record.pop("undone_at", None)
-    save_record(record)
+    if save:
+        record = load_record()
+        record["at"] = time.time()
+        record["entries"] = entries
+        record.pop("undone_at", None)
+        save_record(record)
     return {"entries": entries, "said": said}
 
 
@@ -216,6 +217,29 @@ def undo():
     return {"restored": restored, "kept": kept, "said": said}
 
 
+def _preset(name, kind):
+    from irate_box import presets
+
+    preset = presets.get(name)
+    if not preset or preset.get("kind") != kind:
+        raise Refused(M("preset.unknown", "There is no {kind} preset called {name}.", kind=kind, name=name))
+    return preset
+
+
+def apply_named(purpose=None, durability=None, save=True):
+    """The preset's root choices, resolved here from presets.d/ with this box's own facts. The hub names a
+    preset; it never sends the list of choices root applies."""
+    from irate_box import presets
+
+    entries = []
+    if purpose:
+        entries.extend(_preset(purpose, "purpose").get("entries") or [])
+    if durability:
+        entries.extend(_preset(durability, "durability").get("entries") or [])
+    fitted, _left = presets.resolve(entries, _facts())
+    return apply_choices([e["choice"] for e in fitted if e.get("type") == "choice"], save=save)
+
+
 def _facts():
     """The little the installer can know about this box before the hub runs."""
     from irate_box.root import health
@@ -247,12 +271,9 @@ def apply_durability(name):
     """A durability preset applied at a first install: root choices, and the hub's card_writes setting."""
     from irate_box import presets
 
-    preset = presets.get(name)
-    if not preset or preset.get("kind") != "durability":
-        raise Refused(M("preset.unknown", "There is no durability preset called {name}.", name=name))
+    preset = _preset(name, "durability")
     fitted, _left = presets.resolve(preset.get("entries"), _facts())
-    choices_list = [e["choice"] for e in fitted if e.get("type") == "choice"]
-    got = apply_choices(choices_list)
+    got = apply_named(durability=name)
     # The hub's own setting, written where the hub reads it before it starts.
     patch = {e["key"]: e["value"] for e in fitted if e.get("type") == "hub" and isinstance(e.get("key"), str)}
     if patch:

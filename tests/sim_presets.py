@@ -17,7 +17,7 @@ T = Path(tempfile.mkdtemp(prefix="presets-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(REPO))
 from irate_box import choices, presets
-from irate_box.hub import accounts, access, hotspot, manifests, server
+from irate_box.hub import manifests, server
 from irate_box.root import kits
 from irate_box.root import presets as root_presets
 
@@ -145,6 +145,31 @@ check(
     [e["ok"] for e in got["entries"]] == [True, False] and state["card-set:apt_cache"] == "card",
     got,
 )
+
+check(
+    "root's record is in root's own state, not the hub's folder",
+    str(root_presets.RECORD).startswith(str(root_presets.safeio.ROOT_STATE)),
+)
+
+# Root resolves a preset by name itself, never a list of choices the hub sends.
+state.clear()
+state.update(
+    {"card-set:apt_cache": "card", "card-set:journal": "card", "crashwatch-panic": "off", "autoupdate-set": "24-2"}
+)
+root_presets._facts = lambda: {"arch": "aarch64", "memory_mb": 4096, "free_mb": 20000, "flash_free": True}
+before_record = root_presets.load_record()
+root_presets.apply_named(durability="balanced", save=False)
+check(
+    "a durability preset applied by name changes only its own settings, and saves no record",
+    state["card-set:journal"] == "flash"
+    and state["card-set:apt_cache"] == "memory"
+    and root_presets.load_record() == before_record,
+)
+try:
+    root_presets.apply_named(durability="made-up")
+    check("  an unknown preset name is refused", False)
+except Exception as exc:  # noqa: BLE001
+    check("  an unknown preset name is refused", "preset.unknown" == getattr(exc, "message", {}).get("id"), exc)
 
 check(
     "every choice in the shipped presets passes the shared pattern",

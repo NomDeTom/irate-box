@@ -1515,7 +1515,6 @@ def settings_snapshot():
 # what changes, applies the hub's own settings, and asks root for the rest through the same paths a
 # hand change uses. One record of the whole application is kept for Undo.
 PRESET_RECORD = STATE_DIR / "preset-applied.json"
-PRESET_RETURN_HOURS = 24
 
 
 def _read_json(path, default=None):
@@ -1806,14 +1805,11 @@ def apply_preset(purpose_id, durability_id):
             _set_hotspot_mode(hotspot_mode)
         except Exception as exc:  # noqa: BLE001
             failed.append(f"The hotspot: {getattr(exc, 'message', exc)}")
-    root_choices = [
-        item["entry"]["choice"]
-        for item in changes
-        if item["type"] == "choice" and item["ok"] and item["before"] != item["after"]
-    ]
-    if root_choices:
+    if any(item["type"] == "choice" and item["ok"] and item["before"] != item["after"] for item in changes):
         try:
-            ids.append(control_request({"action": "preset-apply", "choices": root_choices}))
+            ids.append(
+                control_request({"action": "preset-apply", "purpose": purpose["id"], "durability": durability["id"]})
+            )
         except Exception as exc:  # noqa: BLE001
             failed.append(f"Root's settings: {getattr(exc, 'message', exc)}")
     return_durability = None
@@ -1949,15 +1945,70 @@ def _preset_view():
     }
 
 
+def _apply_durability_only(durability_id):
+    """A durability preset's changes alone, without touching the purpose. Returns (changes, request ids)."""
+    durability = presets.get(durability_id)
+    if not durability or durability.get("kind") != "durability":
+        raise ValueError(f"there is no durability preset called {durability_id}")
+    facts = _preset_facts()
+    entries, left = presets.resolve(durability.get("entries") or [], facts)
+    changes, hub_patch, ids = [], {}, []
+    for entry in entries:
+        before, after = _preset_before(entry, facts), _preset_after(entry)
+        item = {
+            "type": entry.get("type"),
+            "label": presets.label(entry),
+            "why": entry.get("why"),
+            "before": before,
+            "after": after,
+            "entry": entry,
+            "ok": True,
+        }
+        if before != after:
+            try:
+                if entry.get("type") == "hub":
+                    hub_patch[entry["key"]] = after
+                elif entry.get("type") == "choice":
+                    pass
+            except Exception as exc:  # noqa: BLE001
+                item["ok"] = False
+                item["problem"] = str(exc)
+        changes.append(item)
+    if hub_patch:
+        _apply_hub_settings(hub_patch)
+    if any(item["type"] == "choice" and item["before"] != item["after"] for item in changes):
+        ids.append(control_request({"action": "preset-apply", "durability": durability_id, "record": False}))
+    return changes, left, ids
+
+
 def _preset_tick(now=None):
-    """Full logging's automatic return to the durability the box had, after a day."""
+    """Full logging's automatic return to the durability the box had, after a day.
+
+    Only the durability entries change: the administrator's purpose choices of the day, the
+    add-ons they installed or removed, and the earlier record for Undo are left alone."""
     record = _preset_record()
     if record.get("status") != "done" or not record.get("returns_at"):
         return None
     now = time.time() if now is None else now
     if now < record["returns_at"]:
         return None
-    return apply_preset(record.get("purpose"), record.get("return_durability") or "balanced")
+    back = record.get("return_durability") or "balanced"
+    durability = presets.get(back)
+    changes, _left, ids = _apply_durability_only(back)
+    # The record stays, for Undo; its durability entries now say where the automatic return left
+    # them, so they are not reported as the administrator's own changes.
+    for item in changes:
+        for old in record.get("changes") or []:
+            if old.get("entry") == item.get("entry"):
+                old["after"] = item.get("after")
+    record["durability"] = back
+    record["durability_title"] = durability.get("title") if durability else back
+    record["returned_at"] = now
+    record["returns_at"] = None
+    if ids:
+        record.setdefault("return_ids", []).extend(ids)
+    _write_preset_record(record)
+    return record
 
 
 def online_count(now):

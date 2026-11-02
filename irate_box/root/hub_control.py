@@ -6727,17 +6727,17 @@ def health_fix(req):
 
 
 def preset_apply(req):
-    """A quick preset's root choices, applied together and recorded so that Undo can put them back."""
+    """A quick preset's root choices, resolved by name and applied together so that Undo can put them back."""
     from irate_box.root import presets as preset_root
 
-    choices_list = req.get("choices")
-    if (
-        not isinstance(choices_list, list)
-        or len(choices_list) > 80
-        or not all(isinstance(c, str) for c in choices_list)
+    purpose, durability = req.get("purpose"), req.get("durability")
+    if (purpose is not None and not isinstance(purpose, str)) or (
+        durability is not None and not isinstance(durability, str)
     ):
-        raise Refused(M("control.preset.bad-list", "The preset's choices must be a list of settings."))
-    got = preset_root.apply_choices(choices_list)
+        raise Refused(M("control.preset.bad-name", "The preset's name must be a string."))
+    if not purpose and not durability:
+        raise Refused(M("control.preset.bad-name", "The preset's name must be a string."))
+    got = preset_root.apply_named(purpose=purpose, durability=durability, save=req.get("record") is not False)
     failed = [entry for entry in got["entries"] if not entry["ok"]]
     if failed:
         return M(
