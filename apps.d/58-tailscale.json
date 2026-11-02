@@ -1,0 +1,11 @@
+{
+  "id": "tailscale",
+  "order": 58,
+  "addon": {
+    "option": "--with-tailscale",
+    "title": "Tailscale",
+    "summary": "Remote access to the box over Tailscale's private network, from anywhere, once the box is signed in.",
+    "consent": "Installs Tailscale from Tailscale's signed repository and starts it off. Turning it on on Access → Remote access connects the box to a Tailscale network, so anyone you allow there can reach this box. It needs a Tailscale account, and the box keeps working offline without it.",
+    "packages": ["tailscale"]
+  }
+}

@@ -467,6 +467,29 @@ check(
 )
 ap.stop(fake_run)
 
+# hostapd missing: the hotspot installs it when switched on (from Debian, or the Network kit's cache).
+from irate_box.root import kits
+
+real_bin, real_cache = ap.HOSTAPD_BIN, kits.install_from_cache
+ap.HOSTAPD_BIN = T / "no-hostapd"
+
+
+def no_cache(names, run=None):
+    raise kits.Refused(kits.M("kits.install-packages.not-cached", "not cached"))
+
+
+kits.install_from_cache = no_cache
+inv5 = {**inv4, "stacks": {"networkmanager": {"running": False}, "hostapd": {"installed": False}}}
+calls.clear()
+ap.start(fake_run, inv5, settings)
+check(
+    "  hostapd missing: installed when the hotspot is switched on",
+    ["apt-get", "install", "-y", "-q", "--no-install-recommends", "hostapd"] in calls,
+    calls,
+)
+ap.stop(fake_run)
+ap.HOSTAPD_BIN, kits.install_from_cache = real_bin, real_cache
+
 # The box doctor's hotspot checks (health.check_hotspot).
 from irate_box.root import health
 

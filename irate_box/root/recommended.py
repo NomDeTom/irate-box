@@ -12,6 +12,9 @@ install, and what Box doctor offers an existing box, one change at a time listed
   Box doctor's timer     on                 (a down service is found without anyone on /admin)
   lost writes at boot    on                 (a card that drops its newest writes is named at once)
   UBIFS data checks      on                 (a damaged read from the onboard flash is an error)
+  the clock              chrony             (the internet's pool, as the Clock page offers it)
+  security updates       every day          (installed on a larger box, downloaded on one of 640 MB or less,
+                                               where an unattended DKMS build can run the box out of memory)
 
 The SD card writes level (gentle) is the hub's own setting: its default for new installs is in hub/server.py, and an
 existing box is pointed to it. HTTPS stays as the installer sets it: on, administration over HTTPS only.
@@ -112,7 +115,51 @@ def _items():
                 lambda: health.set_canary(False),
             )
         )
+    out += _service_items()
     return out
+
+
+def _service_items():
+    """The clock and automatic security updates, each through its own page's setter."""
+    from irate_box.root import clock, memguard, security
+
+    said = []
+    now = clock.image_daemon()
+    said.append(
+        (
+            "clock-chrony",
+            M("rec.chrony", "chrony, with the internet's pool"),
+            "chrony",
+            "chrony" if now == "chrony" else "the image's own",
+            lambda: clock.apply("clock-sources:chrony:1:0:0:0:-"),
+        )
+    )
+    # A 512 MB board that installs a kernel or driver update can set off a DKMS build; on the smaller boxes the
+    # safe recommendation is to download the updates and let the administrator choose when to install them.
+    act = 1 if (memguard.meminfo().get("total_mb") or 0) <= 640 else 2
+    want = f"24-{act}"
+    label = (
+        M(
+            "rec.autoupdate-download",
+            "automatic security updates every day, downloaded for you to install (no DKMS build on its own)",
+        )
+        if act == 1
+        else M(
+            "rec.autoupdate",
+            "automatic security updates every day, installed (which also rebuilds DKMS drivers)",
+        )
+    )
+    pattern = security.chosen_pattern(security.load_record())
+    said.append(
+        (
+            "autoupdate",
+            label,
+            want,
+            f"{pattern[0]}-{pattern[1]}" if pattern else "the image's settings",
+            lambda: security.fix(f"autoupdate-set:{want}", lambda _line="": None),
+        )
+    )
+    return said
 
 
 def differences():

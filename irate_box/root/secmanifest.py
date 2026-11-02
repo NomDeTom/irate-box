@@ -53,6 +53,7 @@ OUTBOUND_REASONS = {
     "example.invalid": "a placeholder in messages and tests; never contacted",
     "github.com": "the update source, the add-ons catalogue and their repositories",
     "registry.npmjs.org": "the add-ons' npm packages",
+    "pkgs.tailscale.com": "Tailscale's signed package repository",
 }
 _SECRETS = {
     "/etc/hub/admin-password": {"owner": "root", "group": "root", "mode": "600", "readers": ["root"]},

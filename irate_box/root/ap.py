@@ -447,6 +447,40 @@ def _run_all(run, steps, check=True):
             raise RuntimeError(f"{' '.join(s)}: {(out.stderr or out.stdout or '').strip()[-200:]}")
 
 
+def _hostapd_present(inv):
+    """hostapd on the box: the binary, or the inventory's word for it (a test's stand-in)."""
+    return Path(HOSTAPD_BIN).is_file() or bool(((inv.get("stacks") or {}).get("hostapd") or {}).get("installed"))
+
+
+def _install_hostapd(run, log=print):
+    """hostapd for the hotspot, from the Network toolkit's cache when it has it, else from Debian. It is
+    needed where NetworkManager does not run the radio, only when the hotspot is switched on."""
+    from irate_box.root import kits
+
+    try:
+        kits.install_from_cache(["hostapd"], run=run)
+        log("installed hostapd from the toolkits' cache")
+        return
+    except Refused as exc:
+        # Only a cache without it falls back to Debian; another install's policy-rc.d, say, is not ours to overrule.
+        if (getattr(exc, "message", None) or {}).get("id") not in (
+            "kits.install-packages.not-cached",
+            "kits.install-packages.no-index",
+        ):
+            raise
+    out = run("apt-get", "install", "-y", "-q", "--no-install-recommends", "hostapd")
+    if out.returncode != 0:
+        detail = (out.stderr or out.stdout or "").strip().splitlines()
+        raise Refused(
+            M(
+                "ap.hostapd.install-failed",
+                "The hotspot needs hostapd, and the box could not install it. {detail}",
+                detail=detail[-1][:200] if detail else "apt-get install hostapd failed",
+            )
+        )
+    log("installed hostapd from Debian")
+
+
 def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, conf_path=None):
     """Plan for this box and bring the hotspot up. Returns the plan; a plan that waits on the owner, or
     none, is returned without starting anything. On a failed step, what was done is undone."""
@@ -454,6 +488,8 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
     plan = apmode.plan(inv, inv.get("ap") or [], owner, _load(TRIED, {}))
     if plan.get("needs_choice") or plan["kind"] == "none":
         return plan
+    if plan.get("backend") == "hostapd" and not _hostapd_present(inv):
+        _install_hostapd(run)
     old = _load(RECORD, {})
     if old.get("up"):
         _run_all(run, down_steps(old["plan"]), check=False)

@@ -72,6 +72,12 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "openSUSE Build Service (project network:Meshtastic)"
 SPDX-License-Identifier = "LicenseRef-Meshtastic-OBS-public-key"
 
+[[annotations]]
+path = "config/signing/tailscale.gpg"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "Tailscale Inc."
+SPDX-License-Identifier = "LicenseRef-Tailscale-public-key"
+
 # The web flasher's install button's notices, and FreeOCD's: a list of what each bundle holds, and the
 # texts of the licences those parts come under, quoted.
 [[annotations]]

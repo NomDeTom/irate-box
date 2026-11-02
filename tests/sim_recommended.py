@@ -17,7 +17,7 @@ T = Path(tempfile.mkdtemp(prefix="recommended-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
 from irate_box.msg import render
-from irate_box.root import crashwatch, health, recommended
+from irate_box.root import clock, crashwatch, health, memguard, recommended, security
 
 fails = 0
 
@@ -75,9 +75,34 @@ crashwatch.load_settings = lambda: dict(cw)
 crashwatch.set_option = set_option
 crashwatch.card_writes = lambda: level["now"]
 
+clock_state = {"daemon": "systemd-timesyncd"}
+clock.image_daemon = lambda: clock_state["daemon"]
+
+
+def clock_apply(choice):
+    applied.append(("clock", choice))
+    clock_state["daemon"] = "chrony"
+    return "the clock now uses chrony"
+
+
+clock.apply = clock_apply
+auto = {"pattern": None}
+security.load_record = lambda: {}
+security.chosen_pattern = lambda rec: auto["pattern"]
+
+
+def auto_fix(choice, log):
+    applied.append(("auto", choice))
+    auto["pattern"] = (24, 2)
+    return {"id": "set", "en": choice}
+
+
+security.fix = auto_fix
+memguard.meminfo = lambda: {"total_mb": 1024}
+
 diffs = {k: (want, now) for k, _, want, now in recommended.differences()}
 check(
-    "differences: apt's cache, descriptions, the journal (in memory: no flash), the write-back delay, panic, watchdog",
+    "differences: apt's cache, descriptions, the journal (in memory: no flash), the write-back delay, panic, watchdog, chrony and automatic updates",
     diffs
     == {
         "card-set:apt_cache": ("memory", "card"),
@@ -86,9 +111,19 @@ check(
         "card-set:writeback": ("longer", "standard"),
         "crashwatch-panic": ("on", "off"),
         "crashwatch-watchdog": ("on", "off"),
+        "clock-chrony": ("chrony", "the image's own"),
+        "autoupdate": ("24-2", "the image's settings"),
     },
     diffs,
 )
+memguard.meminfo = lambda: {"total_mb": 476}
+small = dict((k, w) for k, _, w, _ in recommended.differences())
+check(
+    "  on a 512 MB box: automatic updates are downloaded, not installed",
+    small["autoupdate"] == "24-1",
+    small.get("autoupdate"),
+)
+memguard.meminfo = lambda: {"total_mb": 1024}
 nand["state"] = "free"
 check(
     "  a free onboard flash: the journal on the flash",
@@ -135,9 +170,18 @@ said = health.fix("recommended-apply")
 check(
     "Use the recommended settings: the rest applied, none recorded as the owner's",
     sorted(applied)
-    == sorted([("apt_languages", "none"), ("journal", "memory"), ("writeback", "longer"), ("panic", "on")])
+    == sorted(
+        [
+            ("apt_languages", "none"),
+            ("journal", "memory"),
+            ("writeback", "longer"),
+            ("panic", "on"),
+            ("clock", "clock-sources:chrony:1:0:0:0:-"),
+            ("auto", "autoupdate-set:24-2"),
+        ]
+    )
     and recommended.CHOSEN.read_text() == before
-    and render(said).startswith("4 recommended settings applied"),
+    and render(said).startswith("6 recommended settings applied"),
     (applied, render(said)),
 )
 level["now"] = "gentle"

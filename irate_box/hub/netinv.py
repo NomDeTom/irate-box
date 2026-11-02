@@ -1845,8 +1845,13 @@ def ap_verdicts(inv):
         elif owner in ("wpa_supplicant", "none"):
             backend = "hostapd"
             if not hostapd:
-                detail += " Needs hostapd (apt install hostapd)."
-                conditions.append({"kind": "needs", "text": "hostapd is not installed (apt install hostapd)."})
+                detail += " The box installs hostapd when you enable the hotspot."
+                conditions.append(
+                    {
+                        "kind": "needs",
+                        "text": "hostapd is not installed. Enabling the hotspot installs it, from Debian or the Network toolkit's cache.",
+                    }
+                )
         else:
             backend = None
             detail += f" {owner} runs this radio, and irate-box has no {owner} backend for the hotspot yet."

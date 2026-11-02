@@ -1,7 +1,7 @@
 {
  "id": "network",
  "title": "Network",
- "summary": "Network diagnostics that work without internet: iperf3, mtr, iw, wavemon, dig, tcpdump and the tools of WireGuard, and telnet (does a port answer; a client only). Use them to find the cause of a hotspot or link problem.",
+ "summary": "Network diagnostics that work without internet: iperf3, mtr, iw, wavemon, dig, tcpdump, the tools of WireGuard, telnet (does a port answer; a client only), net-tools (ifconfig, route), aria2 (downloads) and hostapd (the hotspot where NetworkManager does not run it). Use them to find the cause of a hotspot or link problem.",
  "packages": [
   "iperf3",
   "mtr-tiny",
@@ -10,13 +10,17 @@
   "bind9-dnsutils",
   "tcpdump",
   "wireguard-tools",
-  "inetutils-telnet"
+  "inetutils-telnet",
+  "net-tools",
+  "aria2",
+  "hostapd"
  ],
- "consent": "tcpdump can read every packet on the box. iperf3 listens for a test partner only when you start it. Install the toolkit only while you need it.",
+ "consent": "tcpdump can read every packet on the box. iperf3 listens for a test partner only when you start it. hostapd runs the hotspot when NetworkManager does not. Install the toolkit only while you need it.",
  "notes": [
   "install.sh installs nftables and iw with the box. This toolkit adds the tools for problems with the radio or the link.",
   "To measure the throughput of the hotspot, do these steps. Run iperf3 -s on the box. Run iperf3 -c <the box> on a phone or laptop.",
-  "wavemon shows the signal and the rate of the link as they change. iw dev <iface> station dump lists the signal and the rate of each guest."
+  "wavemon shows the signal and the rate of the link as they change. iw dev <iface> station dump lists the signal and the rate of each guest.",
+  "hostapd runs the hotspot where NetworkManager does not run the radio. The hotspot installs it when it is switched on, from Debian or this toolkit's cache."
  ],
  "remove_after_hours": 24
 }

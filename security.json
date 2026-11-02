@@ -10,6 +10,7 @@
     "dl.cloudsmith.io": "Caddy's package key and repository",
     "example.invalid": "a placeholder in messages and tests; never contacted",
     "github.com": "the update source, the add-ons catalogue and their repositories",
+    "pkgs.tailscale.com": "Tailscale's signed package repository",
     "registry.npmjs.org": "the add-ons' npm packages"
   },
   "privileged_files": [

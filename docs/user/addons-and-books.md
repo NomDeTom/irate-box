@@ -16,6 +16,7 @@ Add or remove each add-on on its own. Use the administration pages (the same ins
 - IRC (InspIRCd) (`--with-inspircd`): the same chat, on InspIRCd instead, with a browser client at `/gamja/`. Choose one IRC server; installing one removes the other's config.
 - **Terminal** (`--with-term`): a shell in the browser. Administrators sign in to use it.
 - **Live collaboration** (`--with-collab`): drawing together in Excalidraw.
+- **Tailscale** (`--with-tailscale`): remote access over a private Tailscale network, from Tailscale's own signed repository. It is added stopped; sign in and switch it on under Access → Remote access.
 
 To remove an add-on, use `--remove NAME` or select **Remove**. The box stops the service and removes its settings. The data of the add-on stays on the box.
 

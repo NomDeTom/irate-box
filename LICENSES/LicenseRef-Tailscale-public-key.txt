@@ -1,0 +1,4 @@
+config/signing/tailscale.gpg is the OpenPGP public key Tailscale signs its Debian package repository with
+(fingerprint 2596A99EAAB33821893C0A79458CA832957F5868), as served at
+https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg. It is reproduced unchanged so that a box can
+verify that repository's packages; it is Tailscale's, and carries no licence from this project.

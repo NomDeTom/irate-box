@@ -1,0 +1,19 @@
+{
+ "id": "tailscale",
+ "title": "Tailscale",
+ "package": "tailscale",
+ "summary": "Tailscale: remote access to the box over its private network, from anywhere, once signed in.",
+ "channels": {
+  "stable": "https://pkgs.tailscale.com/stable/debian/"
+ },
+ "suite_names": {
+  "Debian_13": "trixie"
+ },
+ "component": "main",
+ "key": "config/signing/tailscale.gpg",
+ "fingerprint": "2596A99EAAB33821893C0A79458CA832957F5868",
+ "unit": "tailscaled.service",
+ "labels": {
+  "stable": "Stable"
+ }
+}

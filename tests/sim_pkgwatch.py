@@ -105,6 +105,8 @@ def fake(cmd, timeout=0, cwd=None):
 
 pkgwatch.run = fake
 pkgwatch.dearmor = lambda armored: b"binary keyring of " + armored[:10]
+# The stand-in dpkg says yes to every package; this test drives meshtasticd alone.
+pkgwatch.watched = lambda: ["meshtasticd"]
 
 d = pkgwatch.definitions().get("meshtasticd")
 check(
@@ -117,6 +119,16 @@ check(
     d,
 )
 check("this box's suite: Debian_13", pkgwatch.suite() == "Debian_13")
+ts = pkgwatch.definitions().get("tailscale")
+check(
+    "the Tailscale manifest: its Debian repository, the suite name, its signed key",
+    ts
+    and (REPO / ts["key"]).is_file()
+    and ts["suite_names"]["Debian_13"] == "trixie"
+    and pkgwatch._source_line(ts, "KEY", "stable")
+    == "deb [signed-by=KEY] https://pkgs.tailscale.com/stable/debian trixie main\n",
+    ts,
+)
 
 # --- the channel, read as mpwrd-menu reads it ---
 lists = IMG / "etc/apt/sources.list.d"
