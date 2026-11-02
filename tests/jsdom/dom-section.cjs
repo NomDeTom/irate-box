@@ -81,9 +81,13 @@ const place = (s, page = 'p1') => { d.getElementById(page).append(s.foot, s.reas
   no.set('a', 2);
   await no.save();
   check('   a save that resolves false (said already): the draft kept', no.dirty());
+  const hbIdle = place(AW.section({ saved: { a: 1 }, busy: () => true, save: async () => {} }));
+  check('   an untouched section waiting on the root helper: no ring, Save off for nothing to save',
+    !hbIdle.foot.querySelector('.aw-save').classList.contains('is-helper-busy') && !hbIdle.foot.querySelector('.aw-save').classList.contains('is-busy')
+    && hbIdle.foot.querySelector('.aw-save').disabled);
   const hb = place(AW.section({ saved: { a: 1 }, busy: () => true, save: async () => {} }));
   hb.set('a', 2);
-  check('   a section waiting on the root helper: the slower ring, Save off', hb.foot.querySelector('.aw-save').classList.contains('is-helper-busy')
+  check('   a changed section held back by the root helper: the slower ring, Save off', hb.foot.querySelector('.aw-save').classList.contains('is-helper-busy')
     && !hb.foot.querySelector('.aw-save').classList.contains('is-busy') && hb.foot.querySelector('.aw-save').disabled);
 
   // 5. Polling never overwrites a change.

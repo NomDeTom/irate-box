@@ -448,7 +448,7 @@ const AW = (() => {
       saveB.disabled = !dirty || busy || !saved || !!cannot;
       discardB.disabled = !dirty || busy || !saved;
       if (saving) setBusy(saveB, true);
-      else setBusy(saveB, !!(opts.busy && opts.busy()), 'helper');
+      else setBusy(saveB, !!(saved && dirty && opts.busy && opts.busy()), 'helper');
       handle.foot.classList.toggle('aw-dirty', dirty);
       saveB.classList.toggle('idle', !dirty);   // outlined while there is nothing to save
       note.textContent = !saved ? 'Reading the current settings…' : busy ? 'Saving…'
