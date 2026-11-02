@@ -1379,6 +1379,120 @@ check(
 )
 U.run, U._uplink_profile = real_run, real_prof
 
+# 10. Each manager's repairs: the command the watchdog runs for the steps it has, not NetworkManager alone.
+calls = []
+
+
+def record(*cmd, timeout=60):
+    calls.append(cmd)
+    return 0, "ran"
+
+
+_real_active, _real_ifup, _real_netd = U.netinv.active, U.netinv.ifupdown_ifaces, U.netinv.networkd_ifaces
+_real_net = U.SYS_NET
+U.run = record
+
+
+def commands(fn):
+    calls.clear()
+    said = fn()
+    return list(calls), said
+
+
+try:
+    # The managers whose restart has one path, each with its reconnect.
+    for backend, reconnect, restart in (
+        (
+            "ifupdown",
+            [("ifdown", "--force", "wlan0"), ("ifup", "wlan0")],
+            [("systemctl", "restart", "networking")],
+        ),
+        (
+            "networkd",
+            [("networkctl", "reconfigure", "wlan0")],
+            [("systemctl", "restart", "systemd-networkd")],
+        ),
+        (
+            "dhcpcd",
+            [],
+            [("systemctl", "restart", "dhcpcd")],
+        ),
+    ):
+        actor = U.Actor("wlan0", backend)
+        got_reconnect, said = commands(actor._reconnect)
+        check(
+            f"{backend}: reconnect runs {reconnect or 'nothing (no way to reconnect)'}",
+            got_reconnect == reconnect and (said == "no way to reconnect here" if not reconnect else said == "ran"),
+            (got_reconnect, said),
+        )
+        got_restart, said_restart = commands(actor._restart)
+        check(
+            f"  restart runs {restart}, said so",
+            got_restart == restart and said_restart == "ran",
+            (got_restart, said_restart),
+        )
+    # wpa_supplicant's reconnect, and the three paths of its restart past its own unit.
+    actor = U.Actor("wlan0", "wpa_supplicant")
+    got, said = commands(actor._reconnect)
+    check(
+        "wpa_supplicant: reconnect reassociates it",
+        got == [("wpa_cli", "-i", "wlan0", "reassociate")] and said == "ran",
+        (got, said),
+    )
+    for label, active, ifup, netd, want in (
+        (
+            "its own unit when active",
+            True,
+            set(),
+            set(),
+            [("systemctl", "restart", "wpa_supplicant@wlan0")],
+        ),
+        (
+            "not active but in ifupdown: the link down and up",
+            False,
+            {"wlan0"},
+            set(),
+            [("ifdown", "--force", "wlan0"), ("ifup", "wlan0")],
+        ),
+        (
+            "not active and only networkd has it: the service restarted and the link reconfigured",
+            False,
+            set(),
+            {"wlan0"},
+            [("systemctl", "restart", "wpa_supplicant"), ("networkctl", "reconfigure", "wlan0")],
+        ),
+        (
+            "not active and none has it: the service restarted",
+            False,
+            set(),
+            set(),
+            [("systemctl", "restart", "wpa_supplicant")],
+        ),
+    ):
+        U.netinv.active = lambda unit, active=active: active
+        U.netinv.ifupdown_ifaces = lambda ifup=ifup: set(ifup)
+        U.netinv.networkd_ifaces = lambda netd=netd: set(netd)
+        got, said = commands(actor._restart)
+        check(f"wpa_supplicant restart: {label}", got == want and said == "ran", (got, said))
+    # The steps offered per manager, with no links of the machine's own in the way.
+    U.SYS_NET = Path(_tf.mkdtemp())
+    offered = {b: U.repairs_for(b, "wlan0") for b in ("wpa_supplicant", "ifupdown", "networkd", "dhcpcd")}
+    check(
+        "the steps offered per manager: reconnect and restart, less dhcpcd's reconnect",
+        offered
+        == {
+            "wpa_supplicant": {"reconnect", "restart", "reboot"},
+            "ifupdown": {"reconnect", "restart", "reboot"},
+            "networkd": {"reconnect", "restart", "reboot"},
+            "dhcpcd": {"restart", "reboot"},
+        },
+        offered,
+    )
+finally:
+    U.run = real_run
+    U.netinv.active, U.netinv.ifupdown_ifaces, U.netinv.networkd_ifaces = _real_active, _real_ifup, _real_netd
+    U.SYS_NET = _real_net
+
 # A radio reset by the ladder filed as crash watch files a failure, with the kernel's last lines.
 from irate_box.root import crashwatch as CW
 
