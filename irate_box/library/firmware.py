@@ -601,6 +601,58 @@ def _carry_cache(rel, cfg, policy, log):
     return {"version": rel["version"], "mode": cfg["cache"], "bytes": _du(dest)}
 
 
+def _unpack_deps(tmp, dest, name, log=print):
+    """Unpack a whole-cache bundle into dest: the one place that checks the space it needs and the
+    paths it names, and replaces dest atomically. The caller downloads and verifies the zip."""
+    work = dest.with_name(dest.name + ".new")
+    shutil.rmtree(work, ignore_errors=True)
+    try:
+        with zipfile.ZipFile(tmp) as zf:
+            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, "whole") and not i.is_dir())
+            free = shutil.disk_usage(ROOT).free
+            if wanted > free - DEPS_RESERVE:
+                raise LibrarianError(
+                    M(
+                        "firmware.cache.unpack-no-space",
+                        "Insufficient storage. {name} unpacks to {size} MB. {free} MB are free. {reserve} MB must stay free.",
+                        name=name,
+                        size=wanted >> 20,
+                        free=free >> 20,
+                        reserve=DEPS_RESERVE >> 20,
+                    )
+                )
+            for info in zf.infolist():
+                rel_path = _subset(info.filename, "whole", info.file_size)
+                if not rel_path or info.is_dir():
+                    continue
+                target = work / rel_path
+                if not target.resolve().is_relative_to(work.resolve()):
+                    raise LibrarianError(
+                        M(
+                            "firmware.cache.unsafe-path",
+                            "Archive rejected. {name} names a file outside its folder: {path}",
+                            name=name,
+                            path=info.filename[:80],
+                        )
+                    )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out, 1 << 20)
+    except zipfile.BadZipFile as exc:
+        shutil.rmtree(work, ignore_errors=True)
+        raise LibrarianError(
+            M(
+                "firmware.cache.incomplete",
+                "Archive damaged or incomplete. {name} is not a complete zip file.",
+                name=name,
+            )
+        ) from exc
+    (work / ".irate-box-cache").write_text("whole\n")
+    shutil.rmtree(dest, ignore_errors=True)
+    os.replace(work, dest)
+    return {"path": str(dest), "bytes": _du(dest)}
+
+
 def _extract_extra(asset, dest, log):
     """A release's per-family dependency zip, kept under pio-deps/<family> when the cache is whole.
     This is the asset a release-side build publishes; a release without one is unchanged."""
@@ -631,54 +683,10 @@ def _extract_extra(asset, dest, log):
             )
         )
     librarian._verify_sha256(tmp, digest.split(":", 1)[1] if digest.startswith("sha256:") else digest, asset["name"])
-    work = dest.with_name(dest.name + ".new")
-    shutil.rmtree(work, ignore_errors=True)
     try:
-        with zipfile.ZipFile(tmp) as zf:
-            wanted = sum(i.file_size for i in zf.infolist() if _subset(i.filename, "whole") and not i.is_dir())
-            free = shutil.disk_usage(ROOT).free
-            if wanted > free - DEPS_RESERVE:
-                raise LibrarianError(
-                    M(
-                        "firmware.cache.unpack-no-space",
-                        "Insufficient storage. {name} unpacks to {size} MB. {free} MB are free. {reserve} MB must stay free.",
-                        name=asset["name"],
-                        size=wanted >> 20,
-                        free=free >> 20,
-                        reserve=DEPS_RESERVE >> 20,
-                    )
-                )
-            for info in zf.infolist():
-                rel_path = _subset(info.filename, "whole", info.file_size)
-                if not rel_path or info.is_dir():
-                    continue
-                target = work / rel_path
-                if not target.resolve().is_relative_to(work.resolve()):
-                    raise LibrarianError(
-                        M(
-                            "firmware.cache.unsafe-path",
-                            "Archive rejected. {name} names a file outside its folder: {path}",
-                            name=asset["name"],
-                            path=info.filename[:80],
-                        )
-                    )
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, open(target, "wb") as out:
-                    shutil.copyfileobj(src, out, 1 << 20)
-    except zipfile.BadZipFile as exc:
-        raise LibrarianError(
-            M(
-                "firmware.cache.incomplete",
-                "Archive damaged or incomplete. {name} is not a complete zip file.",
-                name=asset["name"],
-            )
-        ) from exc
+        return _unpack_deps(tmp, dest, asset["name"], log)
     finally:
         tmp.unlink(missing_ok=True)
-    (work / ".irate-box-cache").write_text("whole\n")
-    shutil.rmtree(dest, ignore_errors=True)
-    os.replace(work, dest)
-    return {"path": str(dest), "bytes": _du(dest)}
 
 
 def flush_cache(log=print):

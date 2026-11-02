@@ -1184,7 +1184,7 @@ def build_proving(job):
                         for values in (pio_bundle.manifest(src).get("requirements") or {}).values()
                         for line in values
                     ]
-                    proving.install_requirements(lines, say)
+                    proving.install_requirements(lines, family, say)
             if cache is None:
                 state, step = "skipped", "tooling"
                 detail = "No cache for this family at this tag, and fetching it was not allowed."

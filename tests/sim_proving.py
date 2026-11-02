@@ -13,6 +13,7 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="proving-"))
@@ -169,6 +170,10 @@ check(
 )
 
 # When it may run: never on low memory or battery; the night window may cross midnight.
+check(
+    "no memory guard: nothing by itself, only Prove now",
+    proving.can_queue(force=False) == (False, "the memory guard is not running") and proving.can_queue(force=True)[0],
+)
 (T / "memguard.json").write_text(json.dumps({"level": "act"}))
 check("short of memory: no", proving.can_queue(force=True) == (False, "the box is short of memory"))
 (T / "memguard.json").write_text(json.dumps({"level": "ok"}))
@@ -292,6 +297,10 @@ with zipfile.ZipFile(bundle, "w") as zf:
     zf.writestr("pio-deps-heltec-v3/packages/platform-espressif32@6.10.0/x", "x")
     zf.writestr("pio-deps-heltec-v3/libdeps/heltec-v3/PubSubClient/library.json", "{}")
     zf.writestr("pio-deps-heltec-v3/build-manifest.json", json.dumps({"env": "heltec-v3"}))
+check(
+    "a release name that is not one: no cache path",
+    proving.extract_bundle(bundle, "esp32s3", "../etc") is None,
+)
 extracted = proving.extract_bundle(bundle, "esp32s3", "2.8.4.abcdef2")
 check(
     "a verified bundle becomes the family's cache",
@@ -299,6 +308,26 @@ check(
     and (extracted / "packages" / "platform-espressif32@6.10.0" / "x").is_file()
     and (extracted / "libdeps" / "heltec-v3" / "PubSubClient" / "library.json").is_file(),
     extracted,
+)
+# Download and install: wheels only, and a package with no wheel becomes a finding.
+calls = []
+
+
+def pip_run(cmd, **kw):
+    calls.append(cmd)
+    return subprocess.CompletedProcess(cmd, 0 if "nanopb" in " ".join(cmd) else 1, "", "")
+
+
+with mock.patch("subprocess.run", pip_run):
+    said = proving.install_requirements(["nanopb==0.4.9.1", "no-wheel==1.0"], "esp32s3", log=lambda *_: None)
+tooling = {f["id"]: f for f in proving.report()["tooling"]}
+check(
+    "only wheels are downloaded, and a package with no wheel is a finding",
+    "--only-binary=:all:" in calls[0]
+    and said["done"] == ["nanopb==0.4.9.1"]
+    and said["failed"] == ["no-wheel==1.0"]
+    and tooling["proving.python.no-wheel"]["summary"]["args"]["package"] == "no-wheel",
+    (calls, said, tooling),
 )
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

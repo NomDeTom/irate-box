@@ -25,7 +25,6 @@ import shutil
 import subprocess
 import sys
 import time
-import zipfile
 from pathlib import Path
 
 from irate_box.finding import finding
@@ -40,6 +39,7 @@ POWER = Path(os.environ.get("HUB_POWER_SUPPLY", "/sys/class/power_supply"))
 TMP = STATE / "library" / "tmp"
 BUNDLE_PREFIX = "pio-deps-"
 SUMS_NAME = "pio-deps-sha256.json"
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+\.[0-9a-f]{7,}$")
 
 # The administrator's settings (the Firmware page; stored with the firmware's, in firmware.json).
 DEFAULTS = {
@@ -624,7 +624,10 @@ def can_queue(cfg=None, force=False, now=None):
     cfg = cfg or settings()
     if not cfg["proving"] and not force:
         return False, "proving is off"
-    if memory_level() not in (None, "ok"):
+    level = memory_level()
+    if level is None and not force:
+        return False, "the memory guard is not running"
+    if level not in (None, "ok"):
         return False, "the box is short of memory"
     if on_battery():
         return False, "the box is on battery"
@@ -830,7 +833,11 @@ def ensure_cache(job, log=print):
     the cache path, or None. Never raises: a failed refresh is a finding, not a failed build."""
     from irate_box.hub import pio_bundle
 
-    cache = cache_dir(job.get("family"), job.get("version"))
+    version = str(job.get("version") or "").lstrip("v")
+    if not VERSION_RE.match(version):
+        log("proving: the release name is not one a cache can be filed under")
+        return None
+    cache = cache_dir(job.get("family"), version)
     if cache:
         return cache
     bundle = job.get("bundle")
@@ -853,22 +860,10 @@ def ensure_cache(job, log=print):
         if not pio_bundle.verify(tmp).get("ok"):
             log("proving: the published bundle is not a cache")
             return None
-        dest = FIRMWARE / job["version"] / "pio-deps" / job["family"]
-        work = dest.with_name(dest.name + ".new")
-        shutil.rmtree(work, ignore_errors=True)
-        with zipfile.ZipFile(tmp) as zf:
-            for info in zf.infolist():
-                if info.is_dir() or not info.filename.startswith(BUNDLE_PREFIX):
-                    continue
-                rel = info.filename.split("/", 1)[1] if "/" in info.filename else ""
-                if not rel or rel.startswith("/") or ".." in rel.split("/"):
-                    continue
-                target = work / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, open(target, "wb") as out:
-                    shutil.copyfileobj(src, out, 1 << 20)
-        shutil.rmtree(dest, ignore_errors=True)
-        os.replace(work, dest)
+        from irate_box.library import firmware
+
+        dest = FIRMWARE / version / "pio-deps" / job["family"]
+        firmware._unpack_deps(tmp, dest, str(bundle.get("name") or "proving cache"), log)
         return dest
     except Exception as exc:  # noqa: BLE001 - a refresh failure is a finding, not the build's end
         log(f"proving: the published cache could not be used ({str(exc)[:200]})")
@@ -878,32 +873,22 @@ def ensure_cache(job, log=print):
 
 
 def extract_bundle(path, family, version, log=print):
-    """Unpack a verified bundle into the family's cache, atomically. Returns the cache, or None."""
+    """Unpack a verified bundle into the family's cache, with firmware's own space and path checks.
+    Returns the cache, or None."""
     from irate_box.hub import pio_bundle
+    from irate_box.library import firmware
 
+    version = str(version or "").lstrip("v")
+    if not VERSION_RE.match(version):
+        log("proving: the release name is not one a cache can be filed under")
+        return None
     if not pio_bundle.verify(path).get("ok"):
         return None
-    dest = FIRMWARE / str(version).lstrip("v") / "pio-deps" / family
-    work = dest.with_name(dest.name + ".new")
-    shutil.rmtree(work, ignore_errors=True)
+    dest = FIRMWARE / version / "pio-deps" / family
     try:
-        with zipfile.ZipFile(path) as zf:
-            for info in zf.infolist():
-                if info.is_dir() or not info.filename.startswith(BUNDLE_PREFIX):
-                    continue
-                rel = info.filename.split("/", 1)[1] if "/" in info.filename else ""
-                parts = rel.split("/")
-                if not rel or rel.startswith("/") or any(p in ("", ".", "..") for p in parts):
-                    continue
-                target = work / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, open(target, "wb") as out:
-                    shutil.copyfileobj(src, out, 1 << 20)
-        shutil.rmtree(dest, ignore_errors=True)
-        os.replace(work, dest)
+        firmware._unpack_deps(path, dest, Path(path).name, log)
         return dest
-    except (OSError, zipfile.BadZipFile) as exc:
-        shutil.rmtree(work, ignore_errors=True)
+    except (OSError, ValueError) as exc:
         log(f"proving: the bundle could not be unpacked ({str(exc)[:200]})")
         return None
 
@@ -925,9 +910,9 @@ def prune(runs):
             shutil.rmtree(old, ignore_errors=True)
 
 
-def install_requirements(requirements, log=print):
-    """Fetch the tag's missing Python packages into the Building kit's wheelhouse (Fetch and
-    install). Best effort: the finding stays if this cannot run."""
+def install_requirements(requirements, family=None, log=print):
+    """Fetch the tag's missing Python packages into the Building kit's wheelhouse (Download and
+    install). Only wheels: a package with no wheel is not built here, and becomes a finding."""
     if not requirements:
         return []
     root = KITS / "wheelhouse"
@@ -935,25 +920,73 @@ def install_requirements(requirements, log=print):
         root.mkdir(parents=True, exist_ok=True)
     except OSError:
         return []
-    done = []
+    done, failed = [], []
     for line in requirements:
         spec = _req_spec(line)
         if not spec:
             continue
         name, op, version = spec
         try:
-            subprocess.run(  # noqa: TID251
-                [sys.executable, "-m", "pip", "download", "--dest", str(root), f"{name}{op}{version}"],
+            out = subprocess.run(  # noqa: TID251
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "download",
+                    "--only-binary=:all:",
+                    "--dest",
+                    str(root),
+                    f"{name}{op}{version}",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=600,
             )
-            done.append(line)
         except (OSError, subprocess.SubprocessError):
+            failed.append(line)
             continue
+        if out.returncode == 0:
+            done.append(line)
+        else:
+            failed.append(line)
+            _record_tooling(
+                _finding(
+                    "proving.python.no-wheel",
+                    family or "?",
+                    "warn",
+                    M(
+                        "proving.python.no-wheel",
+                        "{package} has no wheel for this box, so the Building kit does not install it.",
+                        package=name,
+                    ),
+                    why=M(
+                        "proving.python.no-wheel.why",
+                        "A source package would run its own build code on this box. The box does not build one silently.",
+                    ),
+                    fix=M(
+                        "proving.python.no-wheel.fix",
+                        "Install the package by hand on the box, or use a release whose requirements have wheels for this architecture.",
+                    ),
+                    repair="fetch",
+                    evidence=[line],
+                )
+            )
     if done:
         log(f"proving: fetched {len(done)} Python package(s) into the wheelhouse")
-    return done
+    return {"done": done, "failed": failed}
+
+
+def _record_tooling(item):
+    """Add one tooling finding to the report the Updates doctor reads, without losing the others."""
+    st = _read()
+    items = [
+        i
+        for i in (st.get("tooling") or [])
+        if not (isinstance(i, dict) and i.get("id") == item.get("id") and i.get("family") == item.get("family"))
+    ]
+    items.insert(0, item)
+    st["tooling"] = items[:20]
+    _save(st)
 
 
 # --- the record -------------------------------------------------------------------------------
