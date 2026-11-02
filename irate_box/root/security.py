@@ -3090,10 +3090,13 @@ def share_findings():
             )
         )
     for k in off:
+        by_mac = k == "by_mac"
         out.append(
             finding(
                 f"guest-net-{k}",
-                M("guest-net.part-off.title", "Guest internet access: {name} is off", name=CONTAIN_HEADING[k]),
+                M("guest-net.by-mac.off.title", "Guest internet access: guests are identified by IP address")
+                if by_mac
+                else M("guest-net.part-off.title", "Guest internet access: {name} is off", name=CONTAIN_HEADING[k]),
                 "warn" if shared else "ok",
                 M("guest-net.part-off", "You disabled this protection."),
                 CONTAIN_OFF_WHY[k] if shared else None,
@@ -3104,13 +3107,16 @@ def share_findings():
                 ),
                 actions=[
                     action(
-                        f"share-contain-{k}-on", M("guest-net.contain-on", "Turn on: {name}", name=CONTAIN_HEADING[k])
+                        f"share-contain-{k}-on",
+                        M("guest-net.by-mac.on", "Identify guests by hardware address")
+                        if by_mac
+                        else M("guest-net.contain-on", "Turn on: {name}", name=CONTAIN_HEADING[k]),
                     )
                 ],
             )
         )
     chips = []
-    for k in ("lan", "tunnels", "dns_hold", "by_mac"):
+    for k in [k for k in share.CONTAIN if k != "by_mac"] + ["by_mac"]:
         on = st["contain"][k]
         if k == "by_mac":
             group = M("guest-net.identify", "How the box identifies a guest")
