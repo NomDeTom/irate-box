@@ -7,7 +7,6 @@ step and its earlier hold put back. python3 tests/sim_rkspot.py"""
 
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]

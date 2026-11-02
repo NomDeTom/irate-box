@@ -7460,9 +7460,8 @@ def _wait_for_board(before, hostname="", seconds=60):
 
 def _rk_hotspot_setup(req):
     """The board's own setup hotspot: joined, checked, sent the choices, then left (rkspot.py)."""
-    from irate_box.root import rkspot
-
     from irate_box.hub import boardfind
+    from irate_box.root import rkspot
 
     choices = _board_choices(req.get("choices") or {}, generate=True)
     before = {b["address"] for b in boardfind.candidates(fresh=True)}
@@ -7485,10 +7484,8 @@ def _rk_hotspot_setup(req):
 
 def _rk_finish(req):
     """The shared finish over SSH (rkfinish.py): the name, the setup page stopped, the keys, the OS read back."""
-    from irate_box.hub import rksetup
+    from irate_box.hub import boardfind, rksetup
     from irate_box.root import rkfinish
-
-    from irate_box.hub import boardfind
 
     c = req.get("choices") or {}
     address = str(req.get("address") or "")

@@ -702,7 +702,7 @@
     name.value = 'lyra-1';
     const key = h('textarea', { name: 'rk-finish-key', autocomplete: 'off', spellcheck: false, rows: 2, placeholder: 'ssh-ed25519 AAAA… you@laptop' });
     const result = document.getElementById('rk-setup-result');
-    const send = async (body, said, anchor) => {
+    const send = async (body, said) => {
       try {
         waiting = (await postJSON('/admin/rkboard', body)).id;
         say(said, true, result);

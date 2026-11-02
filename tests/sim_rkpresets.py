@@ -132,7 +132,7 @@ for folder in ("home", "root"):
 (link_root / "root" / ".ssh").symlink_to(outside)
 check(
     "a link where root's .ssh should be refused, and nothing written through it",
-    refused(rkpresets.write_at, link_root, choices, KEY) != None and not list(outside.iterdir()),
+    refused(rkpresets.write_at, link_root, choices, KEY) is not None and not list(outside.iterdir()),
 )
 
 # A card whose root partition is found from a recorded lsblk, mounted, written and unmounted.

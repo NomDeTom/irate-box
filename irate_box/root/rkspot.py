@@ -39,7 +39,7 @@ def run(*cmd, timeout=90):
 
 def _get(path):
     """The wizard's page at path: (status, text)."""
-    with urllib.request.urlopen(WIZARD + path, timeout=15) as answer:  # noqa: S310 - the board's fixed address
+    with urllib.request.urlopen(WIZARD + path, timeout=15) as answer:  # nosec B310 - WIZARD is fixed http, not asked
         return answer.status, answer.read(1 << 20).decode("utf-8", "replace")
 
 
@@ -49,7 +49,7 @@ def _post(body):
     asked = urllib.request.Request(
         WIZARD + "/api/setup", data=data, headers={"Content-Type": "application/json"}, method="POST"
     )
-    with urllib.request.urlopen(asked, timeout=30) as answer:  # noqa: S310 - the board's fixed address
+    with urllib.request.urlopen(asked, timeout=30) as answer:  # nosec B310 - WIZARD is fixed http, not asked
         return answer.status, answer.read(1 << 16).decode("utf-8", "replace")
 
 
@@ -156,7 +156,9 @@ def setup(hotspot, choices, hold_minutes=HOLD_MINUTES):
         try:
             status, page = _get("/")
         except (urllib.error.URLError, OSError) as exc:
-            raise Refused(M("rkspot.no-page", "The board's setup page did not answer: {detail}", detail=str(exc)[:160]))
+            raise Refused(
+                M("rkspot.no-page", "The board's setup page did not answer: {detail}", detail=str(exc)[:160])
+            ) from None
         if status != 200 or not all(marker in page for marker in MARKERS):
             raise Refused(
                 M(
@@ -169,7 +171,7 @@ def setup(hotspot, choices, hold_minutes=HOLD_MINUTES):
         except (urllib.error.URLError, OSError) as exc:
             raise Refused(
                 M("rkspot.send", "The board's setup page did not take the choices: {detail}", detail=str(exc)[:160])
-            )
+            ) from None
         if status not in (200, 201, 204):
             raise Refused(
                 M(
