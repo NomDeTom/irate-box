@@ -22,6 +22,8 @@ os.environ.update(
     HUB_DEVICE_TREE=str(T / "dt"),
     HUB_LED_RUN=str(T / "run-led"),
     HUB_UPLINK_RUN=str(T / "run-uplink"),
+    HUB_GPIO_CLASS=str(T / "sys/class/gpio"),
+    HUB_PLATFORM_DRIVERS=str(T / "sys/bus/platform/drivers"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids as msg_ids
@@ -56,11 +58,22 @@ def board(compatible, model, lights):
         d = T / "sys/class/leds" / name
         put(d / "brightness", "0\n")
         put(d / "max_brightness", "1\n")
-        dev = T / "sys/devices" / ("virtual/leds" if kind == "virtual" else "platform/leds") / name
+        dev = T / "sys/devices/virtual/leds" / name if kind == "virtual" else T / "sys/devices/platform/leds"
         dev.mkdir(parents=True, exist_ok=True)
         (d / "device").symlink_to(dev)
         if trig is not None:
             put(d / "trigger", " ".join(f"[{t}]" if i == 0 else t for i, t in enumerate(trig)) + "\n")
+    # The LED driver and the legacy GPIO class, as bpi0 has them: the r_pio chip at 1f02c00,
+    # PL10 exported as GPIO 362. Writes are kept as text, which is all led.py asks of them.
+    drv = T / "sys/bus/platform/drivers/leds-gpio"
+    for f in ("bind", "unbind"):
+        put(drv / f, "")
+    gpio = T / "sys/class/gpio"
+    put(gpio / "gpiochip0/label", "1f02c00.pinctrl\n")
+    put(gpio / "gpiochip0/base", "352\n")
+    put(gpio / "export", "")
+    put(gpio / "unexport", "")
+    put(gpio / "gpio362/direction", "in\n")
 
 
 put(T / "proc/uptime", "5000.0 1.0\n")
@@ -74,6 +87,68 @@ check(
     f,
 )
 check("  picked, and shows the link by default", led.effective() == ("work-led", "network"), led.effective())
+
+board(
+    ["sinovoip,bpi-m2-zero", "allwinner,sun8i-h2-plus"],
+    "Banana Pi BPI-M2-Zero",
+    {"bananapi-m2-zero:red:pwr": (None, "platform")},
+)
+f = led.leds()
+check(
+    "a known board's only LED, named pwr (Banana Pi M2 Zero's PL10), is found and used",
+    f == {"bananapi-m2-zero:red:pwr": {"triggers": False, "trigger": None, "max": 1, "kind": "board"}}
+    and led.effective() == ("bananapi-m2-zero:red:pwr", "network"),
+    f,
+)
+board(["sinovoip,bpi-m2-zero"], "Banana Pi BPI-M2-Zero", {"pwr": (None, "platform")})
+check(
+    "  and the same LED as an older kernel names it",
+    led.leds() == {"pwr": {"triggers": False, "trigger": None, "max": 1, "kind": "board"}}
+    and led.effective() == ("pwr", "network"),
+    led.leds(),
+)
+
+# High-impedance (bpi0): the LED class is unbound and its line is driven low for on, left input for off.
+board(
+    ["sinovoip,bpi-m2-zero", "allwinner,sun8i-h2-plus"],
+    "Banana Pi BPI-M2-Zero",
+    {"bananapi-m2-zero:red:pwr": (None, "platform")},
+)
+said = led.set_option("show", "network")
+said = led.set_option("off", "float")
+check("high-impedance: saved, said on the board that can", said["id"] == "led-set.off.float", said)
+ls = led.status()
+groups = [g["key"] for g in health.led_groups(ls)]
+check(
+    "  the settings card offers the off state, high-impedance first among its two",
+    "led-off" in groups
+    and [o["choice"] for o in next(g for g in health.led_groups(ls) if g["key"] == "led-off")["options"]]
+    == ["led-off:drive", "led-off:float"],
+    groups,
+)
+name = "bananapi-m2-zero:red:pwr"
+setter, mode = led.take(name)
+check(
+    "  taken: the LED driver unbound, its GPIO exported",
+    mode == "raw"
+    and (T / "sys/bus/platform/drivers/leds-gpio/unbind").read_text() == "leds\n"
+    and (T / "sys/class/gpio/export").read_text() == "362\n",
+    (mode, (T / "sys/bus/platform/drivers/leds-gpio/unbind").read_text(), (T / "sys/class/gpio/export").read_text()),
+)
+check("  on: the line driven low", setter(True) and (T / "sys/class/gpio/gpio362/direction").read_text() == "low\n")
+check("  off: the line left input", setter(False) and (T / "sys/class/gpio/gpio362/direction").read_text() == "in\n")
+# The LED class entry goes when the driver is unbound; the saved record keeps it in the list.
+import shutil
+
+shutil.rmtree(T / "sys/class/leds" / name)
+check("  still the board's light while unbound", name in led.leds() and led.effective()[0] == name, led.leds())
+check(
+    "  given back: the GPIO unexported and the LED driver bound again",
+    led.give_back(name)
+    and (T / "sys/class/gpio/unexport").read_text() == "362\n"
+    and (T / "sys/bus/platform/drivers/leds-gpio/bind").read_text() == "leds\n",
+    f"{(T / 'sys/class/gpio/unexport').read_text()} {(T / 'sys/bus/platform/drivers/leds-gpio/bind').read_text()}",
+)
 
 board(
     ["raspberrypi,3-model-b-plus", "brcm,bcm2837"],
