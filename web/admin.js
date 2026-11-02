@@ -13725,7 +13725,9 @@ git.search.addEventListener("input", () => {
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {
   // A mirror removed can be mirrored again from upstream: it acts at once.
-  const act = (body) => async () => {
+  const act = (body) => async (event) => {
+    const button = event && event.currentTarget;
+    if (button) AW.setBusy(button, true);
     try {
       renderGit(await postJSON("/admin/git", body));
       say(
@@ -13737,6 +13739,8 @@ function renderMirrors(data) {
       );
     } catch (err) {
       say(err.message, false, git.mirrorNote);
+    } finally {
+      if (button) AW.setBusy(button, false);
     }
   };
   const list = data.mirrors || [];
@@ -13999,6 +14003,8 @@ async function loadGit() {
 git.form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const fields = git.form.elements;
+  const button = event.submitter;
+  if (button) AW.setBusy(button, true);
   try {
     renderGit(
       await postJSON("/admin/git", {
@@ -14016,6 +14022,8 @@ git.form.addEventListener("submit", async (event) => {
     git.form.reset();
   } catch (err) {
     say(err.message, false, git.createNote);
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
 });
 loadGit();
@@ -14281,13 +14289,17 @@ for (const [id, action] of [
   ["fw-check", "check"],
   ["fw-update", "update"],
 ]) {
-  document.getElementById(id).addEventListener("click", async () => {
+  document.getElementById(id).addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    AW.setBusy(button, true);
     try {
       fwData = await postJSON("/admin/firmware", { action });
       renderFirmware(fwData);
       say("", true, fw.note);
     } catch (err) {
       say(err.message, false, fw.note);
+    } finally {
+      AW.setBusy(button, false);
     }
   });
 }
@@ -14312,11 +14324,16 @@ let asData = null;
 const asOpen = new Set();
 const asDrafts = {};
 
-const asPost = async (body, flash) => {
-  asData = await postJSON("/admin/appstore", body);
-  if (flash) asData.flash = flash;
-  renderAppstore(asData);
-  return asData;
+const asPost = async (body, flash, button) => {
+  if (button) AW.setBusy(button, true);
+  try {
+    asData = await postJSON("/admin/appstore", body);
+    if (flash) asData.flash = flash;
+    renderAppstore(asData);
+    return asData;
+  } finally {
+    if (button) AW.setBusy(button, false);
+  }
 };
 
 // The survey's table: one tick a kind. Draft ticks live on the holder until Hold these; one the hub's own
@@ -14539,7 +14556,7 @@ function asRun(label, action, id, note, ask, extra = {}) {
   return actionButton(label, async (event) => {
     if (ask && !(await AW.confirmHere(ask, { anchor: event.currentTarget, label }))) return;
     try {
-      await asPost({ action, id });
+      await asPost({ action, id }, null, event.currentTarget);
     } catch (err) {
       say(err.message, false, note);
     }
