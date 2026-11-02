@@ -54,6 +54,7 @@ import time
 from collections import Counter, deque
 from pathlib import Path
 
+from irate_box import notify
 from irate_box.msg import M, Refused, duration, render
 from irate_box.root import safeio
 
@@ -1122,6 +1123,7 @@ def status():
 
 
 def run(once=False):
+    notify.ready()
     kmsg = Kmsg()
     known = radios()
     events = deque(_json(EVENTS, [])[-50:], maxlen=50)
@@ -1220,6 +1222,7 @@ def run(once=False):
         if now - hour_start >= 3600:
             floods_hour.clear()
             hour_start = now
+        notify.watchdog()
         if once:
             return
         time.sleep(TICK)
