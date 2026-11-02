@@ -1915,6 +1915,9 @@ body.about h3 {
     overflow: visible;
   }
   .admin-menu {
+    position: sticky;
+    top: 0;
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -1937,6 +1940,9 @@ body.about h3 {
   }
   .admin-side.open .admin-side-list {
     display: flex;
+    /* The room from the ☰ button's bottom to the window's foot (admin-layout.js's fitSide): the list
+       scrolls by itself, the page behind it does not, and the ☰ button stays in sight above it. */
+    max-height: var(--side-room, calc(100dvh - 4.5rem));
   }
   .admin-side:not(.open) .side-foot {
     display: none;
@@ -4255,6 +4261,9 @@ html:has(> body.admin) {
     overflow: visible;
   }
   .admin-menu {
+    position: sticky;
+    top: 0;
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -4277,6 +4286,9 @@ html:has(> body.admin) {
   }
   .admin-side.open .admin-side-list {
     display: flex;
+    /* The room from the ☰ button's bottom to the window's foot (admin-layout.js's fitSide): the list
+       scrolls by itself, the page behind it does not, and the ☰ button stays in sight above it. */
+    max-height: var(--side-room, calc(100dvh - 4.5rem));
   }
   .admin-side:not(.open) .side-foot {
     display: none;

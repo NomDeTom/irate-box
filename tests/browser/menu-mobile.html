@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<!-- The phone menu's measurement (tests/browser/menu-mobile.sh): /admin at 390 px in a frame, the ☰
+     opened, every group shown, then the list scrolled to its last link. body[data-out] is the JSON. -->
+<html>
+<head><meta charset="utf-8"><title>admin menu on a phone</title><style>body{margin:0}</style></head>
+<body>
+<iframe id="f" style="border:0;width:390px;height:740px"></iframe>
+<script>
+const f = document.getElementById('f');
+f.src = '/admin/#network';
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+f.addEventListener('load', async () => {
+  const win = f.contentWindow, doc = f.contentDocument;
+  await wait(2000);
+  const menu = doc.querySelector('.admin-menu');
+  const side = doc.querySelector('.admin-side');
+  const list = doc.querySelector('.admin-side-list');
+  menu.click();
+  await wait(100);
+  // Every group open, so the list is as long as it can be.
+  [...doc.querySelectorAll('.admin-side-group')].forEach((head) => {
+    if (head.getAttribute('aria-expanded') === 'false') head.click();
+  });
+  await wait(100);
+  const links = [...list.querySelectorAll('a:not([hidden])')];
+  const last = links[links.length - 1];
+  const before = win.scrollY;
+  list.scrollTop = list.scrollHeight;
+  await wait(100);
+  const lr = last.getBoundingClientRect(), br = list.getBoundingClientRect(), mr = menu.getBoundingClientRect();
+  document.body.dataset.out = JSON.stringify({
+    open: side.classList.contains('open'),
+    menuInView: mr.top >= 0 && mr.bottom <= win.innerHeight,
+    overflows: list.scrollHeight > list.clientHeight + 1,
+    lastInList: lr.top >= br.top - 1 && lr.bottom <= br.bottom + 1,
+    pageStill: win.scrollY === before,
+    menuStillInView: menu.getBoundingClientRect().top >= 0,
+    clientHeight: list.clientHeight,
+    scrollHeight: list.scrollHeight,
+  });
+});
+</script>
+</body>
+</html>
