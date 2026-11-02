@@ -1871,12 +1871,13 @@ let boxPoll = null;
 let waitingFor = null; // { id, at }: a control request, and the note its answer goes in
 const controlNote = noteEl("control-note");
 
-function tile(label, value) {
+function tile(label, value, detail) {
   return el(
     "div",
     { className: "admin-tile" },
     el("span", { className: "setting-desc", textContent: label }),
     el("span", { className: "setting-name", textContent: value }),
+    detail ? el("span", { className: "setting-desc", textContent: detail }) : null,
   );
 }
 
@@ -2464,13 +2465,10 @@ function renderBox(data) {
       sys.disk_total
         ? `${size(sys.disk_free)} free of ${size(sys.disk_total)}`
         : "—",
+      sys.state_total
+        ? `${sys.state_kind === "flash" ? "NAND" : "State"}: ${size(sys.state_free)} free of ${size(sys.state_total)}`
+        : null,
     ),
-    sys.state_total
-      ? tile(
-          sys.state_kind === "flash" ? "Flash" : "State storage",
-          `${size(sys.state_free)} free of ${size(sys.state_total)}`,
-        )
-      : null,
     tile("Since boot", bootTime),
       tile(
         "Total recorded powered-on time",

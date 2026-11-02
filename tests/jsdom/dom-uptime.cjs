@@ -151,10 +151,10 @@ setTimeout(() => {
     const tiles = d.getElementById('box-tiles'), table = d.getElementById('service-table');
     check('Overview separates current boot uptime from the recorded total',
       /Since boot.*0 d 2 h 5 min/.test(t(tiles)) && /Total recorded powered-on time.*11 d 5 h across boots/.test(t(tiles)), t(tiles));
-    check('Overview tiles: the Card is the card, and the state has a Flash tile beside it',
-      /Card.*33\.0 GB free of 58\.0 GB/.test(t(tiles)) && /Flash.*145\.0 MB free of 223\.0 MB/.test(t(tiles)), t(tiles));
+    check('Overview tiles: the Card is the card, with the NAND as another row on it',
+      /Card.*33\.0 GB free of 58\.0 GB.*NAND: 145\.0 MB free of 223\.0 MB/.test(t(tiles)), t(tiles));
     w.renderBox({ ...box, system: { ...box.system, state_total: undefined, state_free: undefined, state_kind: undefined } });
-    check('  no Flash tile when the state is on the card', !/Flash/.test(t(tiles)), t(tiles));
+    check('  no NAND row when the state is on the card', !/NAND/.test(t(tiles)), t(tiles));
     w.renderBox(box);
     const memory = d.getElementById('memory-graph'), memoryFold = d.getElementById('memory-history');
     check('Overview memory history is collapsed by default', !memoryFold.open && !memory.querySelector('svg'));
