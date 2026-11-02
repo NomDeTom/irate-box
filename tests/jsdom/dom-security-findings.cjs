@@ -167,6 +167,9 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   await wait(100);
   check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
 
+  const waitKeys = [...d.querySelectorAll('[data-wait]')].map((n) => n.dataset.wait);
+  check('no two connected buttons share a wait key', new Set(waitKeys).size === waitKeys.length,
+    waitKeys.filter((k, i) => waitKeys.indexOf(k) !== i));
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
