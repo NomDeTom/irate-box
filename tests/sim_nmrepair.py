@@ -128,6 +128,26 @@ check(
     (rec, said),
 )
 
+check(
+    "  the boot check asks for the two-minute grace, with enough start time for it",
+    "nmrepair check boot" in nmrepair._boot_unit_text() and "TimeoutStartSec=180" in nmrepair._boot_unit_text(),
+)
+reset()
+nmrepair.install(run=fake)
+state.update(address=True, route=True)
+
+
+def nap(_seconds):
+    state["nm_wifi"] = True
+
+
+said = nmrepair.check(run=fake, grace=10, sleep=nap)
+check(
+    "  at boot: a WiFi that joins during the grace keeps the change",
+    state["nm_wifi"] and json.loads(nmrepair.RECORD.read_text())["phase"] == "kept" and "stays" in said,
+    (said, nmrepair.RECORD.read_text()),
+)
+
 reset()
 state.update(nm_wifi=True, address=True, route=False)
 nmrepair.install(run=fake)
