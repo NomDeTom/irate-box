@@ -5499,6 +5499,7 @@ deb.box.replaceChildren(deb.buttons);
 const osUpd = {
   box: document.getElementById("os-buttons"),
   pill: document.getElementById("os-pill"),
+  chips: document.getElementById("os-chips"),
   lines: document.getElementById("updates-os-lines"),
   packages: document.getElementById("os-packages"),
 };
@@ -5528,6 +5529,7 @@ osUpd.box.replaceChildren(osUpd.buttons);
 const boardUpd = {
   box: document.getElementById("board-buttons"),
   pill: document.getElementById("board-pill"),
+  chips: document.getElementById("board-chips"),
   lines: document.getElementById("updates-board-lines"),
   packages: document.getElementById("board-packages"),
 };
@@ -5567,6 +5569,14 @@ function drawKindState(kind, lines, busy) {
   card.pill.replaceChildren(AW.updatePill(null, waiting > 0));
   const line = (text) => el("span", { className: "setting-desc", textContent: text });
   const held = (w && w.held) || [];
+  // The same chips row the other updates cards have: what waits, what is downloaded, and the board's hold.
+  card.chips.replaceChildren(
+    el("span", { className: "chip", textContent: waiting ? `${waiting} waiting` : "None waiting" }),
+    el("span", { className: "chip", textContent: fetched ? `${fetched} downloaded` : "None downloaded" }),
+    ...(kind === "board"
+      ? [el("span", { className: "chip", textContent: held.length ? `${held.length} held` : "Not held" })]
+      : []),
+  );
   card.lines.replaceChildren(
     ...[
       ...(!w

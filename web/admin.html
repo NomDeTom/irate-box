@@ -5276,6 +5276,10 @@
                   >
                   <span id="os-pill"></span
                 ></span>
+                <div class="chip-group update-kind-chips" id="os-chips">
+                  <span class="chip" data-i18n="admin.updates.kinds.none-waiting">None waiting</span
+                  ><span class="chip" data-i18n="admin.updates.kinds.none-downloaded">None downloaded</span>
+                </div>
                 <div class="update-lines" id="updates-os-lines"></div>
                 <div id="os-buttons"></div>
                 <div id="os-packages"></div>
@@ -5289,6 +5293,11 @@
                   >
                   <span id="board-pill"></span
                 ></span>
+                <div class="chip-group update-kind-chips" id="board-chips">
+                  <span class="chip" data-i18n="admin.updates.kinds.none-waiting">None waiting</span
+                  ><span class="chip" data-i18n="admin.updates.kinds.none-downloaded">None downloaded</span
+                  ><span class="chip" data-i18n="admin.updates.kinds.not-held">Not held</span>
+                </div>
                 <p class="setting-desc" data-i18n="admin.updates.board-hold-desc">
                   The kernel, device tree, bootloader, board package and firmware are held, so no update swaps the
                   kernel by surprise. Their updates wait here, ready to install.
