@@ -1061,11 +1061,17 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None):
             ) from exc
         if exc.code == 429 or (exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0"):
             _pace_fail()
+            reset = None
+            try:
+                reset = int(exc.headers.get("X-RateLimit-Reset"))
+            except (TypeError, ValueError):
+                pass
+            when = time.strftime("%H:%M UTC", time.gmtime(reset)) if reset else "an unknown time"
             raise LibrarianError(
                 M(
                     "library.github.rate-limited",
-                    "GitHub API rate limit reached. The limit depends on authentication: "
-                    "60 requests per hour without a token, more with a token.",
+                    "GitHub's API rate limit is reached. It resets at {when}. A token on the librarian page raises the limit.",
+                    when=when,
                 )
             ) from exc
         raise LibrarianError(
@@ -1319,6 +1325,49 @@ def _api(path, auth=None):
     except _NotModified as nm:
         _note_rate(nm.headers)
         body, etag = hit["body"], hit["etag"]
+    except LibrarianError as exc:
+        message = getattr(exc, "message", None)
+        args = message.get("args", {}) if isinstance(message, dict) else {}
+        if message and message.get("id") == "library.download.http-error" and args.get("code") == 404:
+            repo = path.split("/repos/", 1)[-1].split("/")[:2]
+            repo = "/".join(repo)
+            found = re.search(r"/actions/workflows/([^/]+)/", path)
+            if found:
+                # GitHub answers 404 for both a missing repository and a missing workflow on a
+                # runs path. Ask the repository itself: the case that started this was a fork
+                # that did not exist.
+                try:
+                    with _open(f"{API}/repos/{repo}", auth):
+                        pass
+                except LibrarianError as second:
+                    answer = getattr(second, "message", None)
+                    args2 = answer.get("args", {}) if isinstance(answer, dict) else {}
+                    if not (answer and answer.get("id") == "library.download.http-error" and args2.get("code") == 404):
+                        raise exc from second
+                else:
+                    raise LibrarianError(
+                        M(
+                            "library.source.no-workflow",
+                            "{repo} has no workflow {workflow}.",
+                            repo=repo,
+                            workflow=found.group(1),
+                        )
+                    ) from exc
+                raise LibrarianError(
+                    M(
+                        "library.source.no-repository",
+                        "The repository {repo} is not on GitHub (or is private, and the box has no token for it).",
+                        repo=repo,
+                    )
+                ) from exc
+            raise LibrarianError(
+                M(
+                    "library.source.no-repository",
+                    "The repository {repo} is not on GitHub (or is private, and the box has no token for it).",
+                    repo=repo,
+                )
+            ) from exc
+        raise
     if etag:
         API_CACHE.mkdir(parents=True, exist_ok=True)
         _write_json(kept, {"url": url, "etag": etag, "body": body, "at": int(time.time())})
@@ -1377,6 +1426,7 @@ def _newest_artifact(src, auth):
         query += "&branch=" + urllib.parse.quote(src["branch"], safe="")
     runs = _api(f"/repos/{src['repo']}/actions/workflows/{src['workflow']}/runs?{query}", auth)
     passed_over = 0
+    expired_matched = 0
     for run in runs.get("workflow_runs", []):
         if (
             run.get("event", "push") not in TRUSTED_EVENTS
@@ -1386,22 +1436,27 @@ def _newest_artifact(src, auth):
             continue
         arts = _api(f"/repos/{src['repo']}/actions/runs/{run['id']}/artifacts", auth)
         for art in arts.get("artifacts", []):
-            if not art.get("expired") and fnmatch.fnmatch(art["name"], src["pattern"]):
-                return run, art
+            if fnmatch.fnmatch(art["name"], src["pattern"]):
+                if not art.get("expired"):
+                    return run, art
+                expired_matched += 1
     args = dict(workflow=src["workflow"], repo=src["repo"], pattern=src["pattern"])
-    if src.get("branch"):
+    if expired_matched:
+        why = M(
+            "library.artifact.expired",
+            "The last build's files have expired. GitHub keeps them 90 days. Run the workflow again.",
+        )
+    elif src.get("branch"):
         why = M(
             "library.artifact.not-found-branch",
-            "Source not found. No successful {workflow} run on {branch} in {repo} has an "
-            "unexpired artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.",
+            "{workflow} has not built {repo} on {branch} successfully yet.",
             branch=src["branch"],
             **args,
         )
     else:
         why = M(
             "library.artifact.not-found",
-            "Source not found. No successful {workflow} run in {repo} has an unexpired "
-            "artifact matching {pattern}. GitHub deletes artifacts after the retention period that the repository sets.",
+            "{workflow} has not built {repo} successfully yet.",
             **args,
         )
     if passed_over:
