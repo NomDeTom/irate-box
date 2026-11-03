@@ -104,13 +104,19 @@ check(
     && !!d.querySelector('#appstore-filters .chip-group')
     && !!d.querySelector('#appstore-filters .chip'),
 )
-check('the page renders the holder and its two versions', demo().querySelectorAll(':scope > .appstore-files').length === 2
+check('the page renders the holder and its two versions', demo().querySelectorAll('.appstore-files').length >= 2
   && html.includes(name1) && html.includes(name2));
 check('newest first, its notes and digest there', (() => {
   const first = d.querySelector('.appstore-files').querySelector('li');
   return first.textContent.includes(name1) && d.querySelector('.appstore-notes pre').textContent === 'newest'
     && first.querySelector('details').textContent.includes(sha(name1));
 })(), d.querySelector('details') && d.querySelector('details').textContent.slice(0, 40));
+check(
+  'older versions are folded, notes use the shared fold',
+  !!d.querySelector('section[data-holder="demo"] .appstore-older')
+    && !!d.querySelector('section[data-holder="demo"] .appstore-older summary')
+    && !!d.querySelector('.appstore-notes.sec-fold'),
+)
 check('a companion is listed under its file, not beside it', demo().querySelector(`li > .appstore-companions [href$="${side1}"]`) !== null
   && demo().querySelector('.appstore-companions li').parentElement.closest('li') === demo().querySelector('.appstore-files > li'),
   demo().querySelector('.appstore-companions') && demo().querySelector('.appstore-companions').outerHTML.slice(0, 120));

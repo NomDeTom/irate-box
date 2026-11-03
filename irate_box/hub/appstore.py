@@ -466,6 +466,13 @@ def page(host, scheme, level, firmware_visible=False):
             newest = (
                 f' <span class="chip selected">{_esc(M("appstore.newest", "Newest"))}</span>' if number == 0 else ""
             )
+            if number:
+                parts.append(
+                    f'    <details class="sec-fold appstore-older"><summary>'
+                    f'<span translate="no">{html.escape(version["tag"])}</span>'
+                    f' <span class="appstore-badge">{channel}</span>'
+                    f' <span class="appstore-day">{_day(version["published"])}</span></summary>'
+                )
             parts.append(
                 f'    <h3 class="appstore-version"><span translate="no">{html.escape(version["tag"])}</span>'
                 f' <span class="appstore-badge">{channel}</span>'
@@ -473,7 +480,7 @@ def page(host, scheme, level, firmware_visible=False):
             )
             if version["notes"]:
                 parts.append(
-                    f'    <details class="appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
+                    f'    <details class="sec-fold appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
                     f"</summary><pre>{html.escape(version['notes'])}</pre></details>"
                 )
 
@@ -507,6 +514,8 @@ def page(host, scheme, level, firmware_visible=False):
                 for file in orphan:
                     parts.append(item(file))
             parts.append("    </ul>")
+            if number:
+                parts.append("    </details>")
         parts.append("  </section>")
     certificate = str(M("appstore.certificate", "This box's certificate"))
     permission = M(
