@@ -8443,6 +8443,37 @@ def image_groups():
     ]
 
 
+def package_groups():
+    """Which of Debian's package priorities the Updates doctor warns about: the administrator's choice, with
+    required and important as the default. Standard packages are left out of a minimal image by design."""
+    from irate_box.root import recommended
+
+    current = recommended.chosen().get("package-priorities", "important")
+    if current not in ("required", "important", "standard"):
+        current = "important"
+    labels = {
+        "required": M("hs.package-priorities.required", "Required only"),
+        "important": M("hs.package-priorities.important", "Required and important"),
+        "standard": M("hs.package-priorities.standard", "All three"),
+    }
+    return [
+        {
+            "key": "package-priorities",
+            "label": M("hs.package-priorities", "Debian's package priorities"),
+            "desc": M(
+                "hs.package-priorities.desc",
+                "Which of Debian's required, important and standard packages the Updates doctor warns about. A "
+                "minimal image leaves standard packages out by design, so they are a note by default.",
+            ),
+            "current": current,
+            "options": [
+                {"value": value, "label": labels[value], "choice": f"package-priorities:{value}"}
+                for value in ("required", "important", "standard")
+            ],
+        }
+    ]
+
+
 def doctor_settings():
     """The doctor's own settings, as they are now, for its settings card: crash watch's snapshots, and what
     restarts a frozen box (a panic, the watchdog), with whether this board has a watchdog to use."""
@@ -8461,7 +8492,8 @@ def doctor_settings():
             "groups": setting_groups(s, wd)
             + led_groups(ls, armbian_led_state() if ls else None)
             + rfkill_groups(rfkill_status())
-            + image_groups(),
+            + image_groups()
+            + package_groups(),
             "card_groups": card_groups(),
             "hardening_groups": hardening_groups(),
         }
@@ -8503,6 +8535,11 @@ def fix(choice):
 
         recommended.record(kind, arg)  # the administrator's own choice: never offered back
         return M("repair.image-setting.saved", "The setting is saved.")
+    if kind == "package-priorities":
+        from irate_box.root import recommended
+
+        recommended.record(kind, arg)  # the administrator's own choice: never offered back
+        return M("repair.package-priorities.saved", "The setting is saved.")
     if kind in ("health-timer", "lost-writes", "canary"):
         from irate_box.root import recommended
 
