@@ -1388,12 +1388,15 @@ for hid, state in {
 }.items():
     (H.STATE / "holds" / hid).mkdir(parents=True)
     (H.STATE / "holds" / hid / "status.json").write_text(json.dumps(state))
-fs = {f["id"]: f for f in H.appstore_findings(now=now)}
+with mock.patch(
+    "irate_box.library.holder.space_state",
+    return_value={"known": True, "root": str(H.STATE / "holds"), "free_mb": 9000, "on_state": False},
+):
+    fs = {f["id"]: f for f in H.appstore_findings(now=now)}
 check(
-    "App store: six said, the checked-and-quiet one nothing",
+    "App store: five said, the checked-and-quiet one nothing",
     set(fs)
     == {
-        "appstore:space",
         "appstore:android:newest",
         "appstore:android:digest",
         "appstore:android:budget",
