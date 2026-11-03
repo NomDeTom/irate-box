@@ -2285,8 +2285,8 @@
               >
             </li>
             <li data-i18n="admin.made.shoutbox-messages-shoutbox-page">
-              <a href="#shoutbox-mod">Shoutbox messages</a>
-              <span class="setting-desc">On the Shoutbox page</span>
+              <a href="#shoutbox-mod">Hub shoutbox messages</a>
+              <span class="setting-desc">On the hub shoutbox page</span>
             </li>
             <li data-i18n="admin.made.board-threads-board-page">
               <a href="#board-mod">Board threads</a>
@@ -2348,7 +2348,7 @@
             class="setting-desc"
             data-i18n="admin.moderation.each-app-page-lists"
           >
-            Each app page lists the user data of that app: Shoutbox messages,
+            Each app page lists the user data of that app: hub shoutbox messages,
             Board threads and File drop files.
           </p>
         </section>
@@ -2407,7 +2407,7 @@
             id="shoutbox-settings-title"
             data-i18n="admin.shoutbox-settings.title"
           >
-            Posting
+            Hub shoutbox posting
           </h2>
           <div class="seen-block" data-app="shoutbox"></div>
           <form
@@ -2506,7 +2506,7 @@
           aria-labelledby="board-settings-title"
         >
           <h2 id="board-settings-title" data-i18n="admin.board-settings.title">
-            Posting
+            Hub board posting
           </h2>
           <div class="seen-block" data-app="board"></div>
           <form
@@ -3586,6 +3586,7 @@
                             <button
                               class="action-btn primary"
                               type="submit"
+                              data-wait="net:join:add"
                               data-i18n="admin.network.btn-add-network"
                             >
                               Add network
@@ -3594,6 +3595,7 @@
                               class="action-btn"
                               type="button"
                               id="net-join-now"
+                              data-wait="net:join:connect"
                               data-i18n="admin.network.net-join-now"
                             >
                               Add and connect
@@ -5488,7 +5490,7 @@
                 </option>
                 <option
                   value="data"
-                  data-says="The settings and the user data of this box: notes, saved work, the board, its own repositories."
+                  data-says="The settings and the user data of this box: notes, saved work, the hub board, its own repositories."
                   data-i18n-says="admin.backup.opt-settings-data-says"
                   data-i18n="admin.backup.opt-settings-data"
                 >

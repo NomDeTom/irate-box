@@ -795,7 +795,7 @@ def boot_check():
             if exc.errno not in UNREADABLE:
                 continue  # removed by the owner or the hub: the next sweep drops it, and it is not a card's damage
             # The storage will not give it back: btrfs answers a block that fails its checksum with EIO (a Lyra's
-            # state partition, 2026-10-30). That is the card's damage, as a file of 0xFF is.
+            # state partition). That is the card's damage, as a file of 0xFF is.
             data, unreadable = b"", True
         if not unreadable and not _bad(data) and _sha(data) == wanted:
             continue

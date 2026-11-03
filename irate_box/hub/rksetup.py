@@ -13,6 +13,7 @@ break would break the first login, or run as root on the board: every value is c
 Stdlib only.
 """
 
+import json
 import os
 import re
 import time
@@ -30,6 +31,14 @@ USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 SCAN_KEEP = 15  # seconds the list is reused: the page asks every few seconds
 SERIAL_BY_ID = Path(os.environ.get("HUB_SERIAL_BY_ID", "/dev/serial/by-id"))
 CONSOLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$")
+STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
+OWN = STATE / "control" / "ownserial.json"
+DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
+OWN_DEVICE = {"pi": "/dev/ttyAMA0", "lyra": "/dev/ttyS1"}
+OWN_WARNING = {
+    "pi": "Bluetooth moves to the smaller UART: slower, and it can drop connections. The pins are not for 1 500 000 baud.",
+    "lyra": "UART1 comes out on header pins 8 (TX) and 10 (RX); UART2 stays the box's own console.",
+}
 _scan = {"at": 0.0, "nets": []}
 
 
@@ -144,17 +153,54 @@ def consoles():
     return [name for name in names if CONSOLE_RE.match(name)]
 
 
-def routes(consoles_in_range=None, cards_in_reader=None, boards_on_network=None):
-    """The ways in this box can set a new board up now. A card needs one in a reader; a console needs an adapter; the
-    SSH route needs a board the box can see on its own network; the hotspot route needs nothing, as the hotspot
-    itself is in range."""
+def board_model():
+    """lyra, pi or other, from the device tree's model: what the hub may read for itself."""
+    try:
+        low = (DT / "model").read_bytes().rstrip(b"\0\n").decode(errors="replace").lower()
+    except OSError:
+        return "other"
+    if "lyra" in low or "luckfox" in low:
+        return "lyra"
+    if "raspberry pi" in low:
+        return "pi"
+    return "other"
+
+
+def own_serial():
+    """The box's own pins as a console, from the root helper's copy of the status (control/ownserial.json):
+    {board, supported, on, pending, device, warning}. The hub reads it without importing root's module."""
+    board = board_model()
+    try:
+        data = json.loads(OWN.read_text())
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    on = data.get("on") is True and data.get("board") == board
+    device = OWN_DEVICE.get(board) if on else None
+    return {
+        "board": board,
+        "supported": board in OWN_DEVICE,
+        "on": on,
+        "pending": bool(device and not Path(device).exists()),
+        "device": device or "",
+        "warning": OWN_WARNING.get(board, ""),
+    }
+
+
+def routes(consoles_in_range=None, cards_in_reader=None, boards_on_network=None, own_serial_here=None):
+    """The ways in this box can set a new board up now. A card needs one in a reader; a console needs an adapter or
+    the box's own pins (own_serial, root/ownserial.py); the SSH route needs a board the box can see on its own
+    network; the hotspot route needs nothing, as the hotspot itself is in range."""
     found = consoles() if consoles_in_range is None else consoles_in_range
     cards = rkusb.cards() if cards_in_reader is None else cards_in_reader
     seen = boardfind.candidates() if boards_on_network is None else boards_on_network
+    if own_serial_here is None:
+        own_serial_here = own_serial()
     out = ["hotspot"]
     if seen:
         out.append("ssh")
-    if found:
+    if found or (own_serial_here.get("on") and not own_serial_here.get("pending")):
         out.append("serial")
     if cards:
         out.append("card")
@@ -162,17 +208,18 @@ def routes(consoles_in_range=None, cards_in_reader=None, boards_on_network=None)
 
 
 def snapshot():
-    """/admin/rkboard's "setup": the hotspots in range, the box's own values, the serial adapters and cards it can
-    use, the routes built for them, and the next free name for a new board."""
+    """/admin/rkboard's "setup": the hotspots in range, the box's own values, the serial adapters, the box's own
+    pins and cards it can use, the routes built for them, and the names already in sight."""
     found, cards, seen = consoles(), rkusb.cards(), boardfind.candidates()
-    spots = hotspots()
+    spots, own = hotspots(), own_serial()
     return {
         "hotspots": spots,
         "defaults": defaults(),
         "consoles": found,
         "cards": cards,
         "boards": seen,
-        "routes": routes(found, cards, seen),
+        "own_serial": own,
+        "routes": routes(found, cards, seen, own),
         "taken": taken_names(seen, spots),
         "ready": True,
     }

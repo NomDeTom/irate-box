@@ -71,7 +71,7 @@ check('a clicked button has the fast ring; one waiting on the helper has the slo
   bc.classList.contains('is-busy') && !bc.classList.contains('is-helper-busy')
   && bf.classList.contains('is-helper-busy') && !bf.classList.contains('is-busy')
   && bc.getAttribute('aria-busy') === 'true' && bf.getAttribute('aria-busy') === 'true');
-b.update({});
+b.update({ check: { busy: false }, fetch: { busy: false } });
 check('  the rings go when the wait does', !bc.classList.contains('is-busy') && !bf.classList.contains('is-helper-busy')
   && !bc.hasAttribute('aria-busy') && !bf.hasAttribute('aria-busy'));
 const nb = AW.updateButtons({ check: { onclick() {} }, fetch: { onclick() {} } });

@@ -27,13 +27,20 @@
       act.textContent = data.level === 'sheet-all' ? 'Enable internet access' : 'Enable web access';
       act.addEventListener('click', async () => {
         act.disabled = true;
+        act.classList.add('is-busy');
+        act.setAttribute('aria-busy', 'true');
         try {
           const response = await fetch('/api/guest-net', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agree: true }) });
           const j = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(j.error || `HTTP ${response.status}`);
           para.textContent = `Done. This device can reach ${data.level === 'sheet-all' ? 'the internet' : 'the web'} in a few seconds.`;
           act.remove();
-        } catch (err) { para.textContent = `Request failed: ${err.message}. Select the button to try again.`; act.disabled = false; }
+        } catch (err) {
+          para.textContent = `Request failed: ${err.message}. Select the button to try again.`;
+          act.disabled = false;
+          act.classList.remove('is-busy');
+          act.removeAttribute('aria-busy');
+        }
       });
     }
     box.replaceChildren(para, act);

@@ -184,8 +184,11 @@ const AW = (() => {
         if (shown.label) node.textContent = shown.label;
         node.disabled = !!shown.disabled;
         node.title = shown.disabled && shown.why ? shown.why : '';
-        if (shown.busy) setBusy(node, true, shown.busy === 'helper' ? 'helper' : undefined);
-        else setBusy(node, false);
+        // A state that says nothing of busy leaves the button's own wait (a click, a helper still at it) alone.
+        if ('busy' in shown) {
+          if (shown.busy) setBusy(node, true, shown.busy === 'helper' ? 'helper' : undefined);
+          else setBusy(node, false);
+        }
         if (shown.disabled && shown.why) whys.push({ label: shown.label || label, why: shown.why });
       }
       // One reason for every greyed button (the root helper busy, say) is said once, as a sentence; reasons of
@@ -198,7 +201,7 @@ const AW = (() => {
     };
     for (const [k, label] of [['check', 'Check now'], ['fetch', 'Download'], ['install', 'Install']]) {
       if (!b[k]) continue;
-      row.append(btn(b[k].label || label, { 'data-update': k, class: 'action-btn' + (k === 'install' ? ' primary' : ''), onclick: b[k].onclick }));
+      row.append(btn(b[k].label || label, { 'data-update': k, 'data-wait': b[k].wait || null, class: 'action-btn' + (k === 'install' ? ' primary' : ''), onclick: b[k].onclick }));
     }
     if (b.badge) row.prepend(b.badge);
     row.update();

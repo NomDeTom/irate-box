@@ -17,6 +17,8 @@ irate-box-led.service runs this as root (`led.py run`), always: one small proces
                   flashes then a pause when the box doctor has a problem to read; steady on while
                   the box starts or an irate-box update installs. A box that freezes leaves the
                   light stuck on or off.
+  Off             drive (the line high) or float (input, high-impedance; less leakage), where the
+                  board's line is known and /sys/class/gpio is there.
   The light       driven by writing its brightness, on every board. A kernel trigger (heartbeat,
                   timer) would go on blinking with the hub dead and say "well"; the pattern
                   trigger stops after a set number of cycles but only starts again from its
@@ -24,14 +26,15 @@ irate-box-led.service runs this as root (`led.py run`), always: one small proces
                   triggers at all, and brightness is all there is.
   Which LED       the owner's, or one found on the board (pick): a Raspberry Pi's ACT (led0), left
                   to its SD card activity unless the owner gives it over; an LED named for status or
-                  a heartbeat; a known board's own (BOARD_LEDS). Never a power LED, a keyboard's,
-                  or a virtual one. The LED's trigger and brightness from before are kept
-                  (led-saved.json) and put back when it is left, given up or irate-box removed.
+                  a heartbeat; a known board's own (BOARD_LEDS). Never a power LED (unless the board's
+                  own table names it, as the Banana Pi M2 Zero's only LED is), a keyboard's, or a
+                  virtual one. The LED's trigger and brightness from before are kept (led-saved.json)
+                  and put back when it is left, given up or irate-box removed.
 
     led.py run                 the light
     led.py status              what it knows, as JSON
     led.py list                the LEDs found, as JSON
-    led.py set KEY VALUE       show leave|alive|network|all; led auto|NAME
+    led.py set KEY VALUE       show leave|alive|network|all; led auto|NAME; off drive|float
     led.py flash NAME [SECS]   blink an LED fast for a few seconds, to find it on the board
     led.py undo-all            for uninstall.sh: every LED put back
 
@@ -95,16 +98,37 @@ STATE_WORDS = {
 LOOK = 10  # seconds between looks at the box
 STARTING = 180  # seconds after boot that count as starting, until the box is first well
 # Boards whose LED is known: a device-tree "compatible" prefix, the LED, and what it shows by default.
-BOARD_LEDS = [("rockchip,rk3506", "work-led", "network")]
+BOARD_LEDS = [
+    ("rockchip,rk3506", "work-led", "network"),
+    # Banana Pi M2 Zero: its one LED is the red power/status LED on PL10 (the device tree's
+    # active-low pwr_led). The board has no other, so this one is its status light. "pwr" is
+    # the same LED as an older kernel names it.
+    ("sinovoip,bpi-m2-zero", "bananapi-m2-zero:red:pwr", "network"),
+    ("sinovoip,bpi-m2-zero", "pwr", "network"),
+]
+# The line behind a known board's LED, when the owner chooses high-impedance for its off state:
+# (device-tree compatible, LED) -> (the controller's address, its line). PL10 on bpi0's r_pio
+# is "PWR-LED"; its GPIO is taken from the controller that address names, not a hard-coded number.
+RAW_GPIO = {
+    ("sinovoip,bpi-m2-zero", "bananapi-m2-zero:red:pwr"): ("1f02c00", 10),
+    ("sinovoip,bpi-m2-zero", "pwr"): ("1f02c00", 10),
+}
+GPIO_CLASS = Path(os.environ.get("HUB_GPIO_CLASS", "/sys/class/gpio"))
+PLATFORM_DRIVERS = Path(os.environ.get("HUB_PLATFORM_DRIVERS", "/sys/bus/platform/drivers"))
 # A Raspberry Pi's: the green activity LED (ACT, led0 on older kernels), left to the SD card by default.
 PI_ACT = ("ACT", "led0")
 # Never taken: a power LED (often under-voltage too), a keyboard's, a camera's, a network port's.
+# A known board's own entry above may name one, as bpi0's only LED is its pwr_led.
 NEVER = re.compile(
     r"(^|[:_-])(pwr|power)($|[:_-])|^led1$|::(capslock|numlock|scrolllock|kana|compose)|camera|^mmc\d|:(lan|wan|link)",
     re.I,
 )
 STATUS_NAME = re.compile(r":(status|heartbeat|indicator)$|^(status|sys|work|user)[-_]?led\d*$|^heartbeat$", re.I)
-DEFAULT = {"show": None, "led": "auto"}  # show None: what the board suggests (suggest())
+DEFAULT = {
+    "show": None,
+    "led": "auto",
+    "off": "drive",
+}  # show None: what the board suggests (suggest()); off: "drive" or "float"
 
 
 def read(p):
@@ -137,7 +161,8 @@ def leds():
     for name in names:
         d = LEDS / name
         dev = d / "device"
-        if NEVER.search(name) or "/virtual/" in str(dev.resolve() if dev.exists() else "/virtual/"):
+        known = any(c.startswith(pre) and name == led for pre, led, _ in BOARD_LEDS for c in compat)
+        if (NEVER.search(name) and not known) or "/virtual/" in str(dev.resolve() if dev.exists() else "/virtual/"):
             continue
         trig = read(d / "trigger")
         cur = re.search(r"\[([^\]]+)\]", trig or "")
@@ -145,7 +170,7 @@ def leds():
             "pi-act"
             if name in PI_ACT and model().startswith("Raspberry Pi")
             else "board"
-            if any(c.startswith(pre) and name == led for pre, led, _ in BOARD_LEDS for c in compat)
+            if known
             else "status"
             if STATUS_NAME.search(name)
             else "other"
@@ -156,6 +181,11 @@ def leds():
             "max": int(read(d / "max_brightness") or 1),
             "kind": kind,
         }
+    # An LED the box left high-impedance has no LED class entry (its driver is unbound); keep it
+    # in the list from its saved record, so the light keeps running and can be given back.
+    for name, was in _saved().items():
+        if was.get("raw") and name not in out:
+            out[name] = {"triggers": False, "trigger": None, "max": 1, "kind": "board"}
     return out
 
 
@@ -212,6 +242,8 @@ def load_settings():
         out["show"] = raw["show"]
     if isinstance(raw.get("led"), str) and re.fullmatch(r"auto|[A-Za-z0-9:._@-]{1,64}", raw["led"]):
         out["led"] = raw["led"]
+    if raw.get("off") in ("drive", "float"):
+        out["off"] = raw["off"]
     return out
 
 
@@ -256,6 +288,31 @@ def set_option(key, value):
         )
     if key == "led":
         raise Refused(M("led-set.not-a-light", "No LED called {led} can be a status light.", led=value))
+    if key == "off" and value in ("drive", "float"):
+        name = pick(found, s["led"])
+        if value == "float" and not (name and _raw_ready(name)):
+            raise Refused(
+                M(
+                    "led-set.off.no-raw",
+                    "This board's light cannot be left high-impedance. It is driven off.",
+                )
+            )
+        s["off"] = value
+        save_settings(s)
+        if name:
+            _RAW_FAILED.discard(name)
+        led_said = name or M("led.the-light", "the light")
+        return (
+            M(
+                "led-set.off.float",
+                "When {led} is off, it is now left high-impedance, which saves its leakage.",
+                led=led_said,
+            )
+            if value == "float"
+            else M("led-set.off.drive", "When {led} is off, it is now driven off.", led=led_said)
+        )
+    if key == "off":
+        raise Refused(M("led-set.off.invalid", "The off state is driven off or high-impedance."))
     raise Refused(M("led-set.unknown", "The status light has no setting {key} {value}.", key=key, value=value))
 
 
@@ -278,19 +335,163 @@ def _saved():
         return {}
 
 
-def take(name):
-    """The LED's trigger and brightness kept (once), its trigger set to none, so writes to its brightness hold."""
+def _save_saved(saved):
+    from irate_box.root import safeio
+
+    ETC.mkdir(parents=True, exist_ok=True)
+    safeio.write(SAVED, json.dumps(saved, indent=1))
+
+
+def _raw_spec(name):
+    """(controller address, line) for a known board's LED that may be left high-impedance, or None."""
+    compat = compatible()
+    for (prefix, led), spec in RAW_GPIO.items():
+        if led == name and any(c.startswith(prefix) for c in compat):
+            return spec
+    return None
+
+
+def _raw_ready(name):
+    return bool(_raw_spec(name)) and GPIO_CLASS.is_dir()
+
+
+def _raw_wanted(name):
+    return load_settings().get("off") == "float" and _raw_ready(name) and name not in _RAW_FAILED
+
+
+_RAW_FAILED = set()
+
+
+def _platform_device(name):
+    """The platform device holding a gpio-led, e.g. "leds" for the device tree's leds node."""
+    link = LEDS / name / "device"
+    try:
+        return link.resolve(strict=True).name
+    except OSError:
+        return None
+
+
+def _gpio_number(address, line):
+    """The GPIO's global number, from the gpiochip whose label or device address names the controller."""
+    try:
+        chips = sorted(GPIO_CLASS.glob("gpiochip*"))
+    except OSError:
+        return None
+    for chip in chips:
+        label = read(chip / "label") or ""
+        try:
+            dev = str((chip / "device").resolve())
+        except OSError:
+            dev = ""
+        if address in label or address in dev:
+            try:
+                return int(read(chip / "base")) + line
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+class _RawLed:
+    """One LED driven through /sys/class/gpio, so its off state can be input (high-impedance)."""
+
+    def __init__(self, name, address, line):
+        self.name, self.address, self.line = name, address, line
+        self.device = None
+        self.gpio = None
+        self.unbound = self.exported = False
+
+    def take(self):
+        self.device = _platform_device(self.name)
+        self.gpio = _gpio_number(self.address, self.line)
+        if not self.device or self.gpio is None:
+            return False
+        if not write(PLATFORM_DRIVERS / "leds-gpio" / "unbind", self.device):
+            return False
+        self.unbound = True
+        if not write(GPIO_CLASS / "export", self.gpio):
+            write(PLATFORM_DRIVERS / "leds-gpio" / "bind", self.device)
+            self.unbound = False
+            return False
+        self.exported = True
+        return True
+
+    def set(self, on):
+        return write(GPIO_CLASS / f"gpio{self.gpio}" / "direction", "low" if on else "in")
+
+    def give_back(self):
+        if self.exported:
+            write(GPIO_CLASS / "unexport", self.gpio)
+            self.exported = False
+        if self.unbound:
+            write(PLATFORM_DRIVERS / "leds-gpio" / "bind", self.device)
+            self.unbound = False
+
+
+def _class_led(name):
+    """The LED class's trigger and brightness kept, its trigger set to none, so brightness writes hold."""
     d = LEDS / name
     saved = _saved()
     if name not in saved:
         trig = re.search(r"\[([^\]]+)\]", read(d / "trigger") or "")
         saved[name] = {"trigger": trig.group(1) if trig else None, "brightness": read(d / "brightness")}
-        from irate_box.root import safeio
-
-        ETC.mkdir(parents=True, exist_ok=True)
-        safeio.write(SAVED, json.dumps(saved, indent=1))
+        _save_saved(saved)
     if (d / "trigger").exists():
         write(d / "trigger", "none")
+    try:
+        top = int(read(d / "max_brightness") or 1)
+    except (TypeError, ValueError):
+        top = 1
+    return lambda on: write(d / "brightness", top if on else 0)
+
+
+def take(name):
+    """Take an LED, and return (set it on or off, "raw" or "class"). High-impedance is used only
+    when the owner chose it and this board's line is known; everything else falls back to LED class."""
+    saved = _saved()
+    was = saved.get(name)
+    kept = None
+    if was and was.get("raw"):
+        info = was["raw"]
+        gpio = info.get("gpio")
+        line = GPIO_CLASS / f"gpio{gpio}" if gpio is not None else None
+        # A raw record is only live while its exported line is there and the LED class (whose
+        # driver was unbound) is not. A restart rebinds the driver and takes the export away; then
+        # the record is stale, and its trigger and brightness are still the board's own.
+        if _raw_wanted(name) and line is not None and line.exists() and not (LEDS / name).exists():
+            spec = _raw_spec(name)
+            if spec:
+                raw = _RawLed(name, *spec)
+                raw.device, raw.gpio = info.get("device"), gpio
+                raw.unbound = raw.exported = True
+                return raw.set, "raw"
+        if _raw_wanted(name):
+            kept = {"trigger": info.get("trigger"), "brightness": info.get("brightness")}
+            saved.pop(name, None)
+            if saved:
+                _save_saved(saved)
+            else:
+                SAVED.unlink(missing_ok=True)
+        else:
+            give_back(name)
+        was = None
+    if _raw_wanted(name):
+        spec = _raw_spec(name)
+        raw = _RawLed(name, *spec)
+        d = LEDS / name
+        trig = re.search(r"\[([^\]]+)\]", read(d / "trigger") or "")
+        if raw.take():
+            saved[name] = {
+                "raw": {
+                    "device": raw.device,
+                    "gpio": raw.gpio,
+                    "trigger": kept["trigger"] if kept else (trig.group(1) if trig else None),
+                    "brightness": kept["brightness"] if kept else read(d / "brightness"),
+                }
+            }
+            _save_saved(saved)
+            return raw.set, "raw"
+        _RAW_FAILED.add(name)
+    return _class_led(name), "class"
 
 
 def give_back(name):
@@ -300,16 +501,25 @@ def give_back(name):
     if was is None:
         return None
     d = LEDS / name
-    if was.get("trigger") and (d / "trigger").exists():
-        write(d / "trigger", was["trigger"])
-    if was.get("trigger") in (None, "none") and was.get("brightness") is not None:
-        write(d / "brightness", was["brightness"])
-    from irate_box.root import safeio
-
+    if was.get("raw"):
+        info = was["raw"]
+        write(GPIO_CLASS / "unexport", info.get("gpio"))
+        write(PLATFORM_DRIVERS / "leds-gpio" / "bind", info.get("device"))
+        if info.get("trigger") and (d / "trigger").exists():
+            write(d / "trigger", info["trigger"])
+        if info.get("trigger") in (None, "none") and info.get("brightness") is not None:
+            write(d / "brightness", info["brightness"])
+    else:
+        if was.get("trigger") and (d / "trigger").exists():
+            write(d / "trigger", was["trigger"])
+        if was.get("trigger") in (None, "none") and was.get("brightness") is not None:
+            write(d / "brightness", was["brightness"])
     if saved:
-        safeio.write(SAVED, json.dumps(saved, indent=1))
+        _save_saved(saved)
     else:
         SAVED.unlink(missing_ok=True)
+    if was.get("raw"):
+        return f"{name}: restored to its LED class"
     return f"{name}: restored to {was.get('trigger') or 'brightness ' + str(was.get('brightness'))}"
 
 
@@ -424,11 +634,11 @@ def _flash_asked(now):
 
 def run(sleep=time.sleep, clock=time.time, rounds=None):
     """The light. rounds: how many looks, for the tests (None: until stopped)."""
-    held = {"name": None}
+    held = {"name": None, "set": None, "mode": None}
 
     def stop(*_):
-        if held["name"]:
-            write(LEDS / held["name"] / "brightness", 0)
+        if held["set"]:
+            held["set"](False)
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, stop)
@@ -453,9 +663,14 @@ def run(sleep=time.sleep, clock=time.time, rounds=None):
             # Any LED taken but no longer wanted goes back, this run's or one an earlier run left taken.
             for other in [x for x in _saved() if x != want]:
                 give_back(other)
-            if want and held["name"] != want:
-                take(want)
-            held["name"] = want
+            want_mode = "raw" if want and _raw_wanted(want) else "class"
+            if want != held["name"] or want_mode != held["mode"]:
+                if held["name"]:
+                    give_back(held["name"])
+                held.update(name=None, set=None, mode=None)
+                if want:
+                    setter, mode = take(want)
+                    held.update(name=want, set=setter, mode=mode)
             write_status(_status(new, show, state, found))
             step = 0
         if not held["name"]:
@@ -463,7 +678,8 @@ def run(sleep=time.sleep, clock=time.time, rounds=None):
             continue
         pattern = PATTERNS[state]
         on, secs = pattern[step % len(pattern)]
-        write(LEDS / held["name"] / "brightness", (found.get(held["name"]) or {}).get("max", 1) if on else 0)
+        if held["set"]:
+            held["set"](on)
         step += 1
         sleep(secs)
 
@@ -490,6 +706,9 @@ def status():
         "settings": s,
         "led": name,
         "show": show,
+        "off": s["off"],
+        "raw": bool(name and _raw_ready(name)),
+        "raw_failed": name in _RAW_FAILED,
         "suggested": suggest(found, name) if name else None,
         "found": found,
         "running": read_status(),

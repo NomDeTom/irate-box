@@ -7897,15 +7897,27 @@ def _finish_after(choices, address, said, password=None):
 
 
 def _rk_serial_setup(req):
-    from irate_box.root import rkserial
+    from irate_box.root import ownserial, rkserial
 
     c = req.get("choices") or {}
     console = str(req.get("console") or "")
-    if not CONSOLE_RE.match(console) or not (SERIAL_BY_ID / console).exists():
+    if console == "own":
+        own = ownserial.status()
+        if not own.get("on") or own.get("pending") or not own.get("device") or not Path(own["device"]).exists():
+            raise Refused(
+                M(
+                    "rkserial.own-not-ready",
+                    "This box's own pins are not a serial console yet: switch them on, then restart the box.",
+                )
+            )
+        path = own["device"]
+    elif CONSOLE_RE.match(console) and (SERIAL_BY_ID / console).exists():
+        path = str(SERIAL_BY_ID / console)
+    else:
         raise Refused(M("rkserial.no-console", "That serial adapter is not connected to the box."))
     choices = _board_choices(c)
     choices["keys"] = [*choices["keys"], _box_key()]
-    con = rkserial.open_for(str(SERIAL_BY_ID / console), choices["board"], choices["speed"])
+    con = rkserial.open_for(path, choices["board"], choices["speed"])
     try:
         got = rkserial.setup(con, choices)
     finally:
@@ -7926,6 +7938,13 @@ def _box_key():
     from irate_box.root import rkfinish
 
     return rkfinish.box_key()
+
+
+def _rk_own_serial(req):
+    """The box's own header pins as a serial console (ownserial.py): its boot files, then a restart."""
+    from irate_box.root import ownserial
+
+    return ownserial.set_pins(req.get("on") is True)
 
 
 def _rk_card_setup(req):
@@ -8609,6 +8628,7 @@ ACTIONS = {
     "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
     "rk-write": _rk(_rk_write),
     "rk-serial-setup": _rk_serial_setup,
+    "rk-own-serial": _rk_own_serial,
     "rk-card-setup": _rk_card_setup,
     "rk-hotspot-setup": _rk_hotspot_setup,
     "rk-ssh-setup": _rk_ssh_setup,

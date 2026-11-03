@@ -2964,6 +2964,7 @@ def admin_box(proxied):
         "hub_tls_port": int(os.environ.get("HUB_PUBLIC_TLS_PORT", "443")),
         "results": control_results(),
         "pending": (len(list(CONTROL_REQUESTS.glob("*.json"))) if CONTROL_REQUESTS.exists() else 0),
+        "helper": helper_signal(),
     }
 
 
@@ -3553,6 +3554,30 @@ def helper_queue(done=8):
         for r in control_results(done)
     ]
     return {"running": running, "waiting": waiting, "done": finished}
+
+
+def helper_signal():
+    """The helper's busy or stuck state, for the pages' buttons: the same reading as helper_state()
+    without its busy log or commands. No request waiting means no root work to wait on, so it asks
+    systemd nothing."""
+    oldest = None
+    for path in CONTROL_REQUESTS.glob("*.json") if CONTROL_REQUESTS.exists() else ():
+        try:
+            m = path.stat().st_mtime
+        except OSError:
+            continue
+        oldest = m if oldest is None or m < oldest else oldest
+    age = time.time() - oldest if oldest else 0
+    busy = helper_busy() if age > HELPER_STUCK_AFTER else None
+    working = busy is not None and busy < HELPER_BUSY_UP_TO
+    waiting = _pending_actions("")
+    return {
+        "waiting": waiting,
+        "oldest": round(age),
+        "busy": round(busy) if working else None,
+        "working": waiting > 0 and not (age > HELPER_STUCK_AFTER and not working),
+        "stuck": age > HELPER_STUCK_AFTER and not working,
+    }
 
 
 def helper_state():
@@ -4329,7 +4354,7 @@ def moderation_queue():
                     key=k,
                     by=m.get("name", ""),
                     text=m.get("text", ""),
-                    where="Shoutbox",
+                    where="Hub shoutbox",
                 )
             )
         elif k in posts:
@@ -4340,7 +4365,7 @@ def moderation_queue():
                     key=k,
                     by=p.get("author", ""),
                     text=p.get("text", ""),
-                    where=f"Board: {t.get('title', '')}",
+                    where=f"Hub board: {t.get('title', '')}",
                     thread=t["id"],
                     index=i,
                 )
@@ -4608,7 +4633,7 @@ class Handler(BaseHTTPRequestHandler):
             "settings, the library's and mirrors' sources), none of what was made on the box.\n"
             if level == "settings"
             else "SETTINGS AND DATA: what was chosen, and what was made on the box (notes, saved work,\n"
-            "the board, the shoutbox, dropped files, the box's own git repositories).\n"
+            "the hub board, the hub shoutbox, dropped files, the box's own git repositories).\n"
         )
         about = (
             f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
@@ -7115,6 +7140,8 @@ class Handler(BaseHTTPRequestHandler):
             act, loader = payload.get("action"), payload.get("loader")
             if act == "loader":
                 self.send_json(202, {"id": control_request({"action": "rk-loader"})})
+            elif act == "own-serial" and isinstance(payload.get("on"), bool):
+                self.send_json(202, {"id": control_request({"action": "rk-own-serial", "on": payload["on"]})})
             elif act == "read" and (
                 loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
             ):
@@ -8028,7 +8055,7 @@ class Handler(BaseHTTPRequestHandler):
                 refused.say(
                     M("shoutbox.closed", "The shoutbox is closed.")
                     if shout
-                    else M("board.closed", "The forum is closed.")
+                    else M("board.closed", "The message board is closed.")
                 ),
             )
             return None
@@ -8047,7 +8074,7 @@ class Handler(BaseHTTPRequestHandler):
                         if shout
                         else M(
                             "board.sign-in",
-                            "Sign in to post on the forum (/account.html).",
+                            "Sign in to post on the message board (/account.html).",
                         )
                     ),
                     login=True,

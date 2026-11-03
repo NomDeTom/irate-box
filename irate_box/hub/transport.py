@@ -43,6 +43,7 @@ HTTPS_ONLY = frozenset(
         "preset-undo",
         "addon",
         "usb-filesystems",
+        "rk-own-serial",
         "rk-serial-setup",
         "rk-card-setup",
         "rk-hotspot-setup",

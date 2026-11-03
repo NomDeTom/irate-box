@@ -148,6 +148,40 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   const sentRoot = posted.filter((b) => b.action === 'fix').map((b) => b.choice).sort().join(' ');
   check('  both sent at one Save', sentRoot === 'group-drop:lyra@docker sudo-drop:90-lyra', JSON.stringify(posted));
 
+  // A Security action button keeps its wait across the poll that redraws the card.
+  sec.results = posted.map((b, i) => ({ id: `job-${i + 1}`, ok: true, message: 'Done.' }));
+  w.eval('loadSecurity')();
+  await wait(200);
+  posted.length = 0;
+  sec.results = [];
+  const action = [...d.querySelectorAll('#debian-buttons button[data-update]')].find((b) => !b.disabled);
+  const key = action && action.dataset.wait;
+  action.click();
+  await wait(150);
+  const fresh = () => [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === key);
+  check('a Security action: its button waits while the helper has it', key && fresh() && fresh().classList.contains('is-busy')
+    && fresh().getAttribute('aria-busy') === 'true', key);
+  const id = `job-${posted.length}`;
+  sec.results = [{ id, ok: true, message: 'Done.' }];
+  w.eval('loadSecurity')();
+  await wait(100);
+  check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
+
+  const waitKeys = [...d.querySelectorAll('[data-wait]')].map((n) => n.dataset.wait);
+  check('no two connected buttons share a wait key', new Set(waitKeys).size === waitKeys.length,
+    waitKeys.filter((k, i) => waitKeys.indexOf(k) !== i));
+  // The helper busy: the Debian card's buttons show the slower ring.
+  sec.pending = 1;
+  d.documentElement.dataset.helperBusy = 'true';
+  d.documentElement.dataset.helperStuck = 'false';
+  w.eval('loadSecurity')();
+  await wait(150);
+  const held = d.querySelector('#debian-buttons button[data-update]');
+  check('a Security action held by the busy helper: the slower ring', held && held.classList.contains('is-helper-busy')
+    && !held.classList.contains('is-busy') && held.disabled, held && held.className);
+  sec.pending = 0;
+  d.documentElement.dataset.helperBusy = 'false';
+
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);

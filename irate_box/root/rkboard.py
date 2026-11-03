@@ -163,7 +163,7 @@ def contents(shown):
         path = Path(fh.name)
     try:
         # rkdeveloptool rl takes its first sector and a length in bytes ("Length must be a multiple of sector size
-        # (512)", the kit's 1.0.0 on a Lyra Zero W, 2026-10-30): 16 MiB, or the whole flash if smaller.
+        # (512)", the kit's 1.0.0 on a Lyra Zero W): 16 MiB, or the whole flash if smaller.
         read = run("rkdeveloptool", "rl", "0", str(min(sectors, READ_SECTORS) * SECTOR), str(path), timeout=300)
         if read.returncode:
             return {"read": False, "blank": False, "ubi": False, "names": []}

@@ -395,6 +395,12 @@
       "reads": [],
       "writes": []
     },
+    "rk-own-serial": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "rk-read": {
       "https_only": false,
       "policy": false,

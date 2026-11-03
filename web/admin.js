@@ -399,11 +399,15 @@ async function libPost(body) {
 // at the top. "Already running" (409) stays until the librarian is free, then goes.
 let libNote = null; // { key, text, busy }
 
-async function libAct(key, body) {
+async function libAct(key, body, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   libNote = null;
   try {
     renderLibrary(await libPost(body));
+    clearWait({ button, waitKey });
   } catch (error) {
+    clearWait({ button, waitKey });
     libNote =
       error.status === 409
         ? {
@@ -437,8 +441,8 @@ function sourceRow(src, st, busy) {
       textContent: label,
       disabled: busy || !!opts.off,
       title: opts.title || "",
-      onclick: () => {
-        libAct(key, body);
+      onclick: (event) => {
+        libAct(key, body, event.currentTarget);
       },
     });
   // Check finds a newer version; Download downloads and checks it beside the book in use;
@@ -536,7 +540,7 @@ function renderApps(snap, busy) {
   const sources = Object.fromEntries(
     snap.sources.filter((source) => source.kind === "app").map((source) => [source.name, source]),
   );
-  const post = (key, body) => () => libAct(key, body);
+  const post = (key, body) => (event) => libAct(key, body, event.currentTarget);
   const row = (name, app, withAccess) => {
     const inst = app.installed;
     const src = sources[name];
@@ -1037,8 +1041,8 @@ function fillSurfaces(policy) {
 document
   .querySelectorAll("[data-mirrors-all]")
   .forEach((b) =>
-    b.addEventListener("click", () =>
-      libAct("all", { action: b.dataset.mirrorsAll, names: ["mirrors"] }),
+    b.addEventListener("click", (event) =>
+      libAct("all", { action: b.dataset.mirrorsAll, names: ["mirrors"] }, event.currentTarget),
     ),
   );
 // The token is never read back: its field starts empty, and empties again once saved.
@@ -1053,19 +1057,23 @@ const libToken = AW.form(lib.token, {
 libToken.fill({ value: "" });
 document
   .getElementById("library-token-clear")
-  .addEventListener("click", async () => {
+  .addEventListener("click", async (event) => {
+    const button = event.currentTarget;
     const at = noteEl("library-token-note");
+    AW.setBusy(button, true);
     try {
       renderLibrary(await libPost({ action: "token", value: "" }));
       say("Token cleared.", true, at);
     } catch (err) {
       say(err.message, false, at);
+    } finally {
+      AW.setBusy(button, false);
     }
   });
 document
   .querySelectorAll("[data-all]")
   .forEach((b) =>
-    b.addEventListener("click", () => libAct("all", { action: b.dataset.all })),
+    b.addEventListener("click", (event) => libAct("all", { action: b.dataset.all }, event.currentTarget)),
   );
 
 // --- the books, a page at a time (/admin/books) -------------------------------------------------
@@ -1315,7 +1323,7 @@ document.querySelectorAll("[data-bulk]").forEach((b) =>
       loadBooks();
       return;
     }
-    libAct("all", { action: b.dataset.bulk, names });
+    libAct("all", { action: b.dataset.bulk, names }, event.currentTarget);
   }),
 );
 
@@ -1356,7 +1364,9 @@ async function searchCatalogue(more) {
         el(
           "span",
           { className: "library-buttons" },
-          actionButton("Track releases", async () => {
+          actionButton("Track releases", async (event) => {
+            const button = event.currentTarget;
+            AW.setBusy(button, true);
             try {
               await libPost({
                 action: "add",
@@ -1375,6 +1385,8 @@ async function searchCatalogue(more) {
               loadBooks();
             } catch (err) {
               say(err.message, false, cat.note);
+            } finally {
+              AW.setBusy(button, false);
             }
           }),
         ),
@@ -1462,7 +1474,9 @@ function drawSuggested(sources) {
                 className: "setting-desc",
                 textContent: "Already tracked.",
               })
-            : actionButton("Track releases", async () => {
+            : actionButton("Track releases", async (event) => {
+                const button = event.currentTarget;
+                AW.setBusy(button, true);
                 try {
                   await libPost({
                     action: "add",
@@ -1482,6 +1496,8 @@ function drawSuggested(sources) {
                   loadBooks();
                 } catch (err) {
                   say(err.message, false, cat.note);
+                } finally {
+                  AW.setBusy(button, false);
                 }
               }),
         ),
@@ -1539,6 +1555,7 @@ async function loadPackages() {
         done.ok || done.msg ? resultSaid(done) : done.error || done.message,
         done.ok,
       );
+      clearWait(pkgWaiting);
       pkgWaiting = null;
     } else if (Date.now() - pkgWaiting.at < 600000)
       setTimeout(loadPackages, 3000);
@@ -1572,20 +1589,26 @@ async function loadPackages() {
           el(
             "p",
             { className: "library-buttons" },
-            actionButton("Check now", () =>
-              pkgAct({ action: "check", package: "" }),
-            ),
+            actionButton("Check now", (event) =>
+              pkgAct({ action: "check", package: "" }, event.currentTarget),
+            { dataset: { wait: "pkg:check:" } }),
           ),
         ]),
   );
+  showWait(pkgWaiting);
 }
 // True once the root helper has the request; false when cancelled or refused (said under the package).
-async function pkgAct(body) {
+async function pkgAct(body, button) {
+  const target = button && button.nodeType === 1 ? button : null;
+  const waitKey = waitKeyOf(target);
+  if (target) AW.setBusy(target, true);
   try {
     pkgWaiting = {
       id: (await postJSON("/admin/packages", body)).id,
       at: Date.now(),
       pkg: body.package || "",
+      button: target,
+      waitKey,
     };
     pkgSay(
       body.package,
@@ -1595,6 +1618,7 @@ async function pkgAct(body) {
     setTimeout(loadPackages, 2000);
     return true;
   } catch (err) {
+    clearWait({ button: target, waitKey });
     pkgSay(body.package, err.message, false);
     return false;
   }
@@ -1779,31 +1803,34 @@ function pkgCard(id, pkg) {
       el(
         "span",
         { className: "library-buttons" },
-        actionButton("Check now", () =>
-          pkgAct({ action: "check", package: id }),
-        ),
+        actionButton("Check now", (event) =>
+          pkgAct({ action: "check", package: id }, event.currentTarget),
+        { dataset: { wait: `pkg:check:${id}` } }),
         flag
-          ? actionButton(`Download ${flag.version}`, () =>
-              pkgAct({ action: "fetch", package: id }),
-            )
+          ? actionButton(`Download ${flag.version}`, (event) =>
+              pkgAct({ action: "fetch", package: id }, event.currentTarget),
+            { dataset: { wait: `pkg:fetch:${id}` } })
           : null,
         newest && newest.version !== pkg.installed
           ? actionButton(
               `Install ${newest.version}`,
-              () =>
-                pkgAct({
-                  action: "install",
-                  package: id,
-                  version: newest.version,
-                }),
-              { className: "primary" },
+              (event) =>
+                pkgAct(
+                  {
+                    action: "install",
+                    package: id,
+                    version: newest.version,
+                  },
+                  event.currentTarget,
+                ),
+              { className: "primary", dataset: { wait: `pkg:install:${id}` } },
             )
           : null,
         pkg.previous
           ? actionButton(
               `Roll back to ${pkg.previous}`,
-              () => pkgAct({ action: "rollback", package: id }),
-              { title: `This downgrades ${pkg.title} to version ${pkg.previous}.` },
+              (event) => pkgAct({ action: "rollback", package: id }, event.currentTarget),
+              { title: `This downgrades ${pkg.title} to version ${pkg.previous}.`, dataset: { wait: `pkg:rollback:${id}` } },
             )
           : null,
       ),
@@ -1857,6 +1884,44 @@ const actionButton = (label, onclick, extra = {}) =>
     ...extra,
     className: `action-btn${extra.className ? " " + extra.className : ""}`,
   });
+// A button the page draws again at every poll (a finding's action) outlives no node: its wait follows a stable
+// key in data-wait, and is put back on the copy drawn after the answer's poll. A static button needs only itself.
+const waitKeyOf = (button) => (button && button.dataset && button.dataset.wait) || "";
+function waitNode(key) {
+  return key
+    ? [...document.querySelectorAll("[data-wait]")].find((node) => node.dataset.wait === key) || null
+    : null;
+}
+function showWait(waiting) {
+  if (!waiting) return;
+  if (waiting.button && waiting.button.isConnected) AW.setBusy(waiting.button, true);
+  const node = waitNode(waiting.waitKey);
+  if (node && node !== waiting.button) AW.setBusy(node, true);
+}
+function clearWait(waiting) {
+  if (!waiting) return;
+  if (waiting.button) AW.setBusy(waiting.button, false);
+  const node = waitNode(waiting.waitKey);
+  if (node) AW.setBusy(node, false);
+}
+// A button held by the root helper, rather than by its own click: only when the pane is busy, the helper
+// is known busy, and it is not stuck. Buttons that say so carry data-helper-wait; a static one is marked
+// in place when it has no click of its own.
+const helperHeld = (busy) =>
+  !!busy &&
+  document.documentElement.dataset.helperBusy === "true" &&
+  document.documentElement.dataset.helperStuck !== "true";
+function markHelperWait(root, busy) {
+  if (!root) return;
+  const held = helperHeld(busy);
+  root.querySelectorAll('[data-helper-wait="1"]').forEach((button) => {
+    if (!button.classList.contains("is-busy")) AW.setBusy(button, held && button.disabled, "helper");
+  });
+}
+function markHelperButton(button, busy) {
+  if (button && !button.classList.contains("is-busy"))
+    AW.setBusy(button, helperHeld(busy) && button.disabled, "helper");
+}
 
 // --- box and services ------------------------------------------------------------
 const STATE_LABEL = {
@@ -2440,8 +2505,14 @@ window.addEventListener("resize", () => {
 });
 
 let lastBox = null; // /admin/box: the services, for each app page's header
+let helperBusy = false, helperStuck = false; // the root helper, as /admin/box last said
 function renderBox(data) {
   lastBox = data;
+  const helper = data.helper || {};
+  helperBusy = !!(helper.working ?? helper.busy);
+  helperStuck = !!helper.stuck;
+  document.documentElement.dataset.helperBusy = String(helperBusy);
+  document.documentElement.dataset.helperStuck = String(helperStuck);
   if (data.hub_port) {
     const changed = !hubPorts || hubPorts.plain !== data.hub_port || hubPorts.tls !== data.hub_tls_port;
     hubPorts = { plain: data.hub_port, tls: data.hub_tls_port };
@@ -2559,8 +2630,8 @@ function renderBox(data) {
             : ops.map((op) =>
                 actionButton(
                   OP_LABEL[op],
-                  () => control(service, op),
-                  OP_TITLE[op] ? { title: OP_TITLE[op] } : {},
+                  (event) => control(service, op, event.currentTarget),
+                  OP_TITLE[op] ? { title: OP_TITLE[op], dataset: { wait: `svc:${service.unit}:${op}` } } : { dataset: { wait: `svc:${service.unit}:${op}` } },
                 ),
               )),
         ),
@@ -2585,9 +2656,11 @@ function renderBox(data) {
       // A service's answer is already at the top of the list above; the password's is not.
       if (waitingFor.at === controlNote) say("", true, controlNote);
       else say(resultSaid(done), done.ok, waitingFor.at);
+      clearWait(waitingFor);
       waitingFor = null;
     }
   }
+  showWait(waitingFor);
   clearTimeout(boxPoll);
   boxPoll = setTimeout(loadBox, data.pending || waitingFor ? 1500 : 15000);
 }
@@ -2601,15 +2674,20 @@ async function loadBox() {
   }
 }
 
-async function control(service, op) {
+async function control(service, op, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     waitingFor = {
       id: (await postJSON("/admin/control", { unit: service.unit, op })).id,
       at: controlNote,
+      button,
+      waitKey,
     };
     say(`${OP_LABEL[op]}: ${service.name}…`, true, controlNote);
     loadBox();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, controlNote);
   }
 }
@@ -2923,7 +3001,7 @@ async function loadModeration() {
     renderModeration(await getJSON("/admin/moderation"));
   } catch (_) {
     document.getElementById("mod-messages").textContent =
-      "Could not read the shoutbox and board.";
+      "Could not read the hub shoutbox and hub board.";
   }
 }
 
@@ -3130,10 +3208,15 @@ pwForm.addEventListener("submit", async (event) => {
     say("The two passwords differ.", false, pwNote);
     return;
   }
+  const button = event.submitter;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     waitingFor = {
       id: (await postJSON("/admin/password", { password: pw })).id,
       at: pwNote,
+      button,
+      waitKey,
     };
     pwForm.reset();
     say(
@@ -3143,6 +3226,7 @@ pwForm.addEventListener("submit", async (event) => {
     );
     loadBox();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, pwNote);
   }
 });
@@ -3315,6 +3399,7 @@ function renderUpdoctor(report, stale) {
       el("button", {
         type: "button",
         className: "action-btn",
+        dataset: { wait: `upd:doctor:${action.choice || action.label}` },
         textContent: action.label,
         onclick: async (event) => {
           if (
@@ -3325,7 +3410,7 @@ function renderUpdoctor(report, stale) {
             }))
           )
             return;
-          requestUpdate(action.choice, null, {}, true);
+          requestUpdate(action.choice, null, {}, true, event.currentTarget);
         },
       }),
     );
@@ -3464,6 +3549,7 @@ function renderUpdate(data) {
         updWaiting.finding,
       );
       if (updWaiting.job) updWaiting.job.done(!failed, resultSaid(done));
+      clearWait(updWaiting);
       updWaiting = null;
       renderUpdate(data);
       return;
@@ -3479,6 +3565,10 @@ function renderUpdate(data) {
   upd.doctor.disabled = upd.clear.disabled = busy;
   upd.fetch.disabled = busy || fetched;
   upd.install.disabled = busy || (fetched && !ready);
+  showWait(updWaiting);
+  markHelperWait(document.getElementById("updoctor"), busy);
+  for (const b of [upd.check, upd.fetch, upd.install, upd.doctor, upd.clear])
+    markHelperButton(b, busy);
   clearTimeout(updPoll);
   if (busy) updPoll = setTimeout(loadUpdate, progress ? 1000 : 2000);
 }
@@ -3502,12 +3592,16 @@ async function loadUpdate() {
 
 // fromFinding: a doctor finding's own button, which asked its question already (Install anyway names the checks it skips) and is answered beside it.
 // Install anyway is only a finding's button: the doctor offers it by the same rule the helper installs by.
-async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false) {
+async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = false, button = null) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     updWaiting = {
       id: (await postJSON("/admin/update", { action, endpoint, candidate: updCandidate, ...extra })).id,
       action: endpoint === "install" ? "install" : action,
       finding: fromFinding,
+      button,
+      waitKey,
     };
     upd.check.disabled =
       upd.fetch.disabled =
@@ -3535,20 +3629,25 @@ async function requestUpdate(action, endpoint = null, extra = {}, fromFinding = 
     );
     loadUpdate();
   } catch (err) {
+    clearWait({ button, waitKey });
     updSay(action, err.message, false, null, fromFinding);
   }
 }
 
-upd.check.addEventListener("click", () => requestUpdate("check"));
-upd.fetch.addEventListener("click", () => {
-  requestUpdate("reach", "download");
+upd.check.addEventListener("click", (event) =>
+  requestUpdate("check", null, {}, false, event.currentTarget),
+);
+upd.fetch.addEventListener("click", (event) => {
+  requestUpdate("reach", "download", {}, false, event.currentTarget);
 });
-upd.doctor.addEventListener("click", () => requestUpdate("doctor"));
-upd.clear.addEventListener("click", () => {
-  requestUpdate("clear-cache");
+upd.doctor.addEventListener("click", (event) =>
+  requestUpdate("doctor", null, {}, false, event.currentTarget),
+);
+upd.clear.addEventListener("click", (event) => {
+  requestUpdate("clear-cache", null, {}, false, event.currentTarget);
 });
-upd.install.addEventListener("click", () => {
-  requestUpdate("reach", "install");
+upd.install.addEventListener("click", (event) => {
+  requestUpdate("reach", "install", {}, false, event.currentTarget);
 });
 // Where updates come from (a fork, say): a section, filled with the recorded source. The repository is asked for its
 // branches (the default first, offered as choices) and how the branch this box follows stands against the installed
@@ -3682,13 +3781,19 @@ function drawSource(data) {
     ? `${says(known)} Select ${known.default || "main"} and save.`
     : "";
 }
-upd.sourcePoll.addEventListener("click", () =>
-  requestUpdate("poll-source", null, {
-    repo:
-      upd.sourceRepo.value.trim() === (updLast && updLast.source && updLast.source.repo)
-        ? ""
-        : upd.sourceRepo.value.trim(),
-  }),
+upd.sourcePoll.addEventListener("click", (event) =>
+  requestUpdate(
+    "poll-source",
+    null,
+    {
+      repo:
+        upd.sourceRepo.value.trim() === (updLast && updLast.source && updLast.source.repo)
+          ? ""
+          : upd.sourceRepo.value.trim(),
+    },
+    false,
+    event.currentTarget,
+  ),
 );
 
 // Automatic updates (the librarian's selfupdate.py): its policy, saved through /admin/library,
@@ -3869,6 +3974,7 @@ function scanButtons(finding, busy) {
     const b = el("button", {
       type: "button",
       className: "action-btn" + (secChosen(finding.id, action) ? " pending" : ""),
+      dataset: { wait: `secscan:${finding.id}:${action.choice || action.label}`, helperWait: busy ? "1" : "0" },
       textContent: action.label,
       disabled: busy,
       title: secChosen(finding.id, action)
@@ -3938,9 +4044,9 @@ const secChosen = (fid, action) => {
   const sec = secSecs.get(secHome(fid));
   return !!sec && sec.dirty() && secPicked(sec.get("choice")).includes(action.choice);
 };
-function secChoose(finding, action) {
+function secChoose(finding, action, button) {
   // A cure acts at once (the one in effect already: nothing to do).
-  if (secKind(finding) === "cure") return action.on ? undefined : secFix(finding.id, action);
+  if (secKind(finding) === "cure") return action.on ? undefined : secFix(finding.id, action, button);
   // A row's chip replaces that row's choice, and leaves the other rows' alone. Chosen again, or the value the
   // row has now: nothing to save for that row.
   const sec = secSection(finding);
@@ -4188,16 +4294,21 @@ async function secAccept(key, title, yes) {
     say(err.message, false, sec.auditNote);
   }
 }
-let secRepair = null; // { id, label }: a repair asked from the Security doctor, answered there
-async function healthRepair(choice, label) {
+let secRepair = null; // { id, label, button }: a repair asked from the Security doctor, answered there
+async function healthRepair(choice, label, ask, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     secRepair = {
       id: (await postJSON("/admin/health", { action: "fix", choice })).id,
       label,
+      button,
+      waitKey,
     };
     say(`${label}: waiting for the root helper.`, true, sec.auditNote);
     loadHealth();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, sec.auditNote);
   }
 }
@@ -4208,6 +4319,7 @@ function secRepairFollow(data) {
   const q = data.queue || {};
   if (done) {
     say(`${secRepair.label}: ${resultSaid(done)}`, done.ok, sec.auditNote);
+    clearWait(secRepair);
     secRepair = null;
     return;
   }
@@ -4445,6 +4557,7 @@ function renderSecurity(data) {
             .map(resultSaid)
             .join(" "),
         );
+      clearWait(secWaiting);
       secWaiting = null;
       return renderSecurity(data);
     }
@@ -4677,6 +4790,11 @@ function renderSecurity(data) {
     secRequest({ action: "scan" }, "scan");
     return;
   }
+  showWait(secWaiting);
+  markHelperWait(document.getElementById("security"), busy);
+  markHelperButton(sec.scan, busy);
+  markHelperButton(sec.auditRun, busy);
+  markHelperButton(sec.auditDeep, busy);
   clearTimeout(secPoll);
   if (busy) secPoll = setTimeout(loadSecurity, 2000);
 }
@@ -4748,9 +4866,10 @@ function jointDo(i, data, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
+          dataset: { wait: `secjoint:${finding.id}:${action.choice || action.label}`, helperWait: busy ? "1" : "0" },
           textContent: action.label,
           disabled: busy,
-          onclick: () => secFix(finding.id, action),
+          onclick: (event) => secFix(finding.id, action, event.currentTarget),
         }),
       );
     }
@@ -4761,13 +4880,15 @@ function jointDo(i, data, busy) {
       el("button", {
         type: "button",
         className: "action-btn",
+        dataset: { wait: "health:repair:rerun-install", helperWait: busy ? "1" : "0" },
         textContent: "Run the installer again",
         disabled: busy,
-        onclick: () =>
+        onclick: (event) =>
           healthRepair(
             "rerun-install",
             "Running the installer again",
             "Run the installer with this box's recorded options? The installer can repair, upgrade and restart services.",
+            event.currentTarget,
           ),
       }),
     );
@@ -4778,13 +4899,15 @@ function jointDo(i, data, busy) {
       el("button", {
         type: "button",
         className: "action-btn",
+        dataset: { wait: `health:repair:${todo.health.choice}`, helperWait: busy ? "1" : "0" },
         textContent: todo.health.label,
         disabled: busy,
-        onclick: () =>
+        onclick: (event) =>
           healthRepair(
             todo.health.choice,
             todo.health.label,
             `${todo.health.label}? ${todo.say || ""}`.trim(),
+            event.currentTarget,
           ),
       }),
     );
@@ -5300,7 +5423,9 @@ async function loadSecurity() {
 // onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
 // One request, or several in turn (a card's rows changed at one Save): the helper runs them in order, so the last
 // one's answer means all have one.
-async function secRequest(body, fid, onDone) {
+async function secRequest(body, fid, onDone, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     const ids = [];
     for (const one of [].concat(body)) ids.push((await postJSON("/admin/security", one)).id);
@@ -5309,10 +5434,13 @@ async function secRequest(body, fid, onDone) {
       ids: ids.length > 1 ? ids : undefined,
       fid,
       onDone,
+      button,
+      waitKey,
     };
     secNote = null;
     loadSecurity();
   } catch (err) {
+    clearWait({ button, waitKey });
     secNote = { fid, text: err.message, ok: false };
     if (onDone) onDone(false, err.message);
     loadSecurity();
@@ -5335,22 +5463,32 @@ const DEB_INSTALL_ASK =
 deb.buttons = AW.updateButtons({
   check: {
     label: "Check for updates",
-    onclick: () => secFix("security-updates", { choice: "security-check" }),
+    wait: "sec:deb:check",
+    onclick: (event) =>
+      secFix("security-updates", { choice: "security-check" }, event.currentTarget),
   },
   fetch: {
     label: "Check for updates and download",
-    onclick: () =>
-      secFix("security-updates", {
-        choice: deb.waiting ? "security-fetch" : "security-reach-fetch",
-      }),
+    wait: "sec:deb:fetch",
+    onclick: (event) =>
+      secFix(
+        "security-updates",
+        { choice: deb.waiting ? "security-fetch" : "security-reach-fetch" },
+        event.currentTarget,
+      ),
   },
   install: {
     label: "Check for updates, download and install",
-    onclick: () =>
-      secFix("security-updates", {
-        choice: deb.waiting ? "security-updates" : "security-reach-install",
-        confirm: DEB_INSTALL_ASK,
-      }),
+    wait: "sec:deb:install",
+    onclick: (event) =>
+      secFix(
+        "security-updates",
+        {
+          choice: deb.waiting ? "security-updates" : "security-reach-install",
+          confirm: DEB_INSTALL_ASK,
+        },
+        event.currentTarget,
+      ),
   },
 });
 deb.box.replaceChildren(deb.buttons);
@@ -5442,6 +5580,8 @@ function drawDebianPattern(lines, busy) {
       why: busy ? "the root helper is busy with other work." : "",
     },
   });
+  for (const button of deb.box.querySelectorAll("button[data-update]"))
+    markHelperButton(button, busy);
 }
 // Saved once the root helper has done it: until then "Saving…", and a refusal or a failure keeps the choice.
 const debSec = AW.form(deb.form, {
@@ -5457,24 +5597,29 @@ const debSec = AW.form(deb.form, {
   },
 });
 
-function secFix(fid, action) {
-  secRequest({ action: "fix", choice: action.choice }, fid);
+function secFix(fid, action, button) {
+  secRequest({ action: "fix", choice: action.choice }, fid, null, button);
 }
 
-sec.scan.addEventListener("click", () =>
-  secRequest({ action: "scan" }, "scan"),
+sec.scan.addEventListener("click", (event) =>
+  secRequest({ action: "scan" }, "scan", null, event.currentTarget),
 );
-sec.auditRun.addEventListener("click", () =>
-  secRequest({ action: "audit" }, "audit"),
+sec.auditRun.addEventListener("click", (event) =>
+  secRequest({ action: "audit" }, "audit", null, event.currentTarget),
 );
-sec.auditDeep.addEventListener("click", () =>
-  secRequest({ action: "deep" }, "audit"),
+sec.auditDeep.addEventListener("click", (event) =>
+  secRequest({ action: "deep" }, "audit", null, event.currentTarget),
 );
 const importNote = document.getElementById("import-note");
 document.getElementById("import-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const file = event.target.elements.file.files[0];
   if (!file) return;
+  const button =
+    event.submitter && event.submitter.classList.contains("action-btn")
+      ? event.submitter
+      : null;
+  if (button) AW.setBusy(button, true);
   try {
     if (file.size > 64 * 2 ** 20)
       throw new Error(
@@ -5495,9 +5640,10 @@ document.getElementById("import-form").addEventListener("submit", async (event) 
       true,
       importNote,
     );
-    secWaiting = { id: reply.id, fid: "audit" };
+    secWaiting = { id: reply.id, fid: "audit", button, waitKey: waitKeyOf(button) };
     loadSecurity();
   } catch (err) {
+    if (button) AW.setBusy(button, false);
     say(err.message, false, importNote);
   }
 });
@@ -5518,19 +5664,23 @@ function renderImports(imports) {
         ),
         actionButton(
           "Remove",
-          async () => {
+          async (event) => {
+            const button = event.currentTarget;
+            const waitKey = waitKeyOf(button);
+            AW.setBusy(button, true);
             try {
               const reply = await postJSON("/admin/security", {
                 action: "import-remove",
                 kind,
               });
-              secWaiting = { id: reply.id, fid: "audit" };
+              secWaiting = { id: reply.id, fid: "audit", button, waitKey };
               loadSecurity();
             } catch (err) {
+              clearWait({ button, waitKey });
               say(err.message, false, importNote);
             }
           },
-          { className: "small" },
+          { className: "small", dataset: { wait: `sec:import-remove:${kind}` } },
         ),
       ),
     ),
@@ -5709,9 +5859,10 @@ function healthDo(finding, busy) {
         el("button", {
           type: "button",
           className: "action-btn",
+          dataset: { wait: `health:${finding.id}:${action.choice || action.label}`, helperWait: busy ? "1" : "0" },
           textContent: action.label,
           disabled: busy,
-          onclick: () => hlFix(finding.id, action),
+          onclick: (event) => hlFix(finding.id, action, event.currentTarget),
         }),
       ),
   ];
@@ -6226,6 +6377,7 @@ function renderHealth(data) {
     if (done) {
       hlNote = { fid: hlWaiting.fid, text: resultSaid(done), ok: done.ok };
       if (hlWaiting.onDone) hlWaiting.onDone(done.ok, resultSaid(done));
+      clearWait(hlWaiting);
       hlWaiting = null;
       return renderHealth(data);
     }
@@ -6409,6 +6561,11 @@ function renderHealth(data) {
   hl.output.hidden = !(data.log || []).length;
   const problems = all.filter((finding) => finding.status === "problem").length;
   badge("health", h.stuck ? "!" : problems ? String(problems) : "");
+  showWait(hlWaiting);
+  showWait(secRepair);
+  markHelperWait(document.getElementById("health"), busy || h.stuck);
+  markHelperButton(hl.scan, busy || h.stuck);
+  markHelperButton(hl.clockScan, busy || h.stuck);
 
   const stale = !rep || Date.now() / 1000 - rep.at > 15 * 60;
   const here = paneShown("health") || paneShown("clock");
@@ -6821,11 +6978,15 @@ function clockWarn(cur, c) {
 }
 
 // onDone(ok, why): told whether the root helper did it, or false when the hub refused it.
-async function hlRequest(body, fid, onDone) {
+// button: the action button that asked, so it can show its own wait until the answer is in.
+async function hlRequest(body, fid, onDone, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
-    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid, onDone };
+    hlWaiting = { id: (await postJSON("/admin/health", body)).id, fid, onDone, button, waitKey };
     hlNote = null;
   } catch (err) {
+    clearWait({ button, waitKey });
     hlNote = { fid, text: err.message, ok: false };
     if (onDone) onDone(false, err.message);
   }
@@ -6834,7 +6995,7 @@ async function hlRequest(body, fid, onDone) {
 
 // A repair acts at once; only setting the clock from this device asks, as only the administrator can
 // tell whether this device's clock is right.
-async function hlFix(fid, action) {
+async function hlFix(fid, action, button) {
   let choice = action.choice;
   let ask = null;
   if (choice === "clock-set") {
@@ -6844,12 +7005,14 @@ async function hlFix(fid, action) {
     ask = `Set the box clock to ${now.toLocaleString()} (the time of this device)? Do this only if the clock of this device is correct.`;
   }
   if (ask && !(await AW.confirmHere(ask, { label: "Set the clock" }))) return;
-  hlRequest({ action: "fix", choice }, fid);
+  hlRequest({ action: "fix", choice }, fid, null, button);
 }
 
-hl.scan.addEventListener("click", () => hlRequest({ action: "scan" }, "scan"));
-hl.clockScan.addEventListener("click", () =>
-  hlRequest({ action: "fix", choice: "rtc-look" }, "clock-scan"),
+hl.scan.addEventListener("click", (event) =>
+  hlRequest({ action: "scan" }, "scan", null, event.currentTarget),
+);
+hl.clockScan.addEventListener("click", (event) =>
+  hlRequest({ action: "fix", choice: "rtc-look" }, "clock-scan", null, event.currentTarget),
 );
 window.addEventListener("hashchange", () => {
   if (paneShown("health") || paneShown("clock")) loadHealth();
@@ -7086,7 +7249,7 @@ function drawUpScope(inv) {
             ? `${upScope} has its own ${Object.keys(own).join(", ")}. The other settings follow every connection. `
             : `${upScope} follows the settings for every connection. A choice here becomes its own setting. `,
           own
-            ? actionButton("Use default connection settings", () => {
+            ? actionButton("Use default connection settings", (event) => {
                 const per = { ...upSaved.per_iface };
                 delete per[upScope];
                 upSec.discard();
@@ -7096,8 +7259,10 @@ function drawUpScope(inv) {
                     settings: { ...upSaved, per_iface: per },
                   },
                   "up",
+                  null,
+                  event.currentTarget,
                 );
-              })
+              }, { dataset: { wait: "net:scope:default" } })
             : null,
         ]
       : [
@@ -7926,8 +8091,8 @@ function radioTestButton(iface, exp, label) {
     { className: "radio-test" },
     actionButton(
       label,
-      () => netRequest({ action: "radiotest", iface, exp }, "scan"),
-      { className: "small", disabled: busy },
+      (event) => netRequest({ action: "radiotest", iface, exp }, "scan", null, event.currentTarget),
+      { className: "small", disabled: busy, dataset: { wait: `net:radiotest:${iface}:${exp}`, helperWait: busy ? "1" : "0" } },
     ),
     el("span", { className: "setting-desc", textContent: ` ${RADIO_TEST_SAYS[exp]}` }),
   );
@@ -8398,16 +8563,18 @@ function drawRoaming(inv, uplink, wifi) {
         `The locked access point (${chosen.lock_bssid}) is not seen and the link is down. `,
         actionButton(
           "Disable access-point lock",
-          () => {
+          (event) => {
             netRequest(
                 {
                   action: "settings",
                   settings: { ...chosen, roaming: "roam", lock_bssid: null },
                 },
                 "up",
+                null,
+                event.currentTarget,
               );
           },
-          { className: "primary" },
+          { className: "primary", dataset: { wait: "net:lock:off" } },
         ),
       ),
     );
@@ -8606,11 +8773,14 @@ function drawNetTabs(data, inv, uplink) {
                             netRequest(
                               { action: "forget", uuid: profile.uuid },
                               "join",
+                              null,
+                              event.currentTarget,
                             );
                         },
                         {
                           className: "small",
                           disabled: busy || current.has(profile.uuid),
+                          dataset: { wait: `net:forget:${profile.uuid}` },
                           title: current.has(profile.uuid)
                             ? "In use: the box is on it now"
                             : "",
@@ -8711,6 +8881,7 @@ function renderNetwork(data) {
     if (done) {
       netNotes[netWaiting.where] = { text: resultSaid(done), ok: done.ok };
       if (netWaiting.onDone) netWaiting.onDone(done.ok, resultSaid(done));
+      clearWait(netWaiting);
       netWaiting = null;
       return renderNetwork(data);
     }
@@ -8812,9 +8983,10 @@ function renderNetwork(data) {
           el("button", {
             type: "button",
             className: "action-btn primary",
+            dataset: { wait: `net:stall:${need}`, helperWait: busy ? "1" : "0" },
             disabled: busy,
             textContent: `${uplink.stall.label[0].toUpperCase()}${uplink.stall.label.slice(1)} now`,
-            onclick: () => netRequest({ action: "do", step: need }, "up"),
+            onclick: (event) => netRequest({ action: "do", step: need }, "up", null, event.currentTarget),
           }),
           // What it costs, beside it: an action acts at once.
           el("span", {
@@ -8865,14 +9037,14 @@ function renderNetwork(data) {
           "The settings above persist, whichever program writes the connection. ",
         actionButton(
           "Enable automatic retries",
-          () => netRequest({ action: "profile", on: true }, "up"),
-          { disabled: busy },
+          (event) => netRequest({ action: "profile", on: true }, "up", null, event.currentTarget),
+          { disabled: busy, dataset: { wait: "net:profile:on", helperWait: busy ? "1" : "0" } },
         ),
         " ",
         actionButton(
           "Undo",
-          () => netRequest({ action: "profile", on: false }, "up"),
-          { disabled: busy },
+          (event) => netRequest({ action: "profile", on: false }, "up", null, event.currentTarget),
+          { disabled: busy, dataset: { wait: "net:profile:off", helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -8884,8 +9056,8 @@ function renderNetwork(data) {
         `Your WiFi connection ${change.name} is also set to retry without limit, by a separate setting (since ${new Date(change.at * 1000).toLocaleDateString()}). `,
         actionButton(
           "Undo",
-          () => netRequest({ action: "profile", on: false }, "up"),
-          { disabled: busy },
+          (event) => netRequest({ action: "profile", on: false }, "up", null, event.currentTarget),
+          { disabled: busy, dataset: { wait: "net:profile:off", helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -8898,10 +9070,10 @@ function renderNetwork(data) {
           "Enable automatic retries to set the connection to retry without limit. Wrong passwords are also retried. You can undo this here or by uninstalling. ",
         actionButton(
           "Enable automatic retries",
-          () => {
-            netRequest({ action: "profile", on: true }, "up");
+          (event) => {
+            netRequest({ action: "profile", on: true }, "up", null, event.currentTarget);
           },
-          { disabled: busy },
+          { disabled: busy, dataset: { wait: "net:profile:on", helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -8961,6 +9133,11 @@ function renderNetwork(data) {
     netRequest({ action: "scan" }, "scan");
     return;
   }
+  showWait(netWaiting);
+  markHelperWait(document.getElementById("network"), busy);
+  markHelperButton(net.scan, busy);
+  markHelperButton(net.hold, busy);
+  markHelperButton(net.unhold, busy);
   clearTimeout(netPoll);
   netPoll = setTimeout(
     loadNetwork,
@@ -9360,16 +9537,16 @@ function renderWifisync(inv, data, busy) {
       } `,
       actionButton(
         on ? "Disable wifisync" : "Enable wifisync",
-        () =>
-          netRequest({ action: "wifisync", do: on ? "off" : "on" }, "wifisync"),
-        { className: "small", disabled: busy },
+        (event) =>
+          netRequest({ action: "wifisync", do: on ? "off" : "on" }, "wifisync", null, event.currentTarget),
+        { className: "small", disabled: busy, dataset: { wait: `net:wifisync:${on ? "off" : "on"}`, helperWait: busy ? "1" : "0" } },
       ),
       rec.was ? " " : null,
       rec.was
         ? actionButton(
             `Undo: ${unitWord(rec.was)}, as the image had it`,
-            () => netRequest({ action: "wifisync", do: "undo" }, "wifisync"),
-            { className: "small", disabled: busy },
+            (event) => netRequest({ action: "wifisync", do: "undo" }, "wifisync", null, event.currentTarget),
+            { className: "small", disabled: busy, dataset: { wait: "net:wifisync:undo", helperWait: busy ? "1" : "0" } },
           )
         : null,
     ),
@@ -9410,12 +9587,14 @@ function renderOtherAp(inv, data, busy) {
           `Ignored: ${what}. The profile is not disabled. `,
           actionButton(
             "Stop ignoring profile",
-            () =>
+            (event) =>
               netRequest(
                 { action: "otherap", uuid: other.uuid, do: "undo" },
                 "otherap",
+                null,
+                event.currentTarget,
               ),
-            { className: "small", disabled: busy },
+            { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:undo`, helperWait: busy ? "1" : "0" } },
           ),
         ),
       );
@@ -9434,23 +9613,27 @@ function renderOtherAp(inv, data, busy) {
           "Delete the profile (the box keeps a copy that you can restore) or ignore it. Ignoring does not disable the profile. ",
         actionButton(
           "Delete profile",
-          () => {
+          (event) => {
             netRequest(
                 { action: "otherap", uuid: other.uuid, do: "remove" },
                 "otherap",
+                null,
+                event.currentTarget,
               );
           },
-          { className: "small", disabled: busy },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:remove`, helperWait: busy ? "1" : "0" } },
         ),
         " ",
         actionButton(
           "Ignore profile",
-          () =>
+          (event) =>
             netRequest(
               { action: "otherap", uuid: other.uuid, do: "leave" },
               "otherap",
+              null,
+              event.currentTarget,
             ),
-          { className: "small", disabled: busy },
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${other.uuid}:leave`, helperWait: busy ? "1" : "0" } },
         ),
       ),
     );
@@ -9464,8 +9647,8 @@ function renderOtherAp(inv, data, busy) {
         `The earlier hotspot profile ${c.name} (network name ${c.ssid}) was deleted on ${new Date(c.at * 1000).toLocaleDateString()}. The box keeps a copy. `,
         actionButton(
           "Restore profile",
-          () => netRequest({ action: "otherap", uuid, do: "undo" }, "otherap"),
-          { className: "small", disabled: busy },
+          (event) => netRequest({ action: "otherap", uuid, do: "undo" }, "otherap", null, event.currentTarget),
+          { className: "small", disabled: busy, dataset: { wait: `net:otherap:${uuid}:undo`, helperWait: busy ? "1" : "0" } },
         ),
         " ",
         actionButton(
@@ -9475,7 +9658,7 @@ function renderOtherAp(inv, data, busy) {
               await AW.confirmHere(
                 `Delete the retained copy of ${c.name} permanently? You cannot restore it afterwards.`, { anchor: event.currentTarget })
             )
-              netRequest({ action: "otherap", uuid, do: "forget" }, "otherap");
+              netRequest({ action: "otherap", uuid, do: "forget" }, "otherap", null, event.currentTarget);
           },
           { className: "small", disabled: busy },
         ),
@@ -9509,8 +9692,8 @@ function renderVisible(inv, busy) {
     );
   const scanAgain = actionButton(
     "Run scan",
-    () => netRequest({ action: "scan", rescan: true }, "scan"),
-    { disabled: busy, className: "small" },
+    (event) => netRequest({ action: "scan", rescan: true }, "scan", null, event.currentTarget),
+    { disabled: busy, className: "small", dataset: { wait: "net:scan:rescan", helperWait: busy ? "1" : "0" } },
   );
   const fields = joinForm.elements;
   box.replaceChildren(
@@ -9828,13 +10011,15 @@ function connSettings(profile, inv, data, busy, radio) {
           `Changed here: ${changed.changed.join(", ")}. `,
           actionButton(
             "Undo",
-            () => {
+            (event) => {
               netRequest(
                   { action: "connection", uuid: profile.uuid, undo: true },
                   "connection",
+                  null,
+                  event.currentTarget,
                 );
             },
-            { disabled: busy },
+            { disabled: busy, dataset: { wait: `net:connection:${profile.uuid}:undo`, helperWait: busy ? "1" : "0" } },
           ),
         )
       : null,
@@ -9883,10 +10068,10 @@ function renderHandover(inv, busy) {
               "Select Manage with NetworkManager to keep changes permanently. The connection keeps the same name, password and settings. The box keeps the netplan file aside, so you can undo this. ",
             actionButton(
               "Manage with NetworkManager",
-              () => {
-                netRequest({ action: "handover", name: file.name }, "handover");
+              (event) => {
+                netRequest({ action: "handover", name: file.name }, "handover", null, event.currentTarget);
               },
-              { disabled: busy },
+              { disabled: busy, dataset: { wait: `net:handover:${file.name}:on`, helperWait: busy ? "1" : "0" } },
             ),
           ),
         );
@@ -9920,13 +10105,15 @@ function renderHandover(inv, busy) {
             `Before, netplan wrote ${conns ? "it" : "them"} again from the file ${handover.name} at every boot, which undid any change made here. The box keeps that file aside. `,
           actionButton(
             "Restore netplan management",
-            () => {
+            (event) => {
               netRequest(
                   { action: "handover", name: handover.name, undo: true },
                   "handover",
+                  null,
+                  event.currentTarget,
                 );
             },
-            { disabled: busy },
+            { disabled: busy, dataset: { wait: `net:handover:${handover.name}:undo`, helperWait: busy ? "1" : "0" } },
           ),
         ),
       );
@@ -10033,23 +10220,27 @@ function hazardControls(h) {
     btns.push(
       actionButton(
         "Delete profile",
-        () => {
+        (event) => {
           netRequest(
               { action: "otherap", uuid: ap[1], do: "remove" },
               "otherap",
+              null,
+              event.currentTarget,
             );
         },
-        { className: "small" },
+        { className: "small", dataset: { wait: `hazard:otherap:${ap[1]}:remove` } },
       ),
       " ",
       actionButton(
         "Ignore profile",
-        () =>
+        (event) =>
           netRequest(
             { action: "otherap", uuid: ap[1], do: "leave" },
             "otherap",
+            null,
+            event.currentTarget,
           ),
-        { className: "small" },
+        { className: "small", dataset: { wait: `hazard:otherap:${ap[1]}:leave` } },
       ),
     );
   }
@@ -10085,23 +10276,28 @@ function hazardControls(h) {
 }
 
 // onDone(ok, why): told whether the root helper did it (a draft cleared only then), or false when the hub refused it.
-async function netRequest(body, where, onDone) {
+async function netRequest(body, where, onDone, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     netWaiting = {
       id: (await postJSON("/admin/network", body)).id,
       where,
       onDone,
+      button,
+      waitKey,
     };
     delete netNotes[where];
   } catch (err) {
+    clearWait({ button, waitKey });
     netNotes[where] = { text: err.message, ok: false };
     if (onDone) onDone(false, err.message);
   }
   loadNetwork();
 }
 
-net.scan.addEventListener("click", () =>
-  netRequest({ action: "scan" }, "scan"),
+net.scan.addEventListener("click", (event) =>
+  netRequest({ action: "scan" }, "scan", null, event.currentTarget),
 );
 // A network for the box to join: added with consent, at once only when asked (and then said what it means).
 const joinForm = document.getElementById("net-join-form");
@@ -10112,7 +10308,7 @@ const joinOpen = () => {
 };
 joinForm.elements.security.addEventListener("change", joinOpen);
 joinOpen();
-function joinAsk(now) {
+function joinAsk(now, button) {
   const fields = joinForm.elements;
   if (!joinForm.reportValidity()) return;
   const ssid = fields.ssid.value;
@@ -10127,16 +10323,18 @@ function joinAsk(now) {
       now,
     },
     "join",
+    null,
+    button,
   );
   fields.psk.value = "";
 }
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  joinAsk(false);
+  joinAsk(false, event.submitter);
 });
 document
   .getElementById("net-join-now")
-  .addEventListener("click", () => joinAsk(true));
+  .addEventListener("click", (event) => joinAsk(true, event.currentTarget));
 // One question at Save for what needs saying, from the settings as they would be saved.
 // What a change of the watchdog's levels does, beside Save.
 function upWarn(all) {
@@ -10174,11 +10372,11 @@ function upSave() {
   netRequest({ action: "settings", settings }, "up", j.done);
   return j;
 }
-net.hold.addEventListener("click", () =>
-  netRequest({ action: "hold", minutes: 60 }, "up"),
+net.hold.addEventListener("click", (event) =>
+  netRequest({ action: "hold", minutes: 60 }, "up", null, event.currentTarget),
 );
-net.unhold.addEventListener("click", () =>
-  netRequest({ action: "hold", minutes: 0 }, "up"),
+net.unhold.addEventListener("click", (event) =>
+  netRequest({ action: "hold", minutes: 0 }, "up", null, event.currentTarget),
 );
 window.addEventListener("hashchange", () => {
   if (paneShown("network")) loadNetwork();
@@ -10577,11 +10775,11 @@ let bkPlan = null,
 const BK_WORDS = {
   settings: [
     "Settings archive",
-    "The settings of the hub, the accounts, the settings of apps and add-ons, and the sources of the library and the mirrors. It does not include notes, saved work, the board, the shoutbox, dropped files or git repositories.",
+    "The settings of the hub, the accounts, the settings of apps and add-ons, and the sources of the library and the mirrors. It does not include notes, saved work, the hub board, the hub shoutbox, dropped files or git repositories.",
   ],
   data: [
     "Settings and shared-data archive",
-    "The settings archive, plus the data made on the box: notes, saved work, the board, the shoutbox, dropped files and the git repositories of the box.",
+    "The settings archive, plus the data made on the box: notes, saved work, the hub board, the hub shoutbox, dropped files and the git repositories of the box.",
   ],
   image: [
     "Full storage image",
@@ -10834,12 +11032,16 @@ async function loadBackupPlan() {
   }
 }
 // The sticks, the image and the offline copy: the root helper, through /admin/usb, as the Books page's exports.
-async function bkSticks(scan) {
+async function bkSticks(scan, button) {
+  const waitKey = waitKeyOf(button);
+  if (scan && button) AW.setBusy(button, true);
   try {
     if (scan) {
       bkWaiting = {
         id: (await postJSON("/admin/usb", { action: "scan" })).id,
         note: bku.note,
+        button,
+        waitKey,
       };
     }
     const reply = await getJSON("/admin/usb");
@@ -10848,6 +11050,7 @@ async function bkSticks(scan) {
       const done = (reply.results || []).find((result) => result.id === bkWaiting.id);
       if (done) {
         say(resultSaid(done), done.ok, bkWaiting.note);
+        clearWait(bkWaiting);
         bkWaiting = null;
       }
     }
@@ -10858,19 +11061,21 @@ async function bkSticks(scan) {
       bku.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
     }
     drawBackupGo();
+    showWait(bkWaiting);
     clearTimeout(bkPoll);
     if (bkWaiting || progress || reply.pending > 0)
       bkPoll = setTimeout(() => bkSticks(false), 1500);
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, bku.note);
   }
 }
 document
   .getElementById("backup-image-scan")
-  .addEventListener("click", () => bkSticks(true));
+  .addEventListener("click", (event) => bkSticks(true, event.currentTarget));
 document
   .getElementById("offline-scan")
-  .addEventListener("click", () => bkSticks(true));
+  .addEventListener("click", (event) => bkSticks(true, event.currentTarget));
 bku.imageGo.addEventListener("click", async (event) => {
   const usbStick = usbSticks.find((x) => x.name === bku.stick.value);
   if (
@@ -10880,27 +11085,35 @@ bku.imageGo.addEventListener("click", async (event) => {
         "On this board it can take an hour or more. The box stays in use meanwhile.", { anchor: event.currentTarget })
   )
     return;
+  const waitKey = waitKeyOf(event.currentTarget);
+  AW.setBusy(event.currentTarget, true);
   try {
     bkWaiting = {
       id: (await postJSON("/admin/usb", { action: "image", device: usbStick.name }))
         .id,
       note: bku.note,
+      button: event.currentTarget,
+      waitKey,
     };
     say("Writing the image. The progress shows here.", true, bku.note);
     bkSticks(false);
   } catch (err) {
+    clearWait({ button: event.currentTarget, waitKey });
     say(err.message, false, bku.note);
   }
 });
 
 // The kit: the root helper makes it (hub_control.py offline_kit); the hub streams the download.
 let kitWaiting = null;
+let kitWait = null; // the button that asked for the kit (and its data-wait key)
 let kitPoll = null;
 function renderKit(data) {
   if (kitWaiting) {
     const done = (data.results || []).find((result) => result.id === kitWaiting);
     if (done) {
       say(resultSaid(done), done.ok, kitEl.note);
+      clearWait(kitWait);
+      kitWait = null;
       kitWaiting = null;
     }
   }
@@ -10957,15 +11170,21 @@ function renderKit(data) {
     kitEl.contents.replaceChildren(
       ...(k.contents || []).map((t) => el("li", { textContent: t })),
     );
+  showWait(kitWait);
   clearTimeout(kitPoll);
   if (busy) kitPoll = setTimeout(loadKit, 2000);
 }
 // Refresh export: the last export's choices again; Make the export again: when the librarian does it by itself.
-kitEl.refresh.addEventListener("click", async () => {
+kitEl.refresh.addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     kitWaiting = (await postJSON("/admin/kit", { action: "refresh" })).id;
+    kitWait = { id: kitWaiting, button, waitKey };
     loadKit();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitEl.note);
   }
 });
@@ -11005,6 +11224,9 @@ kitEl.form.addEventListener("submit", async (event) => {
     kits = picked(kitEl.kits),
     repos = picked(kitEl.repos),
     state = fields.state.value;
+  const button = event.submitter;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     if (fields.dest.value === "stick") {
       const usbStick = usbSticks.find((x) => x.name === stickEl.stick.value);
@@ -11021,6 +11243,8 @@ kitEl.form.addEventListener("submit", async (event) => {
           })
         ).id,
         note: kitEl.note,
+        button,
+        waitKey,
       };
       say(
         "Copying. The progress shows above, under Back up this box.",
@@ -11041,6 +11265,7 @@ kitEl.form.addEventListener("submit", async (event) => {
         budget_mb: budget,
       })
     ).id;
+    kitWait = { id: kitWaiting, button, waitKey };
     say(
       "Creating the export. This takes a minute or two, and longer with books.",
       true,
@@ -11048,6 +11273,7 @@ kitEl.form.addEventListener("submit", async (event) => {
     );
     loadKit();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitEl.note);
   }
 });
@@ -11384,8 +11610,8 @@ function fillHeadBlocks() {
         ...ops.map((op) =>
           actionButton(
             OP_LABEL[op],
-            () => control(svc, op),
-            OP_TITLE[op] ? { title: OP_TITLE[op] } : {},
+            (event) => control(svc, op, event.currentTarget),
+            OP_TITLE[op] ? { title: OP_TITLE[op], dataset: { wait: `svc:${svc.unit}:${op}` } } : { dataset: { wait: `svc:${svc.unit}:${op}` } },
           ),
         ),
       );
@@ -11951,11 +12177,12 @@ AL.onBuild(() => {
 const agreedTo = new Set(); // "kind:id" of the consent texts ticked, kept across redraws
 let adoAsking = null; // the add-on whose Uninstall… is open
 // A text to agree to on the page: the text, a box to tick, and the button, which waits for the tick.
-function agreeRow(key, text, label, disabled, go) {
+function agreeRow(key, text, label, disabled, go, wait) {
   const button = el("button", {
     type: "button",
     className: "action-btn",
     textContent: label,
+    dataset: wait ? { wait } : undefined,
     disabled: disabled || !agreedTo.has(key),
     onclick: go,
   });
@@ -11981,7 +12208,7 @@ function agreeRow(key, text, label, disabled, go) {
   );
 }
 // A change asked for on the page: what it does, then the button and Cancel.
-function askRow(text, label, go, cancel, disabled) {
+function askRow(text, label, go, cancel, disabled, wait) {
   return el(
     "span",
     { className: "agree-row" },
@@ -11989,7 +12216,7 @@ function askRow(text, label, go, cancel, disabled) {
     el(
       "span",
       { className: "library-buttons" },
-      actionButton(label, go, { disabled: !!disabled }),
+      actionButton(label, go, { disabled: !!disabled, dataset: wait ? { wait } : undefined }),
       actionButton("Cancel", cancel),
     ),
   );
@@ -12017,20 +12244,21 @@ function addonButtons(addon, busy) {
     return askRow(
       `Uninstall ${addon.title}? ${ADDON_REMOVE_SAYS}`,
       "Uninstall add-on",
-      () => {
+      (event) => {
         adoAsking = null;
-        addonSet(addon, false);
+        addonSet(addon, false, event.currentTarget);
       },
       () => {
         adoAsking = null;
         redraw();
       },
       busy,
+      `addon:remove:${addon.id}`,
     );
   }
-  const install = () => addonSet(addon, true);
+  const install = (event) => addonSet(addon, true, event.currentTarget);
   if (addon.consent)
-    return agreeRow(`addon:${addon.id}`, `${addon.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install);
+    return agreeRow(`addon:${addon.id}`, `${addon.consent} ${ADDON_INSTALL_SAYS}`, "Install add-on", busy, install, `addon:install:${addon.id}`);
   return el(
     "span",
     { className: "agree-row" },
@@ -12038,7 +12266,7 @@ function addonButtons(addon, busy) {
     el(
       "span",
       { className: "library-buttons" },
-      actionButton("Install add-on", install, { disabled: busy }),
+      actionButton("Install add-on", install, { disabled: busy, dataset: { wait: `addon:install:${addon.id}` } }),
     ),
   );
 }
@@ -12107,6 +12335,7 @@ function renderAddons(data) {
         text: resultSaid(done),
         ok: done.ok,
       };
+      clearWait(adoWaiting);
       adoWaiting = null;
       return renderAddons(data);
     }
@@ -12159,6 +12388,7 @@ function renderAddons(data) {
       : "None installed. The hub works without them.",
     "ok",
   );
+  showWait(adoWaiting);
   clearTimeout(adoPoll);
   if (busy) adoPoll = setTimeout(loadAddons, 1500);
 }
@@ -12173,11 +12403,15 @@ async function loadAddons() {
 }
 
 // Asked on the card first (addonButtons): its consent ticked, or Uninstall… then Uninstall.
-async function addonSet(addon, on) {
+async function addonSet(addon, on, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     adoWaiting = {
       id: (await postJSON("/admin/addons", { addon: addon.id, on })).id,
       addon: addon.id,
+      button,
+      waitKey,
     };
     adoNote = {
       addon: addon.id,
@@ -12186,6 +12420,7 @@ async function addonSet(addon, on) {
     };
     loadAddons();
   } catch (err) {
+    clearWait({ button, waitKey });
     adoNote = { addon: addon.id, text: err.message, ok: false };
     loadAddons();
   }
@@ -12296,14 +12531,16 @@ function renderLocal(data) {
                 ? askRow(
                     `Remove ${addon.title}? The box deletes its files. Adding it again downloads it again.`,
                     "Remove web add-on",
-                    () => {
+                    (event) => {
                       locAsking = null;
-                      localRemove(addon);
+                      localRemove(addon, event.currentTarget);
                     },
                     () => {
                       locAsking = null;
                       renderLocal(data);
                     },
+                    false,
+                    `local:remove:${addon.id}`,
                   )
                 : null,
               note(addon.id),
@@ -12357,7 +12594,8 @@ function renderLocal(data) {
                 `${c.consent || ""} It starts disabled. Enable it here after the installation.`.trim(),
                 "Add web add-on",
                 fetching,
-                () => localAdd(c),
+                (event) => localAdd(c, event.currentTarget),
+                `local:add:${c.id}`,
               ),
               note(c.id),
             ),
@@ -12423,10 +12661,11 @@ function approveRow(addon, data) {
       `${changed} The new text: ${c.consent || ""} ${capsText(c.capabilities)}`,
       "Approve",
       false,
-      () => {
+      (event) => {
         locAsking = null;
-        localAccept(addon);
+        localAccept(addon, event.currentTarget);
       },
+      `local:approve:${addon.id}`,
     ),
     actionButton("Cancel", () => {
       locAsking = null;
@@ -12466,11 +12705,12 @@ function catalogueNote(addon) {
 }
 
 // Agreed on its card first (approveRow).
-function localAccept(addon) {
+function localAccept(addon, button) {
   localPost(
     { action: "accept", id: addon.id, agree: true },
     addon.id,
     `${addon.title}: the changed permissions are approved. Downloading the new version…`,
+    button,
   );
 }
 
@@ -12482,29 +12722,33 @@ async function loadLocal() {
   }
 }
 
-async function localPost(body, id, doing) {
+async function localPost(body, id, doing, button) {
+  if (button) AW.setBusy(button, true);
   try {
     await postJSON("/admin/local-addons", body);
     locNote = { id, text: doing, ok: true };
   } catch (err) {
     locNote = { id, text: err.message, ok: false };
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
   loadLocal();
   loadAccess();
 }
 
 // Agreed on its card first (agreeRow); its permissions are on the card.
-function localAdd(c) {
+function localAdd(c, button) {
   localPost(
     { action: "add", id: c.id, agree: true },
     c.id,
     `Adding ${c.title}. Downloading it…`,
+    button,
   );
 }
 
 // Asked on its card first (Remove web add-on…).
-function localRemove(addon) {
-  localPost({ action: "remove", id: addon.id }, addon.id, `${addon.title} removed.`);
+function localRemove(addon, button) {
+  localPost({ action: "remove", id: addon.id }, addon.id, `${addon.title} removed.`, button);
 }
 
 // A pasted manifest: read, then its consent text and permissions shown under the box, with Add and Cancel.
@@ -12530,12 +12774,15 @@ loc.pasteGo.addEventListener("click", () => {
     askRow(
       `Add "${addon.title}" from this manifest? ${addon.consent || ""} ${capsText(manifest.capabilities)}`,
       "Add web add-on",
-      () => pasteAdd(manifest, bad),
+      (event) => pasteAdd(manifest, bad, event.currentTarget),
       () => loc.pasteNote.replaceChildren(),
+      false,
+      "local:paste",
     ),
   );
 });
-async function pasteAdd(manifest, bad) {
+async function pasteAdd(manifest, bad, button) {
+  if (button) AW.setBusy(button, true);
   try {
     await postJSON("/admin/local-addons", {
       action: "paste",
@@ -12548,6 +12795,8 @@ async function pasteAdd(manifest, bad) {
     loc.pasteOk.checked = false;
   } catch (err) {
     bad(err.message);
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
   loadLocal();
   loadAccess();
@@ -12685,6 +12934,7 @@ function renderUsb(data) {
     const done = (data.results || []).find((result) => result.id === usbWaiting.id);
     if (done) {
       usbNote = { at: usbWaiting.at, text: resultSaid(done), ok: done.ok };
+      clearWait(usbWaiting);
       usbWaiting = null;
       if (done.ok) loadLibrary();
       return renderUsb(data);
@@ -12744,12 +12994,14 @@ function renderUsb(data) {
                     ? el("button", {
                         type: "button",
                         className: "action-btn small",
+                        dataset: { wait: `usb:import:${device.name}:${z.file}`, helperWait: busy ? "1" : "0" },
                         textContent: "Copy book to library",
                         disabled: busy,
-                        onclick: () =>
+                        onclick: (event) =>
                           usbRequest(
                             { action: "import", device: device.name, file: z.file },
                             `${device.name}:${z.file}`,
+                            event.currentTarget,
                           ),
                       })
                     : null,
@@ -12770,12 +13022,14 @@ function renderUsb(data) {
                 el("button", {
                   type: "button",
                   className: "action-btn",
+                  dataset: { wait: `usb:export:${device.name}`, helperWait: busy ? "1" : "0" },
                   textContent: "Export book to USB drive",
                   disabled: busy,
-                  onclick: () =>
+                  onclick: (event) =>
                     usbRequest(
                       { action: "export", device: device.name, book: pick.value },
                       `export:${device.name}`,
+                      event.currentTarget,
                     ),
                 }),
               )
@@ -12798,6 +13052,9 @@ function renderUsb(data) {
     usb.bar.value = progress.total ? Math.min(progress.done / progress.total, 1) : 0;
     usb.step.textContent = `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : "…"}`;
   }
+  showWait(usbWaiting);
+  markHelperWait(usb.devices, busy);
+  markHelperButton(usb.scan, busy);
   clearTimeout(usbPoll);
   if (busy) usbPoll = setTimeout(loadUsb, 1000);
 }
@@ -12810,19 +13067,22 @@ async function loadUsb() {
   }
 }
 
-async function usbRequest(body, at) {
+async function usbRequest(body, at, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
-    usbWaiting = { id: (await postJSON("/admin/usb", body)).id, at };
+    usbWaiting = { id: (await postJSON("/admin/usb", body)).id, at, button, waitKey };
     usbNote = null;
     loadUsb();
   } catch (err) {
+    clearWait({ button, waitKey });
     usbNote = { at, text: err.message, ok: false };
     loadUsb();
   }
 }
 
-usb.scan.addEventListener("click", () =>
-  usbRequest({ action: "scan" }, "scan"),
+usb.scan.addEventListener("click", (event) =>
+  usbRequest({ action: "scan" }, "scan", event.currentTarget),
 );
 loadUsb();
 
@@ -13511,7 +13771,9 @@ git.search.addEventListener("input", () => {
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {
   // A mirror removed can be mirrored again from upstream: it acts at once.
-  const act = (body) => async () => {
+  const act = (body) => async (event) => {
+    const button = event && event.currentTarget;
+    if (button) AW.setBusy(button, true);
     try {
       renderGit(await postJSON("/admin/git", body));
       say(
@@ -13523,6 +13785,8 @@ function renderMirrors(data) {
       );
     } catch (err) {
       say(err.message, false, git.mirrorNote);
+    } finally {
+      if (button) AW.setBusy(button, false);
     }
   };
   const list = data.mirrors || [];
@@ -13785,6 +14049,8 @@ async function loadGit() {
 git.form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const fields = git.form.elements;
+  const button = event.submitter;
+  if (button) AW.setBusy(button, true);
   try {
     renderGit(
       await postJSON("/admin/git", {
@@ -13802,6 +14068,8 @@ git.form.addEventListener("submit", async (event) => {
     git.form.reset();
   } catch (err) {
     say(err.message, false, git.createNote);
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
 });
 loadGit();
@@ -14067,13 +14335,17 @@ for (const [id, action] of [
   ["fw-check", "check"],
   ["fw-update", "update"],
 ]) {
-  document.getElementById(id).addEventListener("click", async () => {
+  document.getElementById(id).addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    AW.setBusy(button, true);
     try {
       fwData = await postJSON("/admin/firmware", { action });
       renderFirmware(fwData);
       say("", true, fw.note);
     } catch (err) {
       say(err.message, false, fw.note);
+    } finally {
+      AW.setBusy(button, false);
     }
   });
 }
@@ -14098,11 +14370,16 @@ let asData = null;
 const asOpen = new Set();
 const asDrafts = {};
 
-const asPost = async (body, flash) => {
-  asData = await postJSON("/admin/appstore", body);
-  if (flash) asData.flash = flash;
-  renderAppstore(asData);
-  return asData;
+const asPost = async (body, flash, button) => {
+  if (button) AW.setBusy(button, true);
+  try {
+    asData = await postJSON("/admin/appstore", body);
+    if (flash) asData.flash = flash;
+    renderAppstore(asData);
+    return asData;
+  } finally {
+    if (button) AW.setBusy(button, false);
+  }
 };
 
 // The survey's table: one tick a kind. Draft ticks live on the holder until Hold these; one the hub's own
@@ -14332,7 +14609,7 @@ function asRun(label, action, id, note, ask, extra = {}) {
   return actionButton(label, async (event) => {
     if (ask && !(await AW.confirmHere(ask, { anchor: event.currentTarget, label }))) return;
     try {
-      await asPost({ action, id });
+      await asPost({ action, id }, null, event.currentTarget);
     } catch (err) {
       say(err.message, false, note);
     }
@@ -14478,6 +14755,7 @@ const REMOVE_AFTER = [
 const dayOf = (unix) =>
   unix ? new Date(unix * 1000).toISOString().slice(0, 10) : "";
 const kitsWaiting = new Set();
+const kitWaits = new Map(); // a request id -> the button that asked (and its data-wait key), for the redraw
 let kitsData = null;
 let kitsPoll = null;
 
@@ -14497,10 +14775,15 @@ function hoursPicker(value) {
 const pickedHours = (sel) => (sel.value === "never" ? null : Number(sel.value));
 
 // True once the hub or the root helper has it; false when cancelled or refused (said in the note).
-async function kitAct(body, quiet) {
+async function kitAct(body, quiet, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     const data = await postJSON("/admin/kits", body);
-    if (data.id) kitsWaiting.add(data.id);
+    if (data.id) {
+      kitsWaiting.add(data.id);
+      kitWaits.set(data.id, { button, waitKey });
+    } else clearWait({ button, waitKey });
     if (!quiet)
       say(
         data.id
@@ -14512,6 +14795,7 @@ async function kitAct(body, quiet) {
     renderKits(data);
     return true;
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, kitsEl.note);
     return false;
   }
@@ -14527,6 +14811,8 @@ function renderKits(data) {
   for (const result of data.results || []) {
     if (kitsWaiting.has(result.id)) {
       kitsWaiting.delete(result.id);
+      clearWait(kitWaits.get(result.id));
+      kitWaits.delete(result.id);
       say(resultSaid(result), result.ok, kitsEl.note);
     }
   }
@@ -14592,6 +14878,7 @@ function renderKits(data) {
       );
     if (again) again.click();
   }
+  for (const id of kitsWaiting) showWait(kitWaits.get(id));
   clearTimeout(kitsPoll);
   if (kitsWaiting.size) kitsPoll = setTimeout(loadKits, 3000);
 }
@@ -14677,8 +14964,8 @@ function kitBody(k, st, cfg, setDirty) {
     jobRow(
       actionButton(
         "Check for updates",
-        () => kitAct({ action: "check", kit: k.id }),
-        { className: "small" },
+        (event) => kitAct({ action: "check", kit: k.id }, false, event.currentTarget),
+        { className: "small", dataset: { wait: `kit:check:${k.id}` } },
       ),
     ),
     el("p", { className: "setting-desc", textContent: kitCheckLine(kitState.check) }),
@@ -14689,8 +14976,8 @@ function kitBody(k, st, cfg, setDirty) {
       jobRow(
         actionButton(
           "Remove toolkit",
-          () => kitAct({ action: "remove", kit: k.id }),
-          { className: "small" },
+          (event) => kitAct({ action: "remove", kit: k.id }, false, event.currentTarget),
+          { className: "small", dataset: { wait: `kit:remove:${k.id}` } },
         ),
         el("span", {
           className: "setting-desc",
@@ -14699,8 +14986,8 @@ function kitBody(k, st, cfg, setDirty) {
         keep,
         actionButton(
           "Extend installation period",
-          () => kitAct({ action: "keep", kit: k.id, hours: pickedHours(keep) }),
-          { className: "small" },
+          (event) => kitAct({ action: "keep", kit: k.id, hours: pickedHours(keep) }, false, event.currentTarget),
+          { className: "small", dataset: { wait: `kit:keep:${k.id}` } },
         ),
       ),
     );
@@ -14734,13 +15021,17 @@ function kitBody(k, st, cfg, setDirty) {
           hours,
           actionButton(
             "Install toolkit",
-            () =>
-              kitAct({
-                action: "install",
-                kit: k.id,
-                hours: pickedHours(hours),
-              }),
-            { className: "small" },
+            (event) =>
+              kitAct(
+                {
+                  action: "install",
+                  kit: k.id,
+                  hours: pickedHours(hours),
+                },
+                false,
+                event.currentTarget,
+              ),
+            { className: "small", dataset: { wait: `kit:install:${k.id}` } },
           ),
           actionButton(
             "Cancel",
@@ -14799,16 +15090,16 @@ function kitBody(k, st, cfg, setDirty) {
     jobRow(
       actionButton(
         "Download",
-        () => kitAct({ action: "fetch", kit: k.id }),
-        { className: "small" },
+        (event) => kitAct({ action: "fetch", kit: k.id }, false, event.currentTarget),
+        { className: "small", dataset: { wait: `kit:fetch:${k.id}` } },
       ),
       kitState.previous
         ? actionButton(
             `Roll back to ${dayOf(kitState.previous.fetched)}`,
-            () => {
-              kitAct({ action: "rollback", kit: k.id });
+            (event) => {
+              kitAct({ action: "rollback", kit: k.id }, false, event.currentTarget);
             },
-            { className: "small" },
+            { className: "small", dataset: { wait: `kit:rollback:${k.id}` } },
           )
         : null,
       kitState.previous
@@ -14819,7 +15110,7 @@ function kitBody(k, st, cfg, setDirty) {
                 await AW.confirmHere(
                   `Remove the older set of ${k.title}, downloaded ${dayOf(kitState.previous.fetched)}? This frees ${size(kitState.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
               )
-                kitAct({ action: "drop-previous", kit: k.id });
+                kitAct({ action: "drop-previous", kit: k.id }, false, event.currentTarget);
             },
             { className: "small" },
           )
@@ -14832,7 +15123,7 @@ function kitBody(k, st, cfg, setDirty) {
             "Delete toolkit",
             async (event) => {
               if (await AW.confirmHere(`Delete ${k.title} and its cache?`, { anchor: event.currentTarget }))
-                kitAct({ action: "undefine", kit: k.id });
+                kitAct({ action: "undefine", kit: k.id }, false, event.currentTarget);
             },
             {
               className: "small",
@@ -15030,6 +15321,7 @@ kitsEl.addCancel.addEventListener("click", resetKitForm);
 // Kits by USB drive (usbstick.py, kits.py): the root helper's last stick scan, Import for each kit
 // found for this box's architecture, and a cached kit to copy onto each drive.
 let kitsUsbWaiting = null;
+let kitsUsbWait = null; // the button that asked (and its data-wait key), for the redraw
 let kitsUsbAsked = null; // what the waiting request asked: an import refused for the clock is offered again below
 async function loadKitsUsb() {
   let data;
@@ -15042,6 +15334,8 @@ async function loadKitsUsb() {
   if (kitsUsbWaiting) {
     const done = (data.results || []).find((result) => result.id === kitsUsbWaiting);
     if (done) {
+      clearWait(kitsUsbWait);
+      kitsUsbWait = null;
       kitsUsbWaiting = null;
       say(resultSaid(done), done.ok, note);
       // The clock cannot date the release: the owner may import it anyway, knowing its freshness goes unchecked.
@@ -15053,13 +15347,15 @@ async function loadKitsUsb() {
           el("button", {
             type: "button",
             className: "action-btn small",
+            dataset: { wait: "kits:usb:retry" },
             textContent: "Import without a freshness check",
-            onclick: () =>
+            onclick: (event) =>
               kitsUsbAsk(
                 { ...asked, freshness: "unknown-time" },
                 "Import this toolkit without checking that its packages are current? Their signatures and hashes " +
                   "are still checked, but a USB drive could carry an older signed set with problems fixed since. " +
                   "Set the clock on the Clock page first if you can.",
+                event.currentTarget,
               ),
           }),
         );
@@ -15127,15 +15423,18 @@ async function loadKitsUsb() {
                     ? el("button", {
                         type: "button",
                         className: "action-btn small",
+                        dataset: { wait: `kits:usb:import:${device.name}:${k.kit}`, helperWait: busy ? "1" : "0" },
                         textContent: "Import toolkit",
                         disabled: busy,
-                        onclick: () =>
+                        onclick: (event) =>
                           kitsUsbAsk(
                             {
                               action: "kit-import",
                               device: device.name,
                               kit: k.kit,
                             },
+                            null,
+                            event.currentTarget,
                           ),
                       })
                     : null,
@@ -15155,11 +15454,14 @@ async function loadKitsUsb() {
                 el("button", {
                   type: "button",
                   className: "action-btn",
+                  dataset: { wait: `kits:usb:export:${device.name}`, helperWait: busy ? "1" : "0" },
                   textContent: "Export toolkit to USB drive",
                   disabled: busy,
-                  onclick: () =>
+                  onclick: (event) =>
                     kitsUsbAsk(
                       { action: "kit-export", device: device.name, kit: pick.value },
+                      null,
+                      event.currentTarget,
                     ),
                 }),
               )
@@ -15177,23 +15479,30 @@ async function loadKitsUsb() {
         ]
       : []),
   );
+  showWait(kitsUsbWait);
+  markHelperWait(noteEl("kits-usb"), busy);
+  markHelperButton(document.getElementById("kits-usb-scan"), busy);
   if (busy) setTimeout(loadKitsUsb, 1500);
 }
 // confirmText: only where the box cannot go on without a decision (an import with the clock unknown).
-async function kitsUsbAsk(body, confirmText) {
+async function kitsUsbAsk(body, confirmText, button) {
   if (confirmText && !(await AW.confirmHere(confirmText))) return;
   kitsUsbAsked = body;
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     kitsUsbWaiting = (await postJSON("/admin/usb", body)).id;
+    kitsUsbWait = { id: kitsUsbWaiting, button, waitKey };
     say("Working…", true, noteEl("kits-usb-note"));
     loadKitsUsb();
   } catch (err) {
+    clearWait({ button, waitKey });
     say(err.message, false, noteEl("kits-usb-note"));
   }
 }
 document
   .getElementById("kits-usb-scan")
-  .addEventListener("click", () => kitsUsbAsk({ action: "scan" }));
+  .addEventListener("click", (event) => kitsUsbAsk({ action: "scan" }, null, event.currentTarget));
 
 async function loadKits() {
   try {
@@ -15224,15 +15533,21 @@ const kitsBudget = AW.form(kitsEl.budget, {
 });
 document
   .getElementById("kits-check-all")
-  .addEventListener("click", async () => {
-    kitAct({ action: "check-all" });
+  .addEventListener("click", async (event) => {
+    kitAct({ action: "check-all" }, false, event.currentTarget);
     say("Checking every toolkit. The root helper asks apt what a download would bring; nothing is downloaded.", true, kitsEl.note);
   });
 document
   .getElementById("kits-refresh-all")
-  .addEventListener("click", async () => {
-    for (const k of Object.keys((kitsData || {}).kits || {}))
-      await kitAct({ action: "fetch", kit: k }, true);
+  .addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    AW.setBusy(button, true);
+    try {
+      for (const k of Object.keys((kitsData || {}).kits || {}))
+        await kitAct({ action: "fetch", kit: k }, true);
+    } finally {
+      AW.setBusy(button, false);
+    }
     say(
       "Queued a refresh for each toolkit. The root helper refreshes them one after another. Each takes several minutes.",
       true,
@@ -15245,7 +15560,7 @@ document.getElementById("kits-drop-all").addEventListener("click", async (event)
     await AW.confirmHere(
       "Remove the older set of every toolkit? This frees their cache space. Roll back is not possible until a refresh brings new versions.", { anchor: event.currentTarget })
   ) {
-    kitAct({ action: "drop-all-previous" });
+    kitAct({ action: "drop-all-previous" }, false, event.currentTarget);
   }
 });
 window.addEventListener("hashchange", () => {
@@ -15272,6 +15587,7 @@ const tlsEl = {
   adminHttp: document.getElementById("tls-admin-http"),
 };
 let tlsWaiting = null;
+let tlsWait = null; // the button that asked (and its data-wait key), for the redraw
 let tlsData = null;
 let tlsOperation = null,
   tlsJob = null; // the section's save waiting for the root helper (AW.job)
@@ -15465,6 +15781,8 @@ function renderTls(data) {
           )
           .dispatchEvent(new Event("settings-saved"));
       }
+      clearWait(tlsWait);
+      tlsWait = null;
       tlsWaiting = null;
     }
   }
@@ -15496,12 +15814,16 @@ function renderTls(data) {
     button.disabled = busy || (data.policy || {}).mode === "console";
   });
   drawTlsChoices();
+  showWait(tlsWait);
   if (busy) setTimeout(loadTls, 1500);
 }
-async function tlsAct(body) {
+async function tlsAct(body, button) {
+  const waitKey = waitKeyOf(button);
+  if (button) AW.setBusy(button, true);
   try {
     const reply = await postJSON("/admin/tls", body);
     tlsWaiting = reply.id;
+    tlsWait = { id: reply.id, button, waitKey };
     tlsOperation = body.action;
     say(
       "Working…",
@@ -15510,18 +15832,19 @@ async function tlsAct(body) {
     );
     loadTls();
   } catch (err) {
+    clearWait({ button, waitKey });
     if (tlsJob) {
       tlsJob.done(false, err.message);
       tlsJob = null;
     } else say(err.message, false, tlsEl.note);
   }
 }
-tlsEl.make.addEventListener("click", () => tlsAct({ action: "make" }));
-tlsEl.box.addEventListener("click", () => tlsAct({ action: "box" }));
+tlsEl.make.addEventListener("click", (event) => tlsAct({ action: "make" }, event.currentTarget));
+tlsEl.box.addEventListener("click", (event) => tlsAct({ action: "box" }, event.currentTarget));
 tlsEl.own.addEventListener("submit", (event) => {
   event.preventDefault();
   const fields = tlsEl.own.elements;
-  tlsAct({ action: "import", chain: fields.chain.value, key: fields.key.value });
+  tlsAct({ action: "import", chain: fields.chain.value, key: fields.key.value }, event.submitter);
   fields.key.value = ""; // not left in the page
 });
 tlsEl.again.addEventListener("click", async (event) => {
@@ -15529,7 +15852,7 @@ tlsEl.again.addEventListener("click", async (event) => {
     await AW.confirmHere(
       "Make a new certificate authority? Every phone and computer that installed the old one must install the new one, or it shows a warning about the box.", { anchor: event.currentTarget })
   ) {
-    tlsAct({ action: "make", again: true });
+    tlsAct({ action: "make", again: true }, event.currentTarget);
   }
 });
 window.addEventListener("hashchange", () => {
@@ -15696,7 +16019,7 @@ function renderAccounts(data) {
     ...(data.accounts.length
       ? data.accounts.map((account) => {
           const act = (action, label) =>
-            actionButton(label, () => acctAct({ action, name: account.name }));
+            actionButton(label, (event) => acctAct({ action, name: account.name }, event.currentTarget));
           const state =
             account.state === "asked"
               ? "Awaiting approval"
@@ -15877,13 +16200,14 @@ function codeBox(name, code) {
   );
 }
 // True when the hub did it; false when cancelled or refused (said in the note).
-async function acctAct(body) {
+async function acctAct(body, button) {
   if (
     body.action === "delete" &&
     !await AW.confirmHere(
       `Delete the account ${body.name}? This person can no longer sign in. You cannot undo this.`)
   )
     return false;
+  if (button) AW.setBusy(button, true);
   try {
     const reply = await postJSON("/admin/accounts", body);
     if (reply.code) showCode(body.name, reply.code);
@@ -15893,6 +16217,8 @@ async function acctAct(body) {
   } catch (err) {
     say(err.message, false, acctEl.note);
     return false;
+  } finally {
+    if (button) AW.setBusy(button, false);
   }
 }
 const acctSettings = AW.form(acctEl.settings, {
@@ -15910,11 +16236,14 @@ const acctSettings = AW.form(acctEl.settings, {
 acctEl.make.addEventListener("submit", (event) => {
   event.preventDefault();
   const fields = acctEl.make.elements;
-  acctAct({
-    action: "make",
-    name: fields.name.value.trim(),
-    role: (event.submitter && event.submitter.value) || "user",
-  });
+  acctAct(
+    {
+      action: "make",
+      name: fields.name.value.trim(),
+      role: (event.submitter && event.submitter.value) || "user",
+    },
+    event.submitter,
+  );
   fields.name.value = "";
 });
 // Who may post on the shoutbox and the forum, and the users' marks (the hub's settings): a form on
@@ -16548,8 +16877,8 @@ async function loadAppearance() {
       [
         row("page_width", "Hub", "the tiles, the menu and its pages"),
         row("admin_width", "Admin", "these pages"),
-        row("shout_width", "Shoutbox", "its tab on the hub page"),
-        row("board_width", "Forum", "its tab on the hub page"),
+        row("shout_width", "Hub shoutbox", "its tab on the hub page"),
+        row("board_width", "Hub board", "its tab on the hub page"),
       ],
       {
         id: "appearance-widths",

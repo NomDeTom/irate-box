@@ -6673,8 +6673,8 @@ def led_groups(ls, armbian=None):
                 "label": M("hs.led-which", "Which light"),
                 "desc": M(
                     "hs.led-which.desc",
-                    "The board's LEDs that could be the status light, never a power LED. "
-                    "The Box doctor's Flash buttons show which is which.",
+                    "The board's LEDs that could be the status light, never a power LED unless the "
+                    "board's own table names it. The Box doctor's Flash buttons show which is which.",
                 ),
                 "current": chosen.get("led", "auto"),
                 "options": [
@@ -6691,6 +6691,27 @@ def led_groups(ls, armbian=None):
                     }
                 ]
                 + [{"value": n, "label": n, "choice": f"led-led:{n}"} for n in found],
+            }
+        )
+    if ls.get("raw"):
+        groups.append(
+            {
+                "key": "led-off",
+                "label": M("hs.led-off", "When the light is off"),
+                "desc": M(
+                    "hs.led-off.desc",
+                    "Driven off keeps the line high. High-impedance lets the line float, which saves the "
+                    "LED stage's leakage. The light can still glow faintly.",
+                ),
+                "current": ls.get("off", "drive"),
+                "options": [
+                    {"value": "drive", "label": M("hs.led-off.drive", "Driven off"), "choice": "led-off:drive"},
+                    {
+                        "value": "float",
+                        "label": M("hs.led-off.float", "High-impedance (saves power)"),
+                        "choice": "led-off:float",
+                    },
+                ],
             }
         )
     if armbian:
@@ -6747,7 +6768,8 @@ def check_led(ls=None, active=None):
                 "ok",
                 M(
                     "led.none",
-                    "This board has no LED that the box can use as a status light. The box never takes a power LED.",
+                    "This board has no LED that the box can use as a status light. The box never takes a "
+                    "power LED unless the board's own table names it.",
                 ),
                 glance=M("led.none.glance", "No LED on this board."),
             )
@@ -7967,7 +7989,7 @@ def fix(choice):
             {"one": "One recommended setting applied.", "other": "{n} recommended settings applied."},
             n=len(done),
         )
-    if kind in ("led-show", "led-led"):
+    if kind in ("led-show", "led-led", "led-off"):
         from irate_box.root import led
 
         return led.set_option(kind[len("led-") :], arg)
