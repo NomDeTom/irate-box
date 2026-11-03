@@ -493,9 +493,10 @@ function sourceRow(src, st, busy) {
           })
         : null,
       st.error
-        ? el("span", {
+        ? el("a", {
             className: "setting-desc bad",
-            textContent: errorSaid(st),
+            href: "#updoctor",
+            textContent: `${errorSaid(st)} See the Updates doctor.`,
           })
         : null,
       el(

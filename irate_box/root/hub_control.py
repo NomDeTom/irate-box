@@ -5334,7 +5334,11 @@ def addons_findings(now=None, simulated=None):
                         else []
                     ),
                     evidence=[str(failed)[:300]],
-                    go=GO_LIBRARIAN,
+                    go=(
+                        _go(f"page-app-{name}", named(name, M("update.addons.role-source", "source")))
+                        if any(m["id"] == name for m in MANIFESTS)
+                        else GO_BOOKS
+                    ),
                 )
             )
             continue
