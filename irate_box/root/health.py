@@ -2529,6 +2529,21 @@ def check_addon_declared():
                     actions=[repair] if repair else [],
                 )
             )
+    # The owner's own checks for this doctor, from /etc/irate-box/checks.d.
+    title = M("ownchecks.title", "Your own checks")
+    for i in secdoctor.own_checks(doctor="box"):
+        out.append(
+            finding(
+                f"own-check:{i['key']}",
+                title,
+                i["status"],
+                i["summary"],
+                i["why"],
+                i["fix"],
+                commands=i["commands"],
+                evidence=i["evidence"],
+            )
+        )
     return out
 
 

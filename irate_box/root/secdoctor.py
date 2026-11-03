@@ -3365,7 +3365,7 @@ ADDON_PROBES = (
 )
 
 
-def own_checks():
+def own_checks(doctor="security"):
     """The owner's checks in /etc/irate-box/checks.d/*.json, each file a named group in the manifests' format.
     Each check is a finding of its own, keyed checks-<file>-<check>; a broken file or a file not root's is said,
     never fatal."""
@@ -3431,7 +3431,7 @@ def own_checks():
             "unit": data.get("unit") if isinstance(data.get("unit"), str) else None,
             "port": data.get("port") if isinstance(data.get("port"), int) else None,
         }
-        out += [{**i, "key": f"checks-{stem}:{i['key']}"} for i in run_declared(a)]
+        out += [{**i, "key": f"checks-{stem}:{i['key']}"} for i in run_declared(a, doctor=doctor)]
     return out
 
 
