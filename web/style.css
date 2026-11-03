@@ -6360,3 +6360,10 @@ label > .aw-onoff-box ~ .chip-group,
   line-height: 1.45;
   resize: vertical;
 }
+
+/* Music (music.html): the drop's audio files as one playlist. */
+.music-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.music-list button.selected { font-weight: 600; }
+.music-player-box { display: flex; flex-direction: column; gap: 8px; max-width: 48rem; }
+.music-player-box audio { width: 100%; }
+

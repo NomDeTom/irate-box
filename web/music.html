@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="music.head.title">Music · Hub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="music">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="music.header.tip-quick-help" data-i18n="music.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="music.header.tip-back-hub" data-i18n="music.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a><a class="head-btn labelled" href="/drop.html" data-i18n="music.header.drop"><span class="head-emoji" aria-hidden="true">📥</span> File drop</a></nav>
+    <h1 data-i18n="music.header.heading">🎵 Music</h1>
+    <p class="subtitle" data-i18n="music.header.subtitle">The audio files in the file drop, played from the box. Nothing is fetched from outside it.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="music.header.aria-theme"></div>
+  </header>
+
+  <section>
+    <div class="music-player-box">
+      <audio id="music-player" controls preload="metadata"></audio>
+      <div class="library-buttons">
+        <button class="action-btn" id="music-prev" type="button" data-i18n="music.body.previous">Previous</button>
+        <button class="action-btn" id="music-next" type="button" data-i18n="music.body.next">Next</button>
+      </div>
+      <p class="setting-desc" id="music-now" role="status" data-i18n="music.body.choose">Select a track below.</p>
+    </div>
+  </section>
+  <section>
+    <h2 data-i18n="music.body.heading">Audio in the file drop</h2>
+    <ul class="music-list" id="music-list"></ul>
+  </section>
+
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/music.js"></script>
+</body>
+</html>

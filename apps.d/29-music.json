@@ -1,0 +1,11 @@
+{
+  "id": "music",
+  "order": 29,
+  "tile": {
+    "icon": "🎵",
+    "name": "Music",
+    "desc": "Play the audio files in the file drop",
+    "href": "/music.html"
+  },
+  "admin": {"title": "Music", "icon": "🎵"}
+}
