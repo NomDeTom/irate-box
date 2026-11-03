@@ -98,27 +98,22 @@ check(
     and "file_save_to_box, file_open_from_box, getSelectionText" in functions,
 )
 check(
-    "  Save posts a named PNG to the gallery, with a thumbnail",
-    'fetch("/api/saves"' in functions and 'kind: "jspaint"' in functions and "thumb: box_thumbnail()" in functions,
+    "  Save asks the bridge on the hub's origin, sending the PNG and its thumbnail",
+    'box_bridge("save"' in functions
+    and "thumb: box_thumbnail()" in functions
+    and "/addon-bridge.html" in functions
+    and 'fetch("/api/saves"' not in functions,
 )
 check(
-    "  Open reads the gallery's saved pictures and loads the chosen one",
-    'fetch("/api/saves")' in functions
-    and "fetch(`/api/saves/${encodeURIComponent(save.id)}`)" in functions
-    and "load_image_from_uri(full.state)" in functions
-    and "open_from_image_info(info)" in functions,
+    "  Open asks the bridge for the chosen picture, and loads what it returns",
+    'box_bridge("open"' in functions
+    and "load_image_from_uri(chosen.state)" in functions
+    and "open_from_image_info(info)" in functions
+    and "/api/saves/" not in functions,
 )
 check(
-    "  a save made here carries a device lock, and re-saves in place",
-    'HubLock.create("saves")' in functions
-    and 'HubLock.change("saves", box_save_id, box_save_lock_n)' in functions
-    and 'headers["X-Lock-New"] = fresh.header' in functions
-    and 'HubLock.keep("saves", meta.id, fresh.seed)' in functions,
-)
-check(
-    "  a save opened from another device saves as a new copy, and says so",
-    "This browser does not hold this picture's key, so saving makes a new copy." in functions
-    and "id = null;" in functions,
+    "  the bridge decides the lock; a new copy is said",
+    "lock_n: box_save_lock_n" in functions and "meta.copied" in functions,
 )
 try:
     adapt_jspaint.add_box_saves("no save as here", FUNCTIONS)

@@ -166,12 +166,50 @@ SAVE_MENU_ITEMS = (
     "\t\t},\n"
 )
 BOX_SAVES_JS = r"""
-// Irate-Box: the box's gallery, as the other adapted apps use it (/api/saves).
+// Irate-Box: the box's gallery, through a bridge page on the hub's own origin (addon-bridge.html).
+// The add-on never reaches the store itself: the bridge asks the visitor, then does the call.
 let box_save_id = null;
 let box_save_locked = false;
 let box_save_lock_n = 0;
-function box_escape(text) {
-	return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function box_hub_origin() {
+	try {
+		const referrer = new URL(document.referrer);
+		return referrer.protocol === "http:" || referrer.protocol === "https:" ? referrer.origin : null;
+	} catch (error) {
+		return null;
+	}
+}
+function box_bridge(action, payload) {
+	return new Promise((resolve, reject) => {
+		const origin = box_hub_origin();
+		if (!origin) {
+			reject(new Error("open this app from the hub so the bridge can find it"));
+			return;
+		}
+		const popup = window.open(`${origin}/addon-bridge.html`, "irate-box-bridge", "popup,width=560,height=620");
+		if (!popup) {
+			reject(new Error("the bridge window was blocked"));
+			return;
+		}
+		let timer = null;
+		function finish(fn, value) {
+			window.removeEventListener("message", onMessage);
+			if (timer) window.clearTimeout(timer);
+			fn(value);
+		}
+		function onMessage(event) {
+			if (event.origin !== origin || event.source !== popup) return;
+			const data = event.data || {};
+			if (data.type === "irate-bridge-ready") {
+				popup.postMessage({ type: "irate-bridge-request", action, payload }, origin);
+			} else if (data.type === "irate-bridge-result" && data.action === action) {
+				if (data.ok) finish(resolve, data);
+				else finish(reject, new Error(data.error || "the bridge refused"));
+			}
+		}
+		window.addEventListener("message", onMessage);
+		timer = window.setTimeout(() => finish(reject, new Error("the bridge did not answer")), 5 * 60 * 1000);
+	});
 }
 function box_thumbnail() {
 	const scale = Math.min(1, 128 / Math.max(main_canvas.width, main_canvas.height));
@@ -189,122 +227,41 @@ async function file_save_to_box() {
 		show_error_message("The picture could not be read to save it.", error);
 		return;
 	}
-	const suggested = (file_name || "Picture").replace(/\.[^.]+$/, "");
-	const newCopy = box_save_id && box_save_locked && !(window.HubLock && HubLock.has("saves", box_save_id));
-	const { $window, promise } = showMessageBox({
-		messageHTML: `<p>Save this picture in the box's gallery.</p>
-			${newCopy ? "<p>This browser does not hold this picture's key, so saving makes a new copy.</p>" : ""}
-			<p><label>Name <input type="text" id="irate-box-save-name" value="${box_escape(suggested)}"></label></p>`,
-		buttons: [
-			{ label: "Save", value: "save", default: true },
-			{ label: "Cancel", value: "cancel" },
-		],
-	});
-	const choice = await promise;
-	if (choice !== "save") {
-		return;
-	}
-	const name = ($window.$content.find("#irate-box-save-name").val() || "").trim() || "Picture";
-	// A locked save is changed only by a browser that holds its key. This one re-saves in place;
-	// one opened on another device saves as a new copy, and its dialog says so.
-	let id = box_save_id;
-	let change = null;
-	let fresh = null;
-	if (box_save_id && box_save_locked) {
-		if (window.HubLock && HubLock.has("saves", box_save_id)) {
-			change = HubLock.change("saves", box_save_id, box_save_lock_n);
-		}
-		if (!change) {
-			id = null;
-		}
-	}
-	if (!id && window.HubLock) {
-		fresh = HubLock.create("saves");
-	}
-	const headers = { "Content-Type": "application/json" };
-	if (change) {
-		Object.assign(headers, change.headers);
-	}
-	if (fresh) {
-		headers["X-Lock-New"] = fresh.header;
-	}
+	const name = (file_name || "Picture").replace(/\.[^.]+$/, "");
 	try {
-		const response = await fetch("/api/saves", {
-			method: "POST",
-			headers,
-			body: JSON.stringify({ kind: "jspaint", id: id || undefined, name, state, thumb: box_thumbnail() }),
+		const answer = await box_bridge("save", {
+			id: box_save_id || undefined,
+			lock_n: box_save_lock_n,
+			name,
+			state,
+			thumb: box_thumbnail(),
 		});
-		if (!response.ok) {
-			throw new Error(`the gallery answered ${response.status}`);
-		}
-		const meta = await response.json();
-		if (change) {
-			change.done();
-		}
-		if (fresh) {
-			HubLock.keep("saves", meta.id, fresh.seed);
-		}
+		const meta = answer.save || {};
 		box_save_id = meta.id;
 		box_save_locked = !!meta.locked;
 		box_save_lock_n = meta.lock_n || 0;
-		file_name = `${name}.png`;
+		file_name = `${meta.name || name}.png`;
 		saved = true;
 		update_title();
+		if (meta.copied) {
+			showMessageBox({ message: "This browser did not hold the picture's key, so it was saved as a new copy." });
+		}
 	} catch (error) {
 		show_error_message("The picture could not be saved in the box's gallery.", error);
 	}
 }
 async function file_open_from_box() {
-	let saves;
 	try {
-		const response = await fetch("/api/saves");
-		if (!response.ok) {
-			throw new Error(`the gallery answered ${response.status}`);
-		}
-		const data = await response.json();
-		saves = (data.saves || []).filter((save) => save.kind === "jspaint");
-	} catch (error) {
-		show_error_message("The box's gallery could not be read.", error);
-		return;
-	}
-	if (!saves.length) {
-		showMessageBox({ message: "No picture is saved in this box's gallery yet." });
-		return;
-	}
-	const options = saves
-		.map((save) => `<option value="${box_escape(save.id)}">${box_escape(save.name || "untitled")}</option>`)
-		.join("");
-	const { $window, promise } = showMessageBox({
-		messageHTML: `<p>Open a picture saved in the box's gallery.</p>
-			<p><label>Picture <select id="irate-box-open-name">${options}</select></label></p>`,
-		buttons: [
-			{ label: "Open", value: "open", default: true },
-			{ label: "Cancel", value: "cancel" },
-		],
-	});
-	const choice = await promise;
-	if (choice !== "open") {
-		return;
-	}
-	const id = $window.$content.find("#irate-box-open-name").val();
-	const save = saves.find((item) => item.id === id);
-	if (!save) {
-		return;
-	}
-	try {
-		const whole = await fetch(`/api/saves/${encodeURIComponent(save.id)}`);
-		if (!whole.ok) {
-			throw new Error(`the gallery answered ${whole.status}`);
-		}
-		const full = await whole.json();
-		const info = await load_image_from_uri(full.state);
-		box_save_id = save.id;
-		box_save_locked = !!(full.locked || save.locked);
-		box_save_lock_n = full.lock_n || save.lock_n || 0;
-		file_name = `${save.name || "Picture"}.png`;
+		const answer = await box_bridge("open", { kind: "jspaint" });
+		const chosen = answer.save || {};
+		const info = await load_image_from_uri(chosen.state);
+		box_save_id = chosen.id;
+		box_save_locked = !!chosen.locked;
+		box_save_lock_n = chosen.lock_n || 0;
+		file_name = `${chosen.name || "Picture"}.png`;
 		open_from_image_info(info);
-		if (box_save_locked && !(window.HubLock && HubLock.has("saves", box_save_id))) {
-			showMessageBox({ message: "This picture is locked by another device. Saving it here will make a new copy." });
+		if (box_save_locked) {
+			showMessageBox({ message: "This picture is locked. The bridge can save it here if this browser holds its key; otherwise it saves a new copy." });
 		}
 	} catch (error) {
 		show_error_message("The picture could not be opened from the box's gallery.", error);
@@ -362,16 +319,6 @@ def add_box_saves(menu_text, function_text):
     return menu_text, function_text
 
 
-LOCK_JS = Path(__file__).resolve().parents[2] / "web" / "lock.js"
-
-
-def add_lock_script(text):
-    """The page's copy of the hub's device-lock module (web/lock.js), before the app's own scripts."""
-    if LOCK_JS.is_file() and '<script src="lock.js"></script>' not in text:
-        text = text.replace("</body>", '\t<script src="lock.js"></script>\n</body>', 1)
-    return text
-
-
 def adapt(tree):
     tree = Path(tree)
     index = tree / "index.html"
@@ -414,7 +361,7 @@ def adapt(tree):
     if len(LANGUAGES.findall(language_text)) != 1:
         raise AdaptError("src/app-localization.js changed: the language list is not found once")
 
-    page_text = add_lock_script(local_images(adapt_page(index.read_text(encoding="utf-8")), tree))
+    page_text = local_images(adapt_page(index.read_text(encoding="utf-8")), tree)
     menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
     # The box's gallery: the manifest says what is kept there and who can see it.
@@ -474,8 +421,6 @@ def adapt(tree):
     localization.write_text(language_text, encoding="utf-8")
     for name, text in pages.items():
         (tree / name).write_text(text, encoding="utf-8")
-    if LOCK_JS.is_file():
-        shutil.copyfile(LOCK_JS, tree / "lock.js")
 
 
 def main(argv):

@@ -782,7 +782,6 @@
         "/admin",
         "/admin/*",
         "/api/drop",
-        "/api/drop*",
         "/api/drop/*",
         "/api/saves*",
         "/api/v2/*",
