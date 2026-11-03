@@ -73,6 +73,8 @@ setTimeout(async () => {
   const d = w.document;
   let fails = 0;
   const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const foot = () => d.querySelector('.aw-foot[data-section="quick-setup"]');
   const purpose = [...d.querySelectorAll('#preset-purpose-tiles .preset-tile')];
   const durability = [...d.querySelectorAll('#preset-durability-tiles .preset-tile')];
   check('Quick setup: at the top of Setup steps, not a System page, with three tiles per dial',
@@ -97,20 +99,51 @@ setTimeout(async () => {
   check('  no purpose suggests a durability any more', ![...purpose, ...durability].some((b) => /Suggests/.test(b.textContent)));
   check('  full logging says it returns by itself', /Returns by itself after 24 hours/.test(durability[2].textContent), durability[2].textContent);
   purpose.find((b) => b.textContent.includes('Curated space')).click();
-  await new Promise((r) => setTimeout(r, 300));
-  check('selecting a tile asks for a preview', posted.some((b) => b.action === 'preview' && b.purpose === 'curated'), posted);
+  await wait(300);
+  check('selecting one tile asks for a preview, the other dial as the box has it',
+    posted.some((b) => b.action === 'preview' && b.purpose === 'curated' && b.durability === 'longevity'), posted);
+  check('  and the preview says the durability is what the box has now',
+    /The durability is what the box has now\./.test(d.getElementById('preset-preview').textContent),
+    d.getElementById('preset-preview').textContent);
   const lines = [...d.querySelectorAll('#preset-preview li')].map((x) => x.textContent.replace(/\s+/g, ' ').trim());
   check('  each change is its own line, with what it was and will be',
     lines.some((x) => /Who may post in the shoutbox: guests → users/.test(x))
     && lines.some((x) => /Shared notes \(SilverBullet\): not installed → installed/.test(x)), lines);
   check('  and what was left out says why', /it needs about 384 MB of memory/.test(d.getElementById('preset-preview').textContent));
-  check('  and the setup steps it answers are named before Apply',
+  check('  and the setup steps it answers are named before Save',
     /Setup steps this answers: Account registration, Hotspot security, Terminal \(shell in the browser\), Add-ons\./
       .test(d.getElementById('preset-preview').textContent), d.getElementById('preset-preview').textContent);
-  const apply = [...d.querySelectorAll('#preset-buttons button')].find((b) => /Preview and apply/.test(b.textContent));
-  apply.click();
-  await new Promise((r) => setTimeout(r, 600));
-  check('Apply sends the two choices', posted.some((b) => b.action === 'apply' && b.purpose === 'curated' && b.durability === 'longevity'), posted);
+  check('  the footer warns while the installs are unsaved',
+    !!foot() && !foot().querySelector('.aw-warn').hidden
+    && /This installs 1 app or toolkit\./.test(foot().querySelector('.aw-warn').textContent),
+    foot() && foot().querySelector('.aw-warn').textContent);
+  durability.find((b) => b.textContent.includes('Balanced: logs kept')).click();
+  await wait(300);
+  check('choosing the second dial previews both',
+    posted.some((b) => b.action === 'preview' && b.purpose === 'curated' && b.durability === 'balanced'), posted);
+  purpose.find((b) => b.textContent.includes('Power unit')).click();
+  await wait(300);
+  check('changing a dial redraws the preview',
+    posted.some((b) => b.action === 'preview' && b.purpose === 'power' && b.durability === 'balanced'), posted);
+  foot().querySelector('.aw-discard').click();
+  await wait(300);
+  check('Discard puts the dials back to what the box has now, and redraws the preview',
+    purpose.find((b) => b.textContent.includes('Pirate box')).classList.contains('selected')
+    && durability.find((b) => b.textContent.includes('Longevity')).classList.contains('selected')
+    && posted.some((b) => b.action === 'preview' && b.purpose === 'pirate' && b.durability === 'longevity'),
+    d.getElementById('preset-preview').textContent);
+  durability.find((b) => b.textContent.includes('Full logging')).click();
+  await wait(300);
+  check('  Full logging, unsaved, names its writes in the footer',
+    /Full logging writes everything to the card\./.test(foot().querySelector('.aw-warn').textContent),
+    foot().querySelector('.aw-warn').textContent);
+  purpose.find((b) => b.textContent.includes('Curated space')).click();
+  await wait(300);
+  const save = foot().querySelector('.aw-save');
+  check('Save is on with both dials chosen', !!save && !save.disabled, save && save.disabled);
+  save.click();
+  await wait(600);
+  check('Save sends apply with both dials', posted.some((b) => b.action === 'apply' && b.purpose === 'curated' && b.durability === 'full'), posted);
   check('  the completed setup steps are marked done in the tour',
     w.TOUR.ALL.length === 20
     && ['quick-setup', 'signup', 'hotspot', 'terminal', 'addons'].every((id) => w.TOUR.decided().has(id)),
@@ -123,6 +156,20 @@ setTimeout(async () => {
     !['quick-setup', 'hotspot', 'terminal', 'addons'].some((id) => w.TOUR.decided().has(id))
     && w.TOUR.decided().has('signup'),
     [...w.TOUR.decided()].join(' '));
+  // No current preset: one tile alone still previews, and the other dial is said as not chosen yet.
+  current = null;
+  record = null;
+  w.eval('loadPresets()');
+  await wait(300);
+  check('with no current preset, no tile is marked',
+    ![...d.querySelectorAll('.preset-tile')].some((b) => b.classList.contains('selected')));
+  const beforeOne = posted.length;
+  purpose.find((b) => b.textContent.includes('Curated space')).click();
+  await wait(300);
+  check('  one tile alone previews, with no durability selected yet',
+    posted.slice(beforeOne).some((b) => b.action === 'preview' && b.purpose === 'curated' && !b.durability)
+    && /No durability selected yet\./.test(d.getElementById('preset-preview').textContent),
+    d.getElementById('preset-preview').textContent);
   check('no page errors', !errors.length, errors);
   process.exit(fails ? 1 : 0);
 }, 3000);
