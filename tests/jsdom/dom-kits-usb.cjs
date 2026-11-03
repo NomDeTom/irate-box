@@ -37,6 +37,22 @@ const settle = () => new Promise((r) => setTimeout(r, 30));
 const untrusted = { id: 'kits.usb.time-untrusted', en: 'The box cannot check that {file} is still current.', args: { file: 'x_InRelease' } };
 
 (async () => {
+  await settle();
+  // A poll with the same drives leaves the row alone: a selection in it stays; a changed label draws it again.
+  const sel = w.getSelection();
+  const labelNode = d.querySelector('#kits-usb .setting-name').firstChild;
+  const pick = d.createRange();
+  pick.selectNodeContents(labelNode);
+  sel.removeAllRanges();
+  sel.addRange(pick);
+  await w.eval('loadKitsUsb()');
+  await settle();
+  check('a poll that brings nothing new leaves the kit USB row (and a selection in it)', labelNode.isConnected && !sel.isCollapsed);
+  scan.devices[0].label = 'Stick 2';
+  await w.eval('loadKitsUsb()');
+  await settle();
+  check('  changed data draws the row again', !labelNode.isConnected && /Stick 2/.test(d.getElementById('kits-usb').textContent));
+  sel.removeAllRanges();
   await w.eval(`kitsUsbAsk({ action: 'kit-import', device: 'sda1', kit: 'small' })`);
   results = [{ id: 'r1', ok: false, msg: untrusted }];
   await w.eval('loadKitsUsb()');
