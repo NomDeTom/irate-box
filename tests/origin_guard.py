@@ -218,7 +218,6 @@ check(
             "admin-factory.html",
             "admin-git.html",
             "admin-rockchip.html",
-            "admin-pins.html",
         )
     ),
 )

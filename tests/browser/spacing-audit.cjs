@@ -13,7 +13,6 @@ const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE;
 const WIDTHS = (process.env.SPACING_WIDTHS || '1280 390').split(/\s+/).filter(Boolean).map(Number);
 const STANDALONE = [
-  ['Pin map', '/admin/pins.html'],
   ['Setup steps', '/admin/setup.html'],
   ['Factory', '/admin/factory.html'],
   ['Git builds', '/admin/git.html'],

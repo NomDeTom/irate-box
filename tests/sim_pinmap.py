@@ -16,6 +16,7 @@ from irate_box.root import pinmap
 
 PI = (Path(__file__).parent / "fixtures/gpioinfo-pi.txt").read_text()
 LYRA = (Path(__file__).parent / "fixtures/gpioinfo-lyra.txt").read_text()
+BPI = (Path(__file__).parent / "fixtures/gpioinfo-bpi.txt").read_text()
 PINMUX = (Path(__file__).parent / "fixtures/pinmux-pins-lyra.txt").read_text()
 fails = 0
 
@@ -113,6 +114,41 @@ check(
     len(lyra_unknown) == len(lyra) == len({row["pin"] for row in lyra_unknown})
     and next(row for row in lyra_unknown if row["pin"] == "gpiochip0:6")["used"],
     lyra_unknown[:3],
+)
+bpi = pinmap.parse(BPI)
+bpi_header = pinmap.board_lines("bpi", bpi, "Banana Pi BPI-M2-Zero")
+check(
+    "the BPI-M2 Zero's 40-pin header: the Allwinner ports, I2C/UART/SPI roles, and power named",
+    len(bpi_header) == 40
+    and next(row for row in bpi_header if row["pin"] == 1)["type"] == "3v3"
+    and next(row for row in bpi_header if row["pin"] == 2)["type"] == "5v"
+    and next(row for row in bpi_header if row["pin"] == 6)["type"] == "gnd"
+    and next(row for row in bpi_header if row["pin"] == 3)["name"] == "PA12"
+    and next(row for row in bpi_header if row["pin"] == 3)["role"] == "TWI0-SDA"
+    and next(row for row in bpi_header if row["pin"] == 8)["role"] == "UART3-TX / SPI1-CS"
+    and next(row for row in bpi_header if row["pin"] == 8)["used"]
+    and next(row for row in bpi_header if row["pin"] == 8)["consumer"] == "uart3"
+    and next(row for row in bpi_header if row["pin"] == 32)["name"] == "PL2"
+    and next(row for row in bpi_header if row["pin"] == 32)["chip"] == "gpiochip1"
+    and next(row for row in bpi_header if row["pin"] == 32)["line"] == 2
+    and next(row for row in bpi_header if row["pin"] == 40)["name"] == "PA20",
+    bpi_header[:9],
+)
+check(
+    "  the model names it: 'Banana Pi BPI-M2-Zero' is the bpi header, not the generic list",
+    pinmap.board_kind("other", "Banana Pi BPI-M2-Zero") == "bpi"
+    and pinmap.board_kind("other", "Raspberry Pi 3 Model B Plus") == "other",
+)
+blank = [dict(line, name="unnamed") for line in bpi]
+blank_header = pinmap.board_lines("bpi", blank, "Banana Pi BPI-M2-Zero")
+check(
+    "  without line names: the bank and line on the PIO and R_PIO controllers still place the header",
+    next(row for row in blank_header if row["pin"] == 3)["chip"] == "gpiochip0"
+    and next(row for row in blank_header if row["pin"] == 3)["line"] == 12
+    and next(row for row in blank_header if row["pin"] == 32)["chip"] == "gpiochip1"
+    and next(row for row in blank_header if row["pin"] == 32)["line"] == 2
+    and next(row for row in blank_header if row["pin"] == 40)["line"] == 20,
+    [row for row in blank_header if row["pin"] in (3, 32, 40)],
 )
 # An added controller before the GPIO banks shifts every gpiochipN: the header must follow the device address
 # (/sys/bus/gpio/devices/gpiochipN), not the number. gpiochip0 is a PMIC here; the RK3506 banks are 1..5.

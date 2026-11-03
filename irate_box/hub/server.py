@@ -5817,8 +5817,12 @@ class Handler(BaseHTTPRequestHandler):
             # Rockchip boards (apps.d/57-rockchip.json): behind /admin's login, as the Factory's page.
             path = "/admin-rockchip.html"
         elif path == "/admin/pins.html":
-            # The GPIO pin map (root/pinmap.py): behind /admin's login, as the Factory's page.
-            path = "/admin-pins.html"
+            # The GPIO pin map (root/pinmap.py): a page in /admin, with its sidebar, for old links.
+            self.send_response(302)
+            self.send_header("Location", "/admin/#pins")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
 
         if path == "/api/guest-net":
             # What the sheet shows a guest: whether the owner shares the connection, at what level,
