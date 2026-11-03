@@ -265,6 +265,21 @@ server {
 		auth_basic_user_file $irate_box_logins;
 		proxy_pass http://irate_box_hub;
 	}
+=======
+>>>>>>> 00e51a4c (Music: its page behind the Access setting)
+
+	# The music player's page: public, private or off like the apps; off hides the page and
+	# the drop's list it reads (the files themselves stay behind the drop's own switch).
+	location = /music.html {
+		if ($irate_box_off_music) { return 404; }
+		auth_basic $irate_box_auth_music;
+		include @ACCESS@.d/gate-music.conf*;
+		auth_basic_user_file $irate_box_logins;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
 
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
 	# page; the 🎨 in every page's header stays.

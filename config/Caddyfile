@@ -156,6 +156,14 @@
 		}
 	}
 
+	# The music player's page: public, private or off like the apps.
+	handle /music.html {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/music.caddy*
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
+	}
+
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
 	# page; the 🎨 in every page's header stays.
 	handle /themes.html {
