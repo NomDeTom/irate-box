@@ -40,16 +40,42 @@ with mock.patch.object(librarian, "_open", side_effect=http404(404)):
             and "no token" in str(exc),
             exc,
         )
-with mock.patch.object(librarian, "_open", side_effect=http404(404)):
+
+
+class _Ok:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def open_repo_exists(url, *args, **kwargs):
+    if "/actions/workflows/" in url:
+        raise http404(404)
+    return _Ok()
+
+
+with mock.patch.object(librarian, "_open", side_effect=open_repo_exists):
     try:
         librarian._api("/repos/NomDeTom/web-flasher/actions/workflows/irate-box-bundle.yml/runs")
-        check("a 404 on a workflow names the workflow", False)
+        check("a 404 on a workflow, with the repository there, names the workflow", False)
     except librarian.LibrarianError as exc:
         check(
-            "a 404 on a workflow names the workflow",
+            "a 404 on a workflow, with the repository there, names the workflow",
             exc.message["id"] == "library.source.no-workflow"
             and "irate-box-bundle.yml" in str(exc)
             and "NomDeTom/web-flasher" in str(exc),
+            exc,
+        )
+with mock.patch.object(librarian, "_open", side_effect=http404(404)):
+    try:
+        librarian._api("/repos/NomDeTom/web-flasher/actions/workflows/irate-box-bundle.yml/runs")
+        check("a 404 on a workflow whose repository is missing says the repository", False)
+    except librarian.LibrarianError as exc:
+        check(
+            "a 404 on a workflow whose repository is missing says the repository",
+            exc.message["id"] == "library.source.no-repository" and "no token" in str(exc),
             exc,
         )
 

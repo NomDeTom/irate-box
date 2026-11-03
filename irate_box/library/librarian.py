@@ -1333,12 +1333,31 @@ def _api(path, auth=None):
             repo = "/".join(repo)
             found = re.search(r"/actions/workflows/([^/]+)/", path)
             if found:
+                # GitHub answers 404 for both a missing repository and a missing workflow on a
+                # runs path. Ask the repository itself: the case that started this was a fork
+                # that did not exist.
+                try:
+                    with _open(f"{API}/repos/{repo}", auth):
+                        pass
+                except LibrarianError as second:
+                    answer = getattr(second, "message", None)
+                    args2 = answer.get("args", {}) if isinstance(answer, dict) else {}
+                    if not (answer and answer.get("id") == "library.download.http-error" and args2.get("code") == 404):
+                        raise exc
+                else:
+                    raise LibrarianError(
+                        M(
+                            "library.source.no-workflow",
+                            "{repo} has no workflow {workflow}.",
+                            repo=repo,
+                            workflow=found.group(1),
+                        )
+                    ) from exc
                 raise LibrarianError(
                     M(
-                        "library.source.no-workflow",
-                        "{repo} has no workflow {workflow}.",
+                        "library.source.no-repository",
+                        "The repository {repo} is not on GitHub (or is private, and the box has no token for it).",
                         repo=repo,
-                        workflow=found.group(1),
                     )
                 ) from exc
             raise LibrarianError(
