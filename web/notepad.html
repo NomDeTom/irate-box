@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="notepad.head.title">Notepad · Hub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="shared-text" data-shared="notepad">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="notepad.header.tip-quick-help" data-i18n="notepad.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/" title="Back to the hub" data-i18n-title="notepad.header.tip-back-hub" data-i18n="notepad.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="notepad.header.heading">📝 Notepad</h1>
+    <p class="subtitle" data-i18n="notepad.header.subtitle">A shared page of words for everyone on the box. Everyone who can open this page sees and can change it.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="notepad.header.aria-theme"></div>
+  </header>
+
+  <section>
+    <label class="setting" data-i18n="notepad.body.label">
+      <span class="setting-name">The shared text</span>
+      <span class="setting-desc">Anything here is public to everyone on the box. It stays until someone changes or clears it.</span>
+      <textarea id="shared-text" class="shared-text-area" rows="20" spellcheck="true" translate="no"></textarea>
+    </label>
+    <div class="library-buttons">
+      <button class="action-btn primary" id="shared-save" type="button" data-i18n="notepad.body.save">Save</button>
+      <span class="setting-desc" id="shared-state" role="status" data-i18n="notepad.body.loading">Reading the box…</span>
+    </div>
+    <p class="setting-desc" data-i18n="notepad.body.note">The page reads the box every few seconds. Your unsaved words are not written over.</p>
+  </section>
+
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/shared-text.js"></script>
+</body>
+</html>

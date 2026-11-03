@@ -6350,3 +6350,13 @@ label > .aw-onoff-box ~ .chip-group,
 .preset-preview .after {
   font-weight: 600;
 }
+
+/* One shared text (notepad.html, pastebin.html): the box's own page, everyone reads and writes it. */
+.shared-text-area {
+  width: 100%;
+  min-height: 18rem;
+  box-sizing: border-box;
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
