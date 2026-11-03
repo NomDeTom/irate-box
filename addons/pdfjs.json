@@ -1,0 +1,26 @@
+{
+  "id": "pdfjs",
+  "order": 28,
+  "tile": {
+    "icon": "📄",
+    "name": "PDF viewer",
+    "desc": "Open a PDF from the file drop, on a phone too",
+    "path": "index.html"
+  },
+  "source": {
+    "type": "git",
+    "repo": "https://github.com/mozilla/pdf.js",
+    "branch": "master",
+    "pin": "9e2e9e20968051a267683ba8a6f71d6a64e5aee7",
+    "adapt": "adapt_pdfjs.py"
+  },
+  "needs": "index.html",
+  "addon": {
+    "title": "PDF viewer",
+    "summary": "Mozilla's PDF.js, running in the visitor's browser, with the file drop's PDFs as its start page. It opens a PDF in place on a phone, where the browser's own viewer would download it. It needs about 25 MB of storage. It is adapted for the box: its start page is the drop, and a strict Content-Security-Policy stops every request outside the box.",
+    "consent": "This downloads PDF.js from github.com/mozilla/pdf.js at the release that this hub pins. A new web add-on starts disabled. After you enable it, the hub serves it to the visitors that its Access setting lets open it. The copy is adapted for the box: the start page lists the PDFs in the file drop, and a strict Content-Security-Policy stops every request outside the box. Add the PDF viewer?"
+  },
+  "capabilities": {
+    "local": true
+  }
+}
