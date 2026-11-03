@@ -4692,7 +4692,8 @@ html:has(> body.admin) {
   border-radius: 6px;
   background: var(--surface);
 }
-.attention h3 {
+/* body.admin h3's room above every admin heading is not for this card's: its own padding is the gap. */
+body.admin .attention h3 {
   margin: 0.2rem 0 0.4rem;
   font-size: 0.95rem;
 }
