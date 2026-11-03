@@ -111,13 +111,22 @@ def refused(name, uuid, why):
 
 with (
     mock.patch.object(rootdrive, "_run", fake_run),
-    mock.patch.object(rootdrive, "_folders", lambda: None),
     mock.patch.object(rootdrive.os.path, "ismount", lambda p: mounted["on"] and str(p) == str(rootdrive.MOUNT)),
 ):
     refused("an unknown UUID is refused", "nope", "No USB drive")
     refused("a drive that is not USB is refused", "card-uuid", "not on a USB drive")
     refused("a filesystem the box does not mount is refused", "disc-uuid", "does not include it")
     refused("a path from the hub is not a UUID and is refused", "/media/irate-box/library", "not a filesystem UUID")
+    # A crafted drive: zim is a link to somewhere root must not chown.
+    link_target = T / "elsewhere"
+    link_target.mkdir()
+    (rootdrive.MOUNT / "zim").symlink_to(link_target)
+    try:
+        rootdrive.choose({"uuid": "drive-uuid", "kinds": {"podcasts": "drive", "books": "card"}})
+        check("a folder that is a link is refused before any chown", False, "accepted")
+    except Refused as exc:
+        check("a folder that is a link is refused before any chown", "not a real folder" in str(exc), str(exc))
+    (rootdrive.MOUNT / "zim").unlink()
     said = rootdrive.choose({"uuid": "drive-uuid", "kinds": {"podcasts": "drive", "books": "card"}})
     check("a USB ext4 drive is taken by its UUID", "mounted" in str(said), said)
     check(
@@ -127,6 +136,37 @@ with (
         and "nosuid,nodev,noexec,nofail" in rootdrive.UNIT.read_text(),
     )
     check("  and a record for the hub", json.loads(rootdrive.HUB_RECORD.read_text())["uuid"] == "drive-uuid")
+    check(
+        "FAT and exFAT get the hub user from the mount, ext4 does not",
+        "uid=" in rootdrive._unit_text("u", "vfat")
+        and "gid=" in rootdrive._unit_text("u", "vfat")
+        and "umask=022" in rootdrive._unit_text("u", "exfat")
+        and "uid=" not in rootdrive._unit_text("u", "ext4"),
+    )
+    commands = []
+    old_run = fake_run
+
+    def record_run(*cmd, timeout=30):
+        commands.append(cmd)
+        return old_run(*cmd, timeout=timeout)
+
+    with mock.patch.object(rootdrive, "_run", record_run):
+        message = rootdrive.eject({})
+    order = [c[3] if len(c) > 3 else "" for c in commands if c and c[0] == "runuser"]
+    mounted["on"] = True
+    librarydrive.RECORD.write_text(
+        json.dumps({"uuid": "drive-uuid", "kinds": {"podcasts": "drive", "books": "card"}, "mounted": True})
+    )
+    check(
+        "Eject rebuilds without the drive, restarts Kiwix, then unmounts",
+        any("rebuild-library" in c and "--without-drive" in c for c in commands)
+        and any(c[:2] == ("systemctl", "restart") and c[2] == "kiwix.service" for c in commands)
+        and [i for i, c in enumerate(commands) if "rebuild-library" in c][0]
+        < [i for i, c in enumerate(commands) if c[:2] == ("systemctl", "restart")][0]
+        < [i for i, c in enumerate(commands) if c[:2] == ("systemctl", "stop")][0]
+        and "unmounted" in str(message),
+        commands,
+    )
 
 # The hub reads the record: the drive's folder for podcasts, the card for books.
 with mock.patch.object(librarydrive.os.path, "ismount", lambda p: mounted["on"] and str(p) == str(rootdrive.MOUNT)):

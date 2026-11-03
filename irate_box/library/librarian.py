@@ -105,9 +105,9 @@ def book_home(name=None):
     return librarydrive.place("books", ZIM_DIR)
 
 
-def book_dirs():
+def book_dirs(include_drive=True):
     """Every folder books may be in now: the card always, and the drive when it is there."""
-    home = book_home()
+    home = book_home() if include_drive else ZIM_DIR
     return [ZIM_DIR] if home is None or home == ZIM_DIR else [ZIM_DIR, home]
 
 
@@ -1806,12 +1806,13 @@ def _kiwix_add(lib, zims):
     return _kiwix_add(lib, zims[:mid]) + _kiwix_add(lib, zims[mid:])
 
 
-def rebuild_library():
+def rebuild_library(include_drive=True):
     """library.xml from the .zim files actually present, as install.sh does: in batches, the
-    unreadable ones left out (returned). kiwix-serve's --monitorLibrary notices the new file."""
+    unreadable ones left out (returned). kiwix-serve's --monitorLibrary notices the new file.
+    include_drive=False leaves the library drive's books out (eject, before it is unmounted)."""
     new = ZIM_DIR / "library.xml.new"
     new.unlink(missing_ok=True)
-    zims = sorted(path for folder in book_dirs() for path in folder.glob("*.zim"))
+    zims = sorted(path for folder in book_dirs(include_drive) for path in folder.glob("*.zim"))
     left = []
     for i in range(0, len(zims), KIWIX_BATCH):
         left += _kiwix_add(new, zims[i : i + KIWIX_BATCH])
@@ -2594,7 +2595,8 @@ def main(argv=None):
     t.add_argument("value", nargs="?", default="")
     aa = sub.add_parser("add-apps")
     aa.add_argument("apps", nargs="*")
-    sub.add_parser("rebuild-library")
+    rb = sub.add_parser("rebuild-library")
+    rb.add_argument("--without-drive", action="store_true")
     af = sub.add_parser("app-fetch")
     af.add_argument("app")
     fw = sub.add_parser("firmware")
@@ -2689,7 +2691,7 @@ def main(argv=None):
                 print(holder.sync(check_only=args.check, only=set(args.ids) or None))
         elif args.cmd == "rebuild-library":
             with Lock():
-                rebuild_library()
+                rebuild_library(include_drive=not args.without_drive)
         elif args.cmd == "app-fetch":
             if args.app not in APPS:
                 raise LibrarianError(_unknown_app(APPS))

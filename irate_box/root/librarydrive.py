@@ -22,6 +22,7 @@ import json
 import os
 import pwd
 import re
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -37,11 +38,13 @@ MOUNT = Path(os.environ.get("HUB_LIBRARY_MOUNT", "/media/irate-box/library"))
 UNIT_DIR = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd/system"))
 UNIT_NAME = "media-irate-box-library.mount"
 UNIT = UNIT_DIR / UNIT_NAME
-HUB_USER = os.environ.get("HUB_USER", "irate-box")
+HUB_USER = os.environ.get("HUB_USER", "hub")
 UUID_RE = re.compile(r"^[A-Za-z0-9.-]{1,64}$")
 KINDS = ("podcasts", "books")
 PLACES = ("card", "drive")
 FOLDERS = {"podcasts": "podcasts", "books": "zim"}
+# Filesystems with no owners of their own: the mount gives the files to the hub user instead.
+OWNERLESS = ("vfat", "exfat", "ntfs", "ntfs3")
 
 
 def _run(*cmd, timeout=30):
@@ -127,6 +130,11 @@ def _find(uuid):
 
 
 def _unit_text(uuid, fstype):
+    owner = ""
+    if fstype in OWNERLESS:
+        # FAT and exFAT have no owners: the mount gives every file to the hub user, as usbstick.py does.
+        user = pwd.getpwnam(HUB_USER)
+        owner = f",uid={user.pw_uid},gid={user.pw_gid},umask=022"
     return (
         "# Written by irate-box's library drive (irate_box/root/librarydrive.py).\n"
         "[Unit]\n"
@@ -137,20 +145,34 @@ def _unit_text(uuid, fstype):
         f"What=/dev/disk/by-uuid/{uuid}\n"
         f"Where={MOUNT}\n"
         f"Type={fstype}\n"
-        "Options=nosuid,nodev,noexec,nofail,x-systemd.device-timeout=10s\n"
+        f"Options=nosuid,nodev,noexec,nofail,x-systemd.device-timeout=10s{owner}\n"
         "\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
 
 
-def _folders():
-    uid = pwd.getpwnam(HUB_USER).pw_uid
-    gid = pwd.getpwnam(HUB_USER).pw_gid
+def _folders(fstype=None):
+    """The kind folders, after the mount. A name that exists as anything but a real directory (a link
+    a crafted drive put there, say) is refused before any chown: root does not follow it."""
+    user = pwd.getpwnam(HUB_USER)
     for name in FOLDERS.values():
         path = MOUNT / name
-        path.mkdir(parents=True, exist_ok=True)
-        os.chown(path, uid, gid)
+        try:
+            found = os.lstat(path)
+        except FileNotFoundError:
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            if not stat.S_ISDIR(found.st_mode):
+                raise Refused(
+                    M(
+                        "library-drive.folder-not-directory",
+                        "The drive has {name} as something that is not a real folder. The box will not use it.",
+                        name=name,
+                    )
+                )
+        if fstype not in OWNERLESS:
+            os.chown(path, user.pw_uid, user.pw_gid, follow_symlinks=False)
 
 
 def choose(req):
@@ -177,7 +199,7 @@ def choose(req):
     out = _run("systemctl", "enable", "--now", UNIT_NAME)
     mounted = os.path.ismount(MOUNT)
     if mounted:
-        _folders()
+        _folders(str(dev["fstype"]).lower())
     record = {"uuid": uuid, "fstype": str(dev["fstype"]).lower(), "label": dev.get("label") or "", "kinds": kinds}
     _save(record, mounted=mounted)
     if not mounted:
@@ -197,8 +219,17 @@ def eject(req=None):
         raise Refused(M("library-drive.no-drive", "The box has no library drive."))
     # The librarian's own lock, taken briefly as the hub user: a download in flight finishes first.
     _run("runuser", "-u", HUB_USER, "--", "irate-box", "librarian", "library-lock-wait", timeout=300)
-    _run("systemctl", "stop", UNIT_NAME)
-    _run("runuser", "-u", HUB_USER, "--", "irate-box", "librarian", "rebuild-library", timeout=300)
+    # Kiwix holds the drive's books open: rebuild without them and restart it before unmounting,
+    # or the unmount is refused as busy.
+    _run("runuser", "-u", HUB_USER, "--", "irate-box", "librarian", "rebuild-library", "--without-drive", timeout=300)
     _run("systemctl", "restart", "kiwix.service")
-    _save(record, mounted=os.path.ismount(MOUNT))
+    stopped = _run("systemctl", "stop", UNIT_NAME)
+    mounted = os.path.ismount(MOUNT)
+    _save(record, mounted=mounted)
+    if mounted or stopped.returncode != 0:
+        return M(
+            "library-drive.eject-busy",
+            "The library drive could not be unmounted: something is still using it. Its books are out of "
+            "Kiwix's library until it is unmounted. Close what uses the drive and try Eject again.",
+        )
     return M("library-drive.ejected", "The library drive is unmounted. Plug it back in and it returns.")
