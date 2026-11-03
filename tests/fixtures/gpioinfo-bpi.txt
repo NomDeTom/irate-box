@@ -1,0 +1,40 @@
+gpiochip0 - 224 lines:
+	line   0:      "PA0"  input  active-high
+	line   1:      "PA1"  input  active-high
+	line   2:      "PA2"  input  active-high
+	line   3:      "PA3"  input  active-high
+	line   6:      "PA6"  input  active-high consumer="pwm"
+	line   7:      "PA7"  input  active-high
+	line   8:      "PA8"  input  active-high
+	line   9:      "PA9"  input  active-high
+	line  10:      "PA10"  input  active-high
+	line  11:      "PA11"  input  active-high
+	line  12:      "PA12"  input  active-high
+	line  13:      "PA13"  input  active-high consumer="uart3"
+	line  14:      "PA14"  input  active-high
+	line  15:      "PA15"  input  active-high
+	line  16:      "PA16"  input  active-high
+	line  17:      "PA17"  input  active-high
+	line  18:      "PA18"  input  active-high
+	line  19:      "PA19"  input  active-high
+	line  20:      "PA20"  input  active-high
+	line  21:      "PA21"  input  active-high
+	line  64:      "PC0"  input  active-high
+	line  65:      "PC1"  input  active-high
+	line  66:      "PC2"  input  active-high
+	line  67:      "PC3"  input  active-high
+	line  68:      "PC4"  input  active-high
+	line  71:      "PC7"  input  active-high
+gpiochip1 - 12 lines:
+	line   0:      "PL0"  input  active-high
+	line   1:      "PL1"  input  active-high
+	line   2:      "PL2"  input  active-high
+	line   3:      "PL3"  input  active-high
+	line   4:      "PL4"  input  active-high
+	line   5:      "PL5"  input  active-high
+	line   6:      "PL6"  input  active-high
+	line   7:      "PL7"  input  active-high
+	line   8:      "PL8"  input  active-high
+	line   9:      "PL9"  input  active-high
+	line  10:      "PL10"  input  active-high consumer="leds"
+	line  11:      "PL11"  input  active-high

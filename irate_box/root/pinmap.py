@@ -137,6 +137,51 @@ LYRA_ZERO = {
     39: ("GND", None, None, ""),
     40: ("GPIO0_C2", 18, 18, ""),
 }
+
+# Banana Pi BPI-M2 Zero, 40-pin Raspberry Pi-compatible header, from Banana Pi's wiki pinout. The port names are
+# the Allwinner H3/H2+ GPIO names; the roles are the pinout's default (and alternate) functions.
+BPI_M2_ZERO = {
+    1: ("3V3", None, None, ""),
+    2: ("5V", None, None, ""),
+    3: ("PA12", 12, None, "TWI0-SDA"),
+    4: ("5V", None, None, ""),
+    5: ("PA11", 11, None, "TWI0-SCK"),
+    6: ("GND", None, None, ""),
+    7: ("PA6", 6, None, "PWM1"),
+    8: ("PA13", 13, None, "UART3-TX / SPI1-CS"),
+    9: ("GND", None, None, ""),
+    10: ("PA14", 14, None, "UART3-RX / SPI1-CLK"),
+    11: ("PA1", 1, None, "UART2-RX"),
+    12: ("PA16", 16, None, "UART3-CTS / SPI1-MISO"),
+    13: ("PA0", 0, None, "UART2-TX"),
+    14: ("GND", None, None, ""),
+    15: ("PA3", 3, None, "UART2-CTS"),
+    16: ("PA15", 15, None, "UART3-RTS / SPI1-MOSI"),
+    17: ("3V3", None, None, ""),
+    18: ("PC4", 68, None, ""),
+    19: ("PC0", 64, None, "SPI0-MOSI"),
+    20: ("GND", None, None, ""),
+    21: ("PC1", 65, None, "SPI0-MISO"),
+    22: ("PA2", 2, None, "UART2-RTS"),
+    23: ("PC2", 66, None, "SPI0-CLK"),
+    24: ("PC3", 67, None, "SPI0-CS"),
+    25: ("GND", None, None, ""),
+    26: ("PC7", 71, None, ""),
+    27: ("PA19", 19, None, "TWI1-SDA"),
+    28: ("PA18", 18, None, "TWI1-SCK"),
+    29: ("PA7", 7, None, ""),
+    30: ("GND", None, None, ""),
+    31: ("PA8", 8, None, ""),
+    32: ("PL2", 354, None, ""),
+    33: ("PA9", 9, None, ""),
+    34: ("GND", None, None, ""),
+    35: ("PA10", 10, None, ""),
+    36: ("PL4", 356, None, ""),
+    37: ("PA17", 17, None, "SPDIF-OUT"),
+    38: ("PA21", 21, None, ""),
+    39: ("GND", None, None, ""),
+    40: ("PA20", 20, None, ""),
+}
 DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
 # The RK3506's GPIO controllers by device address (Firefly's RK3506 and Luckfox's Lyra manuals): GPIO0..GPIO4.
 # gpiochipN is probe order, so a PMIC's or an expander's controller added before them shifts every number.
@@ -146,6 +191,11 @@ RK3506_GPIO_BANK = {
     "ff1c0000": 2,
     "ff1d0000": 3,
     "ff1e0000": 4,
+}
+# The Allwinner H3/H2+ controllers: the main PIO (PA-PG) and the R_PIO (PL), which the BPI-M2 Zero's header uses.
+SUNXI_GPIO_CHIP = {
+    "1c20800": "pio",
+    "1f02c00": "rpio",
 }
 GPIO_SYS = Path(os.environ.get("HUB_GPIO_SYS", "/sys/bus/gpio/devices"))
 CHIP_RE = re.compile(r"^gpiochip(\d+)\s+-\s+\d+\s+lines:")
@@ -285,7 +335,7 @@ def _chip_address(chip):
         except OSError:
             continue
         for part in reversed(target.parts):
-            found = re.fullmatch(r"([0-9a-fA-F]{8})(?:\.gpio)?", part)
+            found = re.fullmatch(r"([0-9a-fA-F]{7,8})(?:\.(?:gpio|pinctrl))?", part)
             if found:
                 return found.group(1).lower()
     return ""
@@ -305,9 +355,52 @@ def chip_banks(lines):
     return {chip: int(found.group(1)) for chip in chips if (found := re.fullmatch(r"gpiochip(\d+)", chip)) is not None}
 
 
+def board_kind(board, model_name):
+    """lyra, pi or bpi from the board and the device tree's model; any other board stays as it is."""
+    if board in ("pi", "lyra", "bpi"):
+        return board
+    low = model_name.lower()
+    if re.search(r"\bbpi[-_ ]?m2[-_ ]?zero\b", low) or "banana pi m2 zero" in low:
+        return "bpi"
+    return board or "other"
+
+
+def _port_key(name):
+    """PA12, PA12-EINT12 and PL2-S-EINT2 all name the same header port."""
+    return re.sub(r"[^A-Z0-9].*$", "", (name or "").strip().upper())
+
+
+def sunxi_chips(lines):
+    """The main PIO and R_PIO controllers in lines, by device address where sysfs has it, else by their size."""
+    chips = {}
+    for line in lines:
+        chips.setdefault(line["chip"], []).append(line)
+    if not chips:
+        return None, None
+    roles = {chip: SUNXI_GPIO_CHIP.get(_chip_address(chip)) for chip in chips}
+    pio = next((chip for chip, role in roles.items() if role == "pio"), None)
+    rpio = next((chip for chip, role in roles.items() if role == "rpio"), None)
+    if pio is None:
+        pio = max(chips, key=lambda chip: len(chips[chip]))
+    if rpio is None:
+        rpio = next((chip for chip in chips if chip != pio and len(chips[chip]) == 12), None)
+    return pio, rpio
+
+
+def sunxi_line(name, lines, pio, rpio):
+    """The gpioinfo row for a port such as PA12 or PL2, by bank and line on the controller that holds it."""
+    found = re.fullmatch(r"P([A-GL])(\d+)", name.upper())
+    if not found:
+        return {}
+    bank, number = found.group(1), int(found.group(2))
+    chip = rpio if bank == "L" else pio
+    line = number if bank == "L" else (ord(bank) - ord("A")) * 32 + number
+    return next((row for row in lines if row["chip"] == chip and row["line"] == line), {})
+
+
 def board_lines(board, lines, model_name=""):
-    """The header, as [{pin, type, name, gpio, chip, line, rmio, role, consumer, used}], for the Pi and the
-    Lyra Zero W; every line, keyed by chip and number, for a board whose header is not known."""
+    """The header, as [{pin, type, name, gpio, chip, line, rmio, role, consumer, used}], for the Pi, the
+    Lyra Zero W and the BPI-M2 Zero; every line, keyed by chip and number, for a board whose header is not known."""
     if board == "pi":
         # The header is on the chip that names GPIO2 (gpiochip0 on a Pi 3/4, another chip on a Pi 5).
         chip = next((line["chip"] for line in lines if line["name"] == "GPIO2"), "gpiochip0")
@@ -323,6 +416,30 @@ def board_lines(board, lines, model_name=""):
                 "line": gpio if gpio is not None else None,
                 "rmio": None,
                 "role": PI_ALT.get(gpio, "") if gpio is not None else "",
+                "consumer": found.get("consumer", ""),
+                "used": found.get("used", False),
+            }
+            row["type"] = _pin(row)
+            out.append(row)
+        return out
+    if board == "bpi":
+        pio, rpio = sunxi_chips(lines)
+        by_name = {}
+        for line in lines:
+            key = _port_key(line["name"])
+            if key and key != "UNNAMED" and key not in by_name:
+                by_name[key] = line
+        out = []
+        for pin, (name, gpio, rmio, role) in sorted(BPI_M2_ZERO.items()):
+            found = (by_name.get(name) or sunxi_line(name, lines, pio, rpio)) if gpio is not None else {}
+            row = {
+                "pin": pin,
+                "name": name,
+                "gpio": gpio,
+                "chip": found.get("chip") if gpio is not None else None,
+                "line": found.get("line") if gpio is not None else None,
+                "rmio": rmio,
+                "role": role,
                 "consumer": found.get("consumer", ""),
                 "used": found.get("used", False),
             }
@@ -370,8 +487,8 @@ def snapshot(board=None):
     """The board, every line gpioinfo reports and the header, for the page; the pin-mux claims on Rockchip too."""
     from irate_box.root import hardening
 
-    board = board or hardening.board()
     model_name = model()
+    board = board_kind(board or hardening.board(), model_name)
     said = run("gpioinfo")
     if said.returncode:
         why = said.stderr.strip()[-200:] or "gpioinfo failed"

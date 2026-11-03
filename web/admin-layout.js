@@ -29,7 +29,7 @@ const AL = (() => {
     { name: 'Moderation', art: 'librarian', pages: [
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'User data', sections: ['made'] }] },
-    { name: 'System', art: 'controller', links: [{ title: 'Pin map', href: '/admin/pins.html' }], pages: [
+    { name: 'System', art: 'controller', pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },
@@ -38,7 +38,8 @@ const AL = (() => {
       { title: 'Clock', sections: ['clock'] },
       { title: 'Recovery and monitoring', sections: ['recovery'] },
       { title: 'Updates', sections: ['updates'] },
-      { title: 'Backup and transfer', sections: ['backup'] }] },
+      { title: 'Backup and transfer', sections: ['backup'] },
+      { title: 'Pin map', sections: ['pins'] }] },
     { name: 'Doctors', art: 'doctor', pages: [
       { title: 'Box doctor', sections: ['health'] },
       { title: 'Security doctor', sections: ['secdoctor'] },

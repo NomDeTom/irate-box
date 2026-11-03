@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// The pin map (/admin/pins.html, admin-pins.js) in jsdom against a stood-in /admin/pins: nothing read yet, the
+// The pin map (/admin/#pins, admin-pins.js) in jsdom against a stood-in /admin/pins: nothing read yet, the
 // helper's answer read by the request's id, a stale map not shown as fresh, a free and a taken pin drawn, the
 // incomplete-map note said, and a failed read's own message shown.
 // Usage: [JSDOM=/path/to/node_modules/jsdom] node dom-pins.cjs
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const html = fs.readFileSync(`${WEB}/admin-pins.html`, 'utf8');
+const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = ['admin-widgets.js', 'admin-pins.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|scrollIntoView/.test(e.message)) errors.push('jsdom: ' + e.message); });
-const dom = new JSDOM(html, { url: 'http://box/admin/pins.html', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
+const dom = new JSDOM(html, { url: 'http://box/admin/#pins', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 let state = { pins: null, pending: 0, results: [] };
 let asked = 0;
