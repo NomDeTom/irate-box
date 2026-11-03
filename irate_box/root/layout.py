@@ -25,7 +25,7 @@ STATE = 1 << 30
 SYSTEM = {"lyra": 4 << 30, "pi": 8 << 30}
 # What the copy of a system into a slot leaves out. The mount points stay, empty and with their modes: only what
 # is in them is left out. With the folders left out too, a Lyra booted from a slot copied this way stopped in its
-# initramfs ("run-init: opening console: No such file or directory", "No init found"; 2026-10-30): no /dev.
+# initramfs ("run-init: opening console: No such file or directory", "No init found"): no /dev.
 COPY_EXCLUDES = tuple(
     f"--exclude=/{d}/*" for d in ("proc", "sys", "dev", "run", "tmp", "var/log.nand", "mnt", "media", "var/lib/hub")
 ) + ("--exclude=/etc/fstab",)
@@ -130,7 +130,7 @@ def _sgdisk(path, parts):
         ]
         if part["name"] == "irate-system-a":
             # The legacy BIOS bootable attribute (bit 2): U-Boot's boot scan looks only at bootable partitions when
-            # one is, and the first partition here is a raw bootstate it cannot read (found on a Lyra, 2026-10-30).
+            # one is, and the first partition here is a raw bootstate it cannot read (found on a Lyra).
             command.append(f"--attributes={index}:set:2")
         commands.append(command + [str(path)])
     return commands
@@ -200,7 +200,7 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
             mkfs = _mkfs(device_part, part)
             if not mkfs:
                 # A partition left raw keeps whatever the card held there: a card laid out over an image read
-                # back its old root's ext4 signature and UUID in the bootstate (2026-10-29). Wipe the signatures.
+                # back its old root's ext4 signature and UUID in the bootstate. Wipe the signatures.
                 wipe = ["wipefs", "-a", device_part]
                 used.append(wipe)
                 result = run(*wipe)

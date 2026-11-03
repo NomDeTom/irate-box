@@ -40,7 +40,7 @@ INITRAMFS_RE = re.compile(r"\(initramfs\)\s*$")
 # (armbian-firstlogin: `until read -r -t 1 _`, which Ctrl-C does not end). Only this line asks for it.
 ENTER_RE = re.compile(r"Press Enter to start the first login setup")
 # Each question by a few of its own words, not the whole line: a USB adapter at 1.5 Mbaud drops characters (a Lyra Zero
-# W on a CH340, 2026-10-30, gave "Creating a n provide a username (eg. your first name): " and a buffer ending at
+# W on a CH340 gave "Creating a n provide a username (eg. your first name): " and a buffer ending at
 # "your first nam"). The board waits for the answer, so one sent as the question arrives is still read.
 FIRST = {
     "root1": re.compile(r"Create root pass"),
