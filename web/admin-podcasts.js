@@ -116,9 +116,12 @@
     );
     for (const feed of snap.feeds) {
       const remove = el("button", { type: "button", className: "small", textContent: "Remove" });
-      remove.addEventListener("click", () => {
-        if (!confirm(`Remove ${feed.title}? Its episodes can stay on the box or be deleted.`)) return;
-        const deleteFiles = confirm("Delete its episodes from the box too? Choose Cancel to keep them.");
+      remove.addEventListener("click", async () => {
+        if (!(await AW.confirmHere(`Remove ${feed.title}?`, { anchor: remove, label: "Remove" }))) return;
+        const deleteFiles = await AW.confirmHere(
+          "Delete its episodes from the box too? Choose Cancel to keep them on the box.",
+          { anchor: remove, label: "Delete episodes" },
+        );
         post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(e.message, true));
       });
       table.append(
