@@ -2177,6 +2177,16 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                 except (LibrarianError, OSError) as exc:
                     results["holders"] = f"error: {exc}"
                 log(f"holders: {results['holders']}")
+        # Board images for the Rockchip page (rkimages.py): the newest mPWRD-OS and Armbian releases.
+        if not names or "rk-images" in names:
+            from irate_box.library import rkimages
+
+            if rkimages.settings()["enabled"] and (not scheduled or rkimages.due()):
+                try:
+                    results["rk-images"] = rkimages.sync(check_only=(mode == "check"), log=log)
+                except (LibrarianError, OSError) as exc:
+                    results["rk-images"] = f"error: {exc}"
+                    log(f"rk-images: error: {exc}")
         # Mirrored git repositories (mirrors.py), likewise.
         if not names or "mirrors" in names:
             from irate_box.library import mirrors
