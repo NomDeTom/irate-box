@@ -209,6 +209,7 @@ run sim_security_changes.py
 run sim_update_parts.py
 run sim_updates_addons.py
 run sim_update_source_view.py
+run sim_update_security_carry.py
 run sim_share.py
 run sim_guest_net.py
 run sim_overview_net.py
