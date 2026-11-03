@@ -732,6 +732,12 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
         if cur and not same:
             _write(MANIFESTS / f"{kit_id}.previous.json", cur)
         _write(MANIFESTS / f"{kit_id}.json", new)
+        # The cache now holds exactly what apt resolved a moment ago, so the last check's time follows
+        # the cache: the card's "Cached" and "Checked" cannot disagree after a fetch.
+        _store_check(
+            kit_id,
+            {"state": "current", "at": new["fetched"], "changes": [], "packages": len(pkgs), "download_bytes": 0},
+        )
         prune()
         write_index()
         dropped = [n[: -len(".previous.json")] for n in drop]
@@ -1842,20 +1848,27 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
         cur = manifest(kit_id)
         if cur and sorted(x["sha256"] for x in cur["packages"]) != sorted(q["sha256"] for q in pkgs):
             _write(MANIFESTS / f"{kit_id}.previous.json", cur)
+        imported_at = time.time()
         _write(
             MANIFESTS / f"{kit_id}.json",
             {
                 "id": kit_id,
-                "fetched": man.get("fetched") or time.time(),
+                "fetched": man.get("fetched") or imported_at,
                 "packages": pkgs,
                 "on_box": man.get("on_box", []),
                 "left_out": man.get("left_out", []),
                 "arch": here,
                 "bytes": sum(q["size"] for q in pkgs),
-                "from_usb": time.time(),
+                "from_usb": imported_at,
                 # Imported on the owner's word that a release the clock could not date is current enough.
                 **({"freshness": UNKNOWN_TIME, "releases_unchecked": unchecked} if unchecked else {}),
             },
+        )
+        # The cache was made on the box now, from the stick: its check time follows it, and says the
+        # set has not been checked against the package lists.
+        _store_check(
+            kit_id,
+            {"state": "imported", "at": imported_at, "changes": [], "packages": len(pkgs), "download_bytes": 0},
         )
         prune()
         write_index()

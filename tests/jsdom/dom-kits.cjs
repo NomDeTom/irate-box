@@ -23,7 +23,8 @@ const kitsData = {
     capture: { keep_current: false, remove_after: 24 }, security: { keep_current: true, remove_after: 24 }, radio: { keep_current: true, remove_after: 4 } } },
   status: { at: now, pool_bytes: 91 * 2 ** 20, problems: [],
     kits: { debug: { cached: { fetched: now - 3600, packages: 55, bytes: 69 * 2 ** 20, on_box: ['strace'], versions: { gdb: '16.3-1' },
-        left_out: ['bpftrace', 'bpfcc-tools', 'bpftool'], arch: 'armhf' }, previous: null },
+        left_out: ['bpftrace', 'bpfcc-tools', 'bpftool'], arch: 'armhf' },
+        check: { state: 'current', at: now - 3600, changes: [], packages: 55, download_bytes: 0 }, previous: null },
       build: { cached: null, previous: null }, radio: { cached: null, previous: null },
       capture: { cached: { fetched: now - 7200, packages: 3, bytes: 2 ** 20, on_box: [], versions: {} }, previous: null },
       security: { cached: { fetched: now - 600, packages: 38, bytes: 29 * 2 ** 20, on_box: [], versions: {} }, previous: { fetched: now - 86400 * 3, bytes: 28 * 2 ** 20, older: ['ntfs-3g', 'libntfs-3g89t64'], extra_bytes: 2 ** 20 } } },
@@ -96,13 +97,19 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   sel.removeAllRanges();
   check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /Installed/.test(pills('Debugging')) && /Removal due/.test(pills('Debugging')), pills('Debugging'));
   check('  its badges are states only, the same words on every card: no date, size or hours in them (each is a filter)', [...d.querySelectorAll('#kits-grid .aw-card .p')].every((p) => !/\d/.test(t(p).replace(/\+1 set/, ''))), [...d.querySelectorAll('#kits-grid .aw-card .p')].map((p) => t(p)));
-  check('  the drawer says what the badges leave out: when cached and its size, when removed', /^Cached \d{4}-\d\d-\d\d, [\d.]+ MB\. Installed: removed in [45] h\./.test(t(card('Debugging').querySelector('.kit-facts'))), t(card('Debugging').querySelector('.kit-facts')));
+  const debugFacts = t(card('Debugging').querySelector('.kit-facts'));
+  const checkedLine = t([...card('Debugging').querySelectorAll('p')].find((p) => /^Checked /.test(t(p))));
+  const cachedAt = (debugFacts.match(/^Cached (.*?), [\d.]+ MB\./) || [])[1];
+  const checkedAt = (checkedLine.match(/^Checked (.+): up to date\.$/) || [])[1];
+  check('  the drawer says when cached and its size, when removed; Cached and Checked use one date format and agree',
+    /^Cached .+, [\d.]+ MB\. Installed: removed in [45] h\./.test(debugFacts) && !!cachedAt && cachedAt === checkedAt && /: up to date\.$/.test(checkedLine),
+    `${debugFacts} || ${checkedLine}`);
   check('installed: what installing it upgraded, in its drawer', /also upgraded these packages\. They remain upgraded after removal: .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
   check('one open at a time, with a ✕', d.querySelectorAll('#kits-grid .aw-card.open').length === 1 && !!card('Debugging').querySelector('.aw-close'));
   check('not cached: Install is off, and says why', button(card('Building'), 'Install toolkit…').disabled && /Refresh the cache while the box has internet access/.test(t(card('Building'))));
   check('an older set kept: the pill with its size, and Roll back with its date', /\+1 set for rollback/.test(pills('Security')) && /A set for rollback kept, 1(\.0)? MB more\./.test(t(card('Security').querySelector('.kit-facts')))
-    && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to \d{4}-/.test(t(b))), pills('Security'));
-  check('  its drawer: what the older set keeps, and that the doctor checks only the newest', /Kept for rollback: the set downloaded \d{4}-\d\d-\d\d, with older versions of 2 packages \(ntfs-3g, libntfs-3g89t64\), 1(\.0)? MB more in the cache\. The Security doctor checks only the newest version of each package\./.test(t(card('Security'))), t(card('Security')));
+    && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to .+/.test(t(b))), pills('Security'));
+  check('  its drawer: what the older set keeps, and that the doctor checks only the newest', /Kept for rollback: the set downloaded .+?, with older versions of 2 packages \(ntfs-3g, libntfs-3g89t64\), 1(\.0)? MB more in the cache\. The Security doctor checks only the newest version of each package\./.test(t(card('Security'))), t(card('Security')));
   check('details: the notes, the packages and what the box has, the git source', /Debugging note/.test(t(card('Debugging')))
     && /55 packages: gdb 16\.3-1\. Already on the box: strace\./.test(t(card('Debugging')))
     && /From git: debian-cis \(github\.com\/ovh\/debian-cis, a mirror\)/.test(t(card('Security'))));
