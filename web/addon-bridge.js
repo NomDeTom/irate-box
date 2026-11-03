@@ -5,14 +5,8 @@
 (() => {
   const say = document.getElementById("addon-bridge-say");
   const body = document.getElementById("addon-bridge-body");
-  const addonOrigin = (() => {
-    try {
-      const url = new URL(document.referrer);
-      return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
-    } catch (_) {
-      return null;
-    }
-  })();
+  let addonOrigin = null;
+  let pendingTitle = "An add-on";
 
   const el = (tag, props = {}, ...kids) => {
     const node = Object.assign(document.createElement(tag), props);
@@ -29,13 +23,18 @@
   };
   const fail = (action, error) => send({ type: "irate-bridge-result", action, ok: false, error: String(error) });
 
-  if (!addonOrigin || !window.opener) {
+  if (!window.opener) {
     tell("Open this page from an add-on. It does nothing on its own.", true);
     return;
   }
 
+  function who(title) {
+    return el("p", { className: "setting-name", textContent: String(title || "An add-on").slice(0, 80) });
+  }
+
   function pick(list, label, onPick) {
     body.replaceChildren(
+      who(pendingTitle),
       ...list.map((item) => {
         const button = el("button", { type: "button", className: "action-btn" });
         if (item.thumb) {
@@ -100,7 +99,7 @@
         fail("save", error.message);
       }
     });
-    body.replaceChildren(name, view || el("span"), el("div", { className: "library-buttons" }, save));
+    body.replaceChildren(who(pendingTitle), name, view || el("span"), el("div", { className: "library-buttons" }, save));
     tell("Save this picture in the box's gallery?");
   }
 
@@ -185,12 +184,26 @@
   }
 
   window.addEventListener("message", (event) => {
-    if (event.origin !== addonOrigin || event.source !== window.opener) return;
+    if (!addonOrigin || event.origin !== addonOrigin || event.source !== window.opener) return;
     const data = event.data;
     if (!data || data.type !== "irate-bridge-request") return;
+    pendingTitle = data.payload && data.payload.title ? data.payload.title : "An add-on";
     if (data.action === "save") offerSave(data.payload || {});
     else if (data.action === "open") offerOpen();
     else if (data.action === "pdf") offerPdf();
   });
-  send({ type: "irate-bridge-ready" });
+
+  // The hub serves its own add-on origin (the scheme, host and port /addons/<id>/ goes to). No
+  // Referer is trusted: the add-on server sends none, and any page could open this bridge.
+  fetch("/api/addons/origin")
+    .then((response) => {
+      if (!response.ok) throw new Error(`the box answered ${response.status}`);
+      return response.json();
+    })
+    .then((data) => {
+      if (!data || typeof data.origin !== "string") throw new Error("the box named no add-on origin");
+      addonOrigin = data.origin;
+      send({ type: "irate-bridge-ready" });
+    })
+    .catch((error) => tell(`The hub did not name the add-on origin: ${error.message}`, true));
 })();

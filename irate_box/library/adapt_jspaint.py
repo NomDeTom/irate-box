@@ -172,20 +172,32 @@ let box_save_id = null;
 let box_save_locked = false;
 let box_save_lock_n = 0;
 function box_hub_origin() {
-	try {
-		const referrer = new URL(document.referrer);
-		return referrer.protocol === "http:" || referrer.protocol === "https:" ? referrer.origin : null;
-	} catch (error) {
-		return null;
-	}
-}
-function box_bridge(action, payload) {
-	return new Promise((resolve, reject) => {
-		const origin = box_hub_origin();
-		if (!origin) {
-			reject(new Error("open this app from the hub so the bridge can find it"));
-			return;
+	return new Promise((resolve) => {
+		let done = false;
+		function finish(value) {
+			if (done) return;
+			done = true;
+			window.removeEventListener("message", onMessage);
+			resolve(value);
 		}
+		function onMessage(event) {
+			if (event.source !== window.parent) return;
+			const data = event.data || {};
+			if (data.type === "irate-hub-origin" && typeof data.origin === "string") finish(data.origin);
+		}
+		window.addEventListener("message", onMessage);
+		try {
+			window.parent.postMessage({ type: "irate-hub-origin-request" }, "*");
+		} catch (error) { /* not framed: no parent to ask */ }
+		window.setTimeout(() => finish(null), 800);
+	});
+}
+async function box_bridge(action, payload) {
+	const origin = await box_hub_origin();
+	if (!origin) {
+		throw new Error("open this app from the hub so the bridge can find it");
+	}
+	return new Promise((resolve, reject) => {
 		const popup = window.open(`${origin}/addon-bridge.html`, "irate-box-bridge", "popup,width=560,height=620");
 		if (!popup) {
 			reject(new Error("the bridge window was blocked"));
@@ -230,6 +242,7 @@ async function file_save_to_box() {
 	const name = (file_name || "Picture").replace(/\.[^.]+$/, "");
 	try {
 		const answer = await box_bridge("save", {
+			title: "JS Paint",
 			id: box_save_id || undefined,
 			lock_n: box_save_lock_n,
 			name,
@@ -252,7 +265,7 @@ async function file_save_to_box() {
 }
 async function file_open_from_box() {
 	try {
-		const answer = await box_bridge("open", { kind: "jspaint" });
+		const answer = await box_bridge("open", { title: "JS Paint", kind: "jspaint" });
 		const chosen = answer.save || {};
 		const info = await load_image_from_uri(chosen.state);
 		box_save_id = chosen.id;
