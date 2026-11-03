@@ -1,0 +1,11 @@
+{
+  "id": "notepad",
+  "order": 26,
+  "tile": {
+    "icon": "📝",
+    "name": "Notepad",
+    "desc": "A shared page of words for everyone on the box",
+    "href": "/notepad.html"
+  },
+  "admin": {"title": "Notepad", "icon": "📝"}
+}

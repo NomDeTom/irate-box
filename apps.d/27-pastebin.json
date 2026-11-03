@@ -1,0 +1,11 @@
+{
+  "id": "pastebin",
+  "order": 27,
+  "tile": {
+    "icon": "📋",
+    "name": "Paste bin",
+    "desc": "Share a config, a log or a command",
+    "href": "/pastebin.html"
+  },
+  "admin": {"title": "Paste bin", "icon": "📋"}
+}

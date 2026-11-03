@@ -32,6 +32,7 @@ import re
 import secrets
 import shutil
 import threading
+import time
 from pathlib import Path
 
 from irate_box import confine
@@ -41,7 +42,12 @@ from irate_box.msg import M
 
 # Namespaces the Excalidraw frontend uses. Scenes are shared drawings, rooms are
 # collaboration state, files are pasted images.
-BLOB_NAMESPACES = ("scenes", "rooms", "files")
+# Two more are the hub's own shared documents, one text each (web/notepad.html and
+# web/pastebin.html): every visitor reads and writes the one key, "text".
+SHARED_NAMESPACES = ("notepad", "pastebin")
+BLOB_NAMESPACES = ("scenes", "rooms", "files") + SHARED_NAMESPACES
+SHARED_KEY = "text"
+SHARED_MAX = 256 * 1024  # a note, a config, a log: not a file drop
 
 # The upstream default, and the frontend can genuinely produce large pastes.
 MAX_BODY = int(os.environ.get("HUB_STORE_MAX_BODY", 50 * 1024 * 1024))
@@ -958,7 +964,11 @@ def handle(handler, method, path, store, drop=None):
         return True
 
     if path.startswith(GLOBAL_PREFIX + "/"):
-        return _handle_blob(handler, method, path[len(GLOBAL_PREFIX) + 1 :], store)
+        rest = path[len(GLOBAL_PREFIX) + 1 :]
+        namespace, _, key = rest.partition("/")
+        if namespace in SHARED_NAMESPACES:
+            return _handle_shared(handler, method, namespace, key, store)
+        return _handle_blob(handler, method, rest, store)
 
     if path == "/api/saves" or path.startswith("/api/saves/"):
         return _handle_saves(handler, method, path, store)
@@ -967,6 +977,56 @@ def handle(handler, method, path, store, drop=None):
         return _handle_drop(handler, method, path, drop)
 
     return False
+
+
+SHARED_LARGE = M("shared.large", "This document is larger than {kb} KB. Paste a smaller one.", kb=SHARED_MAX >> 10)
+SHARED_CHANGED = M("shared.changed", "Another person saved this page first. Your words are still here.")
+
+
+def _handle_shared(handler, method, namespace, key, store):
+    """One shared text per namespace, at the key "text": read by everyone, written by everyone."""
+    if key != SHARED_KEY:
+        _send_json(handler, 404, say(NOT_FOUND))
+        return True
+    if method == "GET":
+        _blob_get(handler, store, namespace, key)
+        return True
+    if method == "PUT":
+        data = _read_body(handler)
+        if data is None:
+            _send_json(handler, 413, say(body_too_large()))
+            return True
+        if len(data) > SHARED_MAX:
+            _send_json(handler, 413, say(SHARED_LARGE))
+            return True
+        try:
+            body = json.loads(data)
+        except (ValueError, RecursionError):
+            _send_json(handler, 400, say(BAD_JSON))
+            return True
+        if not isinstance(body, dict):
+            _send_json(handler, 400, say(BAD_JSON))
+            return True
+        current = store.get(namespace, key)
+        tag = _etag(current) if current is not None else None
+        match = handler.headers.get("If-Match")
+        if (match and (current is None or match != tag)) or (
+            not match and handler.headers.get("If-None-Match") == "*" and current is not None
+        ):
+            _send_json(handler, 412, say(SHARED_CHANGED))
+            return True
+        # The box's own time: a phone on the hotspot can be hours out.
+        body["updated"] = time.time()
+        data = json.dumps(body).encode()
+        try:
+            store.put(namespace, key, data)
+        except TooLarge as exc:
+            _send_json(handler, 413, answer(exc))
+            return True
+        _send_json(handler, 200, {"ok": True}, {"ETag": _etag(data)})
+        return True
+    _send_json(handler, 405, say(BAD_METHOD))
+    return True
 
 
 def _handle_blob(handler, method, rest, store):
