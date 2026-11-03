@@ -2430,6 +2430,191 @@ def write_tailscale_want(mode, hours=None):
 _library_job = {"thread": None, "action": None, "result": None}
 _library_lock = threading.Lock()
 
+# The quick installer's queue: kept in the hub's state so a reload finds it, run one item after
+# another. Apps and add-ons first, then the books their docs name.
+INSTALL_QUEUE = STATE_DIR / "install-queue.json"
+_queue_lock = threading.Lock()
+_queue_job = {"thread": None, "items": [], "current": None, "results": [], "settings": {}}
+
+
+def _queue_read():
+    try:
+        data = json.loads(INSTALL_QUEUE.read_text())
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    items = data.get("items") if isinstance(data.get("items"), list) else []
+    return {"items": items, "settings": data.get("settings") if isinstance(data.get("settings"), dict) else {}}
+
+
+def _queue_write(data):
+    INSTALL_QUEUE.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=INSTALL_QUEUE.parent, prefix=".install-queue.")
+    with os.fdopen(fd, "w") as fh:
+        json.dump(data, fh, indent=1)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, INSTALL_QUEUE)
+
+
+def queue_order(items):
+    """The install order: app bundles, service add-ons and web add-ons first, then books."""
+    first = {"app": 0, "addon": 1, "local": 2}
+    return sorted(items, key=lambda item: first.get(item.get("kind"), 3))
+
+
+def _queue_item(raw):
+    """One checked item from the page, or None: ids are the manifests' own, and a book names its source."""
+    if not isinstance(raw, dict):
+        return None
+    kind = raw.get("kind")
+    ident = str(raw.get("id") or "")
+    if kind in ("app", "addon", "local"):
+        if not manifests.ID_RE.match(ident):
+            return None
+        return {"kind": kind, "id": ident, "title": str(raw.get("title") or ident)[:120]}
+    if kind == "book":
+        book = str(raw.get("book") or "")
+        source = raw.get("source")
+        if (
+            not book
+            or not isinstance(source, dict)
+            or source.get("type") not in ("release", "actions", "nightly-link", "url", "kiwix")
+        ):
+            return None
+        return {
+            "kind": "book",
+            "id": book,
+            "book": book,
+            "title": str(raw.get("title") or book)[:120],
+            "source": source,
+            "size_mb": int(raw.get("size_mb") or 0),
+        }
+    return None
+
+
+def queue_snapshot():
+    data = _queue_read()
+    with _queue_lock:
+        thread = _queue_job["thread"]
+        return {
+            **data,
+            "items": _queue_job["items"] if (thread and thread.is_alive()) else data["items"],
+            "running": bool(thread and thread.is_alive()),
+            "current": _queue_job["current"],
+            "results": list(_queue_job["results"]),
+        }
+
+
+def _queue_wait_control(rid, seconds=600):
+    for _ in range(seconds):
+        found = next((r for r in control_results(30) if r.get("id") == rid), None)
+        if found:
+            return found
+        time.sleep(1)
+    return {"ok": False, "message": "The root helper did not answer."}
+
+
+def _queue_run(items):
+    global _queue_job
+    results = []
+    for item in items:
+        with _queue_lock:
+            _queue_job["current"] = item
+        try:
+            if item["kind"] == "app":
+                app = librarian.APPS.get(item["id"], {})
+                if not app.get("source"):
+                    raise librarian.LibrarianError(
+                        M("install-queue.not-an-app", "The hub does not install {id}.", id=item["id"])
+                    )
+                have = {s["name"] for s in librarian.load_config()["sources"]}
+                if item["id"] not in have:
+                    librarian.add_source(librarian.default_app_source(item["id"]))
+                outcome = librarian.update([item["id"]], mode="update", log=lambda *_: None)
+                results.append(
+                    {
+                        "item": item,
+                        "ok": not str(list(outcome.values())[0]).startswith("error"),
+                        "message": str(list(outcome.values())[0]),
+                    }
+                )
+            elif item["kind"] == "book":
+                have = {s["name"] for s in librarian.load_config()["sources"]}
+                if item["book"] not in have:
+                    librarian.add_source({"name": item["book"], **item["source"]})
+                outcome = librarian.update([item["book"]], mode="update", log=lambda *_: None)
+                results.append(
+                    {
+                        "item": item,
+                        "ok": not str(list(outcome.values())[0]).startswith("error"),
+                        "message": str(list(outcome.values())[0]),
+                    }
+                )
+            elif item["kind"] == "addon":
+                rid = control_request({"action": "addon", "addon": item["id"], "on": True})
+                answer = _queue_wait_control(rid)
+                results.append(
+                    {"item": item, "ok": bool(answer.get("ok")), "message": str(answer.get("message") or "")}
+                )
+            elif item["kind"] == "local":
+                code, body = local_addons_action({"action": "add", "id": item["id"], "agree": True})
+                results.append({"item": item, "ok": code in (200, 202), "message": str(body.get("message") or "")})
+        except Exception as exc:  # noqa: BLE001 - one item failing leaves the rest going
+            results.append({"item": item, "ok": False, "message": str(exc)[:300]})
+        with _queue_lock:
+            _queue_job["results"] = list(results)
+            _queue_job["current"] = None
+        _queue_write(
+            {
+                "items": [it for it in items if it not in [r["item"] for r in results if r.get("ok")]],
+                "settings": _queue_read()["settings"],
+            }
+        )
+    with _queue_lock:
+        _queue_job["current"] = None
+
+
+def queue_action(payload):
+    """(status, body) for POST /admin/queue: save the list, settings, clear it, or run it."""
+    action = payload.get("action")
+    data = _queue_read()
+    if action == "save":
+        items = []
+        seen = set()
+        for raw in payload.get("items") or []:
+            item = _queue_item(raw)
+            if item and (item["kind"], item["id"]) not in seen:
+                seen.add((item["kind"], item["id"]))
+                items.append(item)
+        _queue_write({"items": queue_order(items), "settings": data["settings"]})
+        return 200, queue_snapshot()
+    if action == "settings":
+        settings = {
+            "docs_with_app": bool(payload.get("docs_with_app")),
+            "metered": bool(payload.get("metered")),
+        }
+        _queue_write({"items": data["items"], "settings": settings})
+        return 200, queue_snapshot()
+    if action == "clear":
+        _queue_write({"items": [], "settings": data["settings"]})
+        return 200, queue_snapshot()
+    if action == "install":
+        with _queue_lock:
+            thread = _queue_job["thread"]
+            if thread and thread.is_alive():
+                return 409, refused.say(librarian.BUSY)
+            items = queue_order([i for i in (_queue_item(x) for x in data["items"]) if i])
+            if not items:
+                return 400, refused.say(M("install-queue.empty", "Select something to install first."))
+            _queue_job.update(items=items, current=None, results=[], thread=None)
+            thread = threading.Thread(target=_queue_run, args=(items,), daemon=True)
+            _queue_job["thread"] = thread
+            thread.start()
+        return 200, queue_snapshot()
+    return 400, refused.say(UNKNOWN_ACTION)
+
 
 def library_snapshot():
     snap = librarian.snapshot()
@@ -5500,6 +5685,10 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/admin/queue":
+            self.send_json(200, queue_snapshot())
+            return
+
         if path == "/admin/tiles":
             self.send_json(200, tiles_snapshot())
             return
@@ -5756,6 +5945,10 @@ class Handler(BaseHTTPRequestHandler):
             snap = podcast.snapshot()
             snap.update(running=librarian.is_running(), progress=librarian.progress())
             self.send_json(200, snap)
+            return
+
+        if path == "/admin/queue":
+            self.send_json(*queue_action(payload))
             return
 
         if path == "/admin/librarydrive":

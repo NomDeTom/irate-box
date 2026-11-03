@@ -148,6 +148,7 @@ run sim_download_bounds.py
 run sim_pin.py
 run sim_local_addons.py
 run sim_manifest_docs.py
+run sim_install_queue.py
 run sim_adapt_jspaint.py
 run sim_adapt_pdfjs.py
 run api_admin_gate.py
