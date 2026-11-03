@@ -3,7 +3,7 @@
   "order": 66,
   "tile": {
     "icon": "\ud83d\udcac",
-    "name": "IRC chat (InspIRCd)",
+    "name": "IRC chat",
     "desc": "Real-time chat in any IRC app, or in the browser",
     "href": "/irc.html"
   },

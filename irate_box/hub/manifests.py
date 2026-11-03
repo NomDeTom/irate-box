@@ -652,6 +652,44 @@ def check_groups(manifests):
         seen[group] = {"port": port, "option": option}
 
 
+def fold_groups(manifests, installed=(), only=()):
+    """One manifest per add-on group: the member installed (or the first), with the group's order.
+    only: restrict the choice to these ids (the ones a view can use, e.g. the routed apps).
+    The merged manifest keeps the chosen member's tile, status and add-on words, and all its
+    members' entries (one per href), so a group is one app in the views that use this."""
+    by_group = {}
+    for m in manifests:
+        group = (m.get("addon") or {}).get("group")
+        if group:
+            by_group.setdefault(group, []).append(m)
+    chosen = {}
+    for group, members in by_group.items():
+        pool = [m for m in members if not only or m["id"] in only] or members
+        pick = next((m for m in pool if m["id"] in installed), None) or pool[0]
+        merged = dict(pick)
+        merged["order"] = members[0]["order"]
+        merged["group"] = group
+        merged["group_members"] = [m["id"] for m in members]
+        entries, seen = [], set()
+        for m in [pick, *(x for x in members if x is not pick)]:
+            for e in m.get("entries", []):
+                if e.get("href") not in seen:
+                    seen.add(e.get("href"))
+                    entries.append(e)
+        if entries:
+            merged["entries"] = entries
+        chosen[group] = merged
+    out, done = [], set()
+    for m in manifests:
+        group = (m.get("addon") or {}).get("group")
+        if not group:
+            out.append(m)
+        elif group not in done:
+            done.add(group)
+            out.append(chosen[group])
+    return out
+
+
 def _hub_pages():
     """Names the hub's own pages and routes use, which no local add-on may take."""
     web = CHECKOUT / "web"
@@ -874,11 +912,12 @@ def catalogue():
     return out
 
 
-def admin_apps(manifests):
+def admin_apps(manifests, installed=()):
     """/admin's Apps and Folders groups: one entry per app or list page, in the
-    hub's order, with the /admin sections it owns. Box widgets without an admin part are left out."""
+    hub's order, with the /admin sections it owns. Box widgets without an admin part are left out.
+    installed: an add-on group is its installed member, in the page's words and state."""
     out = []
-    for m in sorted(manifests, key=lambda x: x["order"]):
+    for m in sorted(fold_groups(manifests, installed), key=lambda x: x["order"]):
         tile, adm, menu = m.get("tile") or {}, m.get("admin") or {}, m.get("menu")
         name = adm.get("title") or tile.get("name") or (menu or {}).get("title") or (m.get("addon") or {}).get("title")
         if not name or (tile.get("widget") and not adm):

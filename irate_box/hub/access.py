@@ -35,6 +35,8 @@ generated file (addon_nginx_conf), or for Caddy one generated file of routes
 import json
 import re
 
+from irate_box.hub import manifests
+
 MODES = ("public", "users", "private", "off")
 # id -> (default, login always): what config/irate-box.nginx and config/Caddyfile gate.
 ROUTED = {
@@ -48,6 +50,7 @@ ROUTED = {
     "drop": ("public", False),
     "notes": ("public", False),
     "mqtt": ("public", False),
+    "irc": ("public", False),
     "inspircd": ("public", False),
     "term": ("public", True),
     "sync": ("private", True),
@@ -216,12 +219,12 @@ def addon_caddy_routes(state, local, login_hash, directive="basic_auth"):
     return "\n".join(out) + "\n"
 
 
-def apps(manifests):
+def apps(listed, installed=()):
     """The switchable apps for /admin, in manifest order: [{id, title, default, login, note,
     kind (app, addon or builtin: where /admin shows it), unit (off stops a service), users (can be
     for users)}]."""
     out = []
-    for m in manifests:
+    for m in manifests.fold_groups(listed, installed):
         if m.get("local"):
             out.append(
                 {
