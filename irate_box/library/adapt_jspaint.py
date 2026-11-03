@@ -85,7 +85,7 @@ NOTE = """<!-- {mark}: {origin} at the commit in irate-box-bundle.json.
      Adapted for the Irate-Box by irate_box/library/adapt_jspaint.py: no outside requests, no
      online sessions, Imgur upload or Load From URL, English only, and the optional PDF import
      and Head Tracker were left out. The Dwell Clicker stays. Painting, opening and saving are
-     unchanged. -->
+     unchanged, and Save to the box and Open from the box use the hub's own gallery (/api/saves). -->
 """
 
 POLICY = (
@@ -126,8 +126,8 @@ LANGUAGES = re.compile(r"const available_languages = \[[^\n]*\];")
 HEAD_TRACKER_HASH = re.compile(r"if \(location\.hash\.match\(/head-tracker/i\)\) \{")
 NOTE_HTML = (
     '<p class="irate-box-adapted"><strong>This copy on the Irate-Box</strong> has no online '
-    "multi-user sessions, Imgur upload or Load From URL. Pictures stay in this browser, where "
-    "other web add-ons on the box can read them, unless you save one to your device.</p>\n"
+    "multi-user sessions, Imgur upload or Load From URL. Pictures can be saved in this box's gallery "
+    "and opened from it, as well as saved to your device.</p>\n"
 )
 # A picture from outside the box, its tag spread over lines as the news writes it; and JS Paint's own GitHub raw URL
 # (any commit) for a file under images/.
@@ -147,6 +147,140 @@ def local_images(text, tree):
     return REMOTE_IMG.sub(swap, text)
 
 
+SAVE_AS_MENU = re.compile(
+    r'(\n\t\t\{\n\t\t\tlabel: localize\("Save &As"\),.*?\n\t\t\},\n)',
+    re.S,
+)
+SAVE_MENU_ITEMS = (
+    "\t\t{\n"
+    '\t\t\temoji_icon: "💾",\n'
+    '\t\t\tlabel: "Save to the &box",\n'
+    "\t\t\taction: () => { file_save_to_box(); },\n"
+    '\t\t\tdescription: "Saves the picture in this box\'s gallery.",\n'
+    "\t\t},\n"
+    "\t\t{\n"
+    '\t\t\temoji_icon: "📂",\n'
+    '\t\t\tlabel: "Open from the b&ox",\n'
+    "\t\t\taction: () => { file_open_from_box(); },\n"
+    '\t\t\tdescription: "Opens a picture saved in this box\'s gallery.",\n'
+    "\t\t},\n"
+)
+BOX_SAVES_JS = r"""
+// Irate-Box: the box's gallery, through a bridge page on the hub's own origin (addon-bridge.html).
+// The add-on never reaches the store itself: the bridge asks the visitor, then does the call.
+let box_save_id = null;
+let box_save_locked = false;
+let box_save_lock_n = 0;
+function box_hub_origin() {
+	return new Promise((resolve) => {
+		let done = false;
+		function finish(value) {
+			if (done) return;
+			done = true;
+			window.removeEventListener("message", onMessage);
+			resolve(value);
+		}
+		function onMessage(event) {
+			if (event.source !== window.parent) return;
+			const data = event.data || {};
+			if (data.type === "irate-hub-origin" && typeof data.origin === "string") finish(data.origin);
+		}
+		window.addEventListener("message", onMessage);
+		try {
+			window.parent.postMessage({ type: "irate-hub-origin-request" }, "*");
+		} catch (error) { /* not framed: no parent to ask */ }
+		window.setTimeout(() => finish(null), 800);
+	});
+}
+async function box_bridge(action, payload) {
+	const origin = await box_hub_origin();
+	if (!origin) {
+		throw new Error("open this app from the hub so the bridge can find it");
+	}
+	return new Promise((resolve, reject) => {
+		const popup = window.open(`${origin}/addon-bridge.html`, "irate-box-bridge", "popup,width=560,height=620");
+		if (!popup) {
+			reject(new Error("the bridge window was blocked"));
+			return;
+		}
+		let timer = null;
+		function finish(fn, value) {
+			window.removeEventListener("message", onMessage);
+			if (timer) window.clearTimeout(timer);
+			fn(value);
+		}
+		function onMessage(event) {
+			if (event.origin !== origin || event.source !== popup) return;
+			const data = event.data || {};
+			if (data.type === "irate-bridge-ready") {
+				popup.postMessage({ type: "irate-bridge-request", action, payload }, origin);
+			} else if (data.type === "irate-bridge-result" && data.action === action) {
+				if (data.ok) finish(resolve, data);
+				else finish(reject, new Error(data.error || "the bridge refused"));
+			}
+		}
+		window.addEventListener("message", onMessage);
+		timer = window.setTimeout(() => finish(reject, new Error("the bridge did not answer")), 5 * 60 * 1000);
+	});
+}
+function box_thumbnail() {
+	const scale = Math.min(1, 128 / Math.max(main_canvas.width, main_canvas.height));
+	const thumb = document.createElement("canvas");
+	thumb.width = Math.max(1, Math.round(main_canvas.width * scale));
+	thumb.height = Math.max(1, Math.round(main_canvas.height * scale));
+	thumb.getContext("2d").drawImage(main_canvas, 0, 0, thumb.width, thumb.height);
+	return thumb.toDataURL("image/png");
+}
+async function file_save_to_box() {
+	let state;
+	try {
+		state = main_canvas.toDataURL("image/png");
+	} catch (error) {
+		show_error_message("The picture could not be read to save it.", error);
+		return;
+	}
+	const name = (file_name || "Picture").replace(/\.[^.]+$/, "");
+	try {
+		const answer = await box_bridge("save", {
+			title: "JS Paint",
+			id: box_save_id || undefined,
+			lock_n: box_save_lock_n,
+			name,
+			state,
+			thumb: box_thumbnail(),
+		});
+		const meta = answer.save || {};
+		box_save_id = meta.id;
+		box_save_locked = !!meta.locked;
+		box_save_lock_n = meta.lock_n || 0;
+		file_name = `${meta.name || name}.png`;
+		saved = true;
+		update_title();
+		if (meta.copied) {
+			showMessageBox({ message: "This browser did not hold the picture's key, so it was saved as a new copy." });
+		}
+	} catch (error) {
+		show_error_message("The picture could not be saved in the box's gallery.", error);
+	}
+}
+async function file_open_from_box() {
+	try {
+		const answer = await box_bridge("open", { title: "JS Paint", kind: "jspaint" });
+		const chosen = answer.save || {};
+		const info = await load_image_from_uri(chosen.state);
+		box_save_id = chosen.id;
+		box_save_locked = !!chosen.locked;
+		box_save_lock_n = chosen.lock_n || 0;
+		file_name = `${chosen.name || "Picture"}.png`;
+		open_from_image_info(info);
+		if (box_save_locked) {
+			showMessageBox({ message: "This picture is locked. The bridge can save it here if this browser holds its key; otherwise it saves a new copy." });
+		}
+	} catch (error) {
+		show_error_message("The picture could not be opened from the box's gallery.", error);
+	}
+}
+"""
 IMGUR_BUTTON = re.compile(r'\n\t\t\t\$win\.\$Button\("Upload to Imgur",.*?\n\t\t\t\}\)\.focus\(\);\n', re.S)
 
 
@@ -172,6 +306,30 @@ def adapt_page(text):
         if n != 1:
             raise AdaptError(f"index.html changed: {what} is there {n} times, not once")
     return first + sep + NOTE.format(mark=MARK, origin=ORIGIN) + rest
+
+
+def add_box_saves(menu_text, function_text):
+    """The File menu's two gallery items, and the functions they call, added to JS Paint's own source."""
+    if len(SAVE_AS_MENU.findall(menu_text)) != 1:
+        raise AdaptError("src/menus.js changed: the Save As item is not found once")
+    menu_text = SAVE_AS_MENU.sub(lambda m: m.group(1) + SAVE_MENU_ITEMS, menu_text, count=1)
+    if menu_text.count("file_save_to_box, file_open_from_box") != 1:
+        menu_text = menu_text.replace(
+            "file_save_as, image_attributes",
+            "file_save_as, file_save_to_box, file_open_from_box, image_attributes",
+            1,
+        )
+    if menu_text.count("file_save_to_box, file_open_from_box") != 1:
+        raise AdaptError("src/menus.js changed: its import list is not found once")
+    if function_text.count("file_save_as, getSelectionText") != 1 or "\nexport {\n" not in function_text:
+        raise AdaptError("src/functions.js changed: its export list is not found")
+    function_text = function_text.replace(
+        "file_save_as, getSelectionText",
+        "file_save_as, file_save_to_box, file_open_from_box, getSelectionText",
+        1,
+    )
+    function_text = function_text.replace("\nexport {\n", "\n" + BOX_SAVES_JS + "\nexport {\n", 1)
+    return menu_text, function_text
 
 
 def adapt(tree):
@@ -219,6 +377,8 @@ def adapt(tree):
     page_text = local_images(adapt_page(index.read_text(encoding="utf-8")), tree)
     menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
+    # The box's gallery: the manifest says what is kept there and who can see it.
+    menu_text, function_text = add_box_saves(menu_text, function_text)
     app_text = app_text.replace("/dwell-clicker|head-tracker/i", "/dwell-clicker/i").replace(
         HEAD_TRACKER_HASH.search(app_text).group(0),
         "if (false) { // Irate-Box: no Head Tracker in this copy.",

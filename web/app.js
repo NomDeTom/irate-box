@@ -4,6 +4,15 @@
 // the app as it navigates, so a reload or a shared link lands on the same page.
 const frame = document.getElementById('app');
 const title = document.getElementById('app-title');
+
+// A web add-on is on its own origin and has no Referer (the add-on server sends none): it asks its
+// parent for the hub's origin when it needs the bridge. Only the frame this page holds is answered.
+window.addEventListener('message', (event) => {
+  if (event.source !== frame.contentWindow) return;
+  const data = event.data || {};
+  if (data.type !== 'irate-hub-origin-request') return;
+  frame.contentWindow.postMessage({ type: 'irate-hub-origin', origin: location.origin }, event.origin);
+});
 const out = document.getElementById('app-out');
 
 // --- one theme for every app -------------------------------------------------------

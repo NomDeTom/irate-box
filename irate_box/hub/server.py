@@ -5403,6 +5403,10 @@ class Handler(BaseHTTPRequestHandler):
         if store.handle(self, "GET", path, STORE, DROP):
             return
 
+        if path == "/api/addons/origin":
+            self._addon_origin()
+            return
+
         if path == "/api/report":
             # The reasons a report may give, for a page with no listing of its own to carry them (the hub bar).
             self.send_json(200, {"reasons": settings_snapshot()["report_reasons"]})
@@ -7999,6 +8003,21 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not store.handle(self, "OPTIONS", path, STORE, DROP):
             self.send_empty(404)
+
+    def _addon_origin(self):
+        """The add-on origin's scheme, host and port, from the hub's own request and its installed port: the
+        bridge answers only this origin, never one taken from a Referer header."""
+        host = (urlparse("//" + (self.headers.get("Host") or "")).hostname or "127.0.0.1").lower()
+        if ":" in host:
+            host = f"[{host}]"
+        scheme = "https" if self._https() else "http"
+        port = int(
+            os.environ.get(
+                "HUB_ADDON_TLS_PORT" if scheme == "https" else "HUB_ADDON_PORT",
+                "8490" if scheme == "https" else "8090",
+            )
+        )
+        self.send_json(200, {"origin": f"{scheme}://{host}:{port}"})
 
     def _appstore(self, path):
         """The App store (appstore.py): the page, the files held by the keeper, their lists. The app's own

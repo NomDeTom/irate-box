@@ -450,6 +450,17 @@ check(
     sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8095",), ("8096",), ("8097",), ("8098",)],
     sorted(csites),
 )
+addons_origin = by_port.get(("8090",), "")
+caddons_origin = csites.get(("8090",), "")
+check(
+    "the add-on origin proxies nothing of the hub's storage: no saves, drop or store path",
+    "/api/saves" not in addons_origin
+    and "/api/drop" not in addons_origin
+    and "/api/v2" not in addons_origin
+    and "/api/saves" not in caddons_origin
+    and "/api/drop" not in caddons_origin
+    and "/api/v2" not in caddons_origin,
+)
 check(
     "Caddy: the hub's port runs no cgit, Kiwix or SilverBullet, but still serves clones and pushes",
     "cgit.cgi" not in chub
