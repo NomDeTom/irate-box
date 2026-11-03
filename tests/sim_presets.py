@@ -47,9 +47,14 @@ errors = [e for p in all_presets for e in presets.preset_errors(p, **known)]
 check("every entry is a setting, choice, add-on or toolkit the box accepts", not errors, errors)
 
 check(
-    "every purpose suggests a durability, and every entry says why",
-    all(p.get("suggested_durability") in {x["id"] for x in presets.load("durability")} for p in presets.load("purpose"))
+    "each preset has an order and every entry a why",
+    all(isinstance(p.get("order"), int) for p in all_presets)
     and all(entry.get("why") for p in all_presets for entry in p["entries"]),
+)
+check(
+    "the purposes and durabilities come in the order asked, by order not by file name",
+    [p["id"] for p in presets.load("purpose")] == ["pirate", "curated", "power"]
+    and [p["id"] for p in presets.load("durability")] == ["longevity", "balanced", "full"],
 )
 
 small = {"arch": "armv6l", "memory_mb": 512, "free_mb": 900, "flash_free": False}

@@ -1,20 +1,92 @@
 {
   "id": "longevity",
+  "order": 10,
   "kind": "durability",
   "title": "Longevity",
   "summary": "The card lives longest. A power cut may lose recent logs and up to an hour of the hub's own state; owner data and recovery are kept.",
   "entries": [
-    {"type": "hub", "key": "card_writes", "value": "saver", "label": "Card write level", "why": "The clock saved every hour, the mesh every 30 minutes"},
-    {"type": "choice", "choice": "card-set:journal:flash", "otherwise": {"type": "choice", "choice": "card-set:journal:memory"}, "needs": {"flash_free": true}, "label": "System journal", "why": "On the onboard flash where there is a free one, else in memory"},
-    {"type": "choice", "choice": "card-set:writeback:longer", "label": "Write-back delay", "why": "Repeated changes merge in memory"},
-    {"type": "choice", "choice": "card-set:apt_cache:memory", "label": "apt's cache", "why": "Never written to the card"},
-    {"type": "choice", "choice": "card-set:apt_languages:none", "label": "Package descriptions", "why": "Not downloaded"},
-    {"type": "choice", "choice": "card-set:box_state:flash", "needs": {"flash_free": true}, "label": "Often-written state", "why": "On the onboard flash where there is a free one"},
-    {"type": "choice", "choice": "crashwatch-panic:on", "label": "A kernel panic, oops or lockup", "why": "The box restarts by itself"},
-    {"type": "choice", "choice": "crashwatch-watchdog:on", "label": "A box that stops answering", "why": "The hardware watchdog restarts it"},
-    {"type": "choice", "choice": "lost-writes:on", "label": "Watch the card for lost writes", "why": "A card that drops its newest writes is named at boot"},
-    {"type": "choice", "choice": "retain:on", "label": "A second copy of the settings and keys", "why": "Recovery is kept even if the card is damaged"},
-    {"type": "choice", "choice": "health-timer:on", "label": "Box doctor checks the box by itself", "why": "A down service is found without anyone on /admin"},
-    {"type": "choice", "choice": "card-set:card_accounting:off", "label": "Writes by service", "why": "Not counted; the counting itself is a small cost"}
+    {
+      "type": "hub",
+      "key": "card_writes",
+      "value": "saver",
+      "label": "Card write level",
+      "why": "The clock saved every hour, the mesh every 30 minutes"
+    },
+    {
+      "type": "choice",
+      "choice": "card-set:journal:flash",
+      "otherwise": {
+        "type": "choice",
+        "choice": "card-set:journal:memory"
+      },
+      "needs": {
+        "flash_free": true
+      },
+      "label": "System journal",
+      "why": "On the onboard flash where there is a free one, else in memory"
+    },
+    {
+      "type": "choice",
+      "choice": "card-set:writeback:longer",
+      "label": "Write-back delay",
+      "why": "Repeated changes merge in memory"
+    },
+    {
+      "type": "choice",
+      "choice": "card-set:apt_cache:memory",
+      "label": "apt's cache",
+      "why": "Never written to the card"
+    },
+    {
+      "type": "choice",
+      "choice": "card-set:apt_languages:none",
+      "label": "Package descriptions",
+      "why": "Not downloaded"
+    },
+    {
+      "type": "choice",
+      "choice": "card-set:box_state:flash",
+      "needs": {
+        "flash_free": true
+      },
+      "label": "Often-written state",
+      "why": "On the onboard flash where there is a free one"
+    },
+    {
+      "type": "choice",
+      "choice": "crashwatch-panic:on",
+      "label": "A kernel panic, oops or lockup",
+      "why": "The box restarts by itself"
+    },
+    {
+      "type": "choice",
+      "choice": "crashwatch-watchdog:on",
+      "label": "A box that stops answering",
+      "why": "The hardware watchdog restarts it"
+    },
+    {
+      "type": "choice",
+      "choice": "lost-writes:on",
+      "label": "Watch the card for lost writes",
+      "why": "A card that drops its newest writes is named at boot"
+    },
+    {
+      "type": "choice",
+      "choice": "retain:on",
+      "label": "A second copy of the settings and keys",
+      "why": "Recovery is kept even if the card is damaged"
+    },
+    {
+      "type": "choice",
+      "choice": "health-timer:on",
+      "label": "Box doctor checks the box by itself",
+      "why": "A down service is found without anyone on /admin"
+    },
+    {
+      "type": "choice",
+      "choice": "card-set:card_accounting:off",
+      "label": "Writes by service",
+      "why": "Not counted; the counting itself is a small cost"
+    }
   ]
 }
