@@ -3,12 +3,20 @@
 """One IRC entry on /admin: the two manifests in one add-on group, one port, different install options, and the
 group check refusing two members that would be the same add-on or on different ports. python3 tests/sim_irc_group.py"""
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+T = Path(tempfile.mkdtemp(prefix="irc-group-"))
+(T / "etc").mkdir()
+(T / "etc" / "install-options").write_text("--with-irc\n")
+os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_STATE_DIR=str(T / "state"))
 sys.path.insert(0, str(REPO))
 from irate_box.hub import manifests
+from irate_box.msg import Refused
+from irate_box.root import hub_control
 
 fails = 0
 
@@ -56,6 +64,20 @@ check(
         ]
     )
     is not None,
+)
+
+
+def refused(action, req):
+    try:
+        action(req)
+    except Refused as exc:
+        return exc.message["id"]
+    return None
+
+
+check(
+    "root refuses installing the other group member while one is installed",
+    refused(hub_control.ACTIONS["addon"], {"addon": "inspircd", "on": True}) == "control.addon.group",
 )
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

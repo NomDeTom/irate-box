@@ -12288,7 +12288,7 @@ function groupMemberButtons(member, installed, busy) {
     ? `${member.consent} Switching removes ${installed.title} and adds ${member.title}.`
     : `Switching removes ${installed.title} and adds ${member.title}.`;
   return agreeRow(key, `${consent} ${ADDON_INSTALL_SAYS}`, `Switch to ${member.title}`, busy,
-    () => addonSwitch(installed, member));
+    () => addonSwitch(installed, member, key), key);
 }
 
 function addonGroupCard(group, members, busy, progressText) {
@@ -12316,14 +12316,15 @@ function addonGroupCard(group, members, busy, progressText) {
   );
 }
 
-async function addonSwitch(from, to) {
+async function addonSwitch(from, to, waitKey) {
   try {
-    await postJSON("/admin/addons", { addon: from.id, on: false });
-    const next = await postJSON("/admin/addons", { addon: to.id, on: true });
-    adoWaiting = { id: next.id, addon: to.id };
+    const next = await postJSON("/admin/addons", { switch: [from.id, to.id] });
+    adoWaiting = { id: next.id, addon: to.id, waitKey };
     adoNote = { addon: to.id, text: `Switching from ${from.title} to ${to.title}…`, ok: true };
+    showWait(adoWaiting);
     loadAddons();
   } catch (err) {
+    clearWait({ waitKey });
     adoNote = { addon: to.id, text: err.message, ok: false };
     loadAddons();
   }
@@ -18356,6 +18357,35 @@ function inventoryRows() {
         : row.kind === "addon"
           ? "#addons"
           : "#apps";
+  }
+  // One line for an add-on group: the installed one named, or both offered, not one row each.
+  const groups = new Map();
+  for (const m of manifests) {
+    if (!m.group || !rows.has(m.id)) continue;
+    if (!groups.has(m.group)) groups.set(m.group, []);
+    groups.get(m.group).push(m);
+  }
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const rowsHere = members.map((m) => rows.get(m.id)).filter(Boolean);
+    if (rowsHere.length < 2) continue;
+    const first = rowsHere[0];
+    const state = rowsHere.some((r) => r.state === "installed")
+      ? "installed"
+      : rowsHere.every((r) => r.state === "available")
+        ? "available"
+        : first.state;
+    rows.set(first.id, {
+      id: first.id,
+      name: members[0].group_title || first.name,
+      kind: "addon",
+      state,
+      facts: [`One of: ${rowsHere.map((r) => r.name).join(", ")}`],
+      attention: [...new Set(rowsHere.flatMap((r) => r.attention))],
+      href: "#addons",
+      group: true,
+    });
+    for (const row of rowsHere.slice(1)) rows.delete(row.id);
   }
   return [...rows.values()];
 }

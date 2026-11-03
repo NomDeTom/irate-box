@@ -42,6 +42,7 @@ HTTPS_ONLY = frozenset(
         "preset-apply",
         "preset-undo",
         "addon",
+        "addon-switch",
         "usb-filesystems",
         "rk-own-serial",
         "rk-serial-setup",

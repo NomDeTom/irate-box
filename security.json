@@ -33,6 +33,12 @@
       "reads": [],
       "writes": []
     },
+    "addon-switch": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "admin-gate": {
       "https_only": false,
       "policy": true,
