@@ -410,6 +410,8 @@ def root():
 
 
 def feed_dir(feed_id):
+    from irate_box.hub import librarydrive
+
     base = root()
     if base is None:
         raise LibrarianError(librarydrive.said_drive_missing("podcasts"))

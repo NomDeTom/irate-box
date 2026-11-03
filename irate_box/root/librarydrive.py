@@ -196,7 +196,7 @@ def choose(req):
     MOUNT.mkdir(parents=True, exist_ok=True)
     safeio.write(UNIT, _unit_text(uuid, str(dev["fstype"]).lower()), mode=0o644)
     _run("systemctl", "daemon-reload")
-    out = _run("systemctl", "enable", "--now", UNIT_NAME)
+    _run("systemctl", "enable", "--now", UNIT_NAME)
     mounted = os.path.ismount(MOUNT)
     if mounted:
         _folders(str(dev["fstype"]).lower())

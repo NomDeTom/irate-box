@@ -220,6 +220,7 @@ from irate_box.root import (
     aptram,
     health,
     kits,
+    librarydrive,
     osupdates,
     partswatch,
     pkgorigins,
@@ -231,7 +232,6 @@ from irate_box.root import (
     share,
     signing,
     usbstick,
-    librarydrive,
 )
 from irate_box.root.nginx_front import locked
 

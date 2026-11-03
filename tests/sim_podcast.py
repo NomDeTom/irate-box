@@ -5,6 +5,7 @@ address; the type, scheme and size checks; the back catalogue; each pruning limi
 together, with starred and played episodes; OPML both ways; and the metered wait. No test reaches
 the internet. python3 tests/sim_podcast.py"""
 
+import json
 import os
 import sys
 import tempfile
@@ -174,6 +175,18 @@ check(
 with mock.patch("irate_box.hub.netpolicy.gate", return_value="Automatic download deferred: metered."):
     out = librarian.update(scheduled=True, log=lambda *_: None)
 check("a scheduled run waits on a metered connection", out.get("_metered") and "metered" in out["_metered"], out)
+
+# A kind on the library drive, with the drive absent: reading a feed folder raises the drive's own words.
+(T / "control").mkdir(exist_ok=True)
+(T / "control" / "library-drive.json").write_text(
+    json.dumps({"uuid": "drive-uuid", "kinds": {"podcasts": "drive", "books": "card"}, "mounted": False})
+)
+try:
+    podcast.feed_dir("a-test-podcast")
+    check("a feed folder on a missing library drive raises, not a NameError", False, "returned")
+except podcast.LibrarianError as exc:
+    check("a feed folder on a missing library drive raises, not a NameError", "not plugged in" in str(exc), str(exc))
+(T / "control" / "library-drive.json").unlink()
 
 check(
     "the snapshot and the player's list carry the feeds and the files",

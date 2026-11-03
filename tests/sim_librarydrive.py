@@ -25,8 +25,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 from irate_box.hub import librarydrive
 from irate_box.library import librarian, podcast
-from irate_box.root import librarydrive as rootdrive
 from irate_box.msg import Refused
+from irate_box.root import librarydrive as rootdrive
 
 fails = 0
 
