@@ -14,8 +14,7 @@ T = Path(tempfile.mkdtemp(prefix="irc-app-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from irate_box.hub import access, manifests
-from irate_box.hub import server
+from irate_box.hub import access, manifests, server
 
 fails = 0
 
@@ -82,11 +81,15 @@ for words in (NG, INSP, NEITHER):
         services,
     )
     check(
-        "  one /admin app, named IRC chat",
-        len(apps) == 1 and apps[0]["name"] == tile and apps[0]["addon"] is True,
+        "  one /admin app, the IRC app's own id and name",
+        len(apps) == 1 and apps[0]["id"] == "irc" and apps[0]["name"] == tile and apps[0]["addon"] is True,
         apps,
     )
-    check("  one Access row", len(rows) == 1 and rows[0]["title"] == tile, rows)
+    check(
+        "  one Access row, the app's own id",
+        len(rows) == 1 and rows[0]["id"] == "irc" and rows[0]["title"] == tile,
+        rows,
+    )
     page = server.render_tiles("apps", server.hidden_apps())
     check(
         "  one tile, the member's description",
@@ -103,5 +106,11 @@ installed("--with-inspircd")
 check("inspircd's option picks InspIRCd, not the first manifest", server.installed_addons() == {"inspircd"})
 installed("--with-irc")
 check("ngircd's option picks ngIRCd", server.installed_addons() == {"irc"})
+old = access.clean({"inspircd": "private"})
+check(
+    "an old Access choice on InspIRCd's id moves to the IRC app",
+    old.get("irc") == "private" and "inspircd" not in old,
+    old,
+)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

@@ -51,7 +51,6 @@ ROUTED = {
     "notes": ("public", False),
     "mqtt": ("public", False),
     "irc": ("public", False),
-    "inspircd": ("public", False),
     "term": ("public", True),
     "sync": ("private", True),
     "themes": ("public", False),
@@ -97,6 +96,12 @@ def clean(data):
                 and (mode != "users" or users_allowed(i))
             ):
                 out[i] = mode
+        # The IRC group was once switched by its InspIRCd member's id: the app's own id keeps the choice.
+        old = data.get("inspircd")
+        if old is not None:
+            if "irc" not in data and old in MODES and (old != "users" or users_allowed("irc")):
+                out["irc"] = old
+            out.pop("inspircd", None)
     return out
 
 

@@ -667,6 +667,7 @@ def fold_groups(manifests, installed=(), only=()):
         pool = [m for m in members if not only or m["id"] in only] or members
         pick = next((m for m in pool if m["id"] in installed), None) or pool[0]
         merged = dict(pick)
+        merged["id"] = members[0]["id"]  # the app's own id: Access and a switch keep it
         merged["order"] = members[0]["order"]
         merged["group"] = group
         merged["group_members"] = [m["id"] for m in members]

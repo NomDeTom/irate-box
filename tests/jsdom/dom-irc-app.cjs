@@ -78,7 +78,7 @@ async function scenario(option, id, member, desc, browser) {
 (async () => {
   try {
     await scenario('--with-irc\n', 'irc', 'IRC server (ngIRCd)', 'Real-time chat in any IRC app', false);
-    await scenario('--with-inspircd\n', 'inspircd', 'IRC server (InspIRCd)', 'Real-time chat in any IRC app, or in the browser', true);
+    await scenario('--with-inspircd\n', 'irc', 'IRC server (InspIRCd)', 'Real-time chat in any IRC app, or in the browser', true);
   } finally {
     if (before === null) fs.rmSync(OPTIONS, { force: true });
     else fs.writeFileSync(OPTIONS, before);

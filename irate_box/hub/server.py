@@ -75,6 +75,9 @@ STATIC = CHECKOUT / "web"
 # Mutable state lives outside the code directory so packaging can point it at
 # /var/lib/hub and `apt purge` cannot eat anyone's messages.
 STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", CHECKOUT))
+# install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
+# by the hub); what install.sh recorded as added, and the doctor's source of its version.
+INSTALL_OPTIONS = STATE_DIR / "install-options"
 DATA_FILE = STATE_DIR / "messages.json"
 MAX_MESSAGES = 200
 # Shoutbox entries expire against powered-on time, not the wall clock, which does not
@@ -210,7 +213,7 @@ def installed_addons():
     """The ids of the add-ons install.sh recorded as installed (its options), or none where the
     box has no record: a group then shows its first member."""
     try:
-        opts = set((STATE_DIR / "install-options").read_text().split())
+        opts = set(INSTALL_OPTIONS.read_text().split())
     except OSError:
         return set()
     return {m["id"] for m in MANIFESTS if (m.get("addon") or {}).get("option") in opts}
@@ -4142,9 +4145,6 @@ def network_snapshot():
     }
 
 
-# install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
-# by the hub); for showing what is added only.
-INSTALL_OPTIONS = STATE_DIR / "install-options"
 ADDON_ID_RE = re.compile(r"^[a-z0-9-]{1,40}$")
 
 

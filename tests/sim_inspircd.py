@@ -95,9 +95,9 @@ check(
 )
 check(
     "the add-on has an access switch, and /gamja and /irc-ws are switched off with it",
-    "inspircd" in access.ROUTED
-    and "$irate_box_off_inspircd" in (REPO / "config/irate-box.nginx").read_text()
-    and "/inspircd-off.caddy*" in (REPO / "config/Caddyfile").read_text(),
+    "irc" in access.ROUTED
+    and "$irate_box_off_irc" in (REPO / "config/irate-box.nginx").read_text()
+    and "/irc-off.caddy*" in (REPO / "config/Caddyfile").read_text(),
 )
 check(
     "the Debian package suggests it, and About names its licence",
