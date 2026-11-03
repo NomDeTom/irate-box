@@ -184,12 +184,12 @@ h2 {
 }
 /* A card or a list of them straight after a pane's buttons or their note (shown or hidden): apart from them, not on
    them (Box doctor's Summary, Git's Mirrors). */
-.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting, .admin-list) {
+.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting, .settings, .admin-list) {
   margin-top: 1rem;
 }
 /* A card, a list of cards or a form straight after a pane's words (shown or hidden): apart from them, not on them,
    on every page. */
-.admin-pane > p + :is(.net-card, .setting, .aw-block, .library-form) {
+.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block, .library-form) {
   margin-top: 1rem;
 }
 /* A page's own container (a div the page fills) stands apart from what comes before it, as a card does: the words
@@ -205,6 +205,235 @@ h2 {
 .admin-pane > div:not([class]) > p + .aw-block {
   margin-top: 1rem;
 }
+/* The page's flow keeps one rhythm: a form, a list or a field group stands apart from the block above it, whichever
+   kind it is (a list then a form, a form then a form, a card's fields then the next). */
+.admin-pane > :is(.admin-list, .library-form) + .library-form,
+.admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .quick-chips, .admin-meter),
+.admin-pane > .quick-chips + .setting,
+.admin-pane > :is(.setting, .settings, .net-card, .aw-block, .git-card, .lib-card, .attention) + p {
+  margin-top: 1rem;
+}
+.admin-pane > .library-form + .library-form,
+.admin-pane > .seen-block + .library-form,
+.admin-pane p.setting-desc + .library-form,
+.admin-pane p.setting-desc + .aw-field,
+.admin-pane textarea + .setting {
+  margin-top: 0.7rem;
+}
+/* A fold's heading stands off the words or buttons above it, as any other heading does. */
+.admin-pane p.setting-desc + :is(.sec-fold, .git-glossary),
+.admin-pane > :is(.library-buttons, .action-note) + :is(.sec-fold, .git-glossary) {
+  margin-top: 1.2rem;
+}
+/* Fields in a card keep a line's space between their boxes, above each field's own rule. */
+.aw-field + .aw-field {
+  margin-top: 0.25rem;
+}
+/* The quick installer's chips and the words under them keep the page's bands. */
+.quick-chips {
+  margin-top: 1rem;
+}
+.quick-chips + .setting {
+  margin-top: 1rem;
+}
+#quick-installer {
+  margin-top: 0.7rem;
+}
+#quick-installer > :first-child {
+  margin-top: 0;
+}
+/* A card's own words after it stand off its edge. */
+.setting + p.setting-desc,
+.settings + p.setting-desc,
+.net-card + p.setting-desc {
+  margin-top: 0.7rem;
+}
+/* A tag and the line explaining it stay together, within a card's tighter band. */
+.kind-tag + .setting-desc,
+.aw-field .setting-desc {
+  margin-top: 0;
+}
+/* A description inside a settings group keeps the group's own gap, not a margin of its own. */
+.settings .setting-desc {
+  margin-top: 0;
+}
+/* A row of buttons after a pane's words, and a card or a page's own box after them, keep the bands. */
+.admin-pane p.setting-desc + .library-buttons {
+  margin-top: 0.6rem;
+}
+.admin-pane p.setting-desc + :is(.setting, .sec-choice),
+.admin-pane p.setting-desc + div[id$="-box"] {
+  margin-top: 0.7rem;
+}
+/* A form under a fold's heading stands off the heading. */
+.admin-pane summary + .library-form {
+  margin-top: 0.7rem;
+}
+/* A heading's own line, then its words, within the heading band. */
+.admin-pane > h3 + p.setting-desc {
+  margin-top: 0;
+}
+/* An app's maintenance cards keep the card gap, and its facts stand off the buttons above them. */
+.app-updates + .app-install {
+  margin-top: 0.7rem;
+}
+.library-buttons + .inv-facts {
+  margin-top: 1rem;
+}
+/* The remaining admin parts keep the same bands: a row after words, a table after them, a fold after a row, and a
+   settings group's own footer. */
+.admin-pane p.setting-desc + p.library-buttons,
+.admin-pane p.setting-desc + div.library-buttons,
+.chip-group + .library-buttons,
+#up-foot + .library-buttons {
+  margin-top: 0.4rem;
+}
+.admin-pane div + .library-form,
+.net-card + .library-form,
+.settings + .aw-foot {
+  margin-top: 0.7rem;
+}
+.admin-pane div + details,
+.library-buttons + details,
+.library-form + h4,
+.admin-pane summary + h3 {
+  margin-top: 1rem;
+}
+.admin-pane summary + .library-form,
+.admin-pane p.setting-desc + .net-settings,
+.admin-pane p.setting-desc + label.aw-field {
+  margin-top: 0.7rem;
+}
+.sec-head + #security-findings {
+  margin-top: 0.4rem;
+}
+summary + .view-switch {
+  margin-top: 0.4rem;
+}
+table + .aw-foot,
+p.setting-desc + .admin-table {
+  margin-top: 0.6rem;
+}
+.choice-tiles + p.setting-desc,
+.chip-group + p.setting-desc,
+.library-form + p.setting-desc {
+  margin-top: 0.3rem;
+}
+.sec-fold + .sec-fold,
+#mock-controls-body {
+  margin-top: 1.2rem;
+}
+.input-row,
+#backup-keys-label {
+  margin-top: 0.7rem;
+}
+#backup-left-out,
+#kit-total {
+  margin-top: 0.3rem;
+}
+#appearance-box {
+  margin-top: 0.7rem;
+}
+#appearance-box > :first-child {
+  margin-top: 0;
+}
+#report-settings + p.setting-desc,
+#card-sys-fold {
+  margin-top: 0.7rem;
+}
+.housecall-form + details,
+#password-form {
+  margin-top: 0.4rem;
+}
+/* The last bands: a fold under a row, a choice's own line, a table under its words, and the backup form's parts. */
+.choice-tiles + .choice-says,
+.choice-tiles + p.setting-desc,
+#debian-buttons + details,
+.housecall-form + details {
+  margin-top: 0;
+}
+#net-glossary {
+  margin-top: 1.2rem;
+}
+#up-custom,
+#kit-state,
+#kit-again,
+#kit-total,
+#backup-keys-label,
+#backup-left-out,
+#security-findings,
+#security-changes-table {
+  margin-top: 0.3rem;
+}
+#card-sys-fold,
+#up-foot + .library-buttons,
+.chip-group + .library-buttons {
+  margin-top: 0.4rem;
+}
+.admin-pane div + details {
+  margin-top: 0.7rem;
+}
+.settings + .aw-foot {
+  margin-top: 0.6rem;
+}
+.setting p.setting-desc + .aw-field {
+  margin-top: 0.4rem;
+}
+form#library-token + h4 {
+  margin-top: 1rem;
+}
+.admin-table + .aw-foot {
+  margin-top: 0.6rem;
+}
+.kit-offer {
+  margin-top: 0.4rem;
+}
+/* The final bands, by the part that owns them. */
+#kit-form + #kit-state,
+p.setting-desc + #kit-form,
+#backup-keys-label + #backup-left-out,
+#up-steps + #up-custom,
+#rk-setup-pane p.setting-desc + label.aw-field,
+#security-changes-table + .aw-foot,
+p.setting-desc + #security-changes-table,
+.choice-tiles + #update-signers-kept {
+  margin-top: 0.4rem;
+}
+#kit-total {
+  margin-top: 0;
+}
+.chip-group + .library-buttons {
+  margin-top: 0.2rem;
+}
+.admin-pane h3 + .update-pattern {
+  margin-top: 0.4rem;
+}
+/* The last few parts, by their own ids: the margins that collapsed into a child or doubled on the pair. */
+#kit-form { margin-bottom: 0; }
+#kit-form + #kit-state { margin-top: 0.4rem; }
+#backup-keys-label { margin-bottom: 0; }
+#backup-keys-label + #backup-left-out { margin-top: 0.4rem; }
+#up-steps { margin-bottom: 0; }
+#up-steps + #up-custom { margin-top: 0.4rem; }
+#ap-form .chip-group { margin-bottom: 0; }
+#ap-form .chip-group + .library-buttons { margin-top: 0.4rem; }
+.sec-choice .settings { margin-bottom: 0; }
+.sec-choice .settings + .aw-foot { margin-top: 0.4rem; }
+#sources h3 { margin-bottom: 0; }
+#sources h3 + .update-pattern { margin-top: 0.4rem; }
+#security-changes-table { margin-bottom: 0; }
+#security-changes-form #security-changes-table + .aw-foot { margin-top: 0.4rem; }
+#security-changes-form p.setting-desc { margin-bottom: 0; }
+#security-changes-form p.setting-desc + #security-changes-table { margin-top: 0.4rem; }
+#update-signing-form .choice-tiles { margin-bottom: 0; }
+#update-signing-form .choice-tiles + #update-signers-kept { margin-top: 0.4rem; }
+/* The last four pairs: a child's margin collapses out of its box, or the component sets one; the band wins. */
+#kit-form { padding-bottom: 0.01rem; }
+#kit-form + #kit-state { margin-top: 0.4rem !important; }
+#ap-form .chip-group + .library-buttons { margin-top: 0.2rem !important; }
+#security-changes-table { margin-bottom: 0 !important; margin-top: 0.4rem !important; }
+#security-changes-form .aw-foot { margin-top: 0.4rem !important; }
+#security-changes-form p.setting-desc { margin-bottom: 0 !important; }
 /* Two panes on one page (Rockchip boards: Board, then Boards to set up): the second's heading well clear of the
    first's last card. /admin shows one pane at a time, so this is for the pages that show several. */
 .admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden]) {
@@ -826,7 +1055,7 @@ h2 {
 }
 .setting-desc {
   display: block;
-  margin-top: 0.25rem;
+  margin: 0.25rem 0 0;
   font-size: 0.8rem;
   line-height: 1.5;
   color: var(--muted);
@@ -1387,7 +1616,7 @@ body.app-frame iframe {
 }
 /* The Housecall doctor's form: the options' heading a little apart from the fields above it. */
 .housecall-form {
-  margin: 0.8rem 0 1rem;
+  margin: 0.8rem 0 0.4rem;
 }
 .housecall-form .housecall-also {
   margin-top: 0.3rem;
@@ -1913,8 +2142,15 @@ body[data-art] > header {
   color: var(--text);
 }
 body.admin h3 {
-  margin: 1.75rem 0 0.5rem;
+  margin: 1.75rem 0 0.3rem;
   font-size: 1rem;
+}
+/* A fold's summary over a heading inside it: the fold's own room is the gap, not the heading's 1.75rem. */
+body.admin .admin-pane summary + h3 {
+  margin-top: 1rem;
+}
+body.admin .admin-pane h3 + .update-pattern {
+  margin-top: 0.4rem;
 }
 /* A link in the admin's words (one with no class of its own: buttons and tabs style theirs) in the accent, not the
    browser's own blue and purple. */
@@ -2774,12 +3010,12 @@ body.drop > section + section {
 .up-cards {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.7rem;
 }
 .up-cols {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.25rem 2rem;
+  gap: 0.7rem 2rem;
   align-items: start;
 }
 @media (min-width: 64rem) {
@@ -2791,11 +3027,11 @@ body.drop > section + section {
 .up-sub {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 .up-col {
-  gap: 1.5rem;
+  gap: 1rem;
 }
 /* A button in a column (Go to the box defaults) as wide as its words, not the column. */
 .up-group > button {
@@ -3026,7 +3262,7 @@ body.drop > section + section {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  margin: 0.4rem 0 0.6rem;
+  margin: 0.4rem 0 0.2rem;
   border: 0;
   padding: 0;
   min-width: 0;
@@ -4873,7 +5109,7 @@ html[data-palette="contrast"] .help-item.down {
 /* The Security page's own settings (the security policy, HTTP / HTTPS, visitor counts): setting cards, the same
    shape and width as its choices (.sec-choice), one under the other. */
 .security-cards {
-  margin: 0.6rem 0;
+  margin: 0.7rem 0;
 }
 .security-setting {
   min-width: 0;
@@ -5163,7 +5399,7 @@ a.action-btn.go-btn {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 0.8rem;
-  margin: 0.5rem 0;
+  margin: 0.5rem 0 0.2rem;
 }
 .sec-head > p {
   margin: 0;
@@ -5369,7 +5605,7 @@ a.action-btn.go-btn {
 /* One pattern for every update: the two choices, then Check now / Fetch / Install. */
 .update-pattern {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.6rem;
   margin: 0.8rem 0;
 }
 /* In a form the form's gap parts the pattern from the footer below it; its bottom margin would double it. */
@@ -5383,6 +5619,10 @@ a.action-btn.go-btn {
 }
 .update-pattern .chip-says {
   margin: 0;
+}
+/* In a form the form's gap parts the pattern from the footer below it; its bottom margin would double it. */
+.library-form > .update-pattern {
+  margin-bottom: 0;
 }
 .update-actions {
   margin: 0.5rem 0;
@@ -5564,8 +5804,8 @@ a.action-btn.go-btn {
    (the result, Syncthing) below it, not on its button. */
 .kit-offer {
   max-width: 44rem;
-  margin-top: 0.9rem;
-  gap: 0.9rem;
+  margin-top: 0.7rem;
+  gap: 0.6rem;
 }
 .kit-offer + .admin-progress,
 #kit-state {
@@ -5639,7 +5879,7 @@ a.action-btn.go-btn {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  margin: 0.6rem 0;
+  margin: 0.7rem 0;
   cursor: default;
 }
 
@@ -6001,7 +6241,7 @@ body.certificate #cert-links {
 /* /admin → Mock controls (admin-mock.js): one row per control, its control in a cell of its own so a second
    way of drawing it can sit beside it. */
 .mock-group {
-  margin: 1.5rem 0 0;
+  margin: 1rem 0 0;
 }
 .admin-pane .mock-group-title {
   margin: 0 0 0.25rem;
@@ -6168,7 +6408,7 @@ label > .aw-onoff-box ~ .chip-group,
   cursor: not-allowed;
 }
 .choice-says {
-  margin: 0.35rem 0 0;
+  margin: 0.2rem 0 0;
 }
 /* An ordered scale as a slider (AW.choices slider): a stop per option, centred over its name, the chosen name
    in the accent colour; the radios in the names, out of sight. */
@@ -6183,6 +6423,7 @@ label > .aw-onoff-box ~ .chip-group,
   accent-color: var(--accent);
 }
 .choice-stops {
+  margin-top: 0.25rem;
   display: grid;
   grid-template-columns: repeat(var(--stops), 1fr);
   gap: 0.25rem;
