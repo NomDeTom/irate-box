@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
 # The Lyra Zero W's U-Boot: the commit Armbian build PR #9390 pinned, which is in kwiboo's GitHub tree (the denx.de
-# tree no longer has it: "not our ref", 2026-10-29), and the Rockchip blobs its image needs: DDR init (TPL) and
+# tree no longer has it: "not our ref"), and the Rockchip blobs its image needs: DDR init (TPL) and
 # OP-TEE, the versions the board's working mPWRD-OS card boots with (DDR v1.06, OP-TEE v2.10), from armbian/rkbin.
 repo=https://github.com/Kwiboo/u-boot-rockchip.git
 commit=0b8e25bd9e16e8043b600e8f49b926b95572dc47

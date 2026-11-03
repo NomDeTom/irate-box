@@ -85,7 +85,7 @@ def _enable_pi():
 
 # overlayroot's initramfs script runs grep and other BusyBox applets; mPWRD-OS ships no BusyBox, so its initramfs has no
 # grep, and overlayroot then decides the overlay driver is missing and boots the card read-write (overlayroot.log:
-# "loaded 'overlay' module but no 'overlay' in /proc/filesystems"; a Lyra, 2026-10-30).
+# "loaded 'overlay' module but no 'overlay' in /proc/filesystems"; a Lyra).
 LYRA_PACKAGES = ("overlayroot", "busybox")
 
 
