@@ -2465,32 +2465,44 @@ def queue_order(items):
 
 
 def _queue_item(raw):
-    """One checked item from the page, or None: ids are the manifests' own, and a book names its source."""
+    """One checked item from the page, or None. Ids are the manifests' own; a book must be one a
+    manifest's docs names, and its source comes from there, never from the request."""
     if not isinstance(raw, dict):
         return None
     kind = raw.get("kind")
     ident = str(raw.get("id") or "")
-    if kind in ("app", "addon", "local"):
+    if kind in ("app", "addon"):
         if not manifests.ID_RE.match(ident):
             return None
         return {"kind": kind, "id": ident, "title": str(raw.get("title") or ident)[:120]}
-    if kind == "book":
-        book = str(raw.get("book") or "")
-        source = raw.get("source")
-        if (
-            not book
-            or not isinstance(source, dict)
-            or source.get("type") not in ("release", "actions", "nightly-link", "url", "kiwix")
-        ):
+    if kind == "local":
+        if not manifests.ID_RE.match(ident):
+            return None
+        entry = manifests.catalogue().get(ident)
+        if not entry:
             return None
         return {
-            "kind": "book",
-            "id": book,
-            "book": book,
-            "title": str(raw.get("title") or book)[:120],
-            "source": source,
-            "size_mb": int(raw.get("size_mb") or 0),
+            "kind": "local",
+            "id": ident,
+            "title": entry["addon"]["title"],
+            "consent": entry["addon"]["consent"],
         }
+    if kind == "book":
+        book = str(raw.get("book") or "")
+        if not book:
+            return None
+        for m in manifests.load_all():
+            for doc in m.get("docs", []):
+                if doc.get("book") == book:
+                    return {
+                        "kind": "book",
+                        "id": book,
+                        "book": book,
+                        "title": doc.get("title") or book,
+                        "source": dict(doc["source"]),
+                        "size_mb": int(doc.get("size_mb") or 0),
+                    }
+        return None
     return None
 
 
@@ -2502,6 +2514,7 @@ def queue_snapshot():
             **data,
             "items": _queue_job["items"] if (thread and thread.is_alive()) else data["items"],
             "running": bool(thread and thread.is_alive()),
+            "waiting": bool(_queue_job.get("waiting")),
             "current": _queue_job["current"],
             "results": list(_queue_job["results"]),
         }
@@ -2523,35 +2536,33 @@ def _queue_run(items):
         with _queue_lock:
             _queue_job["current"] = item
         try:
-            if item["kind"] == "app":
-                app = librarian.APPS.get(item["id"], {})
-                if not app.get("source"):
-                    raise librarian.LibrarianError(
-                        M("install-queue.not-an-app", "The hub does not install {id}.", id=item["id"])
-                    )
-                have = {s["name"] for s in librarian.load_config()["sources"]}
-                if item["id"] not in have:
-                    librarian.add_source(librarian.default_app_source(item["id"]))
-                outcome = librarian.update([item["id"]], mode="update", log=lambda *_: None)
-                results.append(
-                    {
-                        "item": item,
-                        "ok": not str(list(outcome.values())[0]).startswith("error"),
-                        "message": str(list(outcome.values())[0]),
-                    }
-                )
-            elif item["kind"] == "book":
-                have = {s["name"] for s in librarian.load_config()["sources"]}
-                if item["book"] not in have:
-                    librarian.add_source({"name": item["book"], **item["source"]})
-                outcome = librarian.update([item["book"]], mode="update", log=lambda *_: None)
-                results.append(
-                    {
-                        "item": item,
-                        "ok": not str(list(outcome.values())[0]).startswith("error"),
-                        "message": str(list(outcome.values())[0]),
-                    }
-                )
+            if item["kind"] in ("app", "book"):
+                name = item["id"] if item["kind"] == "app" else item["book"]
+                kind = "apps" if item["kind"] == "app" else "books"
+
+                def work(name=name, item=item):
+                    have = {src["name"] for src in librarian.load_config()["sources"]}
+                    if name not in have:
+                        source = (
+                            librarian.default_app_source(name)
+                            if item["kind"] == "app"
+                            else {"name": name, **item["source"]}
+                        )
+                        librarian.add_source(source)
+                    return librarian.update([name], mode="update", log=lambda *_: None)
+
+                while not library_start("update", work, kind=kind):
+                    with _queue_lock:
+                        _queue_job["waiting"] = True
+                    time.sleep(2)
+                with _queue_lock:
+                    thread = _queue_job["thread"]
+                    _queue_job["waiting"] = False
+                while thread and thread.is_alive():
+                    time.sleep(1)
+                outcome = (_queue_job.get("result") or {}).get(name, "")
+                state = librarian.load_status().get(name) or {}
+                results.append({"item": item, "ok": not state.get("error"), "message": str(outcome)[:300]})
             elif item["kind"] == "addon":
                 rid = control_request({"action": "addon", "addon": item["id"], "on": True})
                 answer = _queue_wait_control(rid)
@@ -2574,6 +2585,7 @@ def _queue_run(items):
         )
     with _queue_lock:
         _queue_job["current"] = None
+        _queue_job["waiting"] = False
 
 
 def queue_action(payload):
@@ -2601,6 +2613,7 @@ def queue_action(payload):
         _queue_write({"items": [], "settings": data["settings"]})
         return 200, queue_snapshot()
     if action == "install":
+        ticks = payload.get("ticks") if isinstance(payload.get("ticks"), dict) else {}
         with _queue_lock:
             thread = _queue_job["thread"]
             if thread and thread.is_alive():
@@ -2608,6 +2621,15 @@ def queue_action(payload):
             items = queue_order([i for i in (_queue_item(x) for x in data["items"]) if i])
             if not items:
                 return 400, refused.say(M("install-queue.empty", "Select something to install first."))
+            for item in items:
+                if item["kind"] == "local" and ticks.get(f"{item['kind']}:{item['id']}") is not True:
+                    return 400, refused.say(
+                        M(
+                            "install-queue.consent",
+                            "Tick the consent for {title} before installing it.",
+                            title=item["title"],
+                        )
+                    )
             _queue_job.update(items=items, current=None, results=[], thread=None)
             thread = threading.Thread(target=_queue_run, args=(items,), daemon=True)
             _queue_job["thread"] = thread
@@ -5947,10 +5969,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, snap)
             return
 
-        if path == "/admin/queue":
-            self.send_json(*queue_action(payload))
-            return
-
         if path == "/admin/librarydrive":
             snap = librarydrive.status()
             snap["drives"] = storage.places().get("drives", [])
@@ -6875,6 +6893,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/podcasts":
             self.send_json(*podcast_action(payload))
+            return
+
+        if path == "/admin/queue":
+            self.send_json(*queue_action(payload))
             return
 
         if path == "/admin/librarydrive":

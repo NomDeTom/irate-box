@@ -18714,8 +18714,9 @@ function inventoryRows() {
   return [...rows.values()];
 }
 // ---- Quick installer: apps, add-ons and their known books, one list, one Install ----------
-let quickQueue = { items: [], settings: {}, running: false, current: null, results: [] };
+let quickQueue = { items: [], settings: {}, running: false, waiting: false, current: null, results: [] };
 let quickBusy = false;
+const quickTicks = new Set();
 function quickKind(row) {
   return row.kind === "app"
     ? "app"
@@ -18739,13 +18740,13 @@ function quickKey(item) {
 function quickSave(items) {
   return postJSON("/admin/queue", { action: "save", items });
 }
-let quickDrawn = "";
 function quickState(data) {
   const out = data && typeof data === "object" ? data : {};
   return {
     items: Array.isArray(out.items) ? out.items : [],
     settings: out.settings && typeof out.settings === "object" ? out.settings : {},
     running: !!out.running,
+    waiting: !!out.waiting,
     current: out.current || null,
     results: Array.isArray(out.results) ? out.results : [],
   };
@@ -18754,7 +18755,6 @@ function renderQuickInstaller(rows) {
   const box = document.getElementById("quick-installer");
   if (!box || !AL.apps()) return;
   quickQueue = quickState(quickQueue);
-  const signature = JSON.stringify(quickQueue);
   const selection = (document.getSelection && document.getSelection()) || null;
   const range =
     selection && selection.rangeCount ? selection.getRangeAt(0) : null;
@@ -18766,7 +18766,6 @@ function renderQuickInstaller(rows) {
       box.contains(range.commonAncestorContainer))
   )
     return;
-  quickDrawn = signature;
   const installed = new Set(
     rows
       .filter((row) => row.state === "installed" || row.state === "builtin")
@@ -18854,24 +18853,34 @@ function renderQuickInstaller(rows) {
     const state = quickQueue.results.find((r) => quickKey(r.item) === quickKey(item));
     const line =
       quickQueue.current && quickKey(quickQueue.current) === quickKey(item)
-        ? "running"
+        ? quickQueue.waiting
+          ? "waiting for the librarian"
+          : "running"
         : state
           ? state.ok
             ? "done"
             : `failed: ${state.message}`
           : "waiting";
-    list.append(
-      el(
-        "li",
-        { className: "quick-line" },
-        el("span", { className: "setting-name", textContent: item.title }),
-        el("span", {
-          className: "setting-desc",
-          textContent: ` ${item.kind === "book" ? `${item.size_mb || 0} MB` : "size read when it downloads"} · ${line}`,
-        }),
-        out,
-      ),
+    const row = el(
+      "li",
+      { className: "quick-line" },
+      el("span", { className: "setting-name", textContent: item.title }),
+      el("span", {
+        className: "setting-desc",
+        textContent: ` ${item.kind === "book" ? `${item.size_mb || 0} MB` : "size read when it downloads"} · ${line}`,
+      }),
+      out,
     );
+    if (item.consent) {
+      const tick = el("input", { type: "checkbox", checked: quickTicks.has(quickKey(item)) });
+      tick.addEventListener("change", () => {
+        if (tick.checked) quickTicks.add(quickKey(item));
+        else quickTicks.delete(quickKey(item));
+        renderQuickInstaller(rows);
+      });
+      row.append(el("label", { className: "setting" }, tick, el("span", { className: "setting-desc", textContent: ` ${item.consent}` })));
+    }
+    list.append(row);
   }
   const settings = quickQueue.settings || {};
   const docsWith = el("input", { type: "checkbox", checked: !!settings.docs_with_app });
@@ -18882,16 +18891,19 @@ function renderQuickInstaller(rows) {
         renderQuickInstaller(rows);
       });
   });
+  const unticked = quickQueue.items.some((item) => item.consent && !quickTicks.has(quickKey(item)));
   const install = el("button", {
     type: "button",
     className: "action-btn primary",
     textContent: quickQueue.running ? "Installing…" : "Install queued",
-    disabled: quickQueue.running || !quickQueue.items.length,
+    disabled: quickQueue.running || !quickQueue.items.length || unticked,
   });
   install.addEventListener("click", () => {
     install.disabled = true;
     AW.setBusy(install, true);
-    postJSON("/admin/queue", { action: "install" })
+    const ticks = {};
+    for (const item of quickQueue.items) if (quickTicks.has(quickKey(item))) ticks[quickKey(item)] = true;
+    postJSON("/admin/queue", { action: "install", ticks })
       .then((data) => {
         quickQueue = quickState(data);
         renderQuickInstaller(rows);

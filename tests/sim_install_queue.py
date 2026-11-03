@@ -49,7 +49,13 @@ ordered = server.queue_order([books, addon, app])
 check("apps and add-ons come before the books", [x["kind"] for x in ordered] == ["app", "addon", "book"], ordered)
 check("a book needs its source", server._queue_item({"kind": "book", "id": "x", "book": "x"}) is None)
 check("an app id is checked", server._queue_item({"kind": "app", "id": "../../etc"}) is None)
-check("a book keeps the source it was given", server._queue_item(books)["source"]["type"] == "nightly-link")
+check(
+    "a book's source comes from its manifest, not the request",
+    server._queue_item({**books, "source": {"type": "url", "url": "https://elsewhere.invalid/x.zim"}})["source"]["type"]
+    == "nightly-link",
+)
+local = server._queue_item({"kind": "local", "id": "eliza"})
+check("a web add-on carries its consent text", local and local.get("consent"), local)
 
 code, snap = server.queue_action({"action": "save", "items": [books, app, addon]})
 check(
@@ -67,5 +73,13 @@ code, snap = server.queue_action({"action": "save", "items": []})
 check("  an empty list clears it", code == 200 and snap["items"] == [], snap)
 code, body = server.queue_action({"action": "install"})
 check("  installing nothing is refused in words", code == 400 and body.get("error"), body)
+code, _ = server.queue_action({"action": "save", "items": [local]})
+code, body = server.queue_action({"action": "install"})
+check(
+    "  a web add-on without its consent tick is refused",
+    code == 400 and body["message"]["id"] == "install-queue.consent",
+    body,
+)
+server.queue_action({"action": "clear"})
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)
