@@ -1,24 +1,112 @@
 {
   "id": "curated",
+  "order": 20,
   "kind": "purpose",
   "title": "Curated space",
   "summary": "Like a pirate box, with accounts, moderation and some building on the box.",
-  "suggested_durability": "balanced",
   "entries": [
-    {"type": "hub", "key": "shout_who", "value": "users", "label": "Who may post in the shoutbox", "why": "Members post; guests read"},
-    {"type": "hub", "key": "board_who", "value": "users", "label": "Who may post on the board", "why": "Members post; guests read"},
-    {"type": "hub", "key": "factory_tile", "value": false, "label": "Firmware Factory tile", "why": "Building is bounded; the Factory stays off"},
-    {"type": "accounts", "key": "signup", "value": "apply", "label": "User accounts", "why": "People ask for an account and an administrator accepts"},
-    {"type": "choice", "choice": "memguard-limits:small", "label": "Build limits", "why": "Some building, kept small"},
-    {"type": "choice", "choice": "autoupdate-set:24-2", "label": "Security updates", "why": "Check daily and install what is found"},
-    {"type": "addon", "addon": "notes", "on": true, "label": "Shared notes (SilverBullet)", "why": "A shared notebook for members"},
-    {"type": "addon", "addon": "inspircd", "on": true, "label": "IRC chat (InspIRCd)", "why": "Real-time chat for the space"},
-    {"type": "addon", "addon": "room", "on": true, "label": "Live collaboration", "why": "Live drawing beside the drawing app"},
-    {"type": "access", "app": "notes", "mode": "users", "label": "Shared notes access", "why": "Members only"},
-    {"type": "access", "app": "inspircd", "mode": "public", "label": "IRC access", "why": "Anyone on the network may join the chat"},
-    {"type": "access", "app": "room", "mode": "users", "label": "Live collaboration access", "why": "Members only"},
-    {"type": "access", "app": "git", "mode": "users", "label": "Git access", "why": "Members see the repositories and build"},
-    {"type": "kit", "kit": "system", "on": true, "label": "System toolkit", "why": "The tools a curator needs"},
-    {"type": "kit", "kit": "network", "on": true, "label": "Network toolkit", "why": "The tools a curator needs"}
+    {
+      "type": "hub",
+      "key": "shout_who",
+      "value": "users",
+      "label": "Who may post in the shoutbox",
+      "why": "Members post; guests read"
+    },
+    {
+      "type": "hub",
+      "key": "board_who",
+      "value": "users",
+      "label": "Who may post on the board",
+      "why": "Members post; guests read"
+    },
+    {
+      "type": "hub",
+      "key": "factory_tile",
+      "value": false,
+      "label": "Firmware Factory tile",
+      "why": "Building is bounded; the Factory stays off"
+    },
+    {
+      "type": "accounts",
+      "key": "signup",
+      "value": "apply",
+      "label": "User accounts",
+      "why": "People ask for an account and an administrator accepts"
+    },
+    {
+      "type": "choice",
+      "choice": "memguard-limits:small",
+      "label": "Build limits",
+      "why": "Some building, kept small"
+    },
+    {
+      "type": "choice",
+      "choice": "autoupdate-set:24-2",
+      "label": "Security updates",
+      "why": "Check daily and install what is found"
+    },
+    {
+      "type": "addon",
+      "addon": "notes",
+      "on": true,
+      "label": "Shared notes (SilverBullet)",
+      "why": "A shared notebook for members"
+    },
+    {
+      "type": "addon",
+      "addon": "inspircd",
+      "on": true,
+      "label": "IRC chat (InspIRCd)",
+      "why": "Real-time chat for the space"
+    },
+    {
+      "type": "addon",
+      "addon": "room",
+      "on": true,
+      "label": "Live collaboration",
+      "why": "Live drawing beside the drawing app"
+    },
+    {
+      "type": "access",
+      "app": "notes",
+      "mode": "users",
+      "label": "Shared notes access",
+      "why": "Members only"
+    },
+    {
+      "type": "access",
+      "app": "inspircd",
+      "mode": "public",
+      "label": "IRC access",
+      "why": "Anyone on the network may join the chat"
+    },
+    {
+      "type": "access",
+      "app": "room",
+      "mode": "users",
+      "label": "Live collaboration access",
+      "why": "Members only"
+    },
+    {
+      "type": "access",
+      "app": "git",
+      "mode": "users",
+      "label": "Git access",
+      "why": "Members see the repositories and build"
+    },
+    {
+      "type": "kit",
+      "kit": "system",
+      "on": true,
+      "label": "System toolkit",
+      "why": "The tools a curator needs"
+    },
+    {
+      "type": "kit",
+      "kit": "network",
+      "on": true,
+      "label": "Network toolkit",
+      "why": "The tools a curator needs"
+    }
   ]
 }

@@ -33,7 +33,14 @@ def _load_file(path):
         data = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
-    return data if isinstance(data, dict) and data.get("id") and data.get("kind") in KINDS else None
+    return (
+        data
+        if isinstance(data, dict)
+        and data.get("id")
+        and data.get("kind") in KINDS
+        and isinstance(data.get("order"), int)
+        else None
+    )
 
 
 def load(kind=None):

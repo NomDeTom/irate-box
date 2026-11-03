@@ -1756,8 +1756,19 @@ def _preset_entries(purpose_id, durability_id):
     return purpose, durability, facts, entries, left
 
 
-def preset_preview(purpose_id, durability_id):
-    purpose, durability, facts, entries, left = _preset_entries(purpose_id, durability_id)
+def preset_preview(purpose_id=None, durability_id=None):
+    purpose = presets.get(purpose_id) if purpose_id else None
+    durability = presets.get(durability_id) if durability_id else None
+    if not purpose and not durability:
+        raise ValueError("choose a purpose or a durability")
+    if purpose and purpose.get("kind") != "purpose":
+        raise ValueError(f"there is no purpose preset called {purpose_id}")
+    if durability and durability.get("kind") != "durability":
+        raise ValueError(f"there is no durability preset called {durability_id}")
+    facts = _preset_facts()
+    entries, left = presets.resolve(
+        (purpose.get("entries") if purpose else []) + (durability.get("entries") if durability else []), facts
+    )
     changes, installs = [], []
     for entry in entries:
         before, after = _preset_before(entry, facts), _preset_after(entry)
@@ -1782,16 +1793,16 @@ def preset_preview(purpose_id, durability_id):
     ]
     setup = sorted({step for entry in entries if (step := _preset_setup_id(entry))})
     return {
-        "purpose": purpose["id"],
-        "purpose_title": purpose.get("title"),
-        "durability": durability["id"],
-        "durability_title": durability.get("title"),
+        "purpose": purpose["id"] if purpose else None,
+        "purpose_title": purpose.get("title") if purpose else None,
+        "durability": durability["id"] if durability else None,
+        "durability_title": durability.get("title") if durability else None,
         "changes": changes,
         "installs": installs,
         "left_out": left_out,
         "setup": setup,
         "summary": _preset_summary(changes, installs, left_out),
-        "automatic_undo": _preset_return_hours(durability),
+        "automatic_undo": _preset_return_hours(durability) if durability else None,
     }
 
 
@@ -2027,9 +2038,7 @@ def _preset_view():
         else suggested.get("durability"),
     }
     return {
-        "purposes": [
-            {k: p.get(k) for k in ("id", "title", "summary", "suggested_durability")} for p in presets.load("purpose")
-        ],
+        "purposes": [{k: p.get(k) for k in ("id", "title", "summary")} for p in presets.load("purpose")],
         "durabilities": [
             {k: p.get(k) for k in ("id", "title", "summary", "auto_return_hours")} for p in presets.load("durability")
         ],

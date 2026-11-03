@@ -16680,15 +16680,9 @@ function presetTile(preset, kind) {
   },
     el("strong", { textContent: preset.title }),
     el("span", { textContent: preset.summary }),
-    kind === "purpose" && preset.suggested_durability
-      ? el("span", { className: "preset-suggested", textContent: `Suggests ${presetTitle(preset.suggested_durability, "durability")}` })
-      : preset.auto_return_hours
-        ? el("span", { className: "preset-suggested", textContent: `Returns by itself after ${preset.auto_return_hours} hours` })
-        : null);
-}
-function presetTitle(id, kind) {
-  const list = presetState.data ? (kind === "durability" ? presetState.data.durabilities : presetState.data.purposes) : [];
-  return (list.find((p) => p.id === id) || {}).title || id;
+    preset.auto_return_hours
+      ? el("span", { className: "preset-suggested", textContent: `Returns by itself after ${preset.auto_return_hours} hours` })
+      : null);
 }
 function drawQuickSetup() {
   const data = presetState.data;

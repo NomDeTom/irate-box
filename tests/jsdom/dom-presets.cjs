@@ -14,9 +14,9 @@ const dom = new JSDOM(html, { url: 'http://box/admin/#presets', runScripts: 'out
 const w = dom.window;
 const fixture = {
   purposes: [
-    { id: 'pirate', title: 'Pirate box', summary: 'An open drop box.', suggested_durability: 'longevity' },
-    { id: 'curated', title: 'Curated space', summary: 'Accounts and moderation.', suggested_durability: 'balanced' },
-    { id: 'power', title: 'Power unit', summary: 'Everything that fits.', suggested_durability: 'balanced' },
+    { id: 'pirate', title: 'Pirate box', summary: 'An open drop box.' },
+    { id: 'curated', title: 'Curated space', summary: 'Accounts and moderation.' },
+    { id: 'power', title: 'Power unit', summary: 'Everything that fits.' },
   ],
   durabilities: [
     { id: 'longevity', title: 'Longevity', summary: 'The card lives longest.' },
@@ -91,7 +91,10 @@ setTimeout(async () => {
   check('  the current choices are marked',
     purpose.find((b) => b.textContent.includes('Pirate box')).classList.contains('selected')
     && durability.find((b) => b.textContent.includes('Longevity')).classList.contains('selected'));
-  check('  a purpose says which durability it suggests', /Suggests Longevity/.test(purpose[0].textContent), purpose[0].textContent);
+  check('  the dials in the order asked: Pirate, Curated, Power; Longevity, Balanced, Full',
+    purpose.map((b) => b.querySelector('strong').textContent).join(',') === 'Pirate box,Curated space,Power unit'
+    && durability.map((b) => b.querySelector('strong').textContent).join(',') === 'Longevity,Balanced: logs kept,Full logging');
+  check('  no purpose suggests a durability any more', ![...purpose, ...durability].some((b) => /Suggests/.test(b.textContent)));
   check('  full logging says it returns by itself', /Returns by itself after 24 hours/.test(durability[2].textContent), durability[2].textContent);
   purpose.find((b) => b.textContent.includes('Curated space')).click();
   await new Promise((r) => setTimeout(r, 300));

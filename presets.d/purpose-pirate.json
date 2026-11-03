@@ -1,24 +1,111 @@
 {
   "id": "pirate",
+  "order": 10,
   "kind": "purpose",
   "title": "Pirate box",
   "summary": "An open, anonymous drop box and library: join the WiFi, share, read. No accounts, no building.",
-  "suggested_durability": "longevity",
   "entries": [
-    {"type": "hub", "key": "shout_who", "value": "guests", "label": "Who may post in the shoutbox", "why": "Guests post without an account"},
-    {"type": "hub", "key": "board_who", "value": "guests", "label": "Who may post on the board", "why": "Guests post without an account"},
-    {"type": "hub", "key": "factory_tile", "value": false, "label": "Firmware Factory tile", "why": "No building on the box"},
-    {"type": "accounts", "key": "signup", "value": "off", "label": "User accounts", "why": "No accounts: the box is a drop box"},
-    {"type": "hotspot", "value": "open", "label": "Hotspot security", "why": "Anyone may join"},
-    {"type": "choice", "choice": "memguard-limits:small", "label": "Build limits", "why": "No building; leave the memory for reading and sharing"},
-    {"type": "choice", "choice": "autoupdate-set:24-0", "label": "Security updates", "why": "Check daily and flag what is found; the box is often offline"},
-    {"type": "access", "app": "git", "mode": "off", "label": "Git", "why": "No repositories or CI"},
-    {"type": "access", "app": "notes", "mode": "off", "label": "Shared notes", "why": "Only the hub's own apps"},
-    {"type": "access", "app": "inspircd", "mode": "off", "label": "IRC chat", "why": "Only the hub's own apps"},
-    {"type": "access", "app": "irc", "mode": "off", "label": "IRC chat", "why": "Only the hub's own apps"},
-    {"type": "access", "app": "room", "mode": "off", "label": "Live drawing", "why": "Only the hub's own apps"},
-    {"type": "access", "app": "mqtt", "mode": "off", "label": "MQTT", "why": "Only the hub's own apps"},
-    {"type": "access", "app": "sync", "mode": "off", "label": "Syncthing", "why": "Only the hub's own apps"},
-    {"type": "access", "app": "term", "mode": "off", "label": "Terminal", "why": "Only the hub's own apps"}
+    {
+      "type": "hub",
+      "key": "shout_who",
+      "value": "guests",
+      "label": "Who may post in the shoutbox",
+      "why": "Guests post without an account"
+    },
+    {
+      "type": "hub",
+      "key": "board_who",
+      "value": "guests",
+      "label": "Who may post on the board",
+      "why": "Guests post without an account"
+    },
+    {
+      "type": "hub",
+      "key": "factory_tile",
+      "value": false,
+      "label": "Firmware Factory tile",
+      "why": "No building on the box"
+    },
+    {
+      "type": "accounts",
+      "key": "signup",
+      "value": "off",
+      "label": "User accounts",
+      "why": "No accounts: the box is a drop box"
+    },
+    {
+      "type": "hotspot",
+      "value": "open",
+      "label": "Hotspot security",
+      "why": "Anyone may join"
+    },
+    {
+      "type": "choice",
+      "choice": "memguard-limits:small",
+      "label": "Build limits",
+      "why": "No building; leave the memory for reading and sharing"
+    },
+    {
+      "type": "choice",
+      "choice": "autoupdate-set:24-0",
+      "label": "Security updates",
+      "why": "Check daily and flag what is found; the box is often offline"
+    },
+    {
+      "type": "access",
+      "app": "git",
+      "mode": "off",
+      "label": "Git",
+      "why": "No repositories or CI"
+    },
+    {
+      "type": "access",
+      "app": "notes",
+      "mode": "off",
+      "label": "Shared notes",
+      "why": "Only the hub's own apps"
+    },
+    {
+      "type": "access",
+      "app": "inspircd",
+      "mode": "off",
+      "label": "IRC chat",
+      "why": "Only the hub's own apps"
+    },
+    {
+      "type": "access",
+      "app": "irc",
+      "mode": "off",
+      "label": "IRC chat",
+      "why": "Only the hub's own apps"
+    },
+    {
+      "type": "access",
+      "app": "room",
+      "mode": "off",
+      "label": "Live drawing",
+      "why": "Only the hub's own apps"
+    },
+    {
+      "type": "access",
+      "app": "mqtt",
+      "mode": "off",
+      "label": "MQTT",
+      "why": "Only the hub's own apps"
+    },
+    {
+      "type": "access",
+      "app": "sync",
+      "mode": "off",
+      "label": "Syncthing",
+      "why": "Only the hub's own apps"
+    },
+    {
+      "type": "access",
+      "app": "term",
+      "mode": "off",
+      "label": "Terminal",
+      "why": "Only the hub's own apps"
+    }
   ]
 }
