@@ -7,7 +7,7 @@ A self-contained offline hub for a small board. Spiritually a [PirateBox](https:
 
 <img src="docs/images/iratebox-hub.webp" alt="Irate-Box hub home page" width="960">
 
-That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopedia (courtesy of Kiwix), a small Git repository, a series of calculators and many more - all with no internet required at any point.
+That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopaedia (courtesy of Kiwix), a small Git repository, a series of calculators and many more - all with no internet required at any point.
 
 It is not a [FreedomBox](https://freedombox.org). A FreedomBox is a personal server for a household: named accounts, apps, and the owner's data behind them. Irate-Box is the other shape: an anonymous, offline-first hub for whoever joins its hotspot, keeping its data and identity on the box. It borrows FreedomBox's first-use code (a code only the installer prints) and its app model, but not its household-server assumptions.
 
@@ -75,7 +75,7 @@ Irate-Box follows the original PirateBox, which was free software under the GPL.
 
 | Licence | What |
 | --- | --- |
-| [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub: `server.py`, `hub_control.py`, the doctors (`health.py`, `secdoctor.py`, `hub_control.py`), the Security page (`security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
+| [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub (`server.py`), the doctors (`health.py`, `secdoctor.py`, and the Updates doctor in `hub_control.py`), the Security page (`security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
 | [AGPL-3.0-only](LICENSES/AGPL-3.0-only.txt) | `web/gamja/`: gamja, the IRC client in the browser (third-party, from `codeberg.org/emersion/gamja`), built with Parcel; its own `LICENSE` is beside the files, and `SOURCE` names the commit |
 | [GPL-3.0-or-later](LICENSES/GPL-3.0-or-later.txt) | `ci.py`, `gitrepos.py`, `usbstick.py` |
 | [GPL-3.0-only](LICENSES/GPL-3.0-only.txt) | `web/icons/m-pwrd.svg`, the Meshtastic tile's picture: Meshtastic's M-PWRD logo (third-party, from `meshtastic/design`). Meshtastic® is a registered trademark of Meshtastic LLC |
