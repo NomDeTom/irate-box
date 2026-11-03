@@ -828,31 +828,33 @@ function renderLibrary(snap) {
   if (libNote && libNote.busy && !busy) libNote = null;
   renderApps(snap, busy);
   const job = snap.job || {};
-  const parts = [];
+  const kind = job.kind || "all";
+  const KIND_WORDS = {
+    books: "books",
+    apps: "apps",
+    holders: "the App store",
+    firmware: "firmware",
+    mirrors: "mirrors",
+    "rk-images": "board images",
+    podcasts: "podcasts",
+    all: "apps and books",
+  };
+  const kindWord = KIND_WORDS[kind] || kind;
   const progress = snap.progress;
+  let busyText = "";
   if (busy && progress) {
     const rate = progress.seconds > 0 ? progress.done / progress.seconds : 0;
     const left =
       rate && progress.total > progress.done ? Math.round((progress.total - progress.done) / rate) : null;
-    parts.push(
-      `Downloading ${progress.name}: ${mb(progress.done) || "0 MB"}${progress.total ? ` of ${mb(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : ""}` +
-        (rate ? `, ${Math.round(rate / 1024)} KB/s` : "") +
-        (left !== null
-          ? `, about ${left < 90 ? `${left} s` : `${Math.round(left / 60)} min`} left`
-          : "") +
-        ".",
-    );
-  } else if (busy) parts.push(`Working (${job.action || "scheduled check"})…`);
-  // The bar: a download's bytes when its size is known, otherwise the indeterminate stripe.
-  lib.bars.forEach((bar) => {
-    bar.hidden = !busy;
-    if (busy && progress && progress.total) {
-      bar.max = progress.total;
-      bar.value = Math.min(progress.done, progress.total);
-    } else bar.removeAttribute("value");
-  });
-  badge("apps", busy ? "working" : "");
-  badge("books", busy ? "working" : "");
+    busyText =
+      `Downloading ${progress.name} for ${kindWord}: ${mb(progress.done) || "0 MB"}${progress.total ? ` of ${mb(progress.total)} (${Math.round((100 * progress.done) / progress.total)}%)` : ""}` +
+      (rate ? `, ${Math.round(rate / 1024)} KB/s` : "") +
+      (left !== null
+        ? `, about ${left < 90 ? `${left} s` : `${Math.round(left / 60)} min`} left`
+        : "") +
+      ".";
+  } else if (busy) busyText = `Working on ${kindWord} (${job.action || "scheduled check"})…`;
+  const parts = [];
   if (!busy) {
     // When the librarian last looked (its sources' newest check), and when it looks next by the schedule.
     const looked = Object.values(snap.status || {})
@@ -875,13 +877,30 @@ function renderLibrary(snap) {
         every ? "Idle. Not checked yet." : "Idle. It checks only when you ask.",
       );
   }
-  if (snap.free_mb !== null && snap.free_mb !== undefined)
+  if (!busy && snap.free_mb !== null && snap.free_mb !== undefined)
     parts.push(`${snap.free_mb} MB free on the card.`);
   if (!busy && job.result && job.result.error)
     parts.push(`Last action failed: ${hubError(job.result).message}`);
+  const idleText = parts.join(" ");
+  // Each page's own line and bar: Now shows whatever runs (and says which); the others only their
+  // own kind. A kind that is not running says nothing of another's job, and no bar.
   lib.states.forEach((n) => {
-    n.textContent = parts.join(" ");
+    const want = n.dataset.jobKind;
+    if (want === "now") n.textContent = busy ? busyText : idleText;
+    else if (want === "holders" && !busy) n.textContent = "";
+    else n.textContent = busy ? (want === kind ? busyText : "") : idleText;
   });
+  lib.bars.forEach((bar) => {
+    const want = bar.dataset.jobKind;
+    const mine = !busy ? false : want === "now" || want === kind;
+    bar.hidden = !mine;
+    if (mine && progress && progress.total) {
+      bar.max = progress.total;
+      bar.value = Math.min(progress.done, progress.total);
+    } else bar.removeAttribute("value");
+  });
+  badge("apps", busy && kind === "apps" ? "working" : "");
+  badge("books", busy && kind === "books" ? "working" : "");
 
   // The books themselves are a page at a time (loadBooks): reread when the librarian finishes.
   if (libWasBusy && !busy) loadBooks();

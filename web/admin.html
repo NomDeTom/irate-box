@@ -783,8 +783,8 @@
 
         <section class="admin-pane" id="apps" aria-labelledby="apps-title">
           <h2 id="apps-title" data-i18n="admin.apps.title">Apps</h2>
-          <p class="setting-desc library-state"></p>
-          <progress class="admin-bar library-bar" hidden></progress>
+          <p class="setting-desc library-state" data-job-kind="apps"></p>
+          <progress class="admin-bar library-bar" data-job-kind="apps" hidden></progress>
           <p
             class="setting-desc"
             data-i18n="admin.apps.whiteboard-mermaid-editor-serial"
@@ -831,8 +831,8 @@
 
         <section class="admin-pane" id="books" aria-labelledby="books-title">
           <h2 id="books-title" data-i18n="admin.books.title">Books</h2>
-          <p class="setting-desc library-state"></p>
-          <progress class="admin-bar library-bar" hidden></progress>
+          <p class="setting-desc library-state" data-job-kind="books"></p>
+          <progress class="admin-bar library-bar" data-job-kind="books" hidden></progress>
           <p
             class="setting-desc"
             data-i18n="admin.books.librarian-updates-books-wiki"
@@ -1591,6 +1591,8 @@
             <span class="setting-name" data-i18n="admin.appstore.label-keep-files-box">Keep app files on this box</span>
           </label>
           <p class="setting-desc" id="appstore-status" role="status"></p>
+          <p class="setting-desc library-state" data-job-kind="holders"></p>
+          <progress class="admin-bar library-bar" data-job-kind="holders" hidden></progress>
           <form id="appstore-policy" class="library-form surface-policy">
             <div
               data-update-pattern
@@ -2070,8 +2072,8 @@
           </p>
           <div class="net-card setting" id="library-now">
             <h3 data-i18n="admin.sources.h-now">Now</h3>
-            <p class="setting-desc library-state" id="library-now-state"></p>
-            <progress class="admin-bar library-bar" max="1" hidden></progress>
+            <p class="setting-desc library-state" id="library-now-state" data-job-kind="now"></p>
+            <progress class="admin-bar library-bar" data-job-kind="now" max="1" hidden></progress>
           </div>
           <form id="library-policy" class="library-form">
             <h3 data-i18n="admin.sources.h-apps-books">Apps and books</h3>

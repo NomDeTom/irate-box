@@ -198,7 +198,7 @@ check("and what was installed stays", (d / "index.html").read_text() == "one")
 from irate_box.hub import server as S
 
 started = []
-S.library_start = lambda action, fn: started.append(action) or True
+S.library_start = lambda action, fn, kind="all": started.append(action) or True
 code, body = S.local_addons_action({"action": "add", "id": "eliza"})
 check("add without agreeing is refused", code == 400 and body["message"]["id"] == "addons.consent.first", body)
 code, body = S.local_addons_action({"action": "add", "id": "eliza", "agree": True})

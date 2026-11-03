@@ -625,6 +625,30 @@ setTimeout(() => {
     const docChip = [...d.querySelectorAll('#quick-installer .chip.docs')].find((b) => /Mermaid docs/.test(b.textContent));
     check('Quick installer: a docs chip without its app', !!docChip, t('#quick-installer')[0]);
     if (docChip) docChip.click();
+
+    {
+      const holders = { ...library, running: true, job: { action: 'appstore-holder-update', kind: 'holders' },
+        progress: { name: 'androidApp.apk', done: 10, total: 100, seconds: 1 } };
+      w.renderLibrary(holders);
+      check(
+        'a holders run: the App store line and bar, not Books or Apps; Now names it',
+        /Downloading androidApp.apk for the App store/.test(t('#appstore .library-state')[0])
+          && !d.querySelector('#appstore .library-bar').hidden
+          && t('#books .library-state')[0] === '' && t('#apps .library-state')[0] === ''
+          && d.querySelector('#books .library-bar').hidden && d.querySelector('#apps .library-bar').hidden
+          && /App store/.test(t('#library-now-state')[0]),
+        { appstore: t('#appstore .library-state')[0], books: t('#books .library-state')[0], now: t('#library-now-state')[0] },
+      );
+      const books = { ...library, running: true, job: { action: 'update', kind: 'books' },
+        progress: { name: 'wikipedia_en', done: 2, total: 10, seconds: 1 } };
+      w.renderLibrary(books);
+      check(
+        'a book run: Books shows it, the App store does not; Now says books',
+        /Downloading wikipedia_en for books/.test(t('#books .library-state')[0])
+          && t('#appstore .library-state')[0] === '' && /books/.test(t('#library-now-state')[0]),
+        { books: t('#books .library-state')[0], appstore: t('#appstore .library-state')[0], now: t('#library-now-state')[0] },
+      );
+    }
     check('no page errors', !errors.length, errors);
     // A null handed to replaceChildren or append shows as the word itself: no text node on the page may be just that.
     const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
