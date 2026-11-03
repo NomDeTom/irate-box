@@ -175,18 +175,21 @@ h2 {
 :where(.admin-pane) h4:first-child {
   margin-top: 0;
 }
-/* A card's first line sits at its padding, the same space as below its last: nothing in it adds a margin above. */
-:is(.finding, .net-card, .net-device, .setting, .aw-card, .git-card, .lib-card, .aw-settings) > :first-child,
+/* A card's or a form's first line sits at its padding, the same space as below its last: nothing in it adds a margin
+   above. */
+:is(.finding, .net-card, .net-device, .setting, .aw-card, .git-card, .lib-card, .aw-settings, .library-form)
+  > :first-child,
 .fhead > * {
   margin-top: 0;
 }
-/* A card straight after a pane's buttons or their note (shown or hidden): apart from them, not on them (Box doctor's Summary). */
-.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting) {
+/* A card or a list of them straight after a pane's buttons or their note (shown or hidden): apart from them, not on
+   them (Box doctor's Summary, Git's Mirrors). */
+.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting, .admin-list) {
   margin-top: 1rem;
 }
-/* A card, or a list of cards, straight after a pane's words (shown or hidden): apart from them, not on them, on every
-   page. */
-.admin-pane > p + :is(.net-card, .setting, .aw-block) {
+/* A card, a list of cards or a form straight after a pane's words (shown or hidden): apart from them, not on them,
+   on every page. */
+.admin-pane > p + :is(.net-card, .setting, .aw-block, .library-form) {
   margin-top: 1rem;
 }
 /* A page's own container (a div the page fills) stands apart from what comes before it, as a card does: the words
@@ -4239,6 +4242,10 @@ label > .select-chips {
   padding-top: 0.6rem;
   border-top: 1px solid var(--border);
 }
+/* In a form the form's own gap already parts the footer from the fields above it; its margin would double it. */
+.library-form > .aw-foot {
+  margin-top: 0;
+}
 .aw-foot[hidden] {
   display: none;
 }
@@ -5364,6 +5371,10 @@ a.action-btn.go-btn {
   display: grid;
   gap: 0.9rem;
   margin: 0.8rem 0;
+}
+/* In a form the form's gap parts the pattern from the footer below it; its bottom margin would double it. */
+.library-form > .update-pattern {
+  margin-bottom: 0;
 }
 /* Each choice: its name above its chips, as a package card's settings, and what the chosen one does under them. */
 .update-pattern .update-choice {

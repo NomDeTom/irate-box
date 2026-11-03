@@ -61,7 +61,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   await show({ boards: [board('loader')], tools: { rkdeveloptool: false, adb: false } });
   check('the toolkit missing: said, with the way to Toolkits; Erase disabled', !d.getElementById('rk-tools').hidden && /Rockchip boards toolkit/.test(text('rk-tools')) && d.querySelector('#rk-tools a[href="/admin/#toolkits"]') && buttons()[0].disabled, text('rk-tools'));
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
-  check('a card after a pane\'s words set apart by the shared rule, not a rule of this page\'s', css.includes('.admin-pane > p + :is(.net-card, .setting, .aw-block)') && css.includes('.admin-pane > div:not([class])') && css.includes('.admin-pane > div:not([class]) > p + .aw-block') && !css.includes('.rk-card') && css.includes('.admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden])'));
+  check('a card after a pane\'s words set apart by the shared rule, not a rule of this page\'s', css.includes('.admin-pane > p + :is(.net-card, .setting, .aw-block, .library-form)') && css.includes('.admin-pane > div:not([class])') && css.includes('.admin-pane > div:not([class]) > p + .aw-block') && !css.includes('.rk-card') && css.includes('.admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden])'));
   // The loader showed the SD card (an erase refused): writing an image to the card offered instead.
   const sha = 'a'.repeat(64);
   await show({ boards: [board('loader')], tools: { rkdeveloptool: true, adb: true }, images: [], results: [{ id: 'rk9', ok: false, msg: { id: 'rkboard.card-shown', en: 'The board\'s loader shows 14.6 GB…' } }] });
