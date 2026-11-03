@@ -2690,6 +2690,7 @@ def library_snapshot():
         thread = _library_job["thread"]
         snap["job"] = {
             "action": _library_job["action"],
+            "kind": _library_job.get("kind", "all"),
             "result": _library_job["result"],
             "busy": bool(thread and thread.is_alive()),
         }
@@ -2697,8 +2698,10 @@ def library_snapshot():
     return snap
 
 
-def library_start(action, fn):
-    """Run fn() in the background unless something is already running; False if busy."""
+def library_start(action, fn, kind="all"):
+    """Run fn() in the background unless something is already running; False if busy. kind is
+    what it works on (books, apps, holders, firmware, mirrors, rk-images, podcasts), for the page
+    that shows its progress."""
 
     def work():
         try:
@@ -2714,6 +2717,7 @@ def library_start(action, fn):
             return False
         _library_job.update(
             action=action,
+            kind=kind,
             result=None,
             thread=threading.Thread(target=work, daemon=True),
         )
@@ -2754,11 +2758,16 @@ def library_action(payload):
                 if app not in have:
                     librarian.add_source(librarian.default_app_source(app))
         elif action in ("check", "fetch", "update"):
-            if not library_start(action, lambda: librarian.update(names or None, mode=action, **quiet)):
+            if names:
+                app_names = {n for n in names if n in librarian.APPS}
+                kind = "apps" if len(app_names) == len(names) else "books"
+            else:
+                kind = "all"
+            if not library_start(action, lambda: librarian.update(names or None, mode=action, **quiet), kind=kind):
                 return 409, refused.say(librarian.BUSY)
         elif action == "rollback":
             name, version = str(payload.get("name", "")), payload.get("version") or None
-            if not library_start(action, lambda: {name: librarian.rollback(name, version)}):
+            if not library_start(action, lambda: {name: librarian.rollback(name, version)}, kind="books"):
                 return 409, refused.say(librarian.BUSY)
         else:
             return 400, refused.say(UNKNOWN_ACTION)
@@ -2824,7 +2833,7 @@ def git_action(payload):
                         )
                     }
 
-            if not library_start(action, run):
+            if not library_start(action, run, kind="mirrors"):
                 return 409, refused.say(librarian.BUSY)
         else:
             return 400, refused.say(UNKNOWN_ACTION)
@@ -2866,7 +2875,7 @@ def firmware_action(payload):
                 with librarian.Lock():
                     return {"firmware": firmware.sync(check_only=(action == "check"), log=lambda *_: None)}
 
-            if not library_start(f"firmware-{action}", run):
+            if not library_start(f"firmware-{action}", run, kind="firmware"):
                 return 409, refused.say(librarian.BUSY)
         elif action == "flush-cache":
             firmware.flush_cache(log=lambda *_: None)
@@ -2898,6 +2907,7 @@ def podcast_action(payload):
             if not library_start(
                 f"podcasts-{action}",
                 lambda: {"podcasts": podcast.sync(check_only=(action == "check"), log=lambda *_: None)},
+                kind="podcasts",
             ):
                 return 409, refused.say(librarian.BUSY)
         else:
@@ -2930,7 +2940,7 @@ def appstore_action(payload):
                 only = {holder_id} if holder_id else None
                 return {"holders": holder.sync(check_only=(action == "holder-check"), only=only, log=lambda *_: None)}
 
-        if not library_start(f"appstore-{action}", run):
+        if not library_start(f"appstore-{action}", run, kind="holders"):
             return 409, refused.say(librarian.BUSY)
         snap = appstore_admin.snapshot()
         snap.update(running=True, progress=librarian.progress())
@@ -4157,7 +4167,7 @@ def catalogue_sync():
     if kick:
         # A moved pin: fetch it now rather than at the librarian's next turn.
         librarian.reload_apps()
-        library_start("update", lambda: librarian.update(kick, mode="update", log=lambda *_: None))
+        library_start("update", lambda: librarian.update(kick, mode="update", log=lambda *_: None), kind="books")
     return state
 
 
@@ -4240,7 +4250,7 @@ def _local_add(m, how):
     # server's add-on maps.
     rid = control_request({"action": "access", "app": i, "mode": "off"})
     librarian.add_source(librarian.default_app_source(i))
-    started = library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None))
+    started = library_start("update", lambda: librarian.update([i], mode="update", log=lambda *_: None), kind="apps")
     return {"added": i, "fetching": started, "access": rid}
 
 
@@ -4309,6 +4319,7 @@ def local_addons_action(payload):
             library_start(
                 "update",
                 lambda: librarian.update([i], mode="update", log=lambda *_: None),
+                kind="apps",
             )
             return 200, {"accepted": i}
         if action == "remove":
