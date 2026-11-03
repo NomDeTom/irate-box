@@ -494,6 +494,7 @@ const AW = (() => {
       tellUnsaved();
     };
     const redraw = () => { paint(); if (opts.onChange) opts.onChange(handle); };
+    handle.refresh = () => paint();
     // quiet: the control drew itself (a field being typed in): only the footer follows.
     handle.set = (k, v, quiet) => {
       if (!saved || saving) return;
