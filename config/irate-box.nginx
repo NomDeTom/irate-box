@@ -1016,9 +1016,11 @@ server {
 # --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's
 # login, read the hub's storage, or script its pages. Their files are the hub user's
-# (/var/lib/hub/addons/<id>/, from the librarian, no root); nothing here runs anything or
-# proxies anywhere, and links are not followed (the hub owns the folder). Whether each is
-# public, private or off, and what it may connect to, comes from the include at the top.
+# (/var/lib/hub/addons/<id>/, from the librarian, no root); links are not followed (the hub
+# owns the folder). The one proxied API is the file drop, behind its own switch, for the PDF
+# viewer; the gallery (an add-on's own saves) is the store's public gallery, as on the hub.
+# Whether each is public, private or off, and what it may connect to, comes from the includes
+# at the top.
 server {
 	include @TLS@/nginx-http-addons.inc;
 	include @TLS@/nginx-policy-addons.inc;
@@ -1033,6 +1035,20 @@ server {
 	add_header X-Content-Type-Options nosniff always;
 	add_header Referrer-Policy no-referrer always;
 	add_header Cache-Control "no-cache" always;
+	include @ACCESS@;
+	# An app's own saves (the gallery) and the files in the drop, as its pages reach them.
+	location ^~ /api/saves {
+		client_max_body_size 50m;
+		proxy_pass http://irate_box_hub;
+	}
+	location ^~ /api/drop {
+		if ($irate_box_off_drop) { return 404; }
+		auth_basic $irate_box_auth_drop;
+		include @ACCESS@.d/gate-drop.conf*;
+		auth_basic_user_file $irate_box_logins;
+		client_max_body_size 25m;
+		proxy_pass http://irate_box_hub;
+	}
 	# Users mode for a local add-on (access.py): no per-id location exists ahead of
 	# time (ids aren't known at template time, unlike the built-ins' own locations), so the
 	# root helper writes one here per add-on in users mode (access.addon_gates), matched before

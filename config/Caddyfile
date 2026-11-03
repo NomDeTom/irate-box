@@ -765,10 +765,11 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-sync.inc
 # --- the add-on origin: the local add-ons ---------------------------------------------
 # Their own origin, a second port, so nothing they serve can reach /admin with the owner's
 # login, read the hub's storage, or script its pages. Their files are the hub user's
-# ($HUB_STATE_DIR/addons/<id>/, from the librarian, no root); nothing here runs anything or
-# proxies anywhere. The routes, one per add-on that is not off with its login and
-# Content-Security-Policy, are the root helper's (addons-routes.caddy). Caddy follows links,
-# unlike nginx's disable_symlinks: the security doctor looks for any in the folder.
+# ($HUB_STATE_DIR/addons/<id>/, from the librarian, no root). The routes, one per add-on that
+# is not off with its login and Content-Security-Policy, are the root helper's
+# (addons-routes.caddy). Caddy follows links, unlike nginx's disable_symlinks: the security
+# doctor looks for any in the folder. The one proxied API is the drop, behind its own switch;
+# the gallery (an add-on's own saves) is the store's public gallery, as on the hub.
 (irate_box_addons) {
 	import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-policy-addons.inc
 	root * {$HUB_ADDONS_ROOT:/var/lib/hub/addons}
@@ -780,6 +781,20 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-sync.inc
 	}
 	# The sign-in an add-on in users mode sends to (server.py /_irate/user) is the hub's, as on the other origins.
 	redir /account.html {scheme}://{host}{uri} 302
+	handle /api/saves* {
+		request_body {
+			max_size 50MB
+		}
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
+	}
+	handle /api/drop* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/drop.caddy*
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
+	}
 	import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/addons-routes.caddy*
 }
 
