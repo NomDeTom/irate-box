@@ -239,6 +239,7 @@ def refresh_manifests():
         manifests.LOCAL_D,
         manifests.CATALOGUE,
         *sorted(manifests.CATALOGUE.glob("*.json")),
+        manifests.ADDONS,
     ]:
         try:
             stamp.append(p.stat().st_mtime_ns)
@@ -258,6 +259,7 @@ def refresh_manifests():
             manifests.LOCAL_D,
             manifests.CATALOGUE,
             *sorted(manifests.CATALOGUE.glob("*.json")),
+            manifests.ADDONS,
         ]
     ]
     MANIFESTS = manifests.load_all()
@@ -622,12 +624,28 @@ def keep_members_spec(menu_id):
     return spec if isinstance(spec, dict) else None
 
 
+def folder_member_installed(m):
+    """Whether the app behind a folder entry is installed on this box: a local add-on whose files
+    are there, a built-in app of the hub, or a built-in add-on whose install.sh option it records.
+    A manifest that lists the folder is not enough."""
+    if m.get("local"):
+        return manifests.install_dir(m).is_dir()
+    option = (m.get("addon") or {}).get("option")
+    if not option:
+        return True
+    try:
+        opts = set((STATE_DIR / "install-options").read_text().split())
+    except OSError:
+        return True
+    return option in opts
+
+
 def folder_member_ids(menu_id):
-    """The apps with a tile that this folder lists: what it can keep off the home page."""
+    """The installed apps with a tile that this folder lists: what it can keep off the home page."""
     out = []
     for m in MANIFESTS:
         tile = m.get("tile") or {}
-        if not tile or tile.get("widget"):
+        if not tile or tile.get("widget") or not folder_member_installed(m):
             continue
         if any(menu_id in (e.get("menus") or {}) for e in m.get("entries", [])):
             out.append(m["id"])

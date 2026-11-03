@@ -38,7 +38,8 @@ async function arrange(shown, keep) {
 const names = (d) => [...d.querySelectorAll('.item-list .name')].map(text);
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const write = (file, body) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body); };
-const before = { folders: read(FOLDERS), access: read(path.join(CONTROL, 'access.json')), apps: new Set(fs.existsSync(APPS_D) ? fs.readdirSync(APPS_D) : []) };
+const ADDONS = path.join(STATE, 'addons');
+const before = { folders: read(FOLDERS), access: read(path.join(CONTROL, 'access.json')), apps: new Set(fs.existsSync(APPS_D) ? fs.readdirSync(APPS_D) : []), addons: new Set(fs.existsSync(ADDONS) ? fs.readdirSync(ADDONS) : []) };
 function restore(file, body) { if (body === null) fs.rmSync(file, { force: true }); else write(file, body); }
 (async () => {
   try {
@@ -54,14 +55,21 @@ function restore(file, body) { if (body === null) fs.rmSync(file, { force: true 
     check('Shown at two: the Drawing tile, with the palette', !!has(d, 'Drawing') && /🎨/.test(has(d, 'Drawing').text) && has(d, 'Drawing').href === '/drawing.html');
     check('  and its tools still on the hub', !!has(d, 'Excalidraw') && !!has(d, 'Mermaid'));
 
-    // A third: draw.io. Shown still, so the folder keeps the three inside it.
+    // A third lists the folder, but its files are not there yet: it does not count, so the two
+    // installed tools stay on the hub.
     write(path.join(APPS_D, 'drawio.json'), fs.readFileSync(path.join(REPO, 'addons/drawio.json')));
     const access = JSON.parse(before.access || '{}');
     write(path.join(CONTROL, 'access.json'), JSON.stringify({ ...access, drawio: 'public', jspaint: 'public' }));
     d = await open('/');
-    check('three tools, Shown: the folder stays, all three tools leave the hub', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'Mermaid') && !has(d, 'draw.io'), tiles(d).map((t) => t.name).join('|'));
+    check('three list the folder but two are installed: its tools stay on the hub', !!has(d, 'Drawing') && !!has(d, 'Excalidraw') && !!has(d, 'Mermaid') && !!has(d, 'draw.io'), tiles(d).map((t) => t.name).join('|'));
     d = await open('/drawing.html');
     check('  its page lists the three', names(d).join('|') === 'Excalidraw|draw.io|Mermaid', names(d).join('|'));
+
+    // Its files arrive. Shown still, so the folder keeps the three inside it.
+    fs.mkdirSync(path.join(ADDONS, 'drawio'), { recursive: true });
+    await new Promise((r) => setTimeout(r, 50));
+    d = await open('/');
+    check('three installed, Shown: the folder stays, all three tools leave the hub', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'Mermaid') && !has(d, 'draw.io'), tiles(d).map((t) => t.name).join('|'));
 
     await arrange('auto', false);
     d = await open('/');
@@ -75,12 +83,15 @@ function restore(file, body) { if (body === null) fs.rmSync(file, { force: true 
 
     // A fourth: JS Paint. The folder lists all four.
     write(path.join(APPS_D, 'jspaint.json'), fs.readFileSync(path.join(REPO, 'addons/jspaint.json')));
+    fs.mkdirSync(path.join(ADDONS, 'jspaint'), { recursive: true });
+    await new Promise((r) => setTimeout(r, 50));
     d = await open('/drawing.html');
     check('four tools: the folder lists all four', names(d).join('|') === 'Excalidraw|draw.io|JS Paint|Mermaid', names(d).join('|'));
   } finally {
     restore(FOLDERS, before.folders);
     restore(path.join(CONTROL, 'access.json'), before.access);
     for (const f of fs.existsSync(APPS_D) ? fs.readdirSync(APPS_D) : []) if (!before.apps.has(f)) fs.rmSync(path.join(APPS_D, f), { force: true });
+    for (const f of fs.existsSync(ADDONS) ? fs.readdirSync(ADDONS) : []) if (!before.addons.has(f)) fs.rmSync(path.join(ADDONS, f), { recursive: true, force: true });
   }
   await new Promise((r) => setTimeout(r, 100));
 

@@ -43,8 +43,10 @@ def check(name, cond, info=""):
     fails += not cond
 
 
-def add_local(name):
+def add_local(name, install=True):
     shutil.copyfile(REPO / "addons" / f"{name}.json", state / "apps.d" / f"{name}.json")
+    if install:
+        (state / "addons" / name).mkdir(parents=True, exist_ok=True)
     time.sleep(0.05)
 
 
@@ -120,19 +122,33 @@ try:
     )
     check("  the folder page still lists both", names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "Mermaid"])
 
-    # A third: draw.io. 'Shown' is still the choice, and now the folder may keep them.
-    add_local("drawio")
+    # A third only lists the folder: its manifest is there, its files are not. It does not count, so
+    # the two installed tools stay where they are (and the folder's page still lists it).
+    add_local("drawio", install=False)
     page = home()
     check(
-        "three tools, Shown: the folder keeps them, its own tile stays",
-        tile(page, "Drawing")
-        and tile(page, "Excalidraw") is None
-        and tile(page, "Mermaid") is None
-        and tile(page, "draw.io") is None,
+        "three list the folder but two are installed: still two, the tools stay on the hub",
+        folder()["keep_members"]["installed"] == 2
+        and tile(page, "Drawing")
+        and tile(page, "Excalidraw")
+        and tile(page, "draw.io")
+        and tile(page, "Mermaid"),
     )
     check(
         "  the folder page lists the three",
         names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "draw.io", "Mermaid"],
+    )
+
+    # Its files arrive. 'Shown' is still the choice, and now the folder may keep them.
+    (state / "addons" / "drawio").mkdir(parents=True, exist_ok=True)
+    time.sleep(0.05)
+    page = home()
+    check(
+        "three installed, Shown: the folder keeps them, its own tile stays",
+        tile(page, "Drawing")
+        and tile(page, "Excalidraw") is None
+        and tile(page, "Mermaid") is None
+        and tile(page, "draw.io") is None,
     )
     check("  /admin/folders says three", folder()["keep_members"]["installed"] == 3)
 
