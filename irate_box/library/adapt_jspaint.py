@@ -85,7 +85,7 @@ NOTE = """<!-- {mark}: {origin} at the commit in irate-box-bundle.json.
      Adapted for the Irate-Box by irate_box/library/adapt_jspaint.py: no outside requests, no
      online sessions, Imgur upload or Load From URL, English only, and the optional PDF import
      and Head Tracker were left out. The Dwell Clicker stays. Painting, opening and saving are
-     unchanged. -->
+     unchanged, and Save to the box and Open from the box use the hub's own gallery (/api/saves). -->
 """
 
 POLICY = (
@@ -126,8 +126,8 @@ LANGUAGES = re.compile(r"const available_languages = \[[^\n]*\];")
 HEAD_TRACKER_HASH = re.compile(r"if \(location\.hash\.match\(/head-tracker/i\)\) \{")
 NOTE_HTML = (
     '<p class="irate-box-adapted"><strong>This copy on the Irate-Box</strong> has no online '
-    "multi-user sessions, Imgur upload or Load From URL. Pictures stay in this browser, where "
-    "other web add-ons on the box can read them, unless you save one to your device.</p>\n"
+    "multi-user sessions, Imgur upload or Load From URL. Pictures can be saved in this box's gallery "
+    "and opened from it, as well as saved to your device.</p>\n"
 )
 # A picture from outside the box, its tag spread over lines as the news writes it; and JS Paint's own GitHub raw URL
 # (any commit) for a file under images/.
@@ -147,6 +147,125 @@ def local_images(text, tree):
     return REMOTE_IMG.sub(swap, text)
 
 
+SAVE_AS_MENU = re.compile(
+    r'(\n\t\t\{\n\t\t\tlabel: localize\("Save &As"\),.*?\n\t\t\},\n)',
+    re.S,
+)
+SAVE_MENU_ITEMS = (
+    "\t\t{\n"
+    '\t\t\temoji_icon: "💾",\n'
+    '\t\t\tlabel: "Save to the &box",\n'
+    "\t\t\taction: () => { file_save_to_box(); },\n"
+    '\t\t\tdescription: "Saves the picture in this box\'s gallery.",\n'
+    "\t\t},\n"
+    "\t\t{\n"
+    '\t\t\temoji_icon: "📂",\n'
+    '\t\t\tlabel: "Open from the b&ox",\n'
+    "\t\t\taction: () => { file_open_from_box(); },\n"
+    '\t\t\tdescription: "Opens a picture saved in this box\'s gallery.",\n'
+    "\t\t},\n"
+)
+BOX_SAVES_JS = r"""
+// Irate-Box: the box's gallery, as the other adapted apps use it (/api/saves).
+let box_save_id = null;
+function box_escape(text) {
+	return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function box_thumbnail() {
+	const scale = Math.min(1, 128 / Math.max(main_canvas.width, main_canvas.height));
+	const thumb = document.createElement("canvas");
+	thumb.width = Math.max(1, Math.round(main_canvas.width * scale));
+	thumb.height = Math.max(1, Math.round(main_canvas.height * scale));
+	thumb.getContext("2d").drawImage(main_canvas, 0, 0, thumb.width, thumb.height);
+	return thumb.toDataURL("image/png");
+}
+async function file_save_to_box() {
+	let state;
+	try {
+		state = main_canvas.toDataURL("image/png");
+	} catch (error) {
+		show_error_message("The picture could not be read to save it.", error);
+		return;
+	}
+	const suggested = (file_name || "Picture").replace(/\.[^.]+$/, "");
+	const { $window, promise } = showMessageBox({
+		messageHTML: `<p>Save this picture in the box's gallery.</p>
+			<p><label>Name <input type="text" id="irate-box-save-name" value="${box_escape(suggested)}"></label></p>`,
+		buttons: [
+			{ label: "Save", value: "save", default: true },
+			{ label: "Cancel", value: "cancel" },
+		],
+	});
+	const choice = await promise;
+	if (choice !== "save") {
+		return;
+	}
+	const name = ($window.$content.find("#irate-box-save-name").val() || "").trim() || "Picture";
+	try {
+		const response = await fetch("/api/saves", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ kind: "jspaint", id: box_save_id || undefined, name, state, thumb: box_thumbnail() }),
+		});
+		if (!response.ok) {
+			throw new Error(`the gallery answered ${response.status}`);
+		}
+		const meta = await response.json();
+		box_save_id = meta.id;
+		file_name = `${name}.png`;
+		saved = true;
+		update_title();
+	} catch (error) {
+		show_error_message("The picture could not be saved in the box's gallery.", error);
+	}
+}
+async function file_open_from_box() {
+	let saves;
+	try {
+		const response = await fetch("/api/saves?full=1");
+		if (!response.ok) {
+			throw new Error(`the gallery answered ${response.status}`);
+		}
+		const data = await response.json();
+		saves = (data.saves || []).filter((save) => save.kind === "jspaint" && typeof save.state === "string");
+	} catch (error) {
+		show_error_message("The box's gallery could not be read.", error);
+		return;
+	}
+	if (!saves.length) {
+		showMessageBox({ message: "No picture is saved in this box's gallery yet." });
+		return;
+	}
+	const options = saves
+		.map((save) => `<option value="${box_escape(save.id)}">${box_escape(save.name || "untitled")}</option>`)
+		.join("");
+	const { $window, promise } = showMessageBox({
+		messageHTML: `<p>Open a picture saved in the box's gallery.</p>
+			<p><label>Picture <select id="irate-box-open-name">${options}</select></label></p>`,
+		buttons: [
+			{ label: "Open", value: "open", default: true },
+			{ label: "Cancel", value: "cancel" },
+		],
+	});
+	const choice = await promise;
+	if (choice !== "open") {
+		return;
+	}
+	const id = $window.$content.find("#irate-box-open-name").val();
+	const save = saves.find((item) => item.id === id);
+	if (!save) {
+		return;
+	}
+	try {
+		const info = await load_image_from_uri(save.state);
+		box_save_id = save.id;
+		file_name = `${save.name || "Picture"}.png`;
+		open_from_image_info(info);
+	} catch (error) {
+		show_error_message("The picture could not be opened from the box's gallery.", error);
+	}
+}
+"""
 IMGUR_BUTTON = re.compile(r'\n\t\t\t\$win\.\$Button\("Upload to Imgur",.*?\n\t\t\t\}\)\.focus\(\);\n', re.S)
 
 
@@ -172,6 +291,30 @@ def adapt_page(text):
         if n != 1:
             raise AdaptError(f"index.html changed: {what} is there {n} times, not once")
     return first + sep + NOTE.format(mark=MARK, origin=ORIGIN) + rest
+
+
+def add_box_saves(menu_text, function_text):
+    """The File menu's two gallery items, and the functions they call, added to JS Paint's own source."""
+    if len(SAVE_AS_MENU.findall(menu_text)) != 1:
+        raise AdaptError("src/menus.js changed: the Save As item is not found once")
+    menu_text = SAVE_AS_MENU.sub(lambda m: m.group(1) + SAVE_MENU_ITEMS, menu_text, count=1)
+    if menu_text.count("file_save_to_box, file_open_from_box") != 1:
+        menu_text = menu_text.replace(
+            "file_save_as, image_attributes",
+            "file_save_as, file_save_to_box, file_open_from_box, image_attributes",
+            1,
+        )
+    if menu_text.count("file_save_to_box, file_open_from_box") != 1:
+        raise AdaptError("src/menus.js changed: its import list is not found once")
+    if function_text.count("file_save_as, getSelectionText") != 1 or "\nexport {\n" not in function_text:
+        raise AdaptError("src/functions.js changed: its export list is not found")
+    function_text = function_text.replace(
+        "file_save_as, getSelectionText",
+        "file_save_as, file_save_to_box, file_open_from_box, getSelectionText",
+        1,
+    )
+    function_text = function_text.replace("\nexport {\n", "\n" + BOX_SAVES_JS + "\nexport {\n", 1)
+    return menu_text, function_text
 
 
 def adapt(tree):
@@ -219,6 +362,8 @@ def adapt(tree):
     page_text = local_images(adapt_page(index.read_text(encoding="utf-8")), tree)
     menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
+    # The box's gallery: the manifest says what is kept there and who can see it.
+    menu_text, function_text = add_box_saves(menu_text, function_text)
     app_text = app_text.replace("/dwell-clicker|head-tracker/i", "/dwell-clicker/i").replace(
         HEAD_TRACKER_HASH.search(app_text).group(0),
         "if (false) { // Irate-Box: no Head Tracker in this copy.",

@@ -56,5 +56,61 @@ check(
     'href="https://discord.gg/jxQBK3k8tx"' in out and 'src="images/occult/tools.png"' in out,
     out,
 )
+# The box's gallery: the File menu's two items and the functions they call, from real lines of src/menus.js and
+# src/functions.js at the pinned commit.
+MENUS = """import { are_you_sure, file_save, file_save_as, image_attributes, file_open } from "./functions.js";
+const file_menu = [
+\t\t{
+\t\t\tlabel: localize("&Save"),
+\t\t\taction: () => { file_save(); },
+\t\t},
+\t\t{
+\t\t\tlabel: localize("Save &As"),
+\t\t\t...shortcut("Ctrl+Shift+S"),
+\t\t\taction: () => { file_save_as(); },
+\t\t\tdescription: localize("Saves the active document with a new name."),
+\t\t},
+\t\tMENU_DIVIDER,
+\t\t{
+\t\t\tlabel: localize("&Load From URL"),
+\t\t},
+];
+"""
+FUNCTIONS = """function file_save() {}
+function file_save_as() {}
+export {
+\tfile_save, file_save_as, getSelectionText, get_all_url_params
+};
+"""
+menus, functions = adapt_jspaint.add_box_saves(MENUS, FUNCTIONS)
+check(
+    "the File menu gains Save to the box and Open from the box, after Save As",
+    menus.index('label: localize("Save &As")')
+    < menus.index('label: "Save to the &box"')
+    < menus.index('label: "Open from the b&ox"')
+    and "file_save_to_box, file_open_from_box" in menus.split("\n", 1)[0],
+    menus,
+)
+check(
+    "  the functions and their export are added",
+    "async function file_save_to_box()" in functions
+    and "async function file_open_from_box()" in functions
+    and "file_save_to_box, file_open_from_box, getSelectionText" in functions,
+)
+check(
+    "  Save posts a named PNG to the gallery, with a thumbnail",
+    'fetch("/api/saves"' in functions and 'kind: "jspaint"' in functions and "thumb: box_thumbnail()" in functions,
+)
+check(
+    "  Open reads the gallery's saved pictures and loads the chosen one",
+    'fetch("/api/saves?full=1")' in functions
+    and "load_image_from_uri(save.state)" in functions
+    and "open_from_image_info(info)" in functions,
+)
+try:
+    adapt_jspaint.add_box_saves("no save as here", FUNCTIONS)
+    check("a changed menus.js is refused, not patched blindly", False)
+except adapt_jspaint.AdaptError:
+    check("a changed menus.js is refused, not patched blindly", True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
