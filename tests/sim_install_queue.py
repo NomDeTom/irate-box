@@ -80,6 +80,11 @@ check(
     code == 400 and body["message"]["id"] == "install-queue.consent",
     body,
 )
+irc = server._queue_item({"kind": "addon", "id": "irc"})
+check("a service add-on carries its own consent", irc and irc.get("consent"), irc)
+server.queue_action({"action": "save", "items": [irc]})
+code, body = server.queue_action({"action": "install"})
+check("  and Install refuses without its tick", code == 400 and body["message"]["id"] == "install-queue.consent", body)
 server.queue_action({"action": "clear"})
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

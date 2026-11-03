@@ -2471,10 +2471,22 @@ def _queue_item(raw):
         return None
     kind = raw.get("kind")
     ident = str(raw.get("id") or "")
-    if kind in ("app", "addon"):
+    if kind == "app":
         if not manifests.ID_RE.match(ident):
             return None
         return {"kind": kind, "id": ident, "title": str(raw.get("title") or ident)[:120]}
+    if kind == "addon":
+        if not manifests.ID_RE.match(ident):
+            return None
+        entry = manifests.addons(MANIFESTS).get(ident)
+        if not entry:
+            return None
+        return {
+            "kind": "addon",
+            "id": ident,
+            "title": entry["addon"]["title"],
+            **({"consent": entry["addon"]["consent"]} if entry["addon"].get("consent") else {}),
+        }
     if kind == "local":
         if not manifests.ID_RE.match(ident):
             return None
@@ -2622,7 +2634,7 @@ def queue_action(payload):
             if not items:
                 return 400, refused.say(M("install-queue.empty", "Select something to install first."))
             for item in items:
-                if item["kind"] == "local" and ticks.get(f"{item['kind']}:{item['id']}") is not True:
+                if item.get("consent") and ticks.get(f"{item['kind']}:{item['id']}") is not True:
                     return 400, refused.say(
                         M(
                             "install-queue.consent",
