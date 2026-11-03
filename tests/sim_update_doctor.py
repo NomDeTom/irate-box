@@ -20,7 +20,6 @@ import tempfile
 import threading
 import time
 import urllib.parse
-from unittest import mock
 from email.utils import formatdate
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
