@@ -163,7 +163,8 @@ check(
 check(
     "  the hub's own pages run only the scripts it serves (script-src 'self'), the apps beside them the baseline",
     "set $irate_box_page_csp \"object-src 'none'; base-uri 'none'; frame-ancestors 'self'; script-src 'self'\";" in hub
-    and hub.count(page_line) == 9  # index, /, the statics, drop, themes, notepad, pastebin, music, the App store's own pages
+    # index, /, the statics, drop, themes, notepad, pastebin, music, the App store's own pages
+    and hub.count(page_line) == 9
     and "irate_box_page_csp" in block_of(hub, "\tlocation = / {")
     and csp_line in block_of(hub, "\tlocation ^~ /tools/ {")
     and "irate_box_page_csp" not in block_of(hub, "\tlocation ^~ /tools/ {"),
