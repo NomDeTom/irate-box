@@ -74,8 +74,9 @@ def said(check):
     (REPO / "irate_box" / "root" / "secmanifest.py").read_text()
 )
 
+installed = "b" * 40
 tree_a = code_tree("evil")
-report_a = H.security_report(tree_a, None)
+report_a = H.security_report(tree_a, installed, sha="a" * 40)
 check(
     "a new root action is held at first",
     [item["text"] for item in report_a["held"]] == ["a new root action, evil"] and not report_a["approved"],
@@ -89,10 +90,11 @@ H.secchanges.approve(
     "an administrator over HTTPS",
     report_a["levels"],
     items=report_a["held"],
+    installed=installed,
 )
 
 tree_b = code_tree("evil")
-report_b = H.security_report(tree_b, None)
+report_b = H.security_report(tree_b, installed, sha="c" * 40)
 check(
     "a later fetch with the same change carries the approval",
     report_b["approved"]
@@ -107,13 +109,20 @@ check(
 )
 check(
     "  the security check says so, and names the same change",
-    H._security_check(tree_b, None)["detail"]["id"] == "update.verify.security.carried"
-    and "approved for aaaaaaa. the same change" in said(H._security_check(tree_b, None)).lower(),
-    H._security_check(tree_b, None),
+    H._security_check(tree_b, installed)["detail"]["id"] == "update.verify.security.carried"
+    and "approved for aaaaaaa. the same change" in said(H._security_check(tree_b, installed)).lower(),
+    H._security_check(tree_b, installed),
+)
+check(
+    "  but an install by another route no longer carries it",
+    H.security_report(tree_b, "e" * 40, sha="c" * 40)["approved"] is False
+    and [item["text"] for item in H.security_report(tree_b, "e" * 40, sha="c" * 40)["held"]]
+    == ["a new root action, evil"],
+    H.security_report(tree_b, "e" * 40, sha="c" * 40),
 )
 
 tree_c = code_tree("evil", "evil2")
-report_c = H.security_report(tree_c, None)
+report_c = H.security_report(tree_c, installed, sha="d" * 40)
 check(
     "a later fetch with one more change is held for that one alone",
     [item["text"] for item in report_c["held"]] == ["a new root action, evil2"]
@@ -121,7 +130,7 @@ check(
     and not report_c["approved"],
     report_c,
 )
-said_c = H._security_check(tree_c, None)
+said_c = H._security_check(tree_c, installed)
 check(
     "  the held check names only the new one, and its note the approved one",
     "evil2" in said(said_c) and "evil," not in said(said_c) and "approved for aaaaaaa" in msg.render(said_c["note"]),
@@ -144,14 +153,14 @@ H._write_update_state(
         "checked_sha": None,
         "available": full[:7],
         "available_sha": full,
-        "installed": "bbbbbbb",
+        "installed": installed,
         "up_to_date": False,
         "changes": [],
         "changes_known": True,
         "checks": [],
     }
 )
-carried_check = H._security_check(src, "bbbbbbb")
+carried_check = H._security_check(src, installed)
 with (
     mock.patch.object(H, "verify_update", lambda *args, **kw: [carried_check]),
     mock.patch.object(H, "_install_options", lambda: []),
@@ -184,7 +193,7 @@ H.secchanges.record_install(
     False,
     (),
 )
-report_after = H.security_report(tree_b, None)
+report_after = H.security_report(tree_b, installed, sha="c" * 40)
 check(
     "after an install the old approval no longer counts",
     not report_after["approved"] and [item["text"] for item in report_after["held"]] == ["a new root action, evil"],

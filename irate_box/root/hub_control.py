@@ -2735,7 +2735,7 @@ def update_approve_security(req):
                 "The downloaded version has not been checked. Check for updates again.",
             )
         )
-    report = security_report(UPDATE_SRC, state.get("installed"))
+    report = security_report(UPDATE_SRC, state.get("installed"), sha=full)
     if not report["manifest"] or report["problems"]:
         raise Refused(
             M(
@@ -2838,7 +2838,7 @@ def _strictest_level(levels):
     return max(levels, key=lambda name: secchanges.RANK.get(levels[name], 0)) if levels else "root_code"
 
 
-def security_report(src, installed):
+def security_report(src, installed, sha=None):
     """What the fetched tree's manifest says, how it differs from the installed one, and which
     widenings the owner's levels hold. Read statically: the fetched code is never imported. When the
     builder itself changed, it is not used on the new tree: the change is held as its own widening."""
@@ -2894,7 +2894,7 @@ def security_report(src, installed):
         held = [item for item in changes["widenings"] if levels.get(item["toggle"], "authorise") != "flag"]
         # An approval covers the changes it named since the installed version. A later fetch with the same
         # change carries it; one with a new or different change is held for that one alone.
-        cover = secchanges.covering(held)
+        cover = secchanges.covering(held, installed=installed, sha=sha)
         covered = cover["covered"] if cover else []
         uncovered = cover["uncovered"] if cover else held
         if cover and (cover["record"].get("how") or "") != "console":
@@ -3747,7 +3747,7 @@ def update_fetch(req):
     head = state["available"]
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
-    report = security_report(UPDATE_SRC, state.get("installed"))
+    report = security_report(UPDATE_SRC, state.get("installed"), sha=full)
     # The security check stays failed when only approved changes hold it, as it does after an approval for
     # the same version. A later fetch with those same changes carries that approval; Install reads it.
     carried = bool(report.get("approved")) and bool(failed) and all(c.get("id") == "security" for c in failed)
@@ -3904,14 +3904,16 @@ def _approved_only(state, full):
 
 
 def _security_approval(state, full):
-    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
+    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"), sha=full)
     if not report.get("manifest") or report.get("problems"):
         return None
     if report.get("approved") and state.get("security_approved_sha") == full:
         record = report.get("approval")
     else:
         held = report.get("held") or []
-        record = secchanges.approved(full, [item["text"] for item in held], items=held)
+        record = secchanges.approved(
+            full, [item["text"] for item in held], items=held, installed=state.get("installed")
+        )
     if not record:
         return None
     levels = report.get("levels") or secchanges.levels()

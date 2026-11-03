@@ -243,12 +243,20 @@ def _approved_items(record):
     return [(None, text) for text in record.get("changes") or [] if isinstance(text, str)]
 
 
-def covering(items, record=None):
+def _from_installed(record, installed, sha):
+    """Whether an approval is still for this box's installed version. A record written before it kept the
+    installed commit covers only its own release: another install, by any route, ends it."""
+    if record.get("installed"):
+        return bool(installed) and record["installed"] == installed
+    return bool(sha) and record.get("sha") == sha
+
+
+def covering(items, record=None, installed=None, sha=None):
     """The approval record, and which of `items` ({"toggle", "text"}) it already covers. An approval is for
     the changes it named since the installed version, so a later fetch with the same changes carries it. A
     record from before toggles were kept is matched on its texts."""
     record = record or approval()
-    if not record:
+    if not record or not _from_installed(record, installed, sha):
         return None
     known = _approved_items(record)
     pairs = {(toggle, text) for toggle, text in known if toggle is not None}
@@ -264,12 +272,12 @@ def covering(items, record=None):
     return {"record": record, "covered": covered, "uncovered": uncovered}
 
 
-def approved(sha, changes, items=None):
+def approved(sha, changes, items=None, installed=None):
     record = approval()
     if not record:
         return None
     want = items if items is not None else [{"toggle": None, "text": text} for text in changes]
-    cover = covering(want, record)
+    cover = covering(want, record, installed=installed, sha=sha)
     if not cover or not cover["covered"] or cover["uncovered"]:
         return None
     return record
