@@ -16,14 +16,17 @@ on it. Every part but "id" and "order" is optional:
                                       "system", "row": "box"}, one of the hub's live tiles
     "menu":    {"title", "subtitle", "about", "art": "librarian" | "doctor" | "controller" | "electronics",
                 "banner": ["<line>", ...],
-                "sections": [{"id", "title"}, ...]}
+                "sections": [{"id", "title"}, ...],
+                "keep_members": {"min": 3, "word": "drawing tools"}}
                                       the tile opens a list page (at its href), which the hub
                                       renders from every manifest's entries aimed at it; art: a
                                       krab in its bottom-left corner (web/art/); banner: text art,
                                       as written, as a faint ident in the bottom-right corner;
                                       sections: sub-headings on the page, in this order, each entry
                                       naming its own with "section" (entries naming none, or one
-                                      not here, come after them)
+                                      not here, come after them); keep_members: the folder may keep
+                                      the apps it lists off the home page, once min of them are
+                                      installed; word names them in the administrator's settings
     "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool, "admin": bool,
                  "section": "<a menu section's id>"}]
                                       admin: listed only to someone signed in as an administrator (a page
@@ -325,6 +328,17 @@ def _check(m, where):
                 )
                 ids.append(s["id"])
             need(len(ids) == len(set(ids)), "menu.sections: each id once")
+        keep = menu.get("keep_members")
+        if keep is not None:
+            need(
+                isinstance(keep, dict) and set(keep) == {"min", "word"},
+                "menu.keep_members: min and word",
+            )
+            need(type(keep["min"]) is int and 1 <= keep["min"] <= 32, "menu.keep_members.min: 1 to 32")
+            need(
+                isinstance(keep["word"], str) and 0 < len(keep["word"]) <= 40,
+                "menu.keep_members.word: up to 40 characters",
+            )
     for e in m.get("entries", []):
         need(isinstance(e, dict) and isinstance(e.get("menus"), dict) and e["menus"], "entries: each with menus")
         need(all(type(v) is int for v in e["menus"].values()), "entries.menus: menu id -> order")

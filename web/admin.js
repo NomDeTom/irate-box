@@ -17597,12 +17597,24 @@ function cardRate(sys) {
 let folders = null,
   folderDraft = null;
 const folderSecs = new Map(); // folder -> its section
-const folderFull = (v) => ({
-  hidden: [...((v || {}).hidden || [])],
-  order: [...((v || {}).order || [])],
-  extra: [...((v || {}).extra || [])],
-});
-const folderOne = (folderId, state) => folderNorm({ [folderId]: (state || {})[folderId] || {} })[folderId] || {};
+const folderFol = (folderId) => (folders.folders || []).find((x) => x.id === folderId);
+const folderFull = (v, fol) => {
+  const out = {
+    hidden: [...((v || {}).hidden || [])],
+    order: [...((v || {}).order || [])],
+    extra: [...((v || {}).extra || [])],
+  };
+  const spec = fol && fol.keep_members;
+  if (spec) {
+    out.shown = (v && v.shown) || spec.shown || "auto";
+    out.keep = v && typeof v.keep === "boolean" ? v.keep : spec.keep !== false;
+  }
+  return out;
+};
+const folderOne = (folderId, state) => {
+  const fol = folderFol(folderId);
+  return folderNorm({ [folderId]: folderFull((state || {})[folderId] || {}, fol) })[folderId] || folderFull({}, fol);
+};
 function folderSec(folderId) {
   if (folderSecs.has(folderId)) return folderSecs.get(folderId);
   const fol = (folders.folders || []).find((x) => x.id === folderId);
@@ -17611,12 +17623,12 @@ function folderSec(folderId) {
     label: `Folder: ${fol ? fol.title : folderId}`,
     saved: null,
     save: async (c, v) => {
-      const state = { ...folders.state, [folderId]: folderFull(v.all) };
+      const state = { ...folders.state, [folderId]: folderFull(v.all, fol) };
       folders = await postJSON("/admin/folders", { state });
       setTimeout(folderSaved);
     },
     onChange: () => {
-      folderDraft[folderId] = folderFull(sec.get("all"));
+      folderDraft[folderId] = folderFull(sec.get("all"), fol);
       fillFolderBlocks();
     },
   });
@@ -17647,7 +17659,7 @@ async function loadFolders() {
   }
   if (!folderDraft)
     folderDraft = Object.fromEntries(
-      folders.folders.map((x) => [x.id, folderFull((folders.state || {})[x.id])]),
+      folders.folders.map((x) => [x.id, folderFull((folders.state || {})[x.id], x)]),
     );
   folderSaved();
   fillFolderBlocks();
@@ -17740,18 +17752,18 @@ const folderNorm = (byFolder) =>
   Object.fromEntries(
     Object.entries(byFolder || {})
       .sort()
-      .map(([folderId, v]) => [
-        folderId,
-        Object.fromEntries(
-          ["hidden", "order", "extra"]
-            .filter((k) => (v[k] || []).length)
-            .map((k) => [k, v[k]]),
-        ),
-      ])
+      .map(([folderId, v]) => {
+        const part = Object.fromEntries(
+          ["hidden", "order", "extra"].filter((k) => (v[k] || []).length).map((k) => [k, v[k]]),
+        );
+        if (v.shown) part.shown = v.shown;
+        if (typeof v.keep === "boolean") part.keep = v.keep;
+        return [folderId, part];
+      })
       .filter(([, v]) => Object.keys(v).length),
   );
 const fpart = (folderId) => {
-  folderDraft[folderId] = folderDraft[folderId] || { hidden: [], order: [], extra: [] };
+  folderDraft[folderId] = folderDraft[folderId] || folderFull({}, folderFol(folderId));
   return folderDraft[folderId];
 };
 // Is an entry in a folder: one of the folder's own and not hidden there, or put in from another.
@@ -17773,6 +17785,45 @@ function setInFolder(folderId, href, yes) {
   if (own) st.hidden = yes ? without(st.hidden) : [...without(st.hidden), href];
   else st.extra = yes ? [...without(st.extra), href] : without(st.extra);
 }
+const NUMBER_WORD = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const numberWord = (n) => NUMBER_WORD[n] || String(n);
+// A folder that may keep its apps off the home page: where its own tile is, and whether it keeps them.
+function folderSettings(fol, st, spec) {
+  const set = (key, value) => {
+    st[key] = value;
+    folderTouched();
+    fillFolderBlocks();
+  };
+  const choice = (value, label) => AW.h("button", {
+    type: "button",
+    class: "chip" + (st.shown === value ? " selected" : ""),
+    "aria-pressed": String(st.shown === value),
+    onclick: () => set("shown", value),
+  }, label);
+  const conflict = st.shown === "hidden" && st.keep && spec.installed >= spec.min;
+  return AW.h("div", { class: "folder-settings" },
+    AW.h("div", { class: "aw-field", "data-setting": "shown" },
+      AW.h("span", { class: "aw-label", text: `The ${fol.title} folder on the hub` }),
+      AW.h("div", { class: "chip-group", role: "group", "aria-label": `The ${fol.title} folder on the hub` },
+        choice("always", "Shown"),
+        choice("auto", `When it holds the ${spec.word}`),
+        choice("hidden", "Hidden"))),
+    AW.h("div", { class: "aw-field", "data-setting": "keep" },
+      AW.h("span", { class: "aw-label", text: `Show the ${spec.word} only in the ${fol.title} folder` }),
+      AW.onOffChips(`Show the ${spec.word} only in the ${fol.title} folder`, st.keep, false, (on) => set("keep", on)),
+      AW.h("small", {
+        class: "setting-desc",
+        text: `Takes effect while ${numberWord(spec.min)} or more ${spec.word} are installed: now ${spec.installed}.`,
+      })),
+    conflict
+      ? AW.h("p", {
+          class: "setting-desc aw-warn",
+          role: "status",
+          text: `The folder is hidden, so the ${spec.word} stay on the hub.`,
+        })
+      : null);
+}
+
 function drawFolder(block, folderId) {
   const fol = folders.folders.find((x) => x.id === folderId);
   if (!fol) {
@@ -17884,6 +17935,7 @@ function drawFolder(block, folderId) {
       class: "setting-desc",
       text: `${shownCount} of ${list.length} visible on its page. The entries come from the manifests of apps, from the index of an app and from start switches on one page.`,
     }),
+    fol.keep_members ? folderSettings(fol, st, fol.keep_members) : null,
     AW.shortList(items, { id: "folder-list-" + folderId }),
     sec.foot,
     sec.reason,
