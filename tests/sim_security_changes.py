@@ -111,15 +111,33 @@ said = secchanges.save({"toggles": {"outbound": "flag"}})
 check("an authorise level can be lowered over HTTPS", said["id"] == "security.changes.saved", said)
 
 changes = ["a new root action, pins"]
-record = secchanges.approve("a" * 40, "aaaaaaa", changes, "https", "an administrator over HTTPS", secchanges.levels())
+items = [{"toggle": "root_actions", "text": changes[0]}]
+record = secchanges.approve(
+    "a" * 40, "aaaaaaa", changes, "https", "an administrator over HTTPS", secchanges.levels(), items=items
+)
 check(
     "an approval names its release, its changes and how it was given",
-    record["sha"] == "a" * 40 and record["how"] == "https",
+    record["sha"] == "a" * 40 and record["how"] == "https" and record["items"] == items,
     record,
 )
 check("  it matches the release and the same changes", secchanges.approved("a" * 40, changes) is not None)
-check("  and not another release", secchanges.approved("b" * 40, changes) is None)
+check(
+    "  a later release with the same change carries it",
+    secchanges.approved("b" * 40, changes) is not None and secchanges.covering(items)["record"]["commit"] == "aaaaaaa",
+    secchanges.covering(items),
+)
 check("  nor other changes", secchanges.approved("a" * 40, changes + ["a new host, evil.example"]) is None)
+check(
+    "  and not the same words under another toggle",
+    secchanges.approved("b" * 40, [], items=[{"toggle": "outbound", "text": changes[0]}]) is None,
+)
+secchanges.clear()
+secchanges.approve("c" * 40, "ccccccc", changes, "https", "an administrator over HTTPS", secchanges.levels())
+check(
+    "a record written before toggles were kept is still matched on its text",
+    secchanges.covering(items)["covered"] == items,
+    secchanges.covering(items),
+)
 
 secchanges.record_install(
     "abcdef0",

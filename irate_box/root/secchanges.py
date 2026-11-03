@@ -210,7 +210,7 @@ def record_health():
     return {"ok": True, "why": ""}
 
 
-def approve(sha, commit, changes, how, who, at_levels, write=durable.write_checked):
+def approve(sha, commit, changes, how, who, at_levels, items=None, installed=None, write=durable.write_checked):
     record = {
         "sha": sha,
         "commit": commit,
@@ -220,16 +220,57 @@ def approve(sha, commit, changes, how, who, at_levels, write=durable.write_check
         "levels": dict(at_levels),
         "at": time.time(),
     }
+    if items is not None:
+        record["items"] = [dict(item) for item in items]
+    if installed:
+        record["installed"] = installed
     write(APPROVAL, json.dumps(record, indent=2, sort_keys=True), 0o600)
     _record({"event": "approved", **record})
     return record
 
 
-def approved(sha, changes):
-    record = approval()
-    if not record or record.get("sha") != sha:
+def _approved_items(record):
+    """An approval's changes with their toggles. A record written before toggles were kept has only texts."""
+    items = record.get("items")
+    if isinstance(items, list):
+        kept = [
+            (item.get("toggle"), item.get("text"))
+            for item in items
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
+        ]
+        if kept:
+            return kept
+    return [(None, text) for text in record.get("changes") or [] if isinstance(text, str)]
+
+
+def covering(items, record=None):
+    """The approval record, and which of `items` ({"toggle", "text"}) it already covers. An approval is for
+    the changes it named since the installed version, so a later fetch with the same changes carries it. A
+    record from before toggles were kept is matched on its texts."""
+    record = record or approval()
+    if not record:
         return None
-    if sorted(record.get("changes") or []) != sorted(changes):
+    known = _approved_items(record)
+    pairs = {(toggle, text) for toggle, text in known if toggle is not None}
+    texts = {text for _, text in known}
+    loose = {text for toggle, text in known if toggle is None}
+    covered, uncovered = [], []
+    for item in items:
+        text, toggle = item.get("text"), item.get("toggle")
+        # A caller that does not say the toggle (the old form) is matched on the text alone; so is a record
+        # written before approvals kept their toggles.
+        matched = text in texts if toggle is None else (toggle, text) in pairs or text in loose
+        (covered if matched else uncovered).append(item)
+    return {"record": record, "covered": covered, "uncovered": uncovered}
+
+
+def approved(sha, changes, items=None):
+    record = approval()
+    if not record:
+        return None
+    want = items if items is not None else [{"toggle": None, "text": text} for text in changes]
+    cover = covering(want, record)
+    if not cover or not cover["covered"] or cover["uncovered"]:
         return None
     return record
 
