@@ -856,6 +856,7 @@ def admin_apps(manifests):
                 "addon": bool((m.get("addon") or {}).get("option")),
                 "group": (m.get("addon") or {}).get("group"),
                 "group_title": (m.get("addon") or {}).get("group_title"),
+                "docs": [dict(d) for d in m.get("docs", [])],
                 "href": tile.get("href") or (m.get("status") or {}).get("path"),
             }
         )

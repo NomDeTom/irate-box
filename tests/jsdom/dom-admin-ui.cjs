@@ -25,7 +25,8 @@ const accessData = { apps: [
 // The librarian's snapshot, with Excalidraw kept current (its own updates on its page).
 const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1, hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5 }, token_set: false, running: false, types: [],
   progress: null, free_mb: 51000, job: {}, status: { draw: { last_check: '2026-10-08 03:00', outcome: 'up to date' } },
-  sources: [{ kind: 'app', name: 'draw', type: 'bundle', repo: 'NomDeTom/excalidraw', workflow: 'irate-box-bundle.yml', branch: 'main' }],
+  sources: [{ kind: 'app', name: 'draw', type: 'bundle', repo: 'NomDeTom/excalidraw', workflow: 'irate-box-bundle.yml', branch: 'main' },
+    { kind: 'book', name: 'mermaid-docs', type: 'nightly-link', repo: 'NomDeTom/mermaid', workflow: 'docs-zim.yml', branch: 'zim-build', pattern: 'mermaid-docs-*' }],
   apps: { draw: { title: 'Excalidraw', installed: { commit: 'abc1234def', repository: 'NomDeTom/excalidraw', ref: 'main', built: '2026-10-01T00:00:00Z', has_previous: false }, pin: null } } };
 const tilesData = { tiles: [{ id: 'drop', name: 'File drop', icon: '📥' }, { id: 'about', name: 'About', icon: 'ℹ️' }, { id: 'wiki', name: 'Kiwix', icon: '📚' }], state: { order: [] } };
 const addons = { addons: [{ id: 'notes', title: 'Notes', summary: 'A notebook.', added: true, active: false },
@@ -261,6 +262,13 @@ setTimeout(() => {
     check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
       && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
     check('  an add-on whose state is unknown says so', /Installation status unavailable/.test(t('#inv-list')[0]));
+    check(
+      '  an app with known docs says so on its line and its page',
+      /Docs: Mermaid docs added/.test(line('Mermaid').textContent)
+        && /Docs: Mermaid docs/.test(t('#app-head-mermaid')[0])
+        && /Download now/.test(t('#app-head-mermaid')[0]),
+      JSON.stringify({ line: line('Mermaid') && line('Mermaid').textContent, head: t('#app-head-mermaid')[0] }),
+    );
     d.querySelector('[data-inv="builtin"]').click();
     const built = [...d.querySelectorAll('#inv-list .inv-row')];
     check('  Built in shows only the hub\'s own parts', built.length && built.every((r) => /Built-in app/.test(r.textContent)), built.length);
