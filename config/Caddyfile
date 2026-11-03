@@ -308,12 +308,12 @@
 	# The client is static (web/gamja); its WebSocket is InspIRCd's own listener on loopback,
 	# reached through this front so HTTPS gives the page wss:// and port 6668 stays closed.
 	handle /gamja/* {
-		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/inspircd-off.caddy*
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/irc-off.caddy*
 		root * {$HUB_STATIC:/home/user/irate-box/web}
 		file_server
 	}
 	handle /irc-ws {
-		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/inspircd-off.caddy*
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/irc-off.caddy*
 		reverse_proxy 127.0.0.1:6668
 	}
 

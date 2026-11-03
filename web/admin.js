@@ -12586,6 +12586,7 @@ function groupState(addon) {
 }
 
 function groupMemberButtons(member, installed, busy) {
+  if (member.added === null) return null;
   if (member.added || !installed) return addonButtons(member, busy);
   const key = `addon-switch:${installed.id}:${member.id}`;
   const consent = member.consent
@@ -12595,7 +12596,7 @@ function groupMemberButtons(member, installed, busy) {
     () => addonSwitch(installed, member, key), key);
 }
 
-function addonGroupCard(group, members, busy, progressText) {
+function addonGroupCard(group, members, busy, progressText, withAccess = true) {
   const installed = members.find((x) => x.added);
   const note = adoNote && members.some((x) => x.id === adoNote.addon)
     ? el("span", { className: `setting-desc action-note${adoNote.ok ? "" : " bad"}`, role: "status", textContent: adoNote.text })
@@ -12613,7 +12614,7 @@ function addonGroupCard(group, members, busy, progressText) {
           el("strong", { textContent: member.title }),
           el("span", { className: "setting-desc", textContent: ` ${member.summary}` }),
           el("span", { className: `setting-desc${member.added && !member.active ? " bad" : ""}`, textContent: ` ${groupState(member)}` }),
-          accessSlot(member.id),
+          withAccess ? accessSlot(member.id) : null,
           groupMemberButtons(member, installed, busy))),
       note,
       progressText ? el("span", { className: "setting-desc", role: "status", textContent: progressText }) : null),
@@ -12710,11 +12711,16 @@ function renderAddons(data) {
       "."
     : "";
   // Each add-on's card is on its own page; All apps keeps one only where no page holds it.
+  // A group's page holds the whole group (the server choice), so none of its members is listed here.
   const paged = new Set(
     [...document.querySelectorAll(".addon-block[data-addon]")].map(
       (b) => b.dataset.addon,
     ),
   );
+  for (const addon of data.addons)
+    if (addon.group && paged.has(addon.id))
+      for (const member of data.addons)
+        if (member.group === addon.group) paged.add(member.id);
   const listed = data.addons.filter((addon) => !paged.has(addon.id));
   const cards = [], grouped = new Set();
   for (const addon of listed) {
@@ -12728,9 +12734,12 @@ function renderAddons(data) {
   ado.list.replaceChildren(...cards);
   document.querySelectorAll(".addon-block").forEach((block) => {
     const addon = data.addons.find((entry) => entry.id === block.dataset.addon);
+    const group = addon && addon.group ? data.addons.filter((entry) => entry.group === addon.group) : [];
     block.replaceChildren(
       addon
-        ? addonCard(addon, busy, false, progressText)
+        ? group.length > 1
+          ? addonGroupCard(addon.group, group, busy, progressText, false)
+          : addonCard(addon, busy, false, progressText)
         : el("p", {
             className: "setting-desc",
             textContent: "Installation status is unavailable.",

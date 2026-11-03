@@ -1561,6 +1561,14 @@ def _access_apply(state, reload=True):
 
 def _access_unit(app):
     m = next((m for m in MANIFESTS if m["id"] == app), {})
+    group = (m.get("addon") or {}).get("group")
+    if group:
+        try:
+            opts = set(_install_options())
+        except Refused:
+            opts = set()
+        members = [x for x in MANIFESTS if (x.get("addon") or {}).get("group") == group]
+        m = next((x for x in members if x["addon"]["option"] in opts), m)
     st = m.get("status", {})
     unit = st.get("unit", "").replace("@hub.", f"@{HUB_USER}.")
     return unit if st.get("control") and unit and run("systemctl", "cat", unit).returncode == 0 else None

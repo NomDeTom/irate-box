@@ -75,6 +75,9 @@ STATIC = CHECKOUT / "web"
 # Mutable state lives outside the code directory so packaging can point it at
 # /var/lib/hub and `apt purge` cannot eat anyone's messages.
 STATE_DIR = Path(os.environ.get("HUB_STATE_DIR", CHECKOUT))
+# install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
+# by the hub); what install.sh recorded as added, and the doctor's source of its version.
+INSTALL_OPTIONS = STATE_DIR / "install-options"
 DATA_FILE = STATE_DIR / "messages.json"
 MAX_MESSAGES = 200
 # Shoutbox entries expire against powered-on time, not the wall clock, which does not
@@ -206,8 +209,23 @@ def _service_entry(status):
     return entry
 
 
+def installed_addons():
+    """The ids of the add-ons install.sh recorded as installed (its options), or none where the
+    box has no record: a group then shows its first member."""
+    try:
+        opts = set(INSTALL_OPTIONS.read_text().split())
+    except OSError:
+        return set()
+    return {m["id"] for m in MANIFESTS if (m.get("addon") or {}).get("option") in opts}
+
+
+def folded_manifests():
+    """The manifests with each add-on group as one app, its installed member chosen."""
+    return manifests.fold_groups(MANIFESTS, installed_addons())
+
+
 def _services():
-    return [dict(_service_entry(m["status"]), app=m["id"]) for m in MANIFESTS if "status" in m] + [
+    return [dict(_service_entry(m["status"]), app=m["id"]) for m in folded_manifests() if "status" in m] + [
         {
             "path": None,
             "name": TAILSCALE_NAME,
@@ -240,6 +258,7 @@ def refresh_manifests():
         manifests.CATALOGUE,
         *sorted(manifests.CATALOGUE.glob("*.json")),
         manifests.ADDONS,
+        STATE_DIR / "install-options",
     ]:
         try:
             stamp.append(p.stat().st_mtime_ns)
@@ -260,6 +279,7 @@ def refresh_manifests():
             manifests.CATALOGUE,
             *sorted(manifests.CATALOGUE.glob("*.json")),
             manifests.ADDONS,
+            STATE_DIR / "install-options",
         ]
     ]
     MANIFESTS = manifests.load_all()
@@ -495,7 +515,7 @@ def render_tiles(
     locked: apps shown to this visitor that ask for a login at their door. admin_only: tiles
     only an admin sees, marked so as special to the admin."""
     out = []
-    ms = MANIFESTS
+    ms = folded_manifests()
     folder_hidden = folder_hidden_tiles() if row == "apps" else set()
     st = status_tiles_state() if row == "box" else None
     if st:
@@ -4125,9 +4145,6 @@ def network_snapshot():
     }
 
 
-# install.sh's copy of /etc/hub/install-options in the state folder (/etc/hub is not readable
-# by the hub); for showing what is added only.
-INSTALL_OPTIONS = STATE_DIR / "install-options"
 ADDON_ID_RE = re.compile(r"^[a-z0-9-]{1,40}$")
 
 
@@ -5885,7 +5902,7 @@ class Handler(BaseHTTPRequestHandler):
                             switch=a["id"] in access.ROUTED or a["local"],
                             seen=a["id"] in seen,
                         )
-                        for a in manifests.admin_apps(MANIFESTS)
+                        for a in manifests.admin_apps(MANIFESTS, installed_addons())
                     ]
                 },
             )
@@ -6063,7 +6080,7 @@ class Handler(BaseHTTPRequestHandler):
                             mode=access.mode_of(state, a["id"]),
                             visible=vis.get(a["id"], "auto"),
                         )
-                        for a in access.apps(MANIFESTS)
+                        for a in access.apps(MANIFESTS, installed_addons())
                     ],
                     "pages": {i: vis.get(i, "auto") for i in PAGE_APPS},
                     "seen": {i: vis.get(i, "auto") for i in sorted(seen_only())},
