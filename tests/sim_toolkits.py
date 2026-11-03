@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kits-"))
@@ -280,6 +281,18 @@ class Ran:
 
 
 # A fixed kernel release, the Pi's: the machine running the tests may have one no package could be named after.
+# An alternative an installed package conflicts with (the board's armbian-firmware and firmware-realtek)
+# is left out, so apt's resolver is not asked to break a held package.
+with mock.patch.object(kits, "_covered_alternatives", return_value={"firmware-realtek": "armbian-firmware"}):
+    packages, left, covered = kits._packages(
+        {"packages": ["dkms"], "alternatives": ["firmware-realtek", "firmware-atheros"]}, fetching=True
+    )
+check(
+    "a covered firmware alternative is skipped and said, the rest kept",
+    packages == ["dkms", "firmware-atheros"] and covered == {"firmware-realtek": "armbian-firmware"},
+    (packages, left, covered),
+)
+
 release, real_run, real_uname = "6.18.50+rpt-rpi-v8", kits.run, kits.os.uname
 kits.os.uname = lambda: type("Uname", (), {"release": release})()
 answers = {}

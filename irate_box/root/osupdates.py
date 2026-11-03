@@ -50,7 +50,7 @@ APT_ENV = {"DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "non
 BOARD = (
     ("kernel", re.compile(r"^linux-image-")),
     ("device tree", re.compile(r"^linux-dtb-")),
-    ("bootloader", re.compile(r"^(?:linux-u-boot|u-boot)")),
+    ("bootloader", re.compile(r"^(?:linux-u-boot-.+|u-boot-(?!tools$|common$|menuconfig$).+)$")),
     ("board package", re.compile(r"^armbian-bsp")),
     ("firmware", re.compile(r"^(?:armbian-firmware|linux-firmware|firmware-)")),
 )
@@ -165,6 +165,12 @@ def hold_board():
             "osupdates.hold.off",
             "Holding the board's packages is off. They move with the board's repository.",
         )
+    # An older rule held u-boot-tools, Debian's userspace tool, as a bootloader. Release a hold
+    # this module recorded that is not a board package now.
+    wrong = sorted(p for p in holds() if not _board(p))
+    if wrong:
+        _apt_mark("unhold", wrong)
+        _record(set(holds()) - set(wrong))
     board = installed_board()
     if not board:
         return M("osupdates.hold.none", "This box runs none of a board's own packages, so there is nothing to hold.")

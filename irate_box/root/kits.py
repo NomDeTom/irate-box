@@ -115,12 +115,47 @@ def arch():
     return run(["dpkg", "--print-architecture"]).stdout.strip()
 
 
+def _covered_alternatives(alternatives):
+    """{alternative: installed package} for the ones an installed package already provides, conflicts
+    with or breaks: an alternative like firmware-realtek is covered by the board's armbian-firmware,
+    which Conflicts it. Asking apt for both would break the resolver, and a held package must never be
+    removed to make room."""
+    wanted = set(alternatives)
+    if not wanted:
+        return {}
+    out = {}
+    fields = run(
+        ["dpkg-query", "-W", "-f=${Package}\t${Provides}\t${Conflicts}\t${Breaks}\n"],
+        check=False,
+        timeout=60,
+    ).stdout
+    for line in fields.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 4:
+            continue
+        name, provides, conflicts, breaks = parts
+        if not name:
+            continue
+        names = set()
+        for group in (provides, conflicts, breaks):
+            for item in group.split(","):
+                token = item.strip().split()[0].split("(")[0].split(":")[0]
+                if token:
+                    names.add(token)
+        for alt in wanted & names:
+            out.setdefault(alt, name)
+        if name in wanted:
+            out.setdefault(name, name)
+    return out
+
+
 def _packages(kit, fetching=False):
     """(the kit's packages for this box, those left out; fetching, its alternatives too). A kit from Debian's debug archive (the
     symbols kit) asks only for the symbols of what is installed here: a -dbgsym package depends on
     its program at exactly the same version, so asking for mosquitto's on a box without it would
-    bring mosquitto too."""
+    bring mosquitto too. Fetching, an alternative an installed package already covers is left out."""
     pkgs, left = kitdefs.packages_for(kit, arch(), fetching)
+    covered = _covered_alternatives(kit.get("alternatives", [])) if fetching else {}
     if kit.get("kernel_headers"):
         headers = _kernel_headers()
         if headers:
@@ -131,7 +166,9 @@ def _packages(kit, fetching=False):
         here = _installed_packages()
         absent = [p for p in pkgs if p.endswith("-dbgsym") and p[: -len("-dbgsym")] not in here]
         pkgs, left = [p for p in pkgs if p not in absent], sorted(left + absent)
-    return pkgs, left
+    if covered:
+        pkgs = [p for p in pkgs if p not in covered]
+    return pkgs, left, covered
 
 
 def _kernel_headers():
@@ -423,7 +460,7 @@ def _check(kit_id, kit, lists_max_hours, ram):
         _base_status(status, leave_out)
         archives = ram / "check-archives"
         archives.mkdir(exist_ok=True)
-        packages, _left_out = _packages(kit, fetching=True)
+        packages, _left_out, covered = _packages(kit, fetching=True)
         options = [
             "--no-install-recommends",
             "-o",
@@ -433,9 +470,21 @@ def _check(kit_id, kit, lists_max_hours, ram):
             "-o",
             "Debug::NoLocking=1",
         ]
-        wanted = _wanted(
-            run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
-        )
+        skipped = []
+        try:
+            wanted = _wanted(
+                run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
+            )
+        except Refused:
+            # One alternative that cannot resolve must not fail the whole kit: check the rest, and say the
+            # alternatives were left out this time.
+            primary = [p for p in packages if p not in kit.get("alternatives", [])]
+            if len(primary) == len(packages):
+                raise
+            skipped = [p for p in packages if p in kit.get("alternatives", [])]
+            wanted = _wanted(
+                run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *primary], timeout=600).stdout
+            )
     except (Refused, OSError, subprocess.SubprocessError) as exc:
         return _store_check(
             kit_id,
@@ -445,6 +494,11 @@ def _check(kit_id, kit, lists_max_hours, ram):
                 "at": at,
             },
         )
+    extra = {}
+    if covered:
+        extra["covered"] = [{"package": alt, "by": by} for alt, by in sorted(covered.items())]
+    if skipped:
+        extra["alternatives_skipped"] = sorted(skipped)
     cur = manifest(kit_id)
     if not cur:
         return _store_check(
@@ -454,6 +508,7 @@ def _check(kit_id, kit, lists_max_hours, ram):
                 "at": at,
                 "packages": len(wanted),
                 "download_bytes": sum(size for size, _sha in wanted.values()),
+                **extra,
             },
         )
     old = {p["name"]: p for p in cur.get("packages", [])}
@@ -486,6 +541,7 @@ def _check(kit_id, kit, lists_max_hours, ram):
             "changes": changes,
             "packages": len(wanted),
             "download_bytes": download_bytes,
+            **extra,
         },
     )
 
@@ -529,7 +585,9 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
         status = ram / "status"
         _base_status(status, leave_out)
         base = {ln[len("Package: ") :] for ln in status.read_text().splitlines() if ln.startswith("Package: ")}
-        packages, left_out = _packages(kit, fetching=True)
+        packages, left_out, covered = _packages(kit, fetching=True)
+        for alt, by in sorted(covered.items()):
+            log(f"{kit_id}: {alt} is covered by {by}; not fetched")
         options = [
             "--no-install-recommends",
             "-o",
@@ -541,9 +599,21 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
         ]
         # What the kit needs, resolved without downloading; what the pool has of it linked into the stage; only
         # the rest downloaded. An unchanged kit downloads, and writes to the card, nothing.
-        wanted = _wanted(
-            run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
-        )
+        skipped = []
+        try:
+            wanted = _wanted(
+                run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
+            )
+        except Refused:
+            primary = [p for p in packages if p not in kit.get("alternatives", [])]
+            if len(primary) == len(packages):
+                raise
+            skipped = [p for p in packages if p in kit.get("alternatives", [])]
+            packages = primary
+            log(f"{kit_id}: leaving out {', '.join(skipped)}; it did not resolve")
+            wanted = _wanted(
+                run(["apt-get", *debug, "install", "--print-uris", "-q", *options, *packages], timeout=600).stdout
+            )
         _link_cached(wanted, stage)
         new_files = [f for f in wanted if not (stage / f).exists()]
         if new_files:
@@ -644,6 +714,8 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
             "wheels": wheels,
             "on_box": on_box,
             "left_out": left_out,
+            **({"covered": [{"package": alt, "by": by} for alt, by in sorted(covered.items())]} if covered else {}),
+            **({"alternatives_skipped": sorted(skipped)} if skipped else {}),
             "arch": arch(),
             "bytes": sum(p["size"] for p in pkgs) + sum(w["size"] for w in wheels),
             "index_bytes": sum(ln.stat().st_size for ln in set(lists)),
