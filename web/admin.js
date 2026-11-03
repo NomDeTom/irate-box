@@ -7004,7 +7004,7 @@ async function hlFix(fid, action, button) {
     choice = `clock-set:${Math.round(now.getTime() / 1000)}`;
     ask = `Set the box clock to ${now.toLocaleString()} (the time of this device)? Do this only if the clock of this device is correct.`;
   }
-  if (ask && !(await AW.confirmHere(ask, { label: "Set the clock" }))) return;
+  if (ask && !(await AW.confirmHere(ask, { anchor: button, label: "Set the clock" }))) return;
   hlRequest({ action: "fix", choice }, fid, null, button);
 }
 
@@ -18408,8 +18408,12 @@ function hcRender(report) {
         el("button", {
           type: "button",
           className: "action-btn",
+          dataset: { wait: `housecall:${f.id || i}:${a.choice}` },
           textContent: said(a.label),
-          onclick: () => (String(a.choice).startsWith("housecall-unpair:") ? hcUnpair(a) : hcRestore(a)),
+          onclick: (event) =>
+            String(a.choice).startsWith("housecall-unpair:")
+              ? hcUnpair(a, event.currentTarget)
+              : hcRestore(a, event.currentTarget),
         }),
       );
     return findingRow({
@@ -18427,8 +18431,8 @@ function hcRender(report) {
   hc.findings.replaceChildren(...rows);
 }
 // A damaged file's Restore button asks first, then the root helper puts it back; the report is drawn again.
-async function hcRestore(act) {
-  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
+async function hcRestore(act, button) {
+  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { anchor: button, label: said(act.label) }))) return;
   hc.note.hidden = false;
   hc.note.textContent = "Restoring…";
   try {
@@ -18442,9 +18446,9 @@ async function hcRestore(act) {
 }
 // Remove a paired box: the entry and the files this box made for it; the other box's line is the owner's to remove.
 // The root helper does it, so its own answer (removed, or no such box) replaces the note when it comes.
-async function hcUnpair(act) {
+async function hcUnpair(act, button) {
   const name = String(act.choice).slice("housecall-unpair:".length);
-  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { label: said(act.label) }))) return;
+  if (act.confirm && !(await AW.confirmHere(said(act.confirm), { anchor: button, label: said(act.label) }))) return;
   hc.note.hidden = false;
   hc.note.textContent = "Removing the pairing…";
   try {
