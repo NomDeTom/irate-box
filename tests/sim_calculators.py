@@ -153,7 +153,7 @@ try:
         [g[0] for g in got] == [g[0] for g in CALCULATORS] and [g[1] for g in got] == [g[1] for g in CALCULATORS],
         [g[:2] for g in got],
     )
-    for (sid, title, names), (gsid, gtitle, gnames) in zip(CALCULATORS, got):
+    for (sid, title, names), (gsid, gtitle, gnames) in zip(CALCULATORS, got, strict=True):
         check(f"  {title}: every entry, in its place", gsid == sid and gtitle == title and gnames == names, gnames)
 
     for old, anchor in (
