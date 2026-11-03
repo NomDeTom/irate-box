@@ -97,6 +97,13 @@ function page(storage) {
 const w = page();
 const d = w.document;
 const demo = () => d.querySelector('section[data-holder="demo"]');
+check(
+  'the page uses the hub\'s cards, chip group and file buttons',
+  !!d.querySelector('section.card.appstore-holder')
+    && !!d.querySelector('.appstore-files a.action-btn')
+    && !!d.querySelector('#appstore-filters .chip-group')
+    && !!d.querySelector('#appstore-filters .chip'),
+)
 check('the page renders the holder and its two versions', demo().querySelectorAll(':scope > .appstore-files').length === 2
   && html.includes(name1) && html.includes(name2));
 check('newest first, its notes and digest there', (() => {

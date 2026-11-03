@@ -47,8 +47,9 @@
   function make(kind, words) {
     if (!words.length) return;
     var row = document.createElement('p');
-    row.className = 'appstore-chips';
+    row.className = 'chip-group appstore-chips';
     var name = document.createElement('span');
+    name.className = 'setting-name';
     name.textContent = labels[kind] || kind;
     row.appendChild(name);
     words.forEach(function (word) {
@@ -76,6 +77,7 @@
     if (!box) {
       box = document.createElement('div');
       box.id = 'appstore-filters';
+      box.className = 'card appstore-filters';
       if (anchor) document.body.insertBefore(box, anchor);
       else document.body.appendChild(box);
     }
