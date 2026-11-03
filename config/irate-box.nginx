@@ -229,6 +229,43 @@ server {
 		add_header X-Content-Type-Options nosniff always;
 		add_header Referrer-Policy no-referrer always;
 	}
+	# The shared pages (the notepad and the paste bin): public, private or off like the
+	# apps. Off hides the page and refuses what it writes; the hub's shared text is gated too.
+	location = /notepad.html {
+		if ($irate_box_off_notepad) { return 404; }
+		auth_basic $irate_box_auth_notepad;
+		include @ACCESS@.d/gate-notepad.conf*;
+		auth_basic_user_file $irate_box_logins;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
+	location = /pastebin.html {
+		if ($irate_box_off_pastebin) { return 404; }
+		auth_basic $irate_box_auth_pastebin;
+		include @ACCESS@.d/gate-pastebin.conf*;
+		auth_basic_user_file $irate_box_logins;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_page_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
+	location ^~ /api/v2/notepad/ {
+		if ($irate_box_off_notepad) { return 404; }
+		auth_basic $irate_box_auth_notepad;
+		include @ACCESS@.d/gate-notepad.conf*;
+		auth_basic_user_file $irate_box_logins;
+		proxy_pass http://irate_box_hub;
+	}
+	location ^~ /api/v2/pastebin/ {
+		if ($irate_box_off_pastebin) { return 404; }
+		auth_basic $irate_box_auth_pastebin;
+		include @ACCESS@.d/gate-pastebin.conf*;
+		auth_basic_user_file $irate_box_logins;
+		proxy_pass http://irate_box_hub;
+	}
+
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
 	# page; the 🎨 in every page's header stays.
 	location = /themes.html {

@@ -326,6 +326,36 @@ check(
     and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"],
 )
 
+# The notepad and the paste bin: a page and the text it writes, both behind one switch.
+check(
+    "the shared pages can be switched like the other apps",
+    {"notepad", "pastebin"} <= set(access.ROUTED) and access.ROUTED["notepad"][0] == "public",
+)
+shared = access.clean({"notepad": "users", "pastebin": "off"})
+sconf = access.nginx_conf(shared)
+check(
+    "  nginx: the page and its text are off or behind the hub's session check",
+    'set $irate_box_off_pastebin "1";' in sconf
+    and "set $irate_box_auth_notepad off;" in sconf
+    and "auth_request /_irate_user;" in access.nginx_gates(shared)["gate-notepad.conf"],
+)
+nginx = (Path(__file__).resolve().parents[1] / "config" / "irate-box.nginx").read_text()
+check(
+    "  nginx template: /notepad.html and /api/v2/notepad/ read that switch",
+    "location = /notepad.html {" in nginx
+    and "location ^~ /api/v2/notepad/ {" in nginx
+    and "$irate_box_off_pastebin" in nginx
+    and "include @ACCESS@.d/gate-notepad.conf*;" in nginx,
+)
+caddy = (Path(__file__).resolve().parents[1] / "config" / "Caddyfile").read_text()
+check(
+    "  Caddy template: the same pages import the switch",
+    "handle /notepad.html {" in caddy
+    and "handle /api/v2/notepad/* {" in caddy
+    and "notepad.caddy*" in caddy
+    and "pastebin.caddy*" in caddy,
+)
+
 # A local add-on in users mode: no per-id location exists
 # ahead of time in the template, so it gets its own, matched before the shared one.
 my_addon = {"id": "my-addon", "capabilities": {}}

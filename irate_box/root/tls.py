@@ -159,11 +159,12 @@ def _admin_paths(name, state=None):
     )
     paths += [f"/{app}" for app, mode in apps if mode == "private" and re.fullmatch(r"[a-z0-9_-]+", app)]
     if name == "main":
-        for app in ("drop", "themes"):
+        for app in ("drop", "themes", "notepad", "pastebin"):
             if private.get(app) == "private":
                 paths.append(f"/{app}.html")
-        if private.get("drop") == "private":
-            paths.append("/api/drop")
+        for app in ("drop", "notepad", "pastebin"):
+            if private.get(app) == "private":
+                paths.append("/api/drop" if app == "drop" else f"/api/v2/{app}")
     return list(dict.fromkeys(paths))
 
 

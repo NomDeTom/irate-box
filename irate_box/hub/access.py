@@ -53,6 +53,8 @@ ROUTED = {
     "sync": ("private", True),
     "themes": ("public", False),
     "appstore": ("public", False),
+    "notepad": ("public", False),
+    "pastebin": ("public", False),
 }
 REALM = "Irate-Box"
 

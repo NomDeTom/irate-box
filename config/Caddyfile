@@ -129,6 +129,33 @@
 		}
 	}
 
+	# The shared pages (the notepad and the paste bin): public, private or off like the
+	# apps. Off hides the page and refuses what it writes; the hub's shared text is gated too.
+	handle /notepad.html {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notepad.caddy*
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle /pastebin.html {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/pastebin.caddy*
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle /api/v2/notepad/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/notepad.caddy*
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
+	}
+	handle /api/v2/pastebin/* {
+		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/pastebin.caddy*
+		reverse_proxy 127.0.0.1:8000 {
+			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+		}
+	}
+
 	# The themes page (its tile): public, private or off like the apps. Off hides only the
 	# page; the 🎨 in every page's header stays.
 	handle /themes.html {
