@@ -888,7 +888,12 @@ function renderLibrary(snap) {
     const want = n.dataset.jobKind;
     if (want === "now") n.textContent = busy ? busyText : idleText;
     else if (want === "holders" && !busy) n.textContent = "";
-    else n.textContent = busy ? (want === kind || kind === "all" ? busyText : "") : idleText;
+    else
+      n.textContent = busy
+        ? want === kind || (kind === "all" && (want === "books" || want === "apps"))
+          ? busyText
+          : ""
+        : idleText;
   });
   lib.bars.forEach((bar) => {
     const want = bar.dataset.jobKind;

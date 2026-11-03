@@ -646,8 +646,9 @@ setTimeout(() => {
         'a run over everything shows on Books and Apps too, both working',
         /Downloading everything/.test(t('#books .library-state')[0])
           && /Downloading everything/.test(t('#apps .library-state')[0])
-          && !d.querySelector('#books .library-bar').hidden && !d.querySelector('#apps .library-bar').hidden,
-        { books: t('#books .library-state')[0], apps: t('#apps .library-state')[0] },
+          && !d.querySelector('#books .library-bar').hidden && !d.querySelector('#apps .library-bar').hidden
+          && t('#appstore .library-state')[0] === '' && d.querySelector('#appstore .library-bar').hidden,
+        { books: t('#books .library-state')[0], apps: t('#apps .library-state')[0], appstore: t('#appstore .library-state')[0] },
       );
       const books = { ...library, running: true, job: { action: 'update', kind: 'books' },
         progress: { name: 'wikipedia_en', done: 2, total: 10, seconds: 1 } };
