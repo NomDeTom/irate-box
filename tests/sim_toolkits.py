@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="kits-"))
@@ -280,6 +281,44 @@ class Ran:
 
 
 # A fixed kernel release, the Pi's: the machine running the tests may have one no package could be named after.
+# Only another installed package's Provides or unversioned Conflicts covers an alternative: an
+# installed alternative itself is still cached, and Breaks or a versioned Conflicts is not a cover.
+def fields_run(text):
+    return lambda cmd, **kw: R(text)
+
+
+with mock.patch.object(kits, "run", fields_run("firmware-realtek\t\t\t\n")):
+    check(
+        "an installed alternative is not covered (it is still cached)",
+        kits._covered_alternatives(["firmware-realtek"]) == {},
+    )
+with mock.patch.object(kits, "run", fields_run("armbian-firmware\tfirmware-realtek\t\t\n")):
+    check(
+        "a Provides covers an alternative",
+        kits._covered_alternatives(["firmware-realtek"]) == {"firmware-realtek": "armbian-firmware"},
+    )
+with mock.patch.object(kits, "run", fields_run("armbian-firmware\t\tfirmware-realtek (>= 1)\t\n")):
+    check("a versioned Conflicts does not cover", kits._covered_alternatives(["firmware-realtek"]) == {})
+with mock.patch.object(kits, "run", fields_run("armbian-firmware\t\t\tfirmware-realtek\n")):
+    check("a Breaks does not cover", kits._covered_alternatives(["firmware-realtek"]) == {})
+with mock.patch.object(kits, "run", fields_run("armbian-firmware\t\tfirmware-realtek\t\n")):
+    check(
+        "an unversioned Conflicts covers",
+        kits._covered_alternatives(["firmware-realtek"]) == {"firmware-realtek": "armbian-firmware"},
+    )
+
+# An alternative an installed package conflicts with (the board's armbian-firmware and firmware-realtek)
+# is left out, so apt's resolver is not asked to break a held package.
+with mock.patch.object(kits, "_covered_alternatives", return_value={"firmware-realtek": "armbian-firmware"}):
+    packages, left, covered = kits._packages(
+        {"packages": ["dkms"], "alternatives": ["firmware-realtek", "firmware-atheros"]}, fetching=True
+    )
+check(
+    "a covered firmware alternative is skipped and said, the rest kept",
+    packages == ["dkms", "firmware-atheros"] and covered == {"firmware-realtek": "armbian-firmware"},
+    (packages, left, covered),
+)
+
 release, real_run, real_uname = "6.18.50+rpt-rpi-v8", kits.run, kits.os.uname
 kits.os.uname = lambda: type("Uname", (), {"release": release})()
 answers = {}

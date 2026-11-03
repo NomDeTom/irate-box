@@ -55,6 +55,7 @@ VERSIONS = {
     "linux-u-boot-luckfox-lyra": "2024.10",
     "bash": "1.0",
     "openssl": "1.0",
+    "u-boot-tools": "2025.01",
 }
 INSTALLED = list(VERSIONS)
 apt_mark_calls = []
@@ -142,10 +143,25 @@ try:
         and osupdates.holds() == {"linux-u-boot-luckfox-lyra"},
         (said, apt_mark_calls[-1], osupdates.holds()),
     )
+    # u-boot-tools is Debian's userspace tool, not a board bootloader, and an old record holding it is released.
+    check(
+        "u-boot-tools is not a board package",
+        osupdates._kind("u-boot-tools") is None and osupdates._kind("u-boot-rockchip") == "bootloader",
+    )
+    (ETC / "board-holds.json").write_text(json.dumps({"packages": ["linux-image-vendor-rockchip", "u-boot-tools"]}))
+    with mock.patch.object(osupdates, "showhold", lambda: {"linux-image-vendor-rockchip", "u-boot-tools"}):
+        said = osupdates.hold_board()
+    check(
+        "a wrong hold from the old rule is released, the board's kept",
+        any(c[:3] == ["apt-mark", "unhold", "u-boot-tools"] for c in apt_mark_calls)
+        and osupdates.holds() == {"linux-image-vendor-rockchip", "linux-u-boot-luckfox-lyra"},
+        (said, apt_mark_calls[-1], osupdates.holds()),
+    )
     osupdates.release_board()
     check(
         "releasing leaves the administrator's own hold alone",
-        apt_mark_calls[-1] == ["apt-mark", "unhold", "linux-u-boot-luckfox-lyra"],
+        apt_mark_calls[-1][:2] == ["apt-mark", "unhold"]
+        and set(apt_mark_calls[-1][2:]) == {"linux-image-vendor-rockchip", "linux-u-boot-luckfox-lyra"},
         apt_mark_calls[-1],
     )
 
