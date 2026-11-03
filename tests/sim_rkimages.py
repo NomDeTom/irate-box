@@ -196,6 +196,26 @@ check(
     and names[0] not in rkimages.status()["managed"],
     (sorted(p.name for p in rkimages.ROOT.iterdir()), rkimages.status().get("managed")),
 )
+# A check must not prune: the old image stays while the new one is only looked at.
+MP["assets"] = [asset("mPWRD-OS_6_Luckfox-lyra-zero-w_trixie_minimal.img.xz", b"6")]
+oldest = "mPWRD-OS_4_Luckfox-lyra-zero-w_trixie_minimal.img.xz"
+rkimages.sync(check_only=True, log=lambda *_: None)
+check("a check leaves the images on disk alone", (rkimages.ROOT / oldest).is_file(), oldest)
+# A failed download leaves the old image: the prune counts only images on disk.
+rkimages.set_settings(keep=1)
+MP["assets"] = [asset("mPWRD-OS_7_Luckfox-lyra-zero-w_trixie_minimal.img.xz", b"7")]
+
+
+def download_fail(url, dest, auth=None, name=None, expected=0, resume=False):
+    raise librarian.LibrarianError("down")
+
+
+real_download = download
+librarian._download = download_fail
+newest = "mPWRD-OS_5_Luckfox-lyra-zero-w_trixie_minimal.img.xz"
+rkimages.sync(log=lambda *_: None)
+check("a failed download does not lose the old image", (rkimages.ROOT / newest).is_file(), newest)
+librarian._download = real_download
 check(
     "  off: nothing checked or downloaded",
     not rkimages.set_settings(enabled=False)["enabled"] and rkimages.sync() == "off",

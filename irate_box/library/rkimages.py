@@ -230,21 +230,6 @@ def sync(check_only=False, log=print):
             "release": releases.get(asset["publisher"], ""),
             "at": now,
         }
-    # Keep the newest `keep` per publisher and board, in one place: the file, its sidecar and the record of the rest
-    # go. A publisher not checked this run keeps everything, and a rescue image is never touched.
-    keep = cfg["keep"]
-    per_board = {}
-    for name, entry in managed.items():
-        if entry.get("publisher") in checked:
-            per_board.setdefault((entry.get("publisher"), entry.get("board")), []).append((entry.get("at", 0), name))
-    for names in per_board.values():
-        names.sort(reverse=True)
-        for _, old in names[keep:]:
-            if RESCUE_RE.match(old):
-                continue
-            (ROOT / old).unlink(missing_ok=True)
-            (ROOT / f"{old}.sha256").unlink(missing_ok=True)
-            managed.pop(old, None)
     kept, failed = [], list(errors)
     policy = librarian.load_config().get("policy") or {}
     min_free = int(policy.get("min_free_mb") or 512) * 2**20
@@ -272,6 +257,24 @@ def sync(check_only=False, log=print):
             kept.append(asset["name"])
         except (LibrarianError, OSError) as exc:
             failed.append(f"{asset['name']}: {exc}")
+    # Only after the downloads, and never on a check: keep the newest `keep` per publisher and board, counting only
+    # images on disk, and delete the file, sidecar and record of the rest. A failed new download leaves the old one.
+    if not check_only:
+        keep = cfg["keep"]
+        per_board = {}
+        for name, entry in managed.items():
+            if entry.get("publisher") in checked and (ROOT / name).is_file():
+                per_board.setdefault((entry.get("publisher"), entry.get("board")), []).append(
+                    (entry.get("at", 0), name)
+                )
+        for names in per_board.values():
+            names.sort(reverse=True)
+            for _, old in names[keep:]:
+                if RESCUE_RE.match(old):
+                    continue
+                (ROOT / old).unlink(missing_ok=True)
+                (ROOT / f"{old}.sha256").unlink(missing_ok=True)
+                managed.pop(old, None)
     _publish(
         {
             "last_check": int(time.time()),
