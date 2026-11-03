@@ -183,6 +183,7 @@ const AW = (() => {
         if (!node) continue;
         if (shown.label) node.textContent = shown.label;
         node.disabled = !!shown.disabled;
+        node.classList.toggle('idle', !!shown.disabled);
         node.title = shown.disabled && shown.why ? shown.why : '';
         // A state that says nothing of busy leaves the button's own wait (a click, a helper still at it) alone.
         if ('busy' in shown) {

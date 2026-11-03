@@ -23,6 +23,7 @@ beside it, so the update is ready offline and the old kernel is there to go back
 Read only unless a command says otherwise. Stdlib only.
 """
 
+import contextlib
 import json
 import os
 import re
@@ -547,6 +548,10 @@ def _kind_finding(kind, items, simulated):
                 if holding
                 else M("osupdates.board.ok-off", "No board package waits for an update, and holding them is off."),
                 evidence=sorted(held) if holding else sorted(board),
+                waiting=0,
+                fetched=0,
+                packages=[],
+                held=sorted(held) if holding else [],
             )
         ]
     notes = [
@@ -647,7 +652,7 @@ KINDS_STATE = CONTROL / "update-kinds.json"
 
 def kinds_report(simulated=None):
     """The two kinds as findings, and a copy in control/ for the Updates page's cards, which do not scan themselves."""
-    findings = kind_findings(simulated if simulated is not None else _simulated())
+    findings = _kind_findings(simulated if simulated is not None else _simulated())
     data = {"at": time.time(), "findings": findings}
     try:
         _write(KINDS_STATE, data)
@@ -656,10 +661,22 @@ def kinds_report(simulated=None):
     return data
 
 
-def kind_findings(simulated):
-    """The OS and board kinds as findings, for the Updates page and the Updates doctor. Security's is its own."""
+def _kind_findings(simulated):
     found = kinds(simulated)
     return _kind_finding("os", found["os"], simulated) + _kind_finding("board", found["board"], simulated)
+
+
+def kind_findings(simulated):
+    """The OS and board kinds as findings, for the Updates page and the Updates doctor. Security's is its own.
+    Working them out also leaves the page's copy, so its cards never say "not checked yet" after any reader."""
+    return kinds_report(simulated)["findings"]
+
+
+def _report_quietly(simulated=None):
+    """The page's copy after an action that worked the kinds out. A report that cannot be made must not fail the
+    action that asked for it."""
+    with contextlib.suppress(Exception):
+        kinds_report(simulated)
 
 
 def _main(argv):
@@ -668,10 +685,14 @@ def _main(argv):
         return 2
     verb = argv[0]
     if verb == "hold-board":
-        print(render(hold_board()))
+        said = hold_board()
+        _report_quietly()
+        print(render(said))
         return 0
     if verb == "release-board":
-        print(render(release_board()))
+        said = release_board()
+        _report_quietly()
+        print(render(said))
         return 0
     if verb == "kinds":
         found = kinds()

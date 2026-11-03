@@ -5594,18 +5594,26 @@ function drawKindState(kind, lines, busy) {
   card.pill.replaceChildren(AW.updatePill(null, waiting > 0));
   const line = (text) => el("span", { className: "setting-desc", textContent: text });
   const held = (w && w.held) || [];
-  // The same chips row the other updates cards have: what waits, what is downloaded, and the board's hold.
+  // What waits, what is downloaded and the board's hold are states, not choices: info pills, never chip buttons.
+  // Before the first report says so: no "None waiting" that would read as a check.
   card.chips.replaceChildren(
-    el("span", { className: "chip", textContent: waiting ? `${waiting} waiting` : "None waiting" }),
-    el("span", { className: "chip", textContent: fetched ? `${fetched} downloaded` : "None downloaded" }),
-    ...(kind === "board"
-      ? [el("span", { className: "chip", textContent: held.length ? `${held.length} held` : "Not held" })]
-      : []),
+    ...(!w
+      ? [AW.pill("Not checked yet", "info")]
+      : [
+          AW.pill(waiting ? `${waiting} waiting` : "None waiting", waiting ? "warn" : "info"),
+          AW.pill(fetched ? `${fetched} downloaded` : "None downloaded", "info"),
+          ...(kind === "board"
+            ? [AW.pill(held.length ? `${held.length} held` : "Not held", "info")]
+            : []),
+        ]),
   );
   card.lines.replaceChildren(
     ...[
       ...(!w
-        ? [line("Not checked yet. The box checks when the Security page scans.")]
+        ? [
+            line("Not checked yet. Select Check now."),
+            ...(kind === "board" ? [line("Holds: not known yet.")] : []),
+          ]
         : [
             line(
               waiting
