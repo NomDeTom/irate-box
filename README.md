@@ -3,11 +3,11 @@
 
 # Irate-Box
 
-A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, offline-first, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox and forum and filedrop just like the original.
+A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, offline-first, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox, message board and filedrop just like the original.
 
 <img src="docs/images/iratebox-hub.webp" alt="Irate-Box hub home page" width="960">
 
-That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopaedia (courtesy of Kiwix), a small GIT repository, a series of calculators and many many more - all with no internet required at any point.
+That's about as far as the similarities go: the Hub has tiles for the other hosted applications you can reach, such as a whiteboard, a diagram editor, an offline encyclopaedia (courtesy of Kiwix), a small Git repository, a series of calculators and many more - all with no internet required at any point.
 
 It is not a [FreedomBox](https://freedombox.org). A FreedomBox is a personal server for a household: named accounts, apps, and the owner's data behind them. Irate-Box is the other shape: an anonymous, offline-first hub for whoever joins its hotspot, keeping its data and identity on the box. It borrows FreedomBox's first-use code (a code only the installer prints) and its app model, but not its household-server assumptions.
 
@@ -30,7 +30,7 @@ git clone https://github.com/NomDeTom/irate-box && cd irate-box
 sudo ./install.sh --with-notes --with-sync --with-mqtt --zim wikipedia_en_top_mini.zim
 ```
 
-The script sets up nginx on `:80` (`--web caddy` for Caddy, the fallback) and the hub on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. No password is made: until the owner makes the admin account, anyone on the network can use `/admin/`, so make it straight after installing, over HTTPS (`/admin/setup`), or at the console over SSH (`sudo /opt/irate-box/irate-box hub_control set-admin NAME`); over plain HTTP the page lets you only by choice. Scripts get a login of their own only when asked for (`hub_control script-login`, or `--admin-password`). Running it again upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing is compiled on the board. **[docs/dev/building.md](docs/dev/building.md)** §4b lists every option.
+The script sets up nginx on `:80` (`--web caddy` for Caddy, the fallback) and the hub on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. No password is made: until the administrator makes the admin account, anyone on the network can use `/admin/`, so make it straight after installing, over HTTPS (`/admin/setup`), or at the console over SSH (`sudo /opt/irate-box/irate-box hub_control set-admin NAME`); over plain HTTP the page lets you only by choice. Scripts get a login of their own only when asked for (`hub_control script-login`, or `--admin-password`). Running it again upgrades in place. `--apps-from-actions` fetches the Excalidraw, Mermaid and serial-terminal builds from the forks' Actions artifacts; `--apps DIR` takes your own desktop builds. Nothing is compiled on the board. **[docs/dev/building.md](docs/dev/building.md)** §4b lists every option.
 
 Or as a Debian package: every push to `main` builds `irate-box_<version>_all.deb` (the CI run's artifact; a `v…` tag puts it on that release), or build one with `packaging/deb/build.sh`. `sudo apt install ./irate-box_*.deb` brings in what the installer needs; then `sudo irate-box-setup` (with any of the options above) sets the box up from the packaged code. The package does not set the box up by itself, since the installer asks apt for packages and downloads release files. After installing a newer package, `sudo irate-box-setup` with no options applies it with the box's own options.
 
@@ -45,7 +45,7 @@ git clone <this repo> irate-box && cd irate-box
 ./irate-box server
 ```
 
-Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** and the **board** — the parts that need nothing else. The service tiles link to paths that only exist behind the web server, so they show as "not running" until you add one. For a dev checkout Caddy is the quick one, since its Caddyfile runs as it is (the board uses nginx with the same routes, from `config/irate-box.nginx`):
+Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** and the **message board** — the parts that need nothing else. The service tiles link to paths that only exist behind the web server, so they show as "not running" until you add one. For a dev checkout Caddy is the quick one, since its Caddyfile runs as it is (the board uses nginx with the same routes, from `config/irate-box.nginx`):
 
 ```sh
 caddy run --config config/Caddyfile        # needs :80 — sudo, setcap, or edit the port
@@ -75,7 +75,7 @@ Irate-Box follows the original PirateBox, which was free software under the GPL.
 
 | Licence | What |
 | --- | --- |
-| [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub: `server.py`, `hub_control.py`, the doctors (`health.py`, `secdoctor.py`, `security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
+| [AGPL-3.0-or-later](LICENSES/AGPL-3.0-or-later.txt) ([`LICENSE`](LICENSE)) | the hub (`server.py`), the doctors (`health.py`, `secdoctor.py`, and the Updates doctor in `hub_control.py`), the Security page (`security.py`), the librarian (`librarian.py`, `firmware.py`), `store.py`, `board.py`, `manifests.py`, `flasher.py`, `uplink.py`, `hotspot.py`, `install.sh`, `uninstall.sh`, and the hub's own pages |
 | [AGPL-3.0-only](LICENSES/AGPL-3.0-only.txt) | `web/gamja/`: gamja, the IRC client in the browser (third-party, from `codeberg.org/emersion/gamja`), built with Parcel; its own `LICENSE` is beside the files, and `SOURCE` names the commit |
 | [GPL-3.0-or-later](LICENSES/GPL-3.0-or-later.txt) | `ci.py`, `gitrepos.py`, `usbstick.py` |
 | [GPL-3.0-only](LICENSES/GPL-3.0-only.txt) | `web/icons/m-pwrd.svg`, the Meshtastic tile's picture: Meshtastic's M-PWRD logo (third-party, from `meshtastic/design`). Meshtastic® is a registered trademark of Meshtastic LLC |
