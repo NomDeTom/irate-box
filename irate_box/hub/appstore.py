@@ -81,6 +81,46 @@ def _size(n):
     return f"{max(1, n >> 10)} KB" if n else "-"
 
 
+def _friendly(file):
+    """A file's label in words: the variant its name names, its kind and size."""
+    words = []
+    for label, values in holdsurvey.tags_of(file["name"]).items():
+        if label != "architecture":
+            words.extend(v.replace("-", " ").title() for v in values)
+    kind = (file["name"].rsplit(".", 1)[-1] or "file").upper()
+    label = ", ".join(words + [kind, _size(file["size"])])
+    return label
+
+
+def _obtainium_app(entry, host, scheme):
+    """One holder as Obtainium's app config, pointing at the newest kept file's one address."""
+    if not entry["versions"]:
+        return None
+    for file in entry["versions"][0]["files"]:
+        if file["name"].lower().endswith((".apk", ".xapk", ".aab")):
+            return {
+                "id": entry["id"],
+                "url": f"{scheme}://{host}/appstore/latest/{entry['id']}/{file['name']}",
+                "author": (entry.get("repo") or "the box").split("/")[0],
+                "name": entry["title"],
+                # Obtainium's Direct APK Link source (sourceIdentifier "DirectAPKLink"): the URL ends
+                # in .apk and it pseudo-versions by partial APK hash. DirectAPKLink sets
+                # directAPKLink/versionDetection itself; these are the source's own form fields.
+                "overrideSource": "DirectAPKLink",
+                "additionalSettings": json.dumps(
+                    {"defaultPseudoVersioningMethod": "partialAPKHash", "zippedApkFilterRegEx": ""},
+                    separators=(",", ":"),
+                ),
+            }
+    return None
+
+
+def obtainium_json(level, host, scheme):
+    """Obtainium's import file: every holder the visitor may see, as its export format."""
+    apps = [a for e in _index(level) if e["id"] != FIRMWARE_ID for a in [_obtainium_app(e, host, scheme)] if a]
+    return {"apps": apps, "settings": None}
+
+
 def _day(published):
     return str(published or "")[:10] or "-"
 
@@ -347,8 +387,17 @@ def page(host, scheme, level, firmware_visible=False):
     for entry in listings:
         label = html.escape(entry["title"])
         repo = entry["repo"]
-        parts.append(f'  <section data-holder="{html.escape(entry["id"])}">')
+        parts.append(f'  <section class="card appstore-holder" data-holder="{html.escape(entry["id"])}">')
         parts.append(f"    <h2>{label}</h2>")
+        added = _obtainium_app(entry, host, scheme)
+        if added:
+            import urllib.parse as _url
+
+            link = "obtainium://app/" + _url.quote(json.dumps(added, separators=(",", ":")))
+            parts.append(
+                f'    <p class="library-buttons"><a class="action-btn" href="{html.escape(link, quote=True)}">'
+                f"{_esc(M('appstore.obtainium.add', 'Add to Obtainium'))}</a></p>"
+            )
         if repo:
             said = html.escape(str(M("appstore.from", "From {repo}", repo=repo))).replace(
                 html.escape(repo), f'<code translate="no">{html.escape(repo)}</code>'
@@ -419,16 +468,26 @@ def page(host, scheme, level, firmware_visible=False):
                 parts.append("    </div>")
             parts.append("  </section>")
             continue
-        for version in entry["versions"]:
+        for number, version in enumerate(entry["versions"]):
             channel = html.escape(str(_channel(version["channel"])))
+            newest = (
+                f' <span class="chip selected">{_esc(M("appstore.newest", "Newest"))}</span>' if number == 0 else ""
+            )
+            if number:
+                parts.append(
+                    f'    <details class="sec-fold appstore-older"><summary>'
+                    f'<span translate="no">{html.escape(version["tag"])}</span>'
+                    f' <span class="appstore-badge">{channel}</span>'
+                    f' <span class="appstore-day">{_day(version["published"])}</span></summary>'
+                )
             parts.append(
-                f'    <h3><span translate="no">{html.escape(version["tag"])}</span>'
+                f'    <h3 class="appstore-version"><span translate="no">{html.escape(version["tag"])}</span>'
                 f' <span class="appstore-badge">{channel}</span>'
-                f' <span class="appstore-day">{_day(version["published"])}</span></h3>'
+                f' <span class="appstore-day">{_day(version["published"])}</span>{newest}</h3>'
             )
             if version["notes"]:
                 parts.append(
-                    f'    <details class="appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
+                    f'    <details class="sec-fold appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
                     f"</summary><pre>{html.escape(version['notes'])}</pre></details>"
                 )
 
@@ -436,8 +495,8 @@ def page(host, scheme, level, firmware_visible=False):
                 tags = html.escape(" ".join(sorted(w for ws in holdsurvey.tags_of(file["name"]).values() for w in ws)))
                 return (
                     f'      <li data-tags="{tags}">'
-                    f'<a href="{html.escape(file["url"])}"><code translate="no">{html.escape(file["name"])}</code></a>'
-                    f' <span class="appstore-size">{_size(file["size"])}</span>'
+                    f'<a class="action-btn" href="{html.escape(file["url"])}">{html.escape(_friendly(file))}</a>'
+                    f' <span class="setting-desc" translate="no">{html.escape(file["name"])}</span>'
                     f' <details class="appstore-digest"><summary>{_esc(M("appstore.details", "Details"))}</summary>'
                     f'<p><code translate="no">{_esc(M("appstore.sha256", "sha-256: {digest}", digest=file["sha256"]))}'
                     f"</code></p></details>{nested}</li>"
@@ -462,6 +521,8 @@ def page(host, scheme, level, firmware_visible=False):
                 for file in orphan:
                     parts.append(item(file))
             parts.append("    </ul>")
+            if number:
+                parts.append("    </details>")
         parts.append("  </section>")
     certificate = str(M("appstore.certificate", "This box's certificate"))
     permission = M(
@@ -479,13 +540,15 @@ def page(host, scheme, level, firmware_visible=False):
             )
         )
     ).replace(html.escape(certificate), f'<a href="/certificate">{html.escape(certificate)}</a>')
-    parts.append(f'  <p class="setting-desc appstore-hint">{_esc(permission)}</p>')
-    parts.append(f'  <p class="setting-desc appstore-hint">{warning}</p>')
     address = html.escape(f"{scheme}://{host}/appstore/", quote=True)
     parts.append(
-        f'  <section class="appstore-qr-block"><span class="qr" id="appstore-qr" data-url="{address}" role="img" '
+        f'  <section class="card appstore-help"><div><h2>{_esc(M("appstore.help-card", "On a phone"))}</h2>'
+        f'<p class="setting-desc appstore-hint">{_esc(permission)}</p>'
+        f'<p class="setting-desc appstore-hint">{warning}</p>'
+        f'<p class="setting-desc"><a href="/appstore/obtainium.json">{_esc(M("appstore.obtainium.file", "Obtainium import file"))}</a></p></div>'
+        f'<div class="appstore-qr-block"><span class="qr" id="appstore-qr" data-url="{address}" role="img" '
         f'aria-label="{_esc(M("appstore.qr-label", "QR code for the App store"))}"></span>'
-        f'<p class="setting-desc">{_esc(M("appstore.scan", "Scan to open this page on another phone."))}</p></section>'
+        f'<p class="setting-desc">{_esc(M("appstore.scan", "Scan to open this page on another phone."))}</p></div></section>'
     )
     chips = json.dumps(_chips(listings)).replace("<", "\\u003c")
     parts.append(f'  <script type="application/json" id="appstore-chips">{chips}</script>')
@@ -576,6 +639,20 @@ def route(handler, path, mode, flasher_mode="off"):
         body = page(host, "https" if handler._https() else "http", level, firmware_visible)
         handler.send_response(200)
         handler.send_header("Content-Type", "text/html; charset=utf-8")
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.send_header("Cache-Control", "no-cache")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        if handler.command != "HEAD":
+            handler.wfile.write(body)
+        return
+    if path == "/appstore/obtainium.json":
+        host = handler.headers.get("Host", "")
+        if not HOST_RE.match(host):
+            host = "box.local"
+        body = json.dumps(obtainium_json(level, host, "https" if handler._https() else "http")).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json")
         handler.send_header("X-Content-Type-Options", "nosniff")
         handler.send_header("Cache-Control", "no-cache")
         handler.send_header("Content-Length", str(len(body)))

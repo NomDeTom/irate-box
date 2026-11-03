@@ -3642,8 +3642,19 @@ button.danger {
 }
 
 /* The App store page (hub/appstore.py writes it): room between its parts, links in the accent, the QR small. */
-body.appstore section {
-  margin: 1.2rem 0;
+body.appstore > section {
+  max-width: var(--page-width, 80rem);
+  margin: 1.2rem auto;
+}
+body.appstore .appstore-help {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+body.appstore .appstore-help > div:first-child {
+  flex: 1 1 24rem;
 }
 body.appstore a {
   color: var(--accent);

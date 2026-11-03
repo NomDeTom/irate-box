@@ -157,6 +157,34 @@ try:
     check("  the QR holds the page's own address", f'data-url="http://127.0.0.1:{port}/appstore/"' in text)
     check("  the sideloading line is on the page", "install" in text)
 
+    st, head, body = request("GET", "/appstore/obtainium.json")
+    ob = json.loads(body or b"{}")
+    app = (ob.get("apps") or [None])[0]
+    check(
+        "Obtainium's file: the public holder, its newest file's one address, and the keys it requires",
+        st == 200
+        and ob.get("settings") is None
+        and app
+        and app.get("id") == "demo"
+        and app.get("name") == "Demo app"
+        and app.get("url", "").endswith(f"/appstore/latest/demo/{name}")
+        and app.get("author") == "meshtastic"
+        and app.get("overrideSource") == "DirectAPKLink"
+        and json.loads(app.get("additionalSettings") or "{}").get("defaultPseudoVersioningMethod") == "partialAPKHash",
+        (st, ob),
+    )
+    path = app["url"].split("://", 1)[-1].split("/", 1)[-1].join(["/", ""]) if app else "/"
+    st2, head2, _ = request("GET", path)
+    if st2 in (301, 302, 307, 308):
+        st2, head2, newest = request("GET", head2.get("location", ""))
+    else:
+        newest = b""
+    check("  and that address answers with the newest kept file", st2 == 200 and newest == APK, (st2, newest[:20]))
+    check(
+        "the page uses the hub's cards, chips and file buttons",
+        'class="card appstore-holder"' in text and 'class="action-btn"' in text and "/appstore/obtainium.json" in text,
+    )
+
     st, head, body = request("GET", f"/appstore/files/demo/{tag}/{name}")
     check("a held file downloads", st == 200 and body == APK, st)
     check(
@@ -278,6 +306,8 @@ try:
     check("  nor through the stable link", st == 404, st)
     st, _, body = request("GET", "/appstore/index.json")
     check("  and not in the lists", "demo" not in body.decode())
+    st, _, body = request("GET", "/appstore/obtainium.json")
+    check("  nor in Obtainium's file", json.loads(body or b"{}").get("apps") == [])
     st, _, body = page({"Cookie": ADMIN_COOKIE})
     check("  to the administrator it is there", "Demo app" in body.decode(), st)
     st, head, body = request("GET", f"/appstore/files/demo/{tag}/{name}", {"Cookie": ADMIN_COOKIE})
