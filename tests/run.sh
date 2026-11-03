@@ -122,6 +122,7 @@ run sim_admin_apps.py
 run sim_visibility.py
 run sim_folders.py
 run sim_calculators.py
+run sim_drawing_folder.py
 run sim_visitors.py
 run sim_status_tiles.py
 run sim_reports.py

@@ -219,14 +219,20 @@ check(
 every_tile = [m["id"] for m in M.load() if m.get("tile")]
 shown = S.render_tiles("apps", S.hidden_apps()) + S.render_tiles("box", S.hidden_apps())
 check(
-    "every built-in tile still shows (no switch means never hidden)",
+    "every built-in tile still shows (no switch means never hidden), but the Drawing folder's own",
     all(
         m["tile"].get("href", "") in shown or m["tile"].get("widget")
         for m in M.load()
-        if m.get("tile") and m["id"] not in S.access.ROUTED and m["id"] not in S.ADMIN_TWINS
+        if m.get("tile") and m["id"] not in S.access.ROUTED and m["id"] not in S.ADMIN_TWINS and m["id"] != "drawing"
     )
     and all(f'id="{w}-card"' in shown or w == "qr" for w in ("people", "system")),
     [m["id"] for m in M.load() if m.get("tile") and m["tile"].get("href") and m["tile"]["href"] not in shown],
+)
+check(
+    "  the Drawing folder is hidden by default (two drawing tools), its tools still on the hub",
+    'href="/drawing.html"' not in shown
+    and 'href="/app.html#/draw/"' in shown
+    and 'href="/app.html#/mermaid/"' in shown,
 )
 private = 'href="/app.html#/git-private/"'
 check(

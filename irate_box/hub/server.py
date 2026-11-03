@@ -494,6 +494,7 @@ def render_tiles(
     only an admin sees, marked so as special to the admin."""
     out = []
     ms = MANIFESTS
+    folder_hidden = folder_hidden_tiles() if row == "apps" else set()
     st = status_tiles_state() if row == "box" else None
     if st:
         pos = {i: n for n, i in enumerate(st["order"])}
@@ -510,7 +511,7 @@ def render_tiles(
         ms = sorted(ms, key=lambda m: pos.get(m["id"], len(pos)))
     for m in ms:
         tile = m.get("tile")
-        if not tile or tile.get("row", "apps") != row or m["id"] in hidden:
+        if not tile or tile.get("row", "apps") != row or m["id"] in hidden or m["id"] in folder_hidden:
             continue
         size = (st or {}).get("size", {}).get(m["id"])
         if tile.get("widget") == "factory" and not factory_tile:
@@ -585,6 +586,9 @@ def render_tiles(
 # lists, not what the web server serves. {folder: {"hidden": [href], "order": [href], "extra": [href]}}
 FOLDERS_FILE = STATE_DIR / "folders.json"
 FOLDER_PARTS = ("hidden", "order", "extra")
+# A folder that keeps its apps out of the home page has two more choices: where its own tile is
+# (always, only while it is keeping them, or never), and whether to keep them.
+FOLDER_SHOWN = ("always", "auto", "hidden")
 
 
 def folders_state():
@@ -594,15 +598,80 @@ def folders_state():
         return {}
     if not isinstance(data, dict):
         return {}
-    return {
-        f: {k: [h for h in v.get(k, []) if isinstance(h, str)][:500] for k in FOLDER_PARTS}
-        for f, v in data.items()
-        if isinstance(f, str) and isinstance(v, dict)
-    }
+    out = {}
+    for f, v in data.items():
+        if not (isinstance(f, str) and isinstance(v, dict)):
+            continue
+        part = {k: [h for h in v.get(k, []) if isinstance(h, str)][:500] for k in FOLDER_PARTS}
+        if v.get("shown") in FOLDER_SHOWN:
+            part["shown"] = v["shown"]
+        if type(v.get("keep")) is bool:
+            part["keep"] = v["keep"]
+        out[f] = part
+    return out
 
 
 def save_folders(data):
     durable.write_checked(FOLDERS_FILE, json.dumps(data))
+
+
+def keep_members_spec(menu_id):
+    """A folder's keep_members part ({"min", "word"}), or None if it may not keep its apps."""
+    menu = manifests.menus(MANIFESTS).get(menu_id) or {}
+    spec = (menu.get("menu") or {}).get("keep_members")
+    return spec if isinstance(spec, dict) else None
+
+
+def folder_member_ids(menu_id):
+    """The apps with a tile that this folder lists: what it can keep off the home page."""
+    out = []
+    for m in MANIFESTS:
+        tile = m.get("tile") or {}
+        if not tile or tile.get("widget"):
+            continue
+        if any(menu_id in (e.get("menus") or {}) for e in m.get("entries", [])):
+            out.append(m["id"])
+    return out
+
+
+def folder_keeps_members(menu_id, state=None):
+    """Whether this folder is keeping its apps off the home page now: the setting is on, the folder
+    is not hidden, and enough of its apps are installed."""
+    spec = keep_members_spec(menu_id)
+    if not spec:
+        return False
+    st = (folders_state() if state is None else state).get(menu_id, {})
+    if st.get("shown", "auto") == "hidden" or not st.get("keep", True):
+        return False
+    return len(folder_member_ids(menu_id)) >= spec["min"]
+
+
+def folder_on_hub(menu_id, state=None):
+    """Whether this folder's own tile is on the home page, by its three-way choice."""
+    if not keep_members_spec(menu_id):
+        return True
+    st = (folders_state() if state is None else state).get(menu_id, {})
+    shown = st.get("shown", "auto")
+    if shown == "hidden":
+        return False
+    if shown == "always":
+        return True
+    return folder_keeps_members(menu_id, state)
+
+
+def folder_hidden_tiles(state=None):
+    """The home page tiles a folder's choices leave out: the folder's own, and its apps while it is
+    keeping them. Only the home page: /status and the folder's page still list them."""
+    state = folders_state() if state is None else state
+    out = set()
+    for menu_id in manifests.menus(MANIFESTS):
+        if not keep_members_spec(menu_id):
+            continue
+        if not folder_on_hub(menu_id, state):
+            out.add(menu_id)
+        if folder_keeps_members(menu_id, state):
+            out.update(folder_member_ids(menu_id))
+    return out
 
 
 def entry_pool(skip=()):
@@ -666,7 +735,17 @@ def folders_snapshot():
                     "extra": href in extra,
                 }
             )
-        out.append({"id": mid, "title": m["menu"]["title"], "entries": entries})
+        folder = {"id": mid, "title": m["menu"]["title"], "entries": entries}
+        spec = (m.get("menu") or {}).get("keep_members")
+        if isinstance(spec, dict):
+            folder["keep_members"] = {
+                "min": spec["min"],
+                "word": spec["word"],
+                "shown": st.get("shown", "auto"),
+                "keep": st.get("keep", True),
+                "installed": len(folder_member_ids(mid)),
+            }
+        out.append(folder)
     return {"folders": out, "state": state}
 
 
@@ -689,6 +768,14 @@ def valid_folders(data):
             ):
                 return None
             part[k] = list(dict.fromkeys(hrefs))
+        if "shown" in v:
+            if v["shown"] not in FOLDER_SHOWN:
+                return None
+            part["shown"] = v["shown"]
+        if "keep" in v:
+            if type(v["keep"]) is not bool:
+                return None
+            part["keep"] = v["keep"]
         out[f] = part
     return out
 

@@ -40,5 +40,15 @@
       "lang": "en",
       "size_mb": 12
     }
+  ],
+  "entries": [
+    {
+      "menus": {
+        "drawing": 40
+      },
+      "name": "Mermaid",
+      "desc": "Diagrams as text",
+      "href": "/app.html#/mermaid/"
+    }
   ]
 }
