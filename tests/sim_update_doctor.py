@@ -1469,6 +1469,19 @@ check("off, or with nothing kept, the App store says nothing", H.appstore_findin
 (lib / "sources.json").unlink()
 shutil.rmtree(H.STATE / "holds", ignore_errors=True)
 
+# A Security scan is complete even when the Updates page's kinds report cannot be made: that report is a courtesy.
+with (
+    mock.patch.object(H.security, "scan", return_value={"at": 0, "listeners": [], "findings": []}),
+    mock.patch.object(H, "_write_security", lambda data: None),
+    mock.patch.object(H.osupdates, "kinds_report", side_effect=OSError("apt busy")),
+):
+    said = H.security_scan({})
+check(
+    "a failing kinds report leaves the Security scan's result intact",
+    said["id"] == "control.security.scanned",
+    said,
+)
+
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

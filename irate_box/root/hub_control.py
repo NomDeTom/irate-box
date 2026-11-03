@@ -6313,6 +6313,7 @@ def _write_security(data):
 def security_scan(req):
     data = security.scan()
     _write_security(data)
+    osupdates.report_quietly()
     bad = sum(1 for f in data["findings"] if f["status"] == "problem")
     look = sum(1 for f in data["findings"] if f["status"] == "warn")
     # "nothing to fix" with warnings reads as all clear: both counts, always.

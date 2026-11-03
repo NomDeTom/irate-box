@@ -110,6 +110,19 @@ try:
         == ["linux-image-vendor-rockchip", "linux-u-boot-luckfox-lyra"],
         said,
     )
+    # Working the kinds out leaves the page's copy, and a held board with nothing waiting keeps its names.
+    (STATE / "control" / "update-kinds.json").unlink(missing_ok=True)
+    quiet = {f["id"]: f for f in osupdates.kind_findings("")}["board-updates"]
+    check(
+        "working the kinds out writes the Updates page's report",
+        (STATE / "control" / "update-kinds.json").is_file()
+        and json.loads((STATE / "control" / "update-kinds.json").read_text())["findings"],
+    )
+    check(
+        "  nothing waiting but the board held: the finding keeps the held names",
+        quiet["waiting"] == 0 and quiet["held"] == ["linux-image-vendor-rockchip", "linux-u-boot-luckfox-lyra"],
+        quiet,
+    )
     said = osupdates.install_kind("board", T / "update.log")
     check(
         "installing a board update: the hold is lifted, apt runs --only-upgrade, and the hold goes back",
