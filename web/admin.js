@@ -11725,8 +11725,9 @@ async function addDoc(doc, button) {
         action: "add",
         source: { name: doc.book, ...doc.source },
       });
+      loadLibrary();
       if (button)
-        button.textContent = "Kiwix queued; the book is added";
+        button.textContent = "Kiwix queued; the book waits";
       return;
     }
     await libAct(
@@ -11775,6 +11776,23 @@ function docsLine(m) {
         { dataset: { wait: `docs:${doc.book}` } },
       );
       bits.push(add);
+    } else if (st.added) {
+      bits.push(
+        el("span", {
+          className: "inv-fact",
+          textContent: "Added, not downloaded yet",
+        }),
+        actionButton(
+          "Download now",
+          (event) =>
+            libAct(
+              `docs:${doc.book}`,
+              { action: "update", names: [doc.book] },
+              event.currentTarget,
+            ),
+          { dataset: { wait: `docs:${doc.book}` } },
+        ),
+      );
     } else {
       bits.push(
         el("span", { className: "inv-fact", textContent: `${doc.size_mb} MB` }),
