@@ -169,7 +169,8 @@ try:
         and app.get("name") == "Demo app"
         and app.get("url", "").endswith(f"/appstore/latest/demo/{name}")
         and app.get("author") == "meshtastic"
-        and app.get("additionalSettings") == "{}",
+        and app.get("overrideSource") == "DirectAPKLink"
+        and json.loads(app.get("additionalSettings") or "{}").get("defaultPseudoVersioningMethod") == "partialAPKHash",
         (st, ob),
     )
     path = app["url"].split("://", 1)[-1].split("/", 1)[-1].join(["/", ""]) if app else "/"

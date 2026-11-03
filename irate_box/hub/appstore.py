@@ -103,7 +103,14 @@ def _obtainium_app(entry, host, scheme):
                 "url": f"{scheme}://{host}/appstore/latest/{entry['id']}/{file['name']}",
                 "author": (entry.get("repo") or "the box").split("/")[0],
                 "name": entry["title"],
-                "additionalSettings": "{}",
+                # Obtainium's Direct APK Link source (sourceIdentifier "DirectAPKLink"): the URL ends
+                # in .apk and it pseudo-versions by partial APK hash. DirectAPKLink sets
+                # directAPKLink/versionDetection itself; these are the source's own form fields.
+                "overrideSource": "DirectAPKLink",
+                "additionalSettings": json.dumps(
+                    {"defaultPseudoVersioningMethod": "partialAPKHash", "zippedApkFilterRegEx": ""},
+                    separators=(",", ":"),
+                ),
             }
     return None
 
