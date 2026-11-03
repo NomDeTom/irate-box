@@ -41,7 +41,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET  # noqa: S405 - DOCTYPE/ENTITY refused before parsing. # nosec B405
+import xml.etree.ElementTree as ET  # DOCTYPE/ENTITY refused before parsing. # nosec B405
 from datetime import datetime
 from pathlib import Path
 
@@ -254,8 +254,7 @@ def parse_feed(data, url):
         # Expat's own refusal also stops an entity expansion; make the words plain.
         raise LibrarianError(M("podcast.feed.doctype", "This feed uses a document type the box does not read."))
     try:
-        # A DOCTYPE or ENTITY was refused just above, so entity expansion does not reach Expat. # nosec B314 B405
-        root = ET.fromstring(data)
+        root = ET.fromstring(data)  # a DOCTYPE or ENTITY was refused just above. # nosec B314 B405
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.feed.invalid-xml", "The feed is not valid XML: {error}.", error=str(exc)[:120])
@@ -861,7 +860,7 @@ def _xml(text):
 
 def import_opml(text):
     try:
-        root = ET.fromstring(text.encode() if isinstance(text, str) else text)  # OPML pasted by the admin. # nosec B314 B405
+        root = ET.fromstring(text.encode() if isinstance(text, str) else text)  # OPML, pasted by the admin. # nosec B314 B405
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.opml.invalid", "That is not an OPML file: {error}.", error=str(exc)[:120])

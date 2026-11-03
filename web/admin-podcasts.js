@@ -56,20 +56,20 @@
   }
 
   function settingsForm() {
-    const s = snap.settings;
+    const settings = snap.settings;
     const box = el("div", { className: "settings-block" });
-    box.append(check("enabled", "Follow podcasts", s.enabled));
+    box.append(check("enabled", "Follow podcasts", settings.enabled));
     box.append(
-      number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, s.check_every_hours),
-      number("back_catalogue", "New feed: episodes to fetch (-1 all)", -1, 1000, s.back_catalogue),
-      number("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, s.keep_count),
-      number("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, s.keep_days),
-      number("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, s.keep_mb),
-      number("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, s.cap_mb),
-      number("leave_free_mb", "Leave free on the card in MB", 0, 10000000, s.leave_free_mb),
-      number("max_episode_mb", "Largest single episode in MB", 1, 4096, s.max_episode_mb),
+      number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours),
+      number("back_catalogue", "New feed: episodes to fetch (-1 all)", -1, 1000, settings.back_catalogue),
+      number("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count),
+      number("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days),
+      number("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, settings.keep_mb),
+      number("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, settings.cap_mb),
+      number("leave_free_mb", "Leave free on the card in MB", 0, 10000000, settings.leave_free_mb),
+      number("max_episode_mb", "Largest single episode in MB", 1, 4096, settings.max_episode_mb),
     );
-    box.append(check("keep_played", "Keep played episodes", s.keep_played), check("video", "Allow video enclosures", s.video));
+    box.append(check("keep_played", "Keep played episodes", settings.keep_played), check("video", "Allow video enclosures", settings.video));
     const save = el("button", { type: "button", className: "action-btn primary", textContent: "Save settings" });
     save.addEventListener("click", () => {
       const changes = { action: "settings" };

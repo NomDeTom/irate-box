@@ -5,7 +5,6 @@ address; the type, scheme and size checks; the back catalogue; each pruning limi
 together, with starred and played episodes; OPML both ways; and the metered wait. No test reaches
 the internet. python3 tests/sim_podcast.py"""
 
-import json
 import os
 import sys
 import tempfile
