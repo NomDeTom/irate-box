@@ -8474,6 +8474,30 @@ def package_groups():
     ]
 
 
+def board_hold_groups():
+    """Whether the board's own packages are held: the administrator's choice, on by default. Off, they move with
+    the board's repository and the Updates doctor says so."""
+    from irate_box.root import recommended
+
+    current = recommended.chosen().get("board-hold", "on")
+    return [
+        {
+            "key": "board-hold",
+            "label": M("hs.board-hold", "Hold the board's own packages"),
+            "desc": M(
+                "hs.board-hold.desc",
+                "Keep the kernel, device tree, bootloader, board package and firmware from moving with an update. "
+                "Their own updates wait on Updates, so a security update cannot swap the kernel by surprise.",
+            ),
+            "current": "off" if current == "off" else "on",
+            "options": [
+                {"value": "on", "label": ON, "choice": "board-hold-set:on"},
+                {"value": "off", "label": OFF, "choice": "board-hold-set:off"},
+            ],
+        }
+    ]
+
+
 def doctor_settings():
     """The doctor's own settings, as they are now, for its settings card: crash watch's snapshots, and what
     restarts a frozen box (a panic, the watchdog), with whether this board has a watchdog to use."""
@@ -8493,7 +8517,8 @@ def doctor_settings():
             + led_groups(ls, armbian_led_state() if ls else None)
             + rfkill_groups(rfkill_status())
             + image_groups()
-            + package_groups(),
+            + package_groups()
+            + board_hold_groups(),
             "card_groups": card_groups(),
             "hardening_groups": hardening_groups(),
         }
@@ -8540,6 +8565,10 @@ def fix(choice):
 
         recommended.record(kind, arg)  # the administrator's own choice: never offered back
         return M("repair.package-priorities.saved", "The setting is saved.")
+    if kind == "board-hold-set":
+        from irate_box.root import osupdates
+
+        return osupdates.set_holding(arg == "on")
     if kind in ("health-timer", "lost-writes", "canary"):
         from irate_box.root import recommended
 

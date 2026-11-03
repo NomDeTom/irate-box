@@ -1345,8 +1345,6 @@ def update_findings():
     findings[-1]["lists_age_days"] = age  # the page's badge: how recently "none waiting" was looked for
     findings[-1]["waiting"], findings[-1]["fetched"] = len(pkgs), fetched  # the pattern's Fetch and Install
     findings[-1]["packages"] = pkgs  # the card's list of what is waiting (its state; the finding is the doctor's)
-    # The OS's other updates and the board's own packages, each a kind of its own.
-    findings += osupdates.kind_findings(out.stdout)
     chosen = chosen_pattern(load_record())
     findings.append(unattended_finding(_have("unattended-upgrade"), _apt_periodic(), log_age, chosen, last_at))
     findings[-1]["last_at"] = last_at  # the card's "last ran", as a time

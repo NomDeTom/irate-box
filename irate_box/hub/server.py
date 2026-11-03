@@ -3354,6 +3354,10 @@ def security_snapshot():
             }
         except (OSError, ValueError):
             pass
+    try:
+        kinds = json.loads((CONTROL_DIR / "update-kinds.json").read_text())
+    except (OSError, ValueError):
+        kinds = None
     return {
         "scan": scan,
         "audit": audit,
@@ -3363,6 +3367,9 @@ def security_snapshot():
         "pending": _pending_actions("security-"),
         "results": control_results(5),
         "accepted": security_accepted(),
+        # The Updates page's other two kinds come from their own report (osupdates.kind_findings), not the
+        # Security scan: they are the Updates doctor's.
+        "kinds": kinds,
     }
 
 

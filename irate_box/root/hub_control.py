@@ -4259,6 +4259,14 @@ def _tls_get(url, timeout=15):
     return _web_open(req, timeout=timeout)
 
 
+def _simulated_upgrade():
+    """`apt-get -s upgrade`'s output, run once per doctor run: several checks read what waits."""
+    try:
+        return run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def updates_doctor_findings():
     """The Updates doctor: what an update needs from outside the box, as findings (docs/dev/doctors.md)."""
     import socket
@@ -6323,6 +6331,8 @@ def security_fix(req):
         msg = security.fix(choice, SECURITY_LOG)
     finally:
         _write_security(security.scan())
+        if choice.startswith(("os-", "board-")):
+            osupdates.kinds_report()
     return msg
 
 

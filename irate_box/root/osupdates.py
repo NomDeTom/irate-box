@@ -92,6 +92,30 @@ def holds():
     return set(data.get("packages") or []) if isinstance(data, dict) else set()
 
 
+def holding_on():
+    """Whether the administrator's setting is to hold the board's packages (on unless turned off)."""
+    from irate_box.root import recommended
+
+    return recommended.chosen().get("board-hold", "on") != "off"
+
+
+def set_holding(on):
+    """Turn holding on or off, and release only what this module held when it goes off."""
+    from irate_box.root import recommended
+
+    recommended.record("board-hold", "on" if on else "off")
+    return hold_board() if on else release_board()
+
+
+def showhold():
+    """The packages apt holds now, by name."""
+    try:
+        out = run("apt-mark", "showhold", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {line.split(":")[0].strip() for line in out.stdout.splitlines() if line.strip()}
+
+
 def _record(packages, *, keep_fetched=None):
     data = _read(HOLDS, {})
     if not isinstance(data, dict):
@@ -134,20 +158,30 @@ def installed_board():
 
 
 def hold_board():
-    """Hold the board's packages now and record them, so a security update cannot swap the kernel by surprise."""
+    """Hold the board's packages this module did not find held already, and record only those, so a security
+    update cannot swap the kernel by surprise and an administrator's own hold stays their own."""
+    if not holding_on():
+        return M(
+            "osupdates.hold.off",
+            "Holding the board's packages is off. They move with the board's repository.",
+        )
     board = installed_board()
     if not board:
         return M("osupdates.hold.none", "This box runs none of a board's own packages, so there is nothing to hold.")
-    if _apt_mark("hold", board):
+    already = showhold()
+    new = sorted(set(board) - already)
+    if not new:
+        return M("osupdates.hold.already", "The board's own packages are held already.")
+    if _apt_mark("hold", new):
         raise Refused(M("osupdates.hold.failed", "apt-mark could not hold the board's packages."))
-    _record(set(holds()) | set(board))
+    _record(set(holds()) | set(new))
     return M(
         "osupdates.hold.held",
         {
             "one": "The box holds {n} of the board's own package, so no update swaps the kernel by surprise.",
             "other": "The box holds {n} of the board's own packages, so no update swaps the kernel by surprise.",
         },
-        n=len(board),
+        n=len(new),
     )
 
 
@@ -210,7 +244,7 @@ def fetched(kind, items):
     return sum(1 for item in items if _deb_of(item["package"], item["version"]))
 
 
-def _apt(argv, timeout):
+def _apt(argv, timeout, cwd=None):
     with aptram.argv(argv) as full:
         return subprocess.run(  # noqa: TID251
             full,
@@ -219,6 +253,7 @@ def _apt(argv, timeout):
             stdin=subprocess.DEVNULL,
             env=dict(os.environ, **APT_ENV),
             timeout=timeout,
+            cwd=cwd,
         )
 
 
@@ -228,29 +263,36 @@ def _log_write(log, text):
 
 
 def _take(kind, log, items, install):
-    """Install or download one kind's waiting updates. Board packages are released for this run and held again."""
+    """Install or download one kind's waiting updates. The board's packages this module holds are released for this
+    run and held again after; a fetch fills the box's own pool, and an install takes its files from there."""
     packages = [item["package"] for item in items]
     if not packages:
         return M("osupdates.none", "No update of this kind is waiting.")
     board = kind == "board"
+    lifted = []
+    missing_previous = []
     if board:
-        keep_current(packages)
-        _apt_mark("unhold", packages)
-    argv = ["apt-get", "install", "-y", "--only-upgrade", *([] if install else ["--download-only"])]
-    if board and not install:
+        missing_previous = keep_current(packages)
+        if holding_on():
+            lifted = sorted(set(packages) & holds())
+            _apt_mark("unhold", lifted)
         POOL.mkdir(parents=True, exist_ok=True)
+    argv = ["apt-get", "install", "-y", "--only-upgrade", *([] if install else ["--download-only"])]
+    if board:
         argv += ["-o", f"Dir::Cache::archives={POOL}"]
+        if install:
+            argv += ["--no-download"]
     if install:
         argv += ["-o", "Dpkg::Options::=--force-confold"]
     argv += packages
     try:
         _log_write(log, "$ " + " ".join(argv) + "\n\n")
-        out = _apt(argv, 3600)
+        out = _apt(argv, 3600, cwd=POOL if board and install else None)
         _log_write(log, (out.stdout or "") + (out.stderr or "") + "\n")
     finally:
-        if board:
-            _apt_mark("hold", packages)
-            _record(set(holds()) | set(packages), keep_fetched=_pool_versions())
+        if lifted:
+            _apt_mark("hold", lifted)
+            _record(set(holds()) | set(lifted), keep_fetched=_pool_versions())
     if out.returncode != 0:
         raise Refused(
             M(
@@ -258,6 +300,16 @@ def _take(kind, log, items, install):
                 "apt stopped with exit code {code}. Read the log on Updates.",
                 code=out.returncode,
             )
+        )
+    if install and missing_previous:
+        return M(
+            "osupdates.installed.without-previous",
+            {
+                "one": "The box installed {n} update. The installed version of {names} could not be kept, so going back is not ready.",
+                "other": "The box installed {n} updates. The installed version of {names} could not be kept, so going back is not ready.",
+            },
+            n=len(packages),
+            names=", ".join(missing_previous),
         )
     if install:
         return M(
@@ -276,11 +328,14 @@ def _take(kind, log, items, install):
 
 
 def keep_current(packages):
-    """Keep the installed version of each package beside the new one, so the old kernel is there to go back to."""
+    """Keep the installed version of each package beside the new one, so the old kernel is there to go back to:
+    apt's own archive when it has it, else `apt-get download` it while the repository still does. Returns the names
+    that could not be kept."""
+    missing = []
     try:
         installed = installed_versions()
     except OSError:
-        return
+        return list(packages)
     POOL.mkdir(parents=True, exist_ok=True)
     for package in packages:
         version = installed.get(package)
@@ -290,9 +345,14 @@ def keep_current(packages):
         if found:
             try:
                 shutil.copy2(found[-1], POOL / found[-1].name)
+                continue
             except OSError:
                 pass
+        out = _apt(["apt-get", "download", f"{package}={version}"], 600, cwd=POOL)
+        if out.returncode != 0 or not any(POOL.glob(f"{package}_{version}_*.deb")):
+            missing.append(package)
     prune_pool()
+    return missing
 
 
 def _pool_versions():
@@ -415,6 +475,7 @@ def _kind_finding(kind, items, simulated):
         ]
     board = installed_board()
     held = holds() & set(board)
+    holding = holding_on()
     evidence = [f"{item['package']} {item['version']}" for item in items]
     if not board:
         return [
@@ -426,6 +487,25 @@ def _kind_finding(kind, items, simulated):
             )
         ]
     if not items and not held:
+        if not holding:
+            return [
+                finding(
+                    "board-updates",
+                    title,
+                    "note",
+                    M(
+                        "osupdates.board.off",
+                        "The board's packages move with the board's repository: holding them is off in the Box doctor's settings.",
+                    ),
+                    notes=[
+                        M(
+                            "osupdates.board.off.note",
+                            "A security update or unattended-upgrades can then swap the kernel by surprise.",
+                        )
+                    ],
+                    evidence=sorted(board),
+                )
+            ]
         return [
             finding(
                 "board-updates",
@@ -457,40 +537,84 @@ def _kind_finding(kind, items, simulated):
                         "other": "{n} board packages are held, and none waits for an update.",
                     },
                     n=len(held),
-                ),
-                evidence=sorted(held),
+                )
+                if holding
+                else M("osupdates.board.ok-off", "No board package waits for an update, and holding them is off."),
+                evidence=sorted(held) if holding else sorted(board),
             )
         ]
+    notes = [
+        M(
+            "osupdates.board.bootloader",
+            "A bootloader package does not flash itself: installing its update does nothing unless the board's "
+            "maker's tool writes it.",
+        )
+    ]
+    if not holding:
+        notes.append(
+            M(
+                "osupdates.board.off.why",
+                "Holding the board's packages is off, so they move with the board's repository. A security update or "
+                "unattended-upgrades can then swap the kernel by surprise.",
+            )
+        )
+    summary = (
+        M(
+            "osupdates.board.waiting-held",
+            {
+                "one": "{n} of the board's own packages waits behind the hold.",
+                "other": "{n} of the board's own packages wait behind the hold.",
+            },
+            n=len(items),
+        )
+        if holding
+        else M(
+            "osupdates.board.waiting-off",
+            {
+                "one": "{n} of the board's own packages waits.",
+                "other": "{n} of the board's own packages wait.",
+            },
+            n=len(items),
+        )
+    )
+    fix = (
+        M(
+            "osupdates.board.fix-held",
+            "The offer lifts the hold for one upgrade and holds again after. Going back works only while the box "
+            "still boots.",
+        )
+        if holding
+        else M(
+            "osupdates.board.fix-off",
+            "The offer installs them with no hold. Going back works only while the box still boots.",
+        )
+    )
+    confirm = (
+        M(
+            "osupdates.board.install.confirm-held",
+            "Install the board's waiting packages? The hold is lifted for this upgrade and put back after. One "
+            "kernel and no fallback: a kernel that does not boot needs the card rewritten.",
+        )
+        if holding
+        else M(
+            "osupdates.board.install.confirm-off",
+            "Install the board's waiting packages? Holding them is off. One kernel and no fallback: a kernel that "
+            "does not boot needs the card rewritten.",
+        )
+    )
     return [
         finding(
             "board-updates",
             title,
             "warn",
-            M(
-                "osupdates.board.waiting",
-                {
-                    "one": "{n} of the board's own packages waits behind the hold.",
-                    "other": "{n} of the board's own packages wait behind the hold.",
-                },
-                n=len(items),
-            ),
+            summary,
             M(
                 "osupdates.board.why",
                 "On this image /boot holds one kernel. A kernel that does not boot leaves a headless box down until its "
                 "card is rewritten, and the kernel can be one the image was not built with.",
             ),
-            M(
-                "osupdates.board.fix",
-                "The offer lifts the hold for one upgrade and holds again after. Going back works only while the box "
-                "still boots.",
-            ),
-            notes=[
-                M(
-                    "osupdates.board.bootloader",
-                    "A bootloader package does not flash itself: installing its update does nothing unless the board's "
-                    "maker's tool writes it.",
-                )
-            ],
+            fix,
+            notes=notes,
             evidence=evidence,
             waiting=len(items),
             fetched=down,
@@ -504,16 +628,26 @@ def _kind_finding(kind, items, simulated):
                         {"one": "Install {n} board update", "other": "Install {n} board updates"},
                         n=len(items),
                     ),
-                    M(
-                        "osupdates.board.install.confirm",
-                        "Install the board's waiting packages? The hold is lifted for this upgrade and put back after. "
-                        "One kernel and no fallback: a kernel that does not boot needs the card rewritten.",
-                    ),
+                    confirm,
                 ),
                 action("board-fetch", M("osupdates.download", "Download {n}", n=len(items))),
             ],
         )
     ]
+
+
+KINDS_STATE = CONTROL / "update-kinds.json"
+
+
+def kinds_report(simulated=None):
+    """The two kinds as findings, and a copy in control/ for the Updates page's cards, which do not scan themselves."""
+    findings = kind_findings(simulated if simulated is not None else _simulated())
+    data = {"at": time.time(), "findings": findings}
+    try:
+        _write(KINDS_STATE, data)
+    except OSError:
+        pass
+    return data
 
 
 def kind_findings(simulated):

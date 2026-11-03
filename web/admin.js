@@ -4603,7 +4603,7 @@ function renderSecurity(data) {
   }
   drawDebianState(lines, scan);
   drawDebianPattern(lines, busy);
-  drawUpdateKinds(lines, busy);
+  drawUpdateKinds((data.kinds && data.kinds.findings) || [], busy);
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose =
     secNote &&

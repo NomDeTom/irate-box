@@ -16,8 +16,8 @@ from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="osupdates-"))
 ETC, STATE, POOL, ARCHIVES = T / "etc", T / "state", T / "pool", T / "archives"
-for d in (ETC, STATE, POOL, ARCHIVES):
-    d.mkdir()
+for d in (ETC, STATE, POOL, ARCHIVES, STATE / "control"):
+    d.mkdir(parents=True)
 os.environ.update(
     HUB_ETC_DIR=str(ETC),
     HUB_STATE_DIR=str(STATE),
@@ -74,8 +74,15 @@ def run(*cmd, timeout=120):
     return R()
 
 
-def apt(argv, timeout=3600):
+apt_cwds = []
+
+
+def apt(argv, timeout=3600, cwd=None):
     apt_calls.append(list(argv))
+    apt_cwds.append(cwd)
+    if len(argv) > 1 and argv[1] == "download":
+        package, _, version = argv[2].partition("=")
+        (POOL / f"{package}_{version}_armhf.deb").write_text("kept")
     return R()
 
 
@@ -109,9 +116,12 @@ try:
         and apt_mark_calls[-2][:2] == ["apt-mark", "unhold"]
         and apt_mark_calls[-1][:2] == ["apt-mark", "hold"]
         and "--only-upgrade" in apt_calls[-1]
+        and "--no-download" in apt_calls[-1]
+        and any(a.startswith("Dir::Cache::archives=") for a in apt_calls[-1])
+        and apt_cwds[-1] == POOL
         and "linux-image-vendor-rockchip" in apt_calls[-1]
         and osupdates.holds() == {"linux-image-vendor-rockchip", "linux-u-boot-luckfox-lyra"},
-        (said, apt_mark_calls[-3:], apt_calls[-1]),
+        (said, apt_mark_calls[-3:], apt_calls[-1], apt_cwds[-1]),
     )
     said = osupdates.release_board()
     check(
@@ -122,14 +132,41 @@ try:
         said,
     )
 
+    # A package the administrator held already is not this module's to record or release.
+    with mock.patch.object(osupdates, "showhold", lambda: {"linux-image-vendor-rockchip"}):
+        said = osupdates.hold_board()
+    check(
+        "a package already held before install is not recorded as this module's",
+        said["id"] == "osupdates.hold.held"
+        and apt_mark_calls[-1] == ["apt-mark", "hold", "linux-u-boot-luckfox-lyra"]
+        and osupdates.holds() == {"linux-u-boot-luckfox-lyra"},
+        (said, apt_mark_calls[-1], osupdates.holds()),
+    )
+    osupdates.release_board()
+    check(
+        "releasing leaves the administrator's own hold alone",
+        apt_mark_calls[-1] == ["apt-mark", "unhold", "linux-u-boot-luckfox-lyra"],
+        apt_mark_calls[-1],
+    )
+
     # The installed version is kept in the pool, and the newest two are kept.
+    (POOL / "linux-image-vendor-rockchip_6.1.115_armhf.deb").unlink(missing_ok=True)
     (ARCHIVES / "linux-image-vendor-rockchip_6.1.115_armhf.deb").write_text("old")
     osupdates.keep_current(["linux-image-vendor-rockchip"])
     check(
-        "the installed version's .deb is kept in the box's pool",
-        not POOL.glob("linux-image-vendor-rockchip_6.1.115_*.deb") == []
+        "the installed version's .deb is copied from apt's archive into the box's pool",
+        any(POOL.glob("linux-image-vendor-rockchip_6.1.115_*.deb"))
         and (POOL / "linux-image-vendor-rockchip_6.1.115_armhf.deb").read_text() == "old",
     )
+    # Not in apt's archive: apt-get download it while the repository still has it.
+    (ARCHIVES / "linux-u-boot-luckfox-lyra_2024.10_armhf.deb").unlink(missing_ok=True)
+    missing = osupdates.keep_current(["linux-u-boot-luckfox-lyra"])
+    check(
+        "the installed version is downloaded into the pool when apt's archive no longer has it",
+        missing == [] and any(POOL.glob("linux-u-boot-luckfox-lyra_2024.10_*.deb")),
+        missing,
+    )
+
     for n, version in enumerate(("1", "2", "3")):
         deb = POOL / f"somepkg_{version}_armhf.deb"
         deb.write_text(version)
@@ -147,6 +184,18 @@ try:
         and "--download-only" in apt_calls[-1]
         and any(a.startswith("Dir::Cache::archives=") for a in apt_calls[-1]),
         apt_calls[-1],
+    )
+
+    # Holding is the administrator's setting: off, nothing is held and the finding says so.
+    from irate_box.root import recommended
+
+    with mock.patch.object(recommended, "chosen", lambda: {"board-hold": "off"}):
+        said = osupdates.hold_board()
+        board = {f["id"]: f for f in osupdates.kind_findings("")}["board-updates"]
+    check(
+        "holding off: the module holds nothing, and the board finding is a note that says so",
+        said["id"] == "osupdates.hold.off" and board["status"] == "note" and "osupdates.board.off" in msg_ids(board),
+        (said, board),
     )
 
     # The findings the page and the Updates doctor show.
@@ -179,6 +228,11 @@ try:
         and "osupdates.board.unheld" in msg_ids(board)
         and [a["choice"] for a in board["actions"]] == ["board-hold"],
         board,
+    )
+    report = osupdates.kinds_report("")
+    check(
+        "the kinds report is kept for the Updates page's cards",
+        json.loads((STATE / "control" / "update-kinds.json").read_text())["findings"] == report["findings"],
     )
 finally:
     for p in patches:

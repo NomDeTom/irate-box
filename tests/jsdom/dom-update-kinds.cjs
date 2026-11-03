@@ -11,9 +11,8 @@ const WEB = path.resolve(__dirname, '../../web');
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
 const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const M = (id, en, args) => ({ id, en, ...(args ? { args } : {}) });
-const scan = {
+const kinds = {
   at: Math.floor(Date.now() / 1000),
-  listeners: [],
   findings: [
     {
       id: 'os-updates',
@@ -48,7 +47,8 @@ const scan = {
     },
   ],
 };
-const sec = { hub: [], accepted: {}, scan, log: [], pending: 0, results: [], deep: {}, imports: {}, audit: null };
+const scan = { at: Math.floor(Date.now() / 1000), listeners: [], findings: [] };
+const sec = { hub: [], accepted: {}, scan, kinds, log: [], pending: 0, results: [], deep: {}, imports: {}, audit: null };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
