@@ -22,7 +22,7 @@
    "source": {
     "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
     "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
-    "version": "f0c8813",
+    "version": "8e84f8d",
     "licence": "GPL-2.0"
    },
    "notes": [
@@ -54,7 +54,7 @@
    "source_also": {
     "name": "NomDeTom/aic8800, branch irate/box: Radxa's aic8800-usb-dkms with the same fixes as quilt patches",
     "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
-    "version": "7a491d3",
+    "version": "9e9f00f",
     "licence": "GPL-2.0"
    }
   },
@@ -75,7 +75,7 @@
    "source": {
     "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
     "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
-    "version": "f0c8813",
+    "version": "8e84f8d",
     "licence": "GPL-2.0"
    },
    "notes": [
@@ -106,7 +106,7 @@
    "source_also": {
     "name": "NomDeTom/aic8800, branch irate/box: Radxa's aic8800-usb-dkms with the same fixes as quilt patches",
     "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
-    "version": "7a491d3",
+    "version": "9e9f00f",
     "licence": "GPL-2.0"
    }
   },
