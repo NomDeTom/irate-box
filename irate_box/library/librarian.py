@@ -2001,7 +2001,9 @@ def fetch_book(src, cand, policy, status_entry):
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     home.mkdir(parents=True, exist_ok=True)
-    part = TMP_DIR / f"{name}.download"
+    # In the book's own home, so the rename below never crosses a mount (EXDEV): on a box where
+    # library/ and zim/ are separate mounts, and on a library drive.
+    part = home / f".{name}.download"
     zim_tmp = home / f".{name}.zim.new"
     archived = archive_of(home / f"{name}.zim") / name / f"{_safe(cand['version'])}.zim"
     try:

@@ -143,6 +143,7 @@ run sim_inspircd.py
 run sim_irc_group.py
 run sim_irc_app.py
 run sim_books.py
+run sim_cross_mount.py
 run sim_podcast.py
 run sim_librarydrive.py
 run sim_ghpace.py
