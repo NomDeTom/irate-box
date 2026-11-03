@@ -168,6 +168,8 @@ SAVE_MENU_ITEMS = (
 BOX_SAVES_JS = r"""
 // Irate-Box: the box's gallery, as the other adapted apps use it (/api/saves).
 let box_save_id = null;
+let box_save_locked = false;
+let box_save_lock_n = 0;
 function box_escape(text) {
 	return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -188,8 +190,10 @@ async function file_save_to_box() {
 		return;
 	}
 	const suggested = (file_name || "Picture").replace(/\.[^.]+$/, "");
+	const newCopy = box_save_id && box_save_locked && !(window.HubLock && HubLock.has("saves", box_save_id));
 	const { $window, promise } = showMessageBox({
 		messageHTML: `<p>Save this picture in the box's gallery.</p>
+			${newCopy ? "<p>This browser does not hold this picture's key, so saving makes a new copy.</p>" : ""}
 			<p><label>Name <input type="text" id="irate-box-save-name" value="${box_escape(suggested)}"></label></p>`,
 		buttons: [
 			{ label: "Save", value: "save", default: true },
@@ -201,17 +205,48 @@ async function file_save_to_box() {
 		return;
 	}
 	const name = ($window.$content.find("#irate-box-save-name").val() || "").trim() || "Picture";
+	// A locked save is changed only by a browser that holds its key. This one re-saves in place;
+	// one opened on another device saves as a new copy, and its dialog says so.
+	let id = box_save_id;
+	let change = null;
+	let fresh = null;
+	if (box_save_id && box_save_locked) {
+		if (window.HubLock && HubLock.has("saves", box_save_id)) {
+			change = HubLock.change("saves", box_save_id, box_save_lock_n);
+		}
+		if (!change) {
+			id = null;
+		}
+	}
+	if (!id && window.HubLock) {
+		fresh = HubLock.create("saves");
+	}
+	const headers = { "Content-Type": "application/json" };
+	if (change) {
+		Object.assign(headers, change.headers);
+	}
+	if (fresh) {
+		headers["X-Lock-New"] = fresh.header;
+	}
 	try {
 		const response = await fetch("/api/saves", {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ kind: "jspaint", id: box_save_id || undefined, name, state, thumb: box_thumbnail() }),
+			headers,
+			body: JSON.stringify({ kind: "jspaint", id: id || undefined, name, state, thumb: box_thumbnail() }),
 		});
 		if (!response.ok) {
 			throw new Error(`the gallery answered ${response.status}`);
 		}
 		const meta = await response.json();
+		if (change) {
+			change.done();
+		}
+		if (fresh) {
+			HubLock.keep("saves", meta.id, fresh.seed);
+		}
 		box_save_id = meta.id;
+		box_save_locked = !!meta.locked;
+		box_save_lock_n = meta.lock_n || 0;
 		file_name = `${name}.png`;
 		saved = true;
 		update_title();
@@ -264,8 +299,13 @@ async function file_open_from_box() {
 		const full = await whole.json();
 		const info = await load_image_from_uri(full.state);
 		box_save_id = save.id;
+		box_save_locked = !!(full.locked || save.locked);
+		box_save_lock_n = full.lock_n || save.lock_n || 0;
 		file_name = `${save.name || "Picture"}.png`;
 		open_from_image_info(info);
+		if (box_save_locked && !(window.HubLock && HubLock.has("saves", box_save_id))) {
+			showMessageBox({ message: "This picture is locked by another device. Saving it here will make a new copy." });
+		}
 	} catch (error) {
 		show_error_message("The picture could not be opened from the box's gallery.", error);
 	}
@@ -322,6 +362,16 @@ def add_box_saves(menu_text, function_text):
     return menu_text, function_text
 
 
+LOCK_JS = Path(__file__).resolve().parents[2] / "web" / "lock.js"
+
+
+def add_lock_script(text):
+    """The page's copy of the hub's device-lock module (web/lock.js), before the app's own scripts."""
+    if LOCK_JS.is_file() and '<script src="lock.js"></script>' not in text:
+        text = text.replace("</body>", '\t<script src="lock.js"></script>\n</body>', 1)
+    return text
+
+
 def adapt(tree):
     tree = Path(tree)
     index = tree / "index.html"
@@ -364,7 +414,7 @@ def adapt(tree):
     if len(LANGUAGES.findall(language_text)) != 1:
         raise AdaptError("src/app-localization.js changed: the language list is not found once")
 
-    page_text = local_images(adapt_page(index.read_text(encoding="utf-8")), tree)
+    page_text = add_lock_script(local_images(adapt_page(index.read_text(encoding="utf-8")), tree))
     menu_text = MULTIUSER_MENU.sub("", IMGUR_MENU.sub("", HEAD_TRACKER_MENU.sub("", LOAD_URL_MENU.sub("", menu_text))))
     function_text = IMGUR_BUTTON.sub("", function_text)
     # The box's gallery: the manifest says what is kept there and who can see it.
@@ -424,6 +474,8 @@ def adapt(tree):
     localization.write_text(language_text, encoding="utf-8")
     for name, text in pages.items():
         (tree / name).write_text(text, encoding="utf-8")
+    if LOCK_JS.is_file():
+        shutil.copyfile(LOCK_JS, tree / "lock.js")
 
 
 def main(argv):
