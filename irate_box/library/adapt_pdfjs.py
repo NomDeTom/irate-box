@@ -96,20 +96,33 @@ INDEX_JS = """// SPDX-License-Identifier: AGPL-3.0-or-later
   const name = document.getElementById("name");
   const viewer = document.getElementById("viewer");
   function hubOrigin() {
-    try {
-      const referrer = new URL(document.referrer);
-      return referrer.protocol === "http:" || referrer.protocol === "https:" ? referrer.origin : null;
-    } catch (error) {
-      return null;
-    }
-  }
-  function bridge(action, payload) {
-    return new Promise((resolve, reject) => {
-      const origin = hubOrigin();
-      if (!origin) {
-        reject(new Error("open this app from the hub so the bridge can find it"));
-        return;
+    // The add-on server sends no Referer: ask the hub page that frames this app, as JS Paint does.
+    return new Promise((resolve) => {
+      let done = false;
+      function finish(value) {
+        if (done) return;
+        done = true;
+        window.removeEventListener("message", onMessage);
+        resolve(value);
       }
+      function onMessage(event) {
+        if (event.source !== window.parent) return;
+        const data = event.data || {};
+        if (data.type === "irate-hub-origin" && typeof data.origin === "string") finish(data.origin);
+      }
+      window.addEventListener("message", onMessage);
+      try {
+        window.parent.postMessage({ type: "irate-hub-origin-request" }, "*");
+      } catch (error) { /* not framed: no parent to ask */ }
+      window.setTimeout(() => finish(null), 800);
+    });
+  }
+  async function bridge(action, payload) {
+    const origin = await hubOrigin();
+    if (!origin) {
+      throw new Error("open this app from the hub so the bridge can find it");
+    }
+    return new Promise((resolve, reject) => {
       const popup = window.open(`${origin}/addon-bridge.html`, "irate-box-bridge", "popup,width=560,height=620");
       if (!popup) {
         reject(new Error("the bridge window was blocked"));
@@ -145,7 +158,7 @@ INDEX_JS = """// SPDX-License-Identifier: AGPL-3.0-or-later
   async function openPdf() {
     button.disabled = true;
     try {
-      const answer = await bridge("pdf", {});
+      const answer = await bridge("pdf", { title: "PDF viewer" });
       const file = answer.file || {};
       const bytes = new Uint8Array(file.data);
       name.textContent = file.name || "PDF";

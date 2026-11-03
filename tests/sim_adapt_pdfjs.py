@@ -72,6 +72,9 @@ check(
     and "/addon-bridge.html" in index_js
     and "PDFViewerApplication" in index_js
     and "app.open({ data: bytes })" in index_js
+    and "irate-hub-origin-request" in index_js
+    and "window.parent.postMessage" in index_js
+    and "document.referrer" not in index_js
     and 'fetch("/api/drop")' not in index_js,
 )
 viewer = (tree / "web" / "viewer.html").read_text()
