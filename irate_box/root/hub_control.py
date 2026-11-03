@@ -221,6 +221,7 @@ from irate_box.root import (
     health,
     kits,
     partswatch,
+    pkgorigins,
     safeio,
     secchanges,
     secdoctor,
@@ -5059,6 +5060,14 @@ def updates_doctor_findings():
     findings += kits_findings()
     findings += appstore_findings()
     findings += partswatch.findings()
+    # 11. The packages themselves: where they come from, Debian's own priorities, and the board's packages.
+    try:
+        simulated = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        simulated = ""
+    findings += pkgorigins.origin_findings()
+    findings += pkgorigins.priority_findings()
+    findings += pkgorigins.board_findings(simulated)
     return findings
 
 

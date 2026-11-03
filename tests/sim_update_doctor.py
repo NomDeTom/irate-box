@@ -130,6 +130,10 @@ def world(
         mock.patch.object(H.kits, "installed_state", lambda: {}),
         mock.patch.object(H.kits, "pool_bytes", lambda: 0),
         mock.patch.object(H.partswatch, "findings", lambda: []),
+        # Item 11's package checks have a test of their own (sim_package_origins); here they are left out.
+        mock.patch.object(H.pkgorigins, "origin_findings", lambda *a, **k: []),
+        mock.patch.object(H.pkgorigins, "priority_findings", lambda *a, **k: []),
+        mock.patch.object(H.pkgorigins, "board_findings", lambda *a, **k: []),
     ]
 
 
