@@ -12271,6 +12271,65 @@ function addonButtons(addon, busy) {
   );
 }
 
+function groupState(addon) {
+  return addon.added === null
+    ? "Installation status unavailable."
+    : addon.added
+      ? addon.active
+        ? "Installed. Service running."
+        : "Installed. Service not running (see Overview)."
+      : "Not installed.";
+}
+
+function groupMemberButtons(member, installed, busy) {
+  if (member.added || !installed) return addonButtons(member, busy);
+  const key = `addon-switch:${installed.id}:${member.id}`;
+  const consent = member.consent
+    ? `${member.consent} Switching removes ${installed.title} and adds ${member.title}.`
+    : `Switching removes ${installed.title} and adds ${member.title}.`;
+  return agreeRow(key, `${consent} ${ADDON_INSTALL_SAYS}`, `Switch to ${member.title}`, busy,
+    () => addonSwitch(installed, member, key), key);
+}
+
+function addonGroupCard(group, members, busy, progressText) {
+  const installed = members.find((x) => x.added);
+  const note = adoNote && members.some((x) => x.id === adoNote.addon)
+    ? el("span", { className: `setting-desc action-note${adoNote.ok ? "" : " bad"}`, role: "status", textContent: adoNote.text })
+    : null;
+  return el(
+    "div",
+    { className: "setting library-source addon-group", "data-addon-group": group },
+    el(
+      "span",
+      {},
+      el("span", { className: "setting-name", textContent: members[0].group_title || members[0].title }),
+      el("span", { className: "setting-desc", textContent: members[0].group_summary || "One of these at a time." }),
+      ...members.map((member) =>
+        el("span", { className: `addon-group-member${member.added ? " added" : ""}` },
+          el("strong", { textContent: member.title }),
+          el("span", { className: "setting-desc", textContent: ` ${member.summary}` }),
+          el("span", { className: `setting-desc${member.added && !member.active ? " bad" : ""}`, textContent: ` ${groupState(member)}` }),
+          accessSlot(member.id),
+          groupMemberButtons(member, installed, busy))),
+      note,
+      progressText ? el("span", { className: "setting-desc", role: "status", textContent: progressText }) : null),
+  );
+}
+
+async function addonSwitch(from, to, waitKey) {
+  try {
+    const next = await postJSON("/admin/addons", { switch: [from.id, to.id] });
+    adoWaiting = { id: next.id, addon: to.id, waitKey };
+    adoNote = { addon: to.id, text: `Switching from ${from.title} to ${to.title}…`, ok: true };
+    showWait(adoWaiting);
+    loadAddons();
+  } catch (err) {
+    clearWait({ waitKey });
+    adoNote = { addon: to.id, text: err.message, ok: false };
+    loadAddons();
+  }
+}
+
 function addonCard(addon, busy, withAccess, progressText) {
   const state =
     addon.added === null
@@ -12352,11 +12411,17 @@ function renderAddons(data) {
       (b) => b.dataset.addon,
     ),
   );
-  ado.list.replaceChildren(
-    ...data.addons
-      .filter((addon) => !paged.has(addon.id))
-      .map((addon) => addonCard(addon, busy, true, progressText)),
-  );
+  const listed = data.addons.filter((addon) => !paged.has(addon.id));
+  const cards = [], grouped = new Set();
+  for (const addon of listed) {
+    if (!addon.group) {
+      cards.push(addonCard(addon, busy, true, progressText));
+    } else if (!grouped.has(addon.group)) {
+      grouped.add(addon.group);
+      cards.push(addonGroupCard(addon.group, listed.filter((x) => x.group === addon.group), busy, progressText));
+    }
+  }
+  ado.list.replaceChildren(...cards);
   document.querySelectorAll(".addon-block").forEach((block) => {
     const addon = data.addons.find((entry) => entry.id === block.dataset.addon);
     block.replaceChildren(
@@ -18336,6 +18401,35 @@ function inventoryRows() {
         : row.kind === "addon"
           ? "#addons"
           : "#apps";
+  }
+  // One line for an add-on group: the installed one named, or both offered, not one row each.
+  const groups = new Map();
+  for (const m of manifests) {
+    if (!m.group || !rows.has(m.id)) continue;
+    if (!groups.has(m.group)) groups.set(m.group, []);
+    groups.get(m.group).push(m);
+  }
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const rowsHere = members.map((m) => rows.get(m.id)).filter(Boolean);
+    if (rowsHere.length < 2) continue;
+    const first = rowsHere[0];
+    const state = rowsHere.some((r) => r.state === "installed")
+      ? "installed"
+      : rowsHere.every((r) => r.state === "available")
+        ? "available"
+        : first.state;
+    rows.set(first.id, {
+      id: first.id,
+      name: members[0].group_title || first.name,
+      kind: "addon",
+      state,
+      facts: [`One of: ${rowsHere.map((r) => r.name).join(", ")}`],
+      attention: [...new Set(rowsHere.flatMap((r) => r.attention))],
+      href: "#addons",
+      group: true,
+    });
+    for (const row of rowsHere.slice(1)) rows.delete(row.id);
   }
   return [...rows.values()];
 }

@@ -3742,6 +3742,9 @@ def addons_snapshot():
             {
                 "id": aid,
                 **{k: m["addon"].get(k) for k in ("title", "summary", "consent", "needs")},
+                "group": m["addon"].get("group"),
+                "group_title": m["addon"].get("group_title"),
+                "group_summary": m["addon"].get("group_summary"),
                 "added": None if opts is None else m["addon"]["option"] in opts,
                 "active": active,
             }
@@ -7116,7 +7119,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/addons":
             aid = str(payload.get("addon", ""))
+            switch = payload.get("switch")
             if (
+                isinstance(switch, list)
+                and len(switch) == 2
+                and all(
+                    isinstance(x, str) and ADDON_ID_RE.match(x) and x in manifests.addons(MANIFESTS) for x in switch
+                )
+            ):
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "addon-switch", "addon": switch[1], "replace": switch[0]})},
+                )
+            elif (
                 not ADDON_ID_RE.match(aid)
                 or aid not in manifests.addons(MANIFESTS)
                 or type(payload.get("on")) is not bool

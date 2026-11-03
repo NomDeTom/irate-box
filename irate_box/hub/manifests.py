@@ -323,6 +323,15 @@ def _check(m, where):
         need("consent" not in addon or isinstance(addon["consent"], str), "addon.consent: a string")
         need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
         need(
+            "group" not in addon
+            or (isinstance(addon["group"], str) and re.match(r"^[a-z0-9][a-z0-9-]{0,31}$", addon["group"])),
+            "addon.group: lower-case letters, digits and hyphens",
+        )
+        need(
+            "group" not in addon or (isinstance(addon.get("group_title"), str) and addon["group_title"].strip()),
+            "addon.group_title: the group's name",
+        )
+        need(
             "packages" not in addon
             or (
                 isinstance(addon["packages"], list)
@@ -518,7 +527,24 @@ def load(folder=None):
             raise ManifestError(f"{path.name}: Duplicate manifest ID {m['id']}. Each manifest needs its own ID")
         seen.add(m["id"])
         out.append(m)
-    return sorted(out, key=lambda m: (m["order"], m["id"]))
+    out = sorted(out, key=lambda m: (m["order"], m["id"]))
+    check_groups(out)
+    return out
+
+
+def check_groups(manifests):
+    """A group's members share one port and one add-on slot: never both installed, and a single line on /admin."""
+    seen = {}
+    for m in manifests:
+        addon = m.get("addon") or {}
+        group = addon.get("group")
+        if not group:
+            continue
+        option = addon.get("option")
+        port = (m.get("status") or {}).get("port")
+        if group in seen and (seen[group]["port"] != port or seen[group]["option"] == option):
+            raise ManifestError(f"add-on group {group}: its members must share a port and use different options")
+        seen[group] = {"port": port, "option": option}
 
 
 def _hub_pages():
@@ -762,6 +788,8 @@ def admin_apps(manifests):
                 "width": adm.get("width"),
                 "updates": bool(m.get("source")),
                 "addon": bool((m.get("addon") or {}).get("option")),
+                "group": (m.get("addon") or {}).get("group"),
+                "group_title": (m.get("addon") or {}).get("group_title"),
                 "href": tile.get("href") or (m.get("status") or {}).get("path"),
             }
         )

@@ -28,6 +28,9 @@
     "says": "IRC server. Anyone on the network can join. IRC has no accounts and no encryption. The server accepts at most 5 connections from one client address."
   },
   "addon": {
+    "group": "irc",
+    "group_title": "IRC chat",
+    "group_summary": "Choose one IRC server: ngIRCd (a few MB, any IRC app) or InspIRCd (heavier, adds the browser client at /gamja/).",
     "option": "--with-inspircd",
     "title": "IRC server (InspIRCd)",
     "summary": "A modular IRC server on TCP port 6667 with a #lobby channel, for chat in any IRC app or in this browser at /gamja/. The page /irc.html shows how to join. It uses a few MB of memory.",

@@ -4099,6 +4099,28 @@ def addon(req):
     option = spec["addon"]["option"]
     title = spec["addon"]["title"]
     opts = _install_options()
+    if on:
+        group = spec["addon"].get("group")
+        other = next(
+            (
+                x
+                for x in manifests.addons(MANIFESTS).values()
+                if x["id"] != aid
+                and (x.get("addon") or {}).get("group") == group
+                and group
+                and x["addon"]["option"] in opts
+            ),
+            None,
+        )
+        if other:
+            raise Refused(
+                M(
+                    "control.addon.group",
+                    "{installed} is installed: only one of this group can be installed at a time. Use Switch to replace it with {title}.",
+                    installed=other["addon"]["title"],
+                    title=title,
+                )
+            )
     if (option in opts) == on:
         raise Refused(
             M(
@@ -4128,6 +4150,47 @@ def addon(req):
     if on:
         return M("control.addon.added", "The add-on {title} is added.", title=title)
     return M("control.addon.removed", "The add-on {title} is removed.", title=title)
+
+
+def addon_switch(req):
+    """Replace one add-on of a group with another in one installer run: the old one removed and the new added."""
+    aid = str(req.get("addon") or "")
+    other_id = str(req.get("replace") or "")
+    specs = manifests.addons(MANIFESTS)
+    new, old = specs.get(aid), specs.get(other_id)
+    if not new or not old:
+        raise Refused(M("control.addon.unknown", "{addon} is not an add-on.", addon=aid or other_id))
+    group = (new.get("addon") or {}).get("group")
+    if not group or group != (old.get("addon") or {}).get("group"):
+        raise Refused(M("control.addon.group-mismatch", "These add-ons are not in the same group."))
+    opts = _install_options()
+    if old["addon"]["option"] not in opts:
+        raise Refused(
+            M("control.addon.already-removed", "The add-on {title} is already removed.", title=old["addon"]["title"])
+        )
+    if new["addon"]["option"] in opts:
+        raise Refused(
+            M("control.addon.already-added", "The add-on {title} is already added.", title=new["addon"]["title"])
+        )
+    args = [o for o in opts if o not in (new["addon"]["option"], old["addon"]["option"])]
+    args += [new["addon"]["option"], "--remove", old["addon"]["option"].removeprefix("--with-")]
+    shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    ADDON_SRC.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(CODE, ADDON_SRC, symlinks=True)
+    state = _read_update_state()
+    try:
+        seen = _run_install(ADDON_SRC, args, "addon", state.get("install_steps"))
+    finally:
+        shutil.rmtree(ADDON_SRC, ignore_errors=True)
+    if state:
+        state["install_steps"] = seen
+        _write_update_state(state)
+    return M(
+        "control.addon.switched",
+        "{old} is removed and {new} is added.",
+        old=old["addon"]["title"],
+        new=new["addon"]["title"],
+    )
 
 
 # --- the Updates doctor (one of three: docs/dev/doctors.md) --------------------------
@@ -8696,6 +8759,7 @@ ACTIONS = {
     "security-deep-audit": security_deep_audit,
     "security-fix": security_fix,
     "addon": addon,
+    "addon-switch": addon_switch,
     "tls-make": tls_make,
     "tls-renew": tls_renew,
     "tls-switch": tls_switch,
