@@ -5815,10 +5815,64 @@ def appstore_findings(now=None):
     if not cfg.get("enabled") or not holders:
         return out
     try:
-        every = int(json.loads((STATE / "library" / "sources.json").read_text())["policy"]["holders_every_hours"])
+        policy = json.loads((STATE / "library" / "sources.json").read_text())["policy"]
     except (OSError, ValueError, TypeError, KeyError):
+        policy = {}
+    try:
+        every = int(policy["holders_every_hours"])
+    except (TypeError, KeyError, ValueError):
         every = 24
     title = M("update.appstore.title", "App store")
+    from irate_box.library import holder
+
+    space = holder.space_state(STATE / "holds", STATE)  # the folder its files go to, not the state's
+    if space.get("known"):
+        free, reserve = space.get("free_mb", 0), int(policy.get("min_free_mb", 512))
+        if space.get("on_state"):
+            out.append(
+                finding(
+                    "appstore:space",
+                    title,
+                    "problem",
+                    M(
+                        "update.appstore.space.not-card",
+                        "The App store's files are on the box's state flash, not the card: its card folder is not mounted.",
+                    ),
+                    M(
+                        "update.appstore.space.not-card.why",
+                        "The card's folders are made at install. Without the mount, the App store writes where the box's state lives, "
+                        "which is small.",
+                    ),
+                    M(
+                        "update.appstore.space.not-card.fix",
+                        "Check the card is mounted at the App store's folder (install.sh makes the mount), then select Check now on App store.",
+                    ),
+                    go=GO_APPSTORE,
+                )
+            )
+        elif free < reserve:
+            out.append(
+                finding(
+                    "appstore:space",
+                    title,
+                    "warn",
+                    M(
+                        "update.appstore.space.low",
+                        "The App store's files have {free} MB free, less than the {reserve} MB the librarian leaves free.",
+                        free=free,
+                        reserve=reserve,
+                    ),
+                    M(
+                        "update.appstore.space.low.why",
+                        "A download stops before it leaves less than the reserve. The free space is read on the filesystem the files are written to.",
+                    ),
+                    M(
+                        "update.appstore.space.low.fix",
+                        "Free space on the card, raise the App store's space limit, or lower Leave free on App store.",
+                    ),
+                    go=GO_APPSTORE,
+                )
+            )
     for one in holders:
         hid = one["id"]
         name = one.get("title") or hid
