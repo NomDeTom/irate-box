@@ -222,23 +222,29 @@ def sync(check_only=False, log=print):
         wanted += chosen(rel, publisher, boards)
     prior = status().get("managed") or {}
     managed = {name: dict(entry) for name, entry in prior.items() if isinstance(entry, dict)}
+    now = time.time()
     for asset in wanted:
         managed[asset["name"]] = {
             "board": asset["board"],
             "publisher": asset["publisher"],
             "release": releases.get(asset["publisher"], ""),
+            "at": now,
         }
+    # Keep the newest `keep` per publisher and board, in one place: the file, its sidecar and the record of the rest
+    # go. A publisher not checked this run keeps everything, and a rescue image is never touched.
     keep = cfg["keep"]
-    kept_names = {asset["name"] for asset in wanted}
-    # Keep the newest `keep` per board and publisher; drop older names only while their publisher was checked.
     per_board = {}
     for name, entry in managed.items():
-        per_board.setdefault((entry.get("publisher"), entry.get("board")), []).append(name)
+        if entry.get("publisher") in checked:
+            per_board.setdefault((entry.get("publisher"), entry.get("board")), []).append((entry.get("at", 0), name))
     for names in per_board.values():
-        for old in names[:-keep]:
-            entry = managed.get(old) or {}
-            if entry.get("publisher") in checked and old not in kept_names and not RESCUE_RE.match(old):
-                managed.pop(old, None)
+        names.sort(reverse=True)
+        for _, old in names[keep:]:
+            if RESCUE_RE.match(old):
+                continue
+            (ROOT / old).unlink(missing_ok=True)
+            (ROOT / f"{old}.sha256").unlink(missing_ok=True)
+            managed.pop(old, None)
     kept, failed = [], list(errors)
     policy = librarian.load_config().get("policy") or {}
     min_free = int(policy.get("min_free_mb") or 512) * 2**20
@@ -266,16 +272,6 @@ def sync(check_only=False, log=print):
             kept.append(asset["name"])
         except (LibrarianError, OSError) as exc:
             failed.append(f"{asset['name']}: {exc}")
-    # Prune only what this module wrote, and only a publisher whose check went through this run; never the rescue.
-    if not check_only:
-        for name, entry in list(managed.items()):
-            if name in {asset["name"] for asset in wanted} or entry.get("publisher") not in checked:
-                continue
-            if RESCUE_RE.match(name):
-                continue
-            (ROOT / name).unlink(missing_ok=True)
-            (ROOT / f"{name}.sha256").unlink(missing_ok=True)
-            managed.pop(name, None)
     _publish(
         {
             "last_check": int(time.time()),

@@ -6,7 +6,6 @@ beside each, check-only, off, a changed release replacing the same board's image
 python3 tests/sim_rkimages.py"""
 
 import hashlib
-import json
 import os
 import sys
 import tempfile
@@ -91,7 +90,7 @@ contents = {
 
 def download(url, dest, auth=None, name=None, expected=0, resume=False):
     downloads.append(name)
-    Path(dest).write_bytes(contents[name])
+    Path(dest).write_bytes(contents.get(name, name.encode()))
 
 
 librarian._api, librarian._download = api, download
@@ -174,6 +173,29 @@ check(
     rkimages.status()["errors"],
 )
 librarian._free_bytes = free_real
+# keep 2 across three releases of one board: the two newest stay, the oldest file, sidecar and record go.
+for path in list(rkimages.ROOT.iterdir()):
+    path.unlink()
+rkimages.STATUS.unlink(missing_ok=True)
+rkimages.set_settings(enabled=True, mpwrd=True, armbian=False, keep=2)
+names = [
+    "mPWRD-OS_3_Luckfox-lyra-zero-w_trixie_minimal.img.xz",
+    "mPWRD-OS_4_Luckfox-lyra-zero-w_trixie_minimal.img.xz",
+    "mPWRD-OS_5_Luckfox-lyra-zero-w_trixie_minimal.img.xz",
+]
+for n in names:
+    MP["assets"] = [asset(n, n.encode())]
+    MP["tag_name"] = n.split("_")[1]
+    rkimages.sync(log=lambda *_: None)
+check(
+    "keep 2: the two newest stay, the oldest's file and sidecar go, and nothing unrecorded is left",
+    (rkimages.ROOT / names[1]).is_file()
+    and (rkimages.ROOT / names[2]).is_file()
+    and not (rkimages.ROOT / names[0]).exists()
+    and not (rkimages.ROOT / f"{names[0]}.sha256").exists()
+    and names[0] not in rkimages.status()["managed"],
+    (sorted(p.name for p in rkimages.ROOT.iterdir()), rkimages.status().get("managed")),
+)
 check(
     "  off: nothing checked or downloaded",
     not rkimages.set_settings(enabled=False)["enabled"] and rkimages.sync() == "off",
