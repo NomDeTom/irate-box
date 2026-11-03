@@ -5060,14 +5060,10 @@ def updates_doctor_findings():
     findings += kits_findings()
     findings += appstore_findings()
     findings += partswatch.findings()
-    # 11. The packages themselves: where they come from, Debian's own priorities, and the board's packages.
-    try:
-        simulated = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
-    except (OSError, subprocess.SubprocessError):
-        simulated = ""
+    # 11. The packages themselves: where they come from and Debian's own priorities. One simulation serves
+    # every check that reads what waits.
     findings += pkgorigins.origin_findings()
     findings += pkgorigins.priority_findings()
-    findings += pkgorigins.board_findings(simulated)
     return findings
 
 
@@ -5254,7 +5250,15 @@ def _hours_since(stamp, now):
     return (now - then.timestamp()) / 3600
 
 
-def addons_findings(now=None):
+def _simulated_upgrade():
+    """`apt-get -s upgrade`'s output, run once per doctor run: several checks read what waits."""
+    try:
+        return run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def addons_findings(now=None, simulated=None):
     """Each add-on source and each packaged add-on that is not fine, one finding each: a source's error,
     a source with no successful check for three intervals, a newer release under a policy that would
     install it, and a packaged add-on's waiting packages. One ok line when all are fine."""
@@ -5376,10 +5380,7 @@ def addons_findings(now=None):
                 )
             )
 
-    try:
-        simulated = run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
-    except (OSError, subprocess.SubprocessError):
-        simulated = ""
+    simulated = _simulated_upgrade() if simulated is None else simulated
     if simulated:
         pending = {p["package"]: p for p in security.pending_updates(simulated)}
         security_updates = set(security.pending_security(simulated))

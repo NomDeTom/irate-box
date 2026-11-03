@@ -167,32 +167,38 @@ try:
         pri.get("package-priority-important"),
     )
     check(
-        "standard missing: a warning, and a package for another architecture is not counted",
-        pri["package-priority-standard"]["status"] == "warn"
-        and pri["package-priority-standard"]["evidence"] == ["less"],
+        "standard missing: a note by default, with the setting named and a shell cure, and another architecture is not counted",
+        pri["package-priority-standard"]["status"] == "note"
+        and pri["package-priority-standard"]["evidence"] == ["less"]
+        and "priorities.missing.setting" in msg_ids(pri["package-priority-standard"])
+        and pri["package-priority-standard"]["commands"] == ["sudo apt install less"],
         pri.get("package-priority-standard"),
     )
+    check(
+        "the important cure names the System toolkit and the shell's command, not an Updates control",
+        "priorities.missing.fix-kit" in msg_ids(pri["package-priority-important"])
+        and pri["package-priority-important"]["commands"] == ["sudo apt install nftables"],
+        pri.get("package-priority-important"),
+    )
+    # The administrator's setting: all three warned about, standard becomes a warning too.
+    from irate_box.root import recommended
 
-    simulated = (
-        "Inst linux-image-vendor-rockchip (26.8.3 armhf [armbian]) []\n"
-        "Inst linux-u-boot-luckfox-lyra (2024.10 armhf [armbian]) []\n"
-        "Inst bash (5.2.37-2 armhf [debian]) []\n"
-    )
-    board = {f["id"]: f for f in pkgorigins.board_findings(simulated)}["board-packages"]
+    with mock.patch.object(recommended, "chosen", lambda: {"package-priorities": "standard"}):
+        all_three = {f["id"]: f for f in pkgorigins.priority_findings()}
     check(
-        "the board's packages: a warning for the kernel and bootloader waiting, with both warnings said",
-        board["status"] == "warn"
-        and msg_args(board, "board-packages.waiting") == {"n": 2}
-        and "board-packages.kernel" in msg_ids(board)
-        and "board-packages.bootloader" in msg_ids(board)
-        and any(e.startswith("kernel: linux-image-vendor-rockchip waits") for e in board["evidence"]),
-        board,
+        "with all three priorities chosen, standard is a warning",
+        all_three["package-priority-standard"]["status"] == "warn",
+        all_three["package-priority-standard"],
     )
-    clean = {f["id"]: f for f in pkgorigins.board_findings("")}["board-packages"]
+
     check(
-        "nothing waiting: ok, the installed board packages named",
-        clean["status"] == "ok" and any(e.startswith("kernel: linux-image") for e in clean["evidence"]),
-        clean,
+        "a look-alike host (evil-debian.org) is another repository",
+        pkgorigins._source_of("https://evil-debian.org/debian", "trixie/main")[0] == "other",
+    )
+    check(
+        "Debian Security comes from apt's suite, not a word in the path",
+        pkgorigins._source_of("https://deb.debian.org/debian", "trixie-security")[0] == "debian-security"
+        and pkgorigins._source_of("https://deb.debian.org/debian", "trixie/main/security")[0] == "debian",
     )
 finally:
     for p in patches:

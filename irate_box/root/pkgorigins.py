@@ -9,10 +9,8 @@ that repository's schedule, not Debian's, and a repository that stops is a packa
   - origins          each installed package's source, read with `apt-cache policy` once a day and kept in
                      control/package-origins.json, so a doctor run does not ask twice
   - priorities       Debian's required, important and standard packages that are not installed, streamed
-                     from `apt-cache dumpavail` (never held whole), with the System toolkit as the cure
-                     where it carries one
-  - board packages   the kernel, device tree, bootloader, board package and firmware: what is installed,
-                     and what waits for an update; a bootloader package does not flash itself
+                     from `apt-cache dumpavail` (never held whole), with the System toolkit and a shell's
+                     apt install as the cures, and which priorities warn as the administrator's setting
 
 Read only. Stdlib only.
 """
@@ -45,15 +43,6 @@ SOURCES = {
     "dl.cloudsmith.io": "Cloudsmith (Caddy)",
 }
 
-# The board's own packages, by what they are. The kernel's headers are left out: they are a build aid,
-# not something the next boot runs.
-BOARD_PACKAGES = (
-    ("kernel", re.compile(r"^linux-image-")),
-    ("device tree", re.compile(r"^linux-dtb-")),
-    ("bootloader", re.compile(r"^(?:linux-u-boot|u-boot)")),
-    ("board package", re.compile(r"^armbian-bsp")),
-    ("firmware", re.compile(r"^(?:armbian-firmware|linux-firmware|firmware-)")),
-)
 PRIORITIES = ("required", "important", "standard")
 
 
@@ -95,16 +84,23 @@ def _architecture():
         return "?"
 
 
-def _source_of(url):
-    """(source, origin) for an apt URL: Debian, Debian Security, or the repository by name."""
+DEBIAN_ARCHIVE = {"deb.debian.org", "ftp.debian.org", "http.debian.net"}
+DEBIAN_SECURITY = {"security.debian.org"}
+
+
+def _source_of(url, suite=""):
+    """(source, origin) for an apt URL: Debian, Debian Security, or the repository by name. The host is matched
+    exactly (a look-alike such as evil-debian.org is another repository), and security comes from apt's own suite
+    name, not a word in the path."""
     from urllib.parse import urlsplit
 
-    host = urlsplit(url).hostname or url
-    if host == "security.debian.org" or (host.endswith("debian.org") and "security" in url):
-        return "debian-security", SOURCES.get(host, host)
-    if host == "deb.debian.org" or host in ("ftp.debian.org", "http.debian.net"):
+    host = urlsplit(url).hostname or ""
+    archive = suite.split("/", 1)[0]
+    if host in DEBIAN_SECURITY or (host in DEBIAN_ARCHIVE and archive.endswith("-security")):
+        return "debian-security", SOURCES.get(host, host or url)
+    if host in DEBIAN_ARCHIVE:
         return "debian", SOURCES[host]
-    return "other", SOURCES.get(host, host)
+    return "other", SOURCES.get(host, host or url)
 
 
 def _policy(names):
@@ -141,7 +137,7 @@ def _policy(names):
                     if len(fields) >= 2 and fields[0].isdigit() and "://" in after:
                         url = next((f for f in fields if "://" in f), "")
                         suite = re.sub(r"\s+Packages$", "", after.split(url, 1)[1]).strip()
-                        source, origin = _source_of(url)
+                        source, origin = _source_of(url, suite)
                         out[package] = {"source": source, "origin": origin, "suite": suite, "url": url}
                         break
                 break
@@ -328,6 +324,20 @@ def available_priorities(lines, arch="?"):
     return {priority: sorted(names) for priority, names in found.items() if names}
 
 
+PRIORITY_CHOICES = ("required", "important", "standard")
+
+
+def _warned_priorities():
+    """Which of Debian's priorities the doctor warns about: the administrator's setting, important and above."""
+    from irate_box.root import recommended
+
+    value = recommended.chosen().get("package-priorities", "important")
+    if value not in PRIORITY_CHOICES:
+        value = "important"
+    order = {"required": 0, "important": 1, "standard": 2}
+    return {p for p in PRIORITY_CHOICES if order[p] <= order[value]}
+
+
 def _missing_priorities():
     """({priority: [missing names]}, None) or (None, why it could not be read)."""
     try:
@@ -358,12 +368,13 @@ def priority_findings():
         ]
     out = []
     kit = _system_kit()
+    warned = _warned_priorities()
     for priority in PRIORITIES:
         names = missing.get(priority)
         if not names:
             continue
         in_kit = [n for n in names if n in kit]
-        status = "problem" if priority == "required" else "warn"
+        status = "problem" if priority == "required" else "warn" if priority in warned else "note"
         said = {
             "required": M(
                 "priorities.missing.required",
@@ -404,21 +415,27 @@ def priority_findings():
                 (
                     M(
                         "priorities.missing.fix-kit",
-                        "Install the System toolkit on Toolkits. It carries {names}.",
+                        "Install the System toolkit on Toolkits for {names}. At a shell, install the rest with the "
+                        "command here.",
                         names=", ".join(in_kit),
                     )
-                    if in_kit and len(in_kit) == len(names)
+                    if in_kit
                     else M(
-                        "priorities.missing.fix",
-                        "Install the ones you need with apt on Updates. The System toolkit carries {names}.",
-                        names=", ".join(in_kit) if in_kit else "none of them",
+                        "priorities.missing.fix-shell",
+                        "At a shell, install the ones you need with the command here.",
                     )
                 ),
                 notes=(
-                    [M("priorities.missing.rest", "The others are not in the System toolkit.")]
-                    if in_kit and len(in_kit) < len(names)
+                    [
+                        M(
+                            "priorities.missing.setting",
+                            "Which of Debian's priorities are warned about is set on the Box doctor's page.",
+                        )
+                    ]
+                    if priority == "standard"
                     else []
                 ),
+                commands=[f"sudo apt install {' '.join(names[:20])}"],
                 evidence=names,
             )
         )
@@ -432,118 +449,3 @@ def priority_findings():
             )
         ]
     return out
-
-
-def _board_kind(name):
-    for kind, pattern in BOARD_PACKAGES:
-        if pattern.match(name):
-            return kind
-    return None
-
-
-def board_packages(simulated=""):
-    """{kind: {installed: [...], waiting: [{package, version}]}} for the board's own packages."""
-    try:
-        have = installed()
-    except OSError:
-        return {}
-    out = {}
-    for name in have:
-        kind = _board_kind(name)
-        if kind:
-            out.setdefault(kind, {"installed": [], "waiting": []})["installed"].append(name)
-    for line in (simulated or "").splitlines():
-        m = re.match(r"^Inst (\S+) .*\(([^)]*)\)", line)
-        if not m:
-            continue
-        name, version = m[1], m[2].partition(" ")[0]
-        kind = _board_kind(name)
-        if kind:
-            out.setdefault(kind, {"installed": [], "waiting": []})["waiting"].append(
-                {"package": name, "version": version}
-            )
-    return out
-
-
-def board_findings(simulated=""):
-    """The board's own packages: what runs, and what waits for an update. A waiting bootloader is said for what
-    it does not do (it does not flash itself), and a waiting kernel for what it can cost (one kernel, no fallback)."""
-    found = board_packages(simulated)
-    title = M("board-packages.title", "The board's packages")
-    if not found:
-        return [
-            finding(
-                "board-packages",
-                title,
-                "ok",
-                M("board-packages.none", "This box runs none of a board's own packages: it is a plain Debian image."),
-            )
-        ]
-    installed_count = sum(len(v["installed"]) for v in found.values())
-    waiting = [(kind, item) for kind, v in found.items() for item in v["waiting"]]
-    evidence = [f"{kind}: {name}" for kind, v in sorted(found.items()) for name in v["installed"]]
-    evidence += [f"{kind}: {item['package']} waits for {item['version']}" for kind, item in waiting]
-    notes = []
-    if any(kind == "bootloader" for kind, _ in waiting):
-        notes.append(
-            M(
-                "board-packages.bootloader",
-                "A bootloader package does not flash itself: installing its update does nothing unless the board's "
-                "maker's tool writes it.",
-            )
-        )
-    if any(kind == "kernel" for kind, _ in waiting):
-        notes.append(
-            M(
-                "board-packages.kernel",
-                "A kernel update swaps the only kernel in /boot. If the new one does not boot, the box needs its card "
-                "rewritten.",
-            )
-        )
-    if not waiting:
-        return [
-            finding(
-                "board-packages",
-                title,
-                "ok",
-                M(
-                    "board-packages.ok",
-                    {
-                        "one": "{n} board package is installed, and none waits for an update.",
-                        "other": "{n} board packages are installed, and none waits for an update.",
-                    },
-                    n=installed_count,
-                ),
-                evidence=evidence,
-            )
-        ]
-    return [
-        finding(
-            "board-packages",
-            title,
-            "warn",
-            M(
-                "board-packages.waiting",
-                {
-                    "one": "{n} of the board's own packages waits for an update.",
-                    "other": "{n} of the board's own packages wait for an update.",
-                },
-                n=len(waiting),
-            ),
-            M(
-                "board-packages.waiting.why",
-                "These come from the board's maker (Armbian's repository, or the image's own), not Debian. They are "
-                "the kernel, device tree, bootloader, board package and firmware the box runs.",
-            ),
-            M(
-                "board-packages.waiting.fix",
-                "Keep them as the image made them unless a fix is needed. Read the maker's notes for the waiting "
-                "version first, then install it on Updates.",
-            ),
-            notes=[
-                *notes,
-                M("board-packages.known-fix", "No fix this box knows of is recorded for the waiting versions."),
-            ],
-            evidence=evidence,
-        )
-    ]
