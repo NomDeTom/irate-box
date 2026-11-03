@@ -3733,6 +3733,9 @@ def addons_snapshot():
             {
                 "id": aid,
                 **{k: m["addon"].get(k) for k in ("title", "summary", "consent", "needs")},
+                "group": m["addon"].get("group"),
+                "group_title": m["addon"].get("group_title"),
+                "group_summary": m["addon"].get("group_summary"),
                 "added": None if opts is None else m["addon"]["option"] in opts,
                 "active": active,
             }
