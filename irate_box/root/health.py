@@ -3889,6 +3889,7 @@ def check_card_writes(now=None):
     out += _service_writes_findings(summary, found[0] if found else None)
     out += _flash_findings()
     out += _recommended_findings()
+    out += _podcast_findings()
     for conf in sorted((SYSTEMD_ETC / "journald.conf.d").glob("*.conf")):
         try:
             text = conf.read_text(errors="replace")
@@ -4602,6 +4603,44 @@ def _nand_crc_errors():
     UBIFS refused: chk_data_crc must be on for these)."""
     said = run("journalctl", "-k", "-b", "-q", "--no-pager", "-o", "cat", "--grep", "UBIFS", timeout=30).stdout
     return [line.strip()[:200] for line in said.splitlines() if "CRC" in line][-3:]
+
+
+def _podcast_findings():
+    """What the podcasts' own check recorded and the librarian cannot act on: a failing feed, episodes
+    that keep failing, the cap nearly full or filled only by starred episodes. Read only; nothing runs."""
+    try:
+        from irate_box.library import podcast
+    except Exception:  # noqa: BLE001 - an old checkout has no podcast module
+        return []
+    titles = {
+        "podcast-feed-error": M("podcast-doctor.feed.title", "A podcast feed keeps failing"),
+        "podcast-episode-errors": M("podcast-doctor.episodes.title", "Podcast episodes keep failing to download"),
+        "podcast-space": M("podcast-doctor.space.title", "The podcasts are near their space cap"),
+        "podcast-starred-cap": M("podcast-doctor.starred.title", "Only starred episodes fill the podcasts' cap"),
+    }
+    out = []
+    try:
+        for fid, _title, status, summary in podcast.findings():
+            out.append(
+                finding(
+                    fid,
+                    titles.get(fid) or M("podcast-doctor.general.title", "Podcasts"),
+                    status,
+                    summary,
+                    M(
+                        "podcast-doctor.why",
+                        "A podcast feed or the space its episodes take needs the administrator's attention.",
+                    ),
+                    M(
+                        "podcast-doctor.fix",
+                        "Open the Podcasts part of the Library page: check the feed's address, the settings, "
+                        "or remove episodes you no longer need.",
+                    ),
+                )
+            )
+    except Exception:  # noqa: BLE001 - the doctor never fails on a state file it cannot read
+        return out
+    return out
 
 
 def _flash_findings():

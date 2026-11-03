@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>A Test Podcast</title>
+    <itunes:image href="https://example.org/cover.jpg"/>
+    <link rel="self" href="https://example.org/feed-new.xml"/>
+    <item>
+      <title>Episode One</title>
+      <guid>ep-1</guid>
+      <pubDate>Mon, 02 Nov 2026 10:00:00 +0000</pubDate>
+      <itunes:duration>01:02:03</itunes:duration>
+      <enclosure url="https://example.org/one.mp3" length="1024" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>Episode Two</title>
+      <guid>ep-2</guid>
+      <pubDate>Sun, 01 Nov 2026 10:00:00 +0000</pubDate>
+      <enclosure url="https://example.org/two.mp3" length="2048" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>Episode Three</title>
+      <guid>ep-3</guid>
+      <pubDate>Sat, 31 Oct 2026 10:00:00 +0000</pubDate>
+      <enclosure url="https://example.org/three.m4a" length="4096" type="audio/mp4"/>
+    </item>
+    <item>
+      <title>A Video</title>
+      <guid>ep-video</guid>
+      <pubDate>Fri, 30 Oct 2026 10:00:00 +0000</pubDate>
+      <enclosure url="https://example.org/video.mp4" length="8192" type="video/mp4"/>
+    </item>
+    <item>
+      <title>A Document</title>
+      <guid>ep-doc</guid>
+      <pubDate>Thu, 29 Oct 2026 10:00:00 +0000</pubDate>
+      <enclosure url="https://example.org/notes.pdf" length="512" type="application/pdf"/>
+    </item>
+  </channel>
+</rss>

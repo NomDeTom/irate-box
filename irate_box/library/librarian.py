@@ -123,6 +123,8 @@ DEFAULT_POLICY = {
     "holders_every_hours": 24,
     "holders_auto": 1,
     "kits_every_hours": 24,
+    "podcasts_every_hours": 12,
+    "podcasts_auto": 1,
 }
 POLICY_MAX = {
     "auto_install": 2,
@@ -143,6 +145,8 @@ SURFACES = {
     "holders_every_hours": ("check_every_hours", None),
     "holders_auto": ("auto_install", 1),
     "kits_every_hours": ("check_every_hours", None),
+    "podcasts_every_hours": ("check_every_hours", None),
+    "podcasts_auto": ("auto_install", 1),
 }
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -2187,6 +2191,20 @@ def update(names=None, scheduled=False, download=True, log=print, mode=None):
                 except (LibrarianError, OSError) as exc:
                     results["rk-images"] = f"error: {exc}"
                     log(f"rk-images: error: {exc}")
+        # Podcast subscriptions (podcast.py), likewise: its own settings decide the feeds.
+        if not names or "podcasts" in names:
+            from irate_box.library import podcast
+
+            if podcast.active():
+                try:
+                    results["podcasts"] = podcast.sync(
+                        check_only=(not policy["podcasts_auto"]) if scheduled else (mode == "check"),
+                        log=log,
+                        scheduled=scheduled,
+                    )
+                except (LibrarianError, OSError) as exc:
+                    results["podcasts"] = f"error: {exc}"
+                log(f"podcasts: {results['podcasts']}")
         # Mirrored git repositories (mirrors.py), likewise.
         if not names or "mirrors" in names:
             from irate_box.library import mirrors
@@ -2517,6 +2535,8 @@ def main(argv=None):
         "holders-every-hours",
         "holders-auto",
         "kits-every-hours",
+        "podcasts-every-hours",
+        "podcasts-auto",
     ):
         pol.add_argument(f"--{k}", type=int)
     sub.add_parser("hub-update")
@@ -2529,6 +2549,8 @@ def main(argv=None):
     af.add_argument("app")
     fw = sub.add_parser("firmware")
     fw.add_argument("--check", action="store_true")
+    pd = sub.add_parser("podcast")
+    pd.add_argument("--check", action="store_true")
     hd = sub.add_parser("holders")
     hd.add_argument("--check", action="store_true")
     hd.add_argument(
@@ -2587,6 +2609,11 @@ def main(argv=None):
 
             with Lock():
                 print(firmware.sync(check_only=args.check))
+        elif args.cmd == "podcast":
+            from irate_box.library import podcast
+
+            with Lock():
+                print(json.dumps(podcast.sync(check_only=args.check), indent=2))
         elif args.cmd == "holders":
             if args.survey:
                 from irate_box.library import holdsurvey
