@@ -231,6 +231,7 @@ from irate_box.root import (
     share,
     signing,
     usbstick,
+    librarydrive,
 )
 from irate_box.root.nginx_front import locked
 
@@ -8795,6 +8796,8 @@ ACTIONS = {
     "tls-import": tls_import,
     "tls-box": tls_box,
     "tls-admin-only": tls_admin_only,
+    "library-drive": lambda req: librarydrive.choose(req),
+    "library-drive-eject": lambda req: librarydrive.eject(req),
     "usb-scan": usb_scan,
     "usb-filesystems": usb_filesystems,
     "usb-import": usb_import,

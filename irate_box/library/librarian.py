@@ -96,6 +96,34 @@ LOCK_FILE = LIB_DIR / "lock"
 PROGRESS_FILE = LIB_DIR / "progress.json"  # the download in flight, for /admin
 LIBRARY_XML = ZIM_DIR / "library.xml"
 
+
+def book_home(name=None):
+    """Where a book is written now: the card, the library drive's zim/ folder, or None when the
+    drive is chosen and not plugged in (the librarian then skips it, never writing to the card)."""
+    from irate_box.hub import librarydrive
+
+    return librarydrive.place("books", ZIM_DIR)
+
+
+def book_dirs():
+    """Every folder books may be in now: the card always, and the drive when it is there."""
+    home = book_home()
+    return [ZIM_DIR] if home is None or home == ZIM_DIR else [ZIM_DIR, home]
+
+
+def current_book(name):
+    for folder in book_dirs():
+        path = folder / f"{name}.zim"
+        if path.exists():
+            return path
+    return None
+
+
+def archive_of(book):
+    """A book's archive beside the book, on its own filesystem: a hard link cannot cross them."""
+    return ARCHIVE_DIR if Path(book).parent == ZIM_DIR else Path(book).parent / ".archive"
+
+
 TYPES = ("release", "actions", "nightly-link", "url", "kiwix")
 DEFAULT_POLICY = {
     "keep_old": 1,  # archived previous versions per book; 0 deletes them
@@ -923,7 +951,9 @@ def remove_source(name, delete_book=False):
     confine.under(APP_STAGING, f"{name}.zip").unlink(missing_ok=True)
     if delete_book and name not in APPS:
         with Lock():
-            confine.under(ZIM_DIR, f"{name}.zim").unlink(missing_ok=True)
+            for folder in book_dirs():
+                confine.under(folder, f"{name}.zim").unlink(missing_ok=True)
+                shutil.rmtree(confine.under(folder / ".archive", name), ignore_errors=True)
             shutil.rmtree(confine.under(ARCHIVE_DIR, name), ignore_errors=True)
             library_drop(f"{name}.zim")
 
@@ -1781,7 +1811,7 @@ def rebuild_library():
     unreadable ones left out (returned). kiwix-serve's --monitorLibrary notices the new file."""
     new = ZIM_DIR / "library.xml.new"
     new.unlink(missing_ok=True)
-    zims = sorted(ZIM_DIR.glob("*.zim"))
+    zims = sorted(path for folder in book_dirs() for path in folder.glob("*.zim"))
     left = []
     for i in range(0, len(zims), KIWIX_BATCH):
         left += _kiwix_add(new, zims[i : i + KIWIX_BATCH])
@@ -1839,8 +1869,8 @@ def library_drop(filename):
     return []
 
 
-def _prune_archive(name, keep):
-    folder = ARCHIVE_DIR / name
+def _prune_archive(name, keep, folder=None):
+    folder = folder or (ARCHIVE_DIR / name)
     if not folder.is_dir():
         return []
     old = sorted(folder.glob("*.zim"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -1852,11 +1882,16 @@ def _prune_archive(name, keep):
 def staged_book(name):
     """A fetched version waiting to be swapped in: beside the book, on the same filesystem
     for an atomic rename, and not named *.zim, so Kiwix never lists it."""
-    return confine.under(ZIM_DIR, f".{name}.zim.fetched")
+    home = book_home(name)
+    if home is None:
+        from irate_box.hub import librarydrive
+
+        raise LibrarianError(librarydrive.said_drive_missing("books"))
+    return confine.under(home, f".{name}.zim.fetched")
 
 
 def books_bytes():
-    return sum(p.stat().st_size for p in ZIM_DIR.glob("*.zim")) if ZIM_DIR.is_dir() else 0
+    return sum(p.stat().st_size for folder in book_dirs() for p in folder.glob("*.zim"))
 
 
 def over_budget(name, size, policy):
@@ -1865,11 +1900,13 @@ def over_budget(name, size, policy):
     budget = policy.get("books_budget_mb", 0) << 20
     if not budget or not size:
         return None
-    current = ZIM_DIR / f"{name}.zim"
-    after = books_bytes() - (current.stat().st_size if current.exists() else 0) + size
+    current = current_book(name)
+    after = books_bytes() - (current.stat().st_size if current and current.exists() else 0) + size
     if after <= budget:
         return None
-    largest = sorted(ZIM_DIR.glob("*.zim"), key=lambda p: p.stat().st_size, reverse=True)[:3]
+    largest = sorted(
+        (p for folder in book_dirs() for p in folder.glob("*.zim")), key=lambda p: p.stat().st_size, reverse=True
+    )[:3]
     return M(
         "library.book.over-limit",
         "Book storage limit exceeded. With this book, the books would use {after} MB of the "
@@ -1886,8 +1923,13 @@ def over_budget(name, size, policy):
 def fetch_book(src, cand, policy, status_entry):
     """Download cand and check it into staged_book(); readers see no change until install."""
     name = src["name"]
+    home = book_home(name)
+    if home is None:
+        from irate_box.hub import librarydrive
+
+        raise LibrarianError(librarydrive.said_drive_missing("books"))
     need = cand["size"] * (2 if cand["zip"] else 1) + policy["min_free_mb"] * 2**20
-    free = _free_bytes(ZIM_DIR)
+    free = _free_bytes(home)
     if cand["size"] and free < need:
         raise LibrarianError(
             M(
@@ -1902,10 +1944,10 @@ def fetch_book(src, cand, policy, status_entry):
         raise LibrarianError(over)
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
-    ZIM_DIR.mkdir(parents=True, exist_ok=True)
+    home.mkdir(parents=True, exist_ok=True)
     part = TMP_DIR / f"{name}.download"
-    zim_tmp = ZIM_DIR / f".{name}.zim.new"
-    archived = ARCHIVE_DIR / name / f"{_safe(cand['version'])}.zim"
+    zim_tmp = home / f".{name}.zim.new"
+    archived = archive_of(home / f"{name}.zim") / name / f"{_safe(cand['version'])}.zim"
     try:
         if archived.exists():
             # Rolled back earlier, now rolling forward: the version is already on the card.
@@ -1941,12 +1983,13 @@ def install(src, cand, policy, status_entry):
     if not _fetched(name, cand, status_entry):
         fetch_book(src, cand, policy, status_entry)
     staged = staged_book(name)
-    archived = ARCHIVE_DIR / name / f"{_safe(cand['version'])}.zim"
+    home = book_home(name) or ZIM_DIR
+    archived = archive_of(home / f"{name}.zim") / name / f"{_safe(cand['version'])}.zim"
     try:
-        book = ZIM_DIR / f"{name}.zim"
+        book = home / f"{name}.zim"
         current = status_entry.get("current", {}).get("version")
         if book.exists() and policy["keep_old"] > 0:
-            folder = ARCHIVE_DIR / name
+            folder = archive_of(book) / name
             folder.mkdir(parents=True, exist_ok=True)
             label = _safe(current or f"untracked-{int(book.stat().st_mtime)}")
             target = folder / f"{label}.zim"
@@ -1959,7 +2002,7 @@ def install(src, cand, policy, status_entry):
         status_entry.pop("fetched", None)
 
     library_put(book)
-    archived = _prune_archive(name, policy["keep_old"])
+    archived = _prune_archive(name, policy["keep_old"], archive_of(book) / name)
     status_entry["current"] = {
         "version": cand["version"],
         "label": cand["label"],
@@ -1977,7 +2020,8 @@ def rollback(name, version=None):
         if APPS.get(name, {}).get("local"):
             return rollback_local(name)
         return "queued: " + _queue_root({"action": "app-rollback", "app": name})
-    folder = ARCHIVE_DIR / name
+    home = book_home(name) or ZIM_DIR
+    folder = archive_of(home / f"{name}.zim") / name
     choices = sorted(folder.glob("*.zim"), key=lambda p: p.stat().st_mtime, reverse=True)
     if version:
         choices = [p for p in choices if p.stem == _safe(version)]
@@ -1996,13 +2040,13 @@ def rollback(name, version=None):
     with Lock():
         status = load_status()
         entry = status.setdefault(name, {})
-        book = ZIM_DIR / f"{name}.zim"
+        book = home / f"{name}.zim"
         current = entry.get("current", {}).get("version")
         if book.exists() and current:
             keep = folder / f"{_safe(current)}.zim"
             keep.unlink(missing_ok=True)
             os.link(book, keep)
-        tmp = ZIM_DIR / f".{name}.zim.new"
+        tmp = home / f".{name}.zim.new"
         shutil.copyfile(pick, tmp)
         try:
             _check_zim(tmp, archived=pick.stem)
@@ -2018,7 +2062,7 @@ def rollback(name, version=None):
             "size": book.stat().st_size,
             "installed": now_iso(),
         }
-        entry["archive"] = _prune_archive(name, max(load_config()["policy"]["keep_old"], 1))
+        entry["archive"] = _prune_archive(name, max(load_config()["policy"]["keep_old"], 1), folder)
         save_status(status)
         return pick.stem
 
@@ -2042,7 +2086,11 @@ def _due(entry, hours):
 def update_book(src, cand, entry, mode, policy, log):
     """A book source's part of update(), as update_app() is an app's."""
     name = src["name"]
-    if entry.get("current", {}).get("version") == cand["version"] and (ZIM_DIR / f"{name}.zim").exists():
+    from irate_box.hub import librarydrive
+
+    if librarydrive.drive_missing("books"):
+        return "waiting: the library drive is not plugged in"
+    if entry.get("current", {}).get("version") == cand["version"] and current_book(name) is not None:
         entry.pop("fetched", None)
         staged_book(name).unlink(missing_ok=True)
         return f"up to date: {cand['label']}"
@@ -2373,7 +2421,9 @@ def snapshot():
         "hub_update": _hub_update_state(),
         "github": rate(),
         "pace": {k: v for k, v in pace().items() if k != "hits"} | {"left": pace_left()},
-        "free_mb": _free_bytes(ZIM_DIR) >> 20 if ZIM_DIR.exists() else None,
+        "free_mb": min((_free_bytes(folder) for folder in book_dirs() if folder.exists()), default=None) >> 20
+        if any(folder.exists() for folder in book_dirs())
+        else None,
     }
 
 
@@ -2415,7 +2465,7 @@ def book_rows():
     cfg = load_config()
     status = load_status()
     sources = {s["name"]: s for s in cfg["sources"] if s.get("kind") != "app"}
-    files = {p.stem: p for p in ZIM_DIR.glob("*.zim")} if ZIM_DIR.is_dir() else {}
+    files = {p.stem: p for folder in book_dirs() for p in folder.glob("*.zim")}
     rows = []
     for name in sorted(set(files) | set(sources)):
         f = files.get(name)
@@ -2551,6 +2601,7 @@ def main(argv=None):
     fw.add_argument("--check", action="store_true")
     pd = sub.add_parser("podcast")
     pd.add_argument("--check", action="store_true")
+    sub.add_parser("library-lock-wait")
     hd = sub.add_parser("holders")
     hd.add_argument("--check", action="store_true")
     hd.add_argument(
@@ -2614,6 +2665,10 @@ def main(argv=None):
 
             with Lock():
                 print(json.dumps(podcast.sync(check_only=args.check), indent=2))
+        elif args.cmd == "library-lock-wait":
+            # Root's eject waits for a download in flight (its own lock) before unmounting.
+            with Lock():
+                print("free")
         elif args.cmd == "holders":
             if args.survey:
                 from irate_box.library import holdsurvey
