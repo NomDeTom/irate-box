@@ -129,6 +129,51 @@ check(
     and (rkimages.ROOT / "mPWRD-OS_1_Luckfox-lyra-zero-w_trixie_minimal.img.xz").read_bytes() == b"zero2",
     downloads,
 )
+# An owner's image and the rescue image survive a sync; a publisher whose check fails keeps its images.
+owner = rkimages.ROOT / "own.img"
+rescue = rkimages.ROOT / "alpine-rescue.img"
+for path in (owner, rescue):
+    path.write_bytes(b"x")
+    (rkimages.ROOT / f"{path.name}.sha256").write_text("0" * 64 + f"  {path.name}\n")
+downloads.clear()
+rkimages.sync(log=lambda *_: None)
+check(
+    "an owner's image and the Alpine rescue survive, with their sidecars",
+    owner.is_file()
+    and (rkimages.ROOT / "own.img.sha256").is_file()
+    and rescue.is_file()
+    and (rkimages.ROOT / "alpine-rescue.img.sha256").is_file(),
+    downloads,
+)
+api_real = librarian._api
+
+
+def api_mpwrd_down(path, auth=None):
+    if "mPWRD-OS" in path:
+        raise librarian.LibrarianError("down")
+    return AR
+
+
+librarian._api = api_mpwrd_down
+downloads.clear()
+rkimages.sync(log=lambda *_: None)
+check(
+    "a publisher's check failing keeps its earlier images",
+    (rkimages.ROOT / "mPWRD-OS_1_Luckfox-lyra-zero-w_trixie_minimal.img.xz").is_file(),
+    downloads,
+)
+librarian._api = api_real
+free_real = librarian._free_bytes
+(rkimages.ROOT / "Armbian_2_Luckfox-lyra-plus_trixie_vendor_6.1_minimal.img.xz").unlink()
+(rkimages.ROOT / "Armbian_2_Luckfox-lyra-plus_trixie_vendor_6.1_minimal.img.xz.sha256").unlink()
+librarian._free_bytes = lambda path: 1
+line = rkimages.sync(log=lambda *_: None)
+check(
+    "no room for an image: said, and nothing written",
+    any("not enough space" in e for e in rkimages.status()["errors"]),
+    rkimages.status()["errors"],
+)
+librarian._free_bytes = free_real
 check(
     "  off: nothing checked or downloaded",
     not rkimages.set_settings(enabled=False)["enabled"] and rkimages.sync() == "off",

@@ -29,6 +29,7 @@ import re
 import time
 from pathlib import Path
 
+from irate_box.hub import rkusb
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
@@ -49,6 +50,7 @@ DEFAULTS = {
     "keep": 1,
 }
 IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?$")
+RESCUE_RE = rkusb.RESCUE_RE
 DIGEST_RE = re.compile(r"^sha256:([0-9a-f]{64})$", re.IGNORECASE)
 BOARD_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -205,24 +207,41 @@ def sync(check_only=False, log=print):
     if not cfg["enabled"]:
         return "off"
     ROOT.mkdir(parents=True, exist_ok=True)
-    wanted, seen, errors = [], {}, []
-    if cfg["mpwrd"]:
+    wanted, releases, checked, errors = [], {}, set(), []
+    boards = cfg["armbian_boards"]
+    for publisher, repo in (("mpwrd", MPWRD), ("armbian", ARMBIA)):
+        if not cfg[publisher]:
+            continue
         try:
-            rel = _release(MPWRD)
-            got = chosen(rel, "mpwrd", [b for b in LYRA if b in cfg["armbian_boards"] or b in LYRA])
-            wanted += got
-            seen["mpwrd"] = rel.get("tag_name") or ""
+            rel = _release(repo)
         except (LibrarianError, OSError) as exc:
-            errors.append(f"mPWRD-OS: {exc}")
-    if cfg["armbian"]:
-        try:
-            rel = _release(ARMBIA)
-            got = chosen(rel, "armbian", cfg["armbian_boards"])
-            wanted += got
-            seen["armbian"] = rel.get("tag_name") or ""
-        except (LibrarianError, OSError) as exc:
-            errors.append(f"Armbian: {exc}")
+            errors.append(f"{publisher}: {exc}")
+            continue
+        checked.add(publisher)
+        releases[publisher] = str(rel.get("tag_name") or "")
+        wanted += chosen(rel, publisher, boards)
+    prior = status().get("managed") or {}
+    managed = {name: dict(entry) for name, entry in prior.items() if isinstance(entry, dict)}
+    for asset in wanted:
+        managed[asset["name"]] = {
+            "board": asset["board"],
+            "publisher": asset["publisher"],
+            "release": releases.get(asset["publisher"], ""),
+        }
+    keep = cfg["keep"]
+    kept_names = {asset["name"] for asset in wanted}
+    # Keep the newest `keep` per board and publisher; drop older names only while their publisher was checked.
+    per_board = {}
+    for name, entry in managed.items():
+        per_board.setdefault((entry.get("publisher"), entry.get("board")), []).append(name)
+    for names in per_board.values():
+        for old in names[:-keep]:
+            entry = managed.get(old) or {}
+            if entry.get("publisher") in checked and old not in kept_names and not RESCUE_RE.match(old):
+                managed.pop(old, None)
     kept, failed = [], list(errors)
+    policy = librarian.load_config().get("policy") or {}
+    min_free = int(policy.get("min_free_mb") or 512) * 2**20
     for asset in wanted:
         side = ROOT / f"{asset['name']}.sha256"
         try:
@@ -235,28 +254,34 @@ def sync(check_only=False, log=print):
         if check_only:
             kept.append(asset["name"])
             continue
+        free = librarian._free_bytes(ROOT)
+        if asset["size"] and free < asset["size"] + min_free:
+            failed.append(
+                f"{asset['name']}: not enough space for {asset['name']} "
+                f"({free >> 20} MB free, {asset['size'] >> 20} MB needed)"
+            )
+            continue
         try:
             _download(asset, log)
             kept.append(asset["name"])
         except (LibrarianError, OSError) as exc:
             failed.append(f"{asset['name']}: {exc}")
-    # Keep `keep` newest images for each board, and only the ones this module manages; other files are the owner's.
-    by_board = {}
-    for asset in wanted:
-        by_board.setdefault(asset["board"], []).append(asset["name"])
-    managed = {a["name"] + ".sha256" for a in wanted}
+    # Prune only what this module wrote, and only a publisher whose check went through this run; never the rescue.
     if not check_only:
-        for image in ROOT.glob("*.img*"):
-            if image.name.endswith(".sha256") or image.name in {a["name"] for a in wanted}:
+        for name, entry in list(managed.items()):
+            if name in {asset["name"] for asset in wanted} or entry.get("publisher") not in checked:
                 continue
-            if (ROOT / f"{image.name}.sha256").is_file():
-                image.unlink(missing_ok=True)
-                (ROOT / f"{image.name}.sha256").unlink(missing_ok=True)
+            if RESCUE_RE.match(name):
+                continue
+            (ROOT / name).unlink(missing_ok=True)
+            (ROOT / f"{name}.sha256").unlink(missing_ok=True)
+            managed.pop(name, None)
     _publish(
         {
             "last_check": int(time.time()),
-            "releases": seen,
+            "releases": releases,
             "images": kept,
+            "managed": managed,
             "errors": failed,
             "settings": cfg,
         }
