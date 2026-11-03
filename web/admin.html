@@ -606,7 +606,7 @@
             <a href="#health">Box doctor</a> shows the results.
           </p>
           <!-- How hard the box writes to its card: the hub's setting card_writes (server.CARD_WRITES, crashwatch.card_writes). -->
-          <div class="net-cards">
+          <div class="net-cards net-cards-stack">
             <div class="net-card setting" id="card-writes">
               <h3 data-i18n="admin.recovery.h-sd-card-writes">SD card writes</h3>
               <p
@@ -624,7 +624,7 @@
               <p class="setting-desc" id="card-writes-rate"></p>
               <!-- The system's write settings (health.py card_groups): applied by the root helper, each a file of
                  irate-box's. Their effect shows in Box doctor → SD card writes. -->
-              <details class="sec-fold" id="card-sys-fold">
+              <details class="sec-fold" id="card-sys-fold" open>
                 <summary data-i18n="admin.recovery.summary-system-write-settings">
                   System write settings
                 </summary>
@@ -638,7 +638,7 @@
                   <a href="#health">Box doctor → SD card writes</a> shows the
                   effect of each change.
                 </p>
-                <div id="card-sys-groups"></div>
+                <div class="setting-cols" id="card-sys-groups"></div>
                 <div id="card-sys-foot"></div>
                 <p
                   class="setting-desc action-note"
@@ -671,7 +671,7 @@
                 for it:
                 <a href="#net-watchdog-card">Network → Network recovery</a>.
               </p>
-              <div id="health-settings-groups"></div>
+              <div class="setting-cols" id="health-settings-groups"></div>
               <div id="health-settings-foot"></div>
               <p
                 class="setting-desc action-note"
@@ -689,7 +689,7 @@
                 are written under <code>/etc/hub/ab</code>. Nothing repartitions or reboots now: a fresh
                 install or an offline repartition applies them, and the boot chain is confirmed on the board first.
               </p>
-              <div id="hardening-groups"></div>
+              <div class="setting-cols" id="hardening-groups"></div>
               <div id="hardening-foot"></div>
               <p class="setting-desc action-note" id="hardening-note" role="status" hidden></p>
             </div>
