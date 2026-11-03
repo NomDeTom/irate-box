@@ -41,7 +41,7 @@ from pathlib import Path
 
 from irate_box.finding import current, finding
 from irate_box.msg import M, named, when
-from irate_box.root import secdoctor_xref
+from irate_box.root import kernelinfo, secdoctor_xref
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -2349,6 +2349,7 @@ UNIT_PROPS = (
     "ProtectHome",
     "ProtectProc",
     "IPAddressDeny",
+    "IPAccounting",
     "PrivateNetwork",
     "RestrictAddressFamilies",
     "CapabilityBoundingSet",
@@ -4683,9 +4684,144 @@ def _sysctl(name):
         return None
 
 
+def _cgroup_net_findings(ctx, config):
+    """Units that count on systemd's cgroup network programs, and what the kernel can do with them."""
+    title = M("kernel-cgroup-net.title", "Cgroup network programs")
+    bpf = kernelinfo.cgroup_bpf(config)
+    if bpf is True:
+        return [
+            finding(
+                "kernel-cgroup-net",
+                title,
+                "ok",
+                M("kernel-cgroup-net.ok", "The kernel attaches systemd's cgroup network programs."),
+            )
+        ]
+    if bpf is None:
+        return [
+            finding(
+                "kernel-cgroup-net",
+                title,
+                "note",
+                M(
+                    "kernel-cgroup-net.unknown",
+                    "Whether the kernel attaches systemd's cgroup network programs is not known.",
+                ),
+                notes=[
+                    M(
+                        "kernel-cgroup-net.unknown.why",
+                        "The kernel publishes no configuration, and its log says nothing.",
+                    )
+                ],
+            )
+        ]
+    relying = []
+    for unit, props in (ctx.get("units") or {}).items():
+        deny = (props.get("IPAddressDeny") or "").strip()
+        if deny or (props.get("IPAccounting") or "").strip() == "yes":
+            families = props.get("RestrictAddressFamilies") or ""
+            protected = families and not families.startswith("~") and "AF_INET" not in families
+            relying.append((unit, deny, protected))
+    if not relying:
+        return [
+            finding(
+                "kernel-cgroup-net",
+                title,
+                "note",
+                M(
+                    "kernel-cgroup-net.unused",
+                    "The kernel ignores IPAddressDeny and IPAccounting, and no unit here relies on them.",
+                ),
+                M(
+                    "kernel-cgroup-net.unused.why",
+                    "A later unit that relies on them would not be walled off or counted.",
+                ),
+                evidence=[f"CONFIG_CGROUP_BPF={config.get('CONFIG_CGROUP_BPF', 'n') if config else '?'}"],
+            )
+        ]
+    elsewhere = [unit for unit, _deny, protected in relying if protected]
+    return [
+        finding(
+            "kernel-cgroup-net",
+            title,
+            "problem",
+            M(
+                "kernel-cgroup-net.ignored",
+                {
+                    "one": "{n} unit relies on IPAddressDeny or IPAccounting, and this kernel ignores both.",
+                    "other": "{n} units rely on IPAddressDeny or IPAccounting, and this kernel ignores both.",
+                },
+                n=len(relying),
+            ),
+            M(
+                "kernel-cgroup-net.ignored.why",
+                "A unit meant to be walled off from the network is not, and its traffic is not counted. What it "
+                "reaches is what any process of its account can reach.",
+            ),
+            M(
+                "kernel-cgroup-net.ignored.fix",
+                "Keep the unit on another guard where it has one, such as RestrictAddressFamilies or an nftables "
+                "rule. No setting can give this kernel the missing support.",
+            ),
+            notes=(
+                [
+                    M(
+                        "kernel-cgroup-net.elsewhere",
+                        "These also restrict their address families, so they are still kept from the network: {units}.",
+                        units=", ".join(elsewhere),
+                    )
+                ]
+                if elsewhere
+                else []
+            ),
+            evidence=[f"{unit}: IPAddressDeny={deny or 'not set'}" for unit, deny, _protected in relying]
+            + kernelinfo.bpf_errors()
+            + [f"CONFIG_CGROUP_BPF={config.get('CONFIG_CGROUP_BPF', 'n') if config else '?'}"],
+        )
+    ]
+
+
+def _apparmor_findings(config):
+    title = M("kernel-apparmor.title", "AppArmor")
+    aa = kernelinfo.apparmor(config)
+    if aa is True:
+        return [finding("kernel-apparmor", title, "ok", M("kernel-apparmor.ok", "AppArmor is in this kernel."))]
+    if aa is None:
+        return [
+            finding(
+                "kernel-apparmor",
+                title,
+                "note",
+                M("kernel-apparmor.unknown", "Whether AppArmor is in this kernel is not known."),
+            )
+        ]
+    return [
+        finding(
+            "kernel-apparmor",
+            title,
+            "warn",
+            M("kernel-apparmor.missing", "AppArmor is not in this kernel."),
+            M(
+                "kernel-apparmor.missing.why",
+                "No profile limits what a compromised program can touch. The hub's units use systemd's sandbox "
+                "instead, which is narrower but not the same.",
+            ),
+            notes=[
+                M(
+                    "kernel-apparmor.missing.no-cure",
+                    "There is no cure on this kernel. Its maker's newer image can bring one.",
+                )
+            ],
+            evidence=[f"CONFIG_SECURITY_APPARMOR={config.get('CONFIG_SECURITY_APPARMOR', 'n') if config else '?'}"],
+        )
+    ]
+
+
 def step_kernel(ctx):
-    """The kernel's own protections against link tricks and reading other processes."""
-    out = []
+    """The kernel's own protections against link tricks and reading other processes, and the features the
+    hub relies on: AppArmor, and systemd's cgroup network programs (IPAddressDeny and IPAccounting)."""
+    config = kernelinfo.config()
+    out = _apparmor_findings(config) + _cgroup_net_findings(ctx, config)
     links = [(n, _sysctl(n)) for n in ("fs.protected_symlinks", "fs.protected_hardlinks")]
     reg = [(n, _sysctl(n)) for n in ("fs.protected_regular", "fs.protected_fifos")]
     off = [f"{n}=0" for n, v in links if v == 0]
