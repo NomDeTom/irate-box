@@ -6701,7 +6701,7 @@ def led_groups(ls, armbian=None):
                 "desc": M(
                     "hs.led-off.desc",
                     "Driven off keeps the line high. High-impedance lets the line float, which saves the "
-                    "LED stage's leakage; the light may still glow faintly.",
+                    "LED stage's leakage. The light can still glow faintly.",
                 ),
                 "current": ls.get("off", "drive"),
                 "options": [
