@@ -888,19 +888,19 @@ function renderLibrary(snap) {
     const want = n.dataset.jobKind;
     if (want === "now") n.textContent = busy ? busyText : idleText;
     else if (want === "holders" && !busy) n.textContent = "";
-    else n.textContent = busy ? (want === kind ? busyText : "") : idleText;
+    else n.textContent = busy ? (want === kind || kind === "all" ? busyText : "") : idleText;
   });
   lib.bars.forEach((bar) => {
     const want = bar.dataset.jobKind;
-    const mine = !busy ? false : want === "now" || want === kind;
+    const mine = !busy ? false : want === "now" || want === kind || (kind === "all" && (want === "books" || want === "apps"));
     bar.hidden = !mine;
     if (mine && progress && progress.total) {
       bar.max = progress.total;
       bar.value = Math.min(progress.done, progress.total);
     } else bar.removeAttribute("value");
   });
-  badge("apps", busy && kind === "apps" ? "working" : "");
-  badge("books", busy && kind === "books" ? "working" : "");
+  badge("apps", busy && (kind === "apps" || kind === "all") ? "working" : "");
+  badge("books", busy && (kind === "books" || kind === "all") ? "working" : "");
 
   // The books themselves are a page at a time (loadBooks): reread when the librarian finishes.
   if (libWasBusy && !busy) loadBooks();
