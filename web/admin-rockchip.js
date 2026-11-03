@@ -452,6 +452,14 @@
     return picked.get(id);
   }
   // Every typed value the board would be sent, with its problem: [[label, problem]].
+  // The serial consoles this box can offer: its USB adapters, and its own header pins when they are on.
+  function consoleChoices(setup) {
+    const own = setup.own_serial || {};
+    const list = (setup.consoles || []).map((name) => ({ value: name, title: name.replace(/^usb-/, '').replace(/-if\d+-port\d+$/, ''), says: `/dev/serial/by-id/${name}` }));
+    if (own.on && !own.pending) list.push({ value: 'own', title: "This box's own pins", says: own.device || 'header pins 8 and 10' });
+    return list;
+  }
+
   function problems(c, setup) {
     const ready = (setup.routes || []).includes(c.route);
     const out = [];
@@ -476,7 +484,7 @@
     if (c.address === 'fixed') for (const k of ['ip', 'mask', 'gateway', 'dns']) { if (!c[k]) out.push(['Fixed address', 'Fill in the address, mask, gateway and DNS.']); add('Fixed address', c[k], 'text'); }
     add('Your SSH key', c.key, 'text');
     if (c.route === 'serial' && c.address === 'fixed') out.push(['Address', 'A fixed address is not set over the serial console yet: select From the network.']);
-    if (c.route === 'serial' && !(setup.consoles || []).length) out.unshift(['', "Connect a USB serial adapter to this box, wired to the board's debug console."]);
+    if (c.route === 'serial' && !consoleChoices(setup).length) out.unshift(['', "Connect a USB serial adapter to this box, or turn on this box's own pins, wired to the board's debug console."]);
     else if (!ready) out.unshift(['', "Setting up is not built yet: the box's half (reaching the board and sending these choices) comes next. The choices are kept while this page is open."]);
     return out;
   }
@@ -485,6 +493,21 @@
     const c = choicesFor(item.id, setup.defaults || {}, setup);
     const boxValues = setup.defaults || {};
     const action = h('button', { type: 'button', class: 'action-btn primary', text: 'Set up the board' });
+    const result = document.getElementById('rk-setup-result');
+    const own = setup.own_serial || {};
+    const ownGo = (on, label) => {
+      const button = h('button', { type: 'button', class: 'action-btn', text: label });
+      button.addEventListener('click', async (event) => {
+        if (!(await AW.confirmHere(on ? `Use this box's own pins as a serial console? ${own.warning || ''}` : "Put this box's own pins back to how they were?", { anchor: event.currentTarget, label: on ? 'Use the pins' : 'Turn them off' }))) return;
+        try {
+          await postJSON('/admin/rkboard', { action: 'own-serial', on });
+          say('Saved. Restart the box for its own pins to change.', true, result);
+        } catch (err) {
+          say(err.message, false, result);
+        }
+      });
+      return button;
+    };
     const reason = h('p', { class: 'setting-desc bad', role: 'status' });
     const refresh = () => {
       const list = problems(c, setup);
@@ -523,8 +546,8 @@
     const sendWarn = h('p', { class: 'setting-desc warn-text', text: "The box sends this network's password to the new board." });
     // A board found by its hotspot leads with that route; a board not listed, with the ways in that need no finding.
     const NO_FINDING = ['serial', 'card', 'ssh', 'usb'];
-    const consoles = setup.consoles || [];
-    if (!consoles.includes(c.console)) c.console = consoles[0] || '';
+    const serials = consoleChoices(setup);
+    if (!serials.some((x) => x.value === c.console)) c.console = (serials[0] || {}).value || '';
     const seenBoards = setup.boards || [];
     if (!c.boardAddress && seenBoards.length) { c.boardAddress = seenBoards[0].address; c.network = 'none'; }
     const cardsHere = setup.cards || [];
@@ -533,14 +556,14 @@
     // board seen) is here.
     const available = setup.routes || ['hotspot'];
     const NEEDS = {
-      serial: 'no USB serial adapter is connected to this box',
+      serial: "no USB serial adapter is connected and this box's own pins are off",
       card: 'no card is in a reader on this box',
       ssh: 'no board is seen on this box\'s own network',
       hotspot: 'no setup hotspot is in range',
     };
     const ROUTES = ROUTES_ALL.map((r) => {
       if (r.why) return r;
-      if (available.includes(r.value) && !(r.value === 'serial' && !consoles.length)) return r;
+      if (available.includes(r.value) && !(r.value === 'serial' && !serials.length)) return r;
       return { ...r, why: NEEDS[r.value] || 'the box cannot do this yet' };
     });
     const routes = item.id === OTHER
@@ -559,6 +582,15 @@
       tiles('Route', 'route', routes.main, drawSteps),
       // The other ways in, each with why it is not offered here, folded so the ones that fit this board stand alone.
       h('details', { class: 'sec-fold' }, h('summary', { text: 'Other ways in' }), tiles('Other ways in', 'route', routes.folded, drawSteps)),
+      h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: "This box's own pins" }),
+        h('p', { class: 'setting-desc', text: own.supported
+          ? own.on
+            ? own.pending ? `On: restart the box to use ${own.device || 'them'}.` : `On: ${own.device || 'the header pins'}.`
+            : 'Off. A USB serial adapter works without them.'
+          : 'This board has no route irate-box knows from its header pins to a serial port.' }),
+        own.supported && !own.on ? ownGo(true, "Use this box's own pins") : null,
+        own.supported && own.on ? ownGo(false, "Turn this box's own pins off") : null,
+        own.warning ? h('p', { class: 'setting-desc warn-text', text: own.warning }) : null),
       only('route', ['ssh'], h('div', {},
         (setup.boards || []).length ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Board found' }),
           chips('Board found', 'boardAddress', (setup.boards || []).map((b) => ({ value: b.address, title: b.host || b.address, says: `${b.address}${b.vendor ? `, ${b.vendor}` : ''}` })))) : null,
@@ -568,9 +600,9 @@
           chips('Card in a reader', 'card', (setup.cards || []).map((c) => ({ value: c.name, title: `${c.model || 'SD card'}, ${(c.size / 1e9).toFixed(1)} GB`, says: c.mounted ? 'Mounted: unmount it first.' : c.path })))) : null,
         h('p', { class: 'setting-desc', text: "Write an Armbian image to the card on this page first, with the chip's boot system in place. The box then writes these choices onto its root filesystem." }))),
       only('route', ['serial'], h('div', {},
-        consoles.length > 1 ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Serial adapter' }),
-          chips('Serial adapter', 'console', consoles.map((name) => ({ value: name, title: name.replace(/^usb-/, '').replace(/-if\d+-port\d+$/, ''), says: `/dev/serial/by-id/${name}` })))) : null,
-        consoles.length === 1 ? h('p', { class: 'setting-desc', text: `The serial adapter: ${consoles[0]}.` }) : null,
+        serials.length > 1 ? h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Serial console' }),
+          chips('Serial console', 'console', serials)) : null,
+        serials.length === 1 ? h('p', { class: 'setting-desc', text: `The serial console: ${serials[0].value === 'own' ? 'this box\'s own pins' : serials[0].value}.` }) : null,
         h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Board family' }),
           chips('Board family', 'board', [
             { value: 'auto', title: 'Find the speed', says: 'The box tries the known console speeds and keeps the one that hears the board.' },
@@ -748,7 +780,7 @@
     const at = document.getElementById('rk-setup');
     if (!at || !setup) return;
     const spots = setup.hotspots || [];
-    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults, setup.consoles, setup.cards, setup.boards, setup.routes]);
+    const key = JSON.stringify([spots.map((s) => [s.ssid, s.boards]), setup.ready, setup.defaults, setup.consoles, setup.own_serial, setup.cards, setup.boards, setup.routes]);
     // A drawer being filled in is not drawn again under the person typing.
     if (key === setupShown || at.querySelector('.aw-card.open')) return;
     setupShown = key;

@@ -154,7 +154,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   mc.querySelector('.aw-card-head').click();
 
   // Boards to set up.
-  const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, taken: ['salty-parrot'], ready: false, ...extra });
+  const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, taken: ['salty-parrot'], own_serial: { supported: true, on: false, pending: false, device: '', warning: "UART1 comes out on header pins 8 (TX) and 10 (RX); UART2 stays the box's own console." }, ready: false, ...extra });
   const spot = { ssid: 'armbiansetup-luckfox-lyra-zero-w', host: 'luckfox-lyra-zero-w', signal: 70, boards: 1 };
   w.rkRenderSetup(setup([]));
   check('boards to set up: no hotspot in range, said; the card for a board not listed still there', /No setup hotspot is in range/.test(text('rk-setup')) && d.querySelectorAll('#rk-setup .aw-card').length === 1 && /A board not listed here/.test(text('rk-setup')));
@@ -168,14 +168,22 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('  its drawer: Route, Network, Accounts, Name and place, After setup, Steps', drawer && ['Route', 'Network', 'Accounts', 'Name and place', 'After setup', 'Steps'].every((t) => [...drawer.querySelectorAll('h3')].some((h) => h.textContent === t)));
   check('  the hotspot route chosen; the routes that need something not here folded under Other ways in, each saying why', tile('hotspot').checked && tile('card').disabled && tile('card').closest('details.sec-fold') && !tile('hotspot').closest('details') && /Not available here: no card is in a reader on this box/.test(drawer.textContent) && /only Raspberry Pi images take it/.test(drawer.textContent));
   check('  a part for another choice hidden: the typed passwords, while Generated and the box\'s own network are chosen', ['rk-wifiPass', 'rk-rootTyped', 'rk-userTyped'].every((n) => drawer.querySelector(`[name="${n}"]`).closest('[data-rk-only]').hidden));
-  check("  this box's network chosen, named, with the warning beside it", tile('same').checked && /SKYTB1H1: the box sends the password/.test(drawer.textContent) && !drawer.querySelector('.warn-text').closest('[data-rk-only]').hidden);
+  check("  this box's network chosen, named, with the warning beside it", tile('same').checked && /SKYTB1H1: the box sends the password/.test(drawer.textContent) && !drawer.querySelector('[data-rk-only] .warn-text').closest('[data-rk-only]').hidden);
   tile('other').click();
   await wait(10);
-  check('  another network: its fields shown, the warning hidden', !drawer.querySelector('input[name="rk-otherSsid"]').closest('[data-rk-only]').hidden && drawer.querySelector('.warn-text').closest('[data-rk-only]').hidden);
+  check('  another network: its fields shown, the warning hidden', !drawer.querySelector('input[name="rk-otherSsid"]').closest('[data-rk-only]').hidden && drawer.querySelector('[data-rk-only] .warn-text').closest('[data-rk-only]').hidden);
   const pass = drawer.querySelector('input[name="rk-otherPass"]');
   pass.value = 'abc$defgh';
   pass.dispatchEvent(new w.Event('input', { bubbles: true }));
   check('  a password with a dollar sign: refused beside its field, saying why', /It has a dollar sign, which Armbian's setup cannot take/.test(pass.closest('label').textContent));
+  const ownB = [...drawer.querySelectorAll('button')].find((b) => b.textContent === "Use this box's own pins");
+  check("the box's own pins: offered with its warning", ownB && /UART1 comes out on header pins 8/.test(drawer.textContent), ownB && drawer.textContent);
+  posted.length = 0;
+  ownB.click();
+  await wait(20);
+  [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Use the pins').click();
+  await wait(20);
+  check("  Use the pins asks the hub, after saying a restart is needed", posted.some((x) => x.action === 'own-serial' && x.on === true) && /Restart the box/.test(text('rk-setup-result')), posted);
   const host = drawer.querySelector('input[name="rk-hostname"]');
   check('  the name on the network: two made-up words, not one the box already sees, and why to change it', /^[a-z]+(-[a-z]+)+$/.test(host.value) && host.value === 'grumpy-doubloon' && host.value !== 'salty-parrot' && /Every new Lyra starts as luckfox-lyra-zero-w/.test(host.closest('label').textContent), host.value);
   const go = [...drawer.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board');
@@ -200,7 +208,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('a board not listed: serial, card, SSH and USB first, serial chosen; the hotspot folded, saying why', otile('serial').checked && ['serial', 'card', 'ssh', 'usb'].every((v) => !otile(v).closest('details')) && otile('hotspot').closest('details.sec-fold') && /a board that raises its setup hotspot shows as a card of its own/.test(od.textContent));
   check("  the serial route's steps and its wiring line", /Find the board's console/.test(od.querySelector('.rk-steps').textContent) && /Read them back/.test(od.textContent) && !od.querySelector('[data-rk-only="route:serial"]').hidden && /TX to the board's RX/.test(od.textContent));
   check("  Armbian's default password at an address: folded while no board is seen, saying why; its address field kept for it", otile('ssh').disabled && /Not available here: no board is seen on this box's own network/.test(od.textContent) && od.querySelector('input[name="rk-boardAddress"]').closest('[data-rk-only]').hidden);
-  check('  no serial adapter on the box: Set up off, saying to connect one; the tile saying why', /Connect a USB serial adapter to this box/.test(od.textContent) && /Not available here: no USB serial adapter is connected to this box/.test(od.textContent));
+  check('  no serial adapter on the box: Set up off, saying to connect one; the tile saying why', /Connect a USB serial adapter to this box/.test(od.textContent) && /Not available here: no USB serial adapter is connected and this box's own pins are off/.test(od.textContent));
   otherCard.querySelector('.aw-card-head').click();
   // A serial adapter on the box: the route offered, the adapter named, Set up sends the serial request.
   w.rkRenderSetup(setup([], { consoles: ['usb-1a86_USB2.0-Serial-if00-port0'], routes: ['serial'] }));
@@ -209,7 +217,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   await wait(20);
   const sd = sCard.querySelector('.aw-drawer');
   const go2 = [...sd.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board');
-  check('a serial adapter on the box: the serial route offered and chosen, the adapter named, Set up on', sd.querySelector('input[type=radio][value="serial"]').checked && !sd.querySelector('input[type=radio][value="serial"]').closest('.unavailable') && /The serial adapter: usb-1a86_USB2.0-Serial-if00-port0/.test(sd.textContent) && go2 && !go2.disabled, sd.querySelector('p.setting-desc.bad') && sd.querySelector('p.setting-desc.bad').textContent);
+  check('a serial adapter on the box: the serial route offered and chosen, the adapter named, Set up on', sd.querySelector('input[type=radio][value="serial"]').checked && !sd.querySelector('input[type=radio][value="serial"]').closest('.unavailable') && /The serial console: usb-1a86_USB2.0-Serial-if00-port0/.test(sd.textContent) && go2 && !go2.disabled, sd.querySelector('p.setting-desc.bad') && sd.querySelector('p.setting-desc.bad').textContent);
   posted.length = 0;
   go2.click();
   await wait(20);

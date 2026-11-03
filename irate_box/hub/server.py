@@ -7106,6 +7106,8 @@ class Handler(BaseHTTPRequestHandler):
             act, loader = payload.get("action"), payload.get("loader")
             if act == "loader":
                 self.send_json(202, {"id": control_request({"action": "rk-loader"})})
+            elif act == "own-serial" and isinstance(payload.get("on"), bool):
+                self.send_json(202, {"id": control_request({"action": "rk-own-serial", "on": payload["on"]})})
             elif act == "read" and (
                 loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
             ):
