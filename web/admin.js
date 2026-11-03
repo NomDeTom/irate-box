@@ -4603,6 +4603,7 @@ function renderSecurity(data) {
   }
   drawDebianState(lines, scan);
   drawDebianPattern(lines, busy);
+  drawUpdateKinds(lines, busy);
   // An answer whose line went away with the fix (Cockpit closed, say) shows under Scan again.
   const loose =
     secNote &&
@@ -5492,6 +5493,150 @@ deb.buttons = AW.updateButtons({
   },
 });
 deb.box.replaceChildren(deb.buttons);
+
+// Debian's other updates and the board's own packages: the same shape as the security card, each with the
+// helper's own choices (os-*, board-*), so a kind is downloaded and installed without touching the others.
+const osUpd = {
+  box: document.getElementById("os-buttons"),
+  pill: document.getElementById("os-pill"),
+  lines: document.getElementById("updates-os-lines"),
+  packages: document.getElementById("os-packages"),
+};
+osUpd.buttons = AW.updateButtons({
+  check: {
+    wait: "sec:os:check",
+    onclick: (event) => secFix("os-updates", { choice: "os-check" }, event.currentTarget),
+  },
+  fetch: {
+    wait: "sec:os:fetch",
+    onclick: (event) => secFix("os-updates", { choice: "os-fetch" }, event.currentTarget),
+  },
+  install: {
+    wait: "sec:os:install",
+    onclick: (event) =>
+      secFix(
+        "os-updates",
+        {
+          choice: "os-updates",
+          confirm: "Install the waiting Debian updates now? This can take several minutes on this board.",
+        },
+        event.currentTarget,
+      ),
+  },
+});
+osUpd.box.replaceChildren(osUpd.buttons);
+const boardUpd = {
+  box: document.getElementById("board-buttons"),
+  pill: document.getElementById("board-pill"),
+  lines: document.getElementById("updates-board-lines"),
+  packages: document.getElementById("board-packages"),
+};
+boardUpd.buttons = AW.updateButtons({
+  check: {
+    wait: "sec:board:check",
+    onclick: (event) => secFix("board-updates", { choice: "board-check" }, event.currentTarget),
+  },
+  fetch: {
+    wait: "sec:board:fetch",
+    onclick: (event) => secFix("board-updates", { choice: "board-fetch" }, event.currentTarget),
+  },
+  install: {
+    wait: "sec:board:install",
+    onclick: (event) =>
+      secFix(
+        "board-updates",
+        {
+          choice: "board-updates",
+          confirm:
+            "Install the board's waiting packages? The hold is lifted for this upgrade and put back after. One kernel and no fallback: a kernel that does not boot needs the card rewritten.",
+        },
+        event.currentTarget,
+      ),
+  },
+});
+boardUpd.box.replaceChildren(boardUpd.buttons);
+
+// One kind's card: its badge, what waits and what is downloaded, and the packages by name.
+function drawKindState(kind, lines, busy) {
+  const card = kind === "os" ? osUpd : boardUpd;
+  const fid = kind === "os" ? "os-updates" : "board-updates";
+  const w = lines.find((finding) => finding.id === fid);
+  const waiting = w ? w.waiting || 0 : 0;
+  const fetched = w ? w.fetched || 0 : 0;
+  const down = waiting > 0 && fetched >= waiting;
+  card.pill.replaceChildren(AW.updatePill(null, waiting > 0));
+  const line = (text) => el("span", { className: "setting-desc", textContent: text });
+  const held = (w && w.held) || [];
+  card.lines.replaceChildren(
+    ...[
+      ...(!w
+        ? [line("Not checked yet. The box checks when the Security page scans.")]
+        : [
+            line(
+              waiting
+                ? `${waiting} update${waiting === 1 ? " is" : "s are"} waiting${fetched ? `, ${fetched} downloaded` : ""}.`
+                : "No updates are waiting.",
+            ),
+            ...(kind === "board"
+              ? [
+                  line(
+                    held.length
+                      ? `Held: ${held.join(", ")}.`
+                      : "The board's packages are not held yet.",
+                  ),
+                ]
+              : []),
+            noteUnder(fid),
+          ]),
+    ].filter(Boolean),
+  );
+  const packages = (w && w.packages) || [];
+  card.packages.replaceChildren(
+    ...(packages.length
+      ? [
+          el(
+            "details",
+            { className: "field-help" },
+            el("summary", {
+              textContent: `${packages.length} package${packages.length === 1 ? "" : "s"} waiting`,
+            }),
+            el("ul", { translate: "no" }, ...packages.map((name) => el("li", { textContent: name }))),
+          ),
+        ]
+      : []),
+  );
+  card.buttons.update({
+    check: {
+      disabled: busy,
+      why: busy ? "the root helper is busy with other work." : "",
+    },
+    fetch: {
+      label: fetched ? "Downloaded" : "Download",
+      disabled: busy || waiting === 0 || down,
+      why: busy
+        ? "the root helper is busy with other work."
+        : waiting === 0
+          ? "nothing is waiting."
+          : down
+            ? "already downloaded."
+            : "",
+    },
+    install: {
+      disabled: busy || waiting === 0,
+      why: busy
+        ? "the root helper is busy with other work."
+        : waiting === 0
+          ? "nothing is waiting."
+          : "",
+    },
+  });
+  for (const button of card.box.querySelectorAll("button[data-update]"))
+    markHelperButton(button, busy);
+}
+function drawUpdateKinds(lines, busy) {
+  drawKindState("os", lines, busy);
+  drawKindState("board", lines, busy);
+}
 // The card's state, as on the other update cards: the badge beside the title, then what is waiting, how fresh
 // apt's lists are and when the automatic step last ran. What the doctors make of it is theirs (Updates doctor,
 // Security doctor), not this card's.

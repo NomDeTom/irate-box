@@ -220,6 +220,7 @@ from irate_box.root import (
     aptram,
     health,
     kits,
+    osupdates,
     partswatch,
     pkgorigins,
     safeio,
@@ -5061,9 +5062,10 @@ def updates_doctor_findings():
     findings += appstore_findings()
     findings += partswatch.findings()
     # 11. The packages themselves: where they come from and Debian's own priorities. One simulation serves
-    # every check that reads what waits.
+    # every check that reads what waits, the OS's kinds included.
     findings += pkgorigins.origin_findings()
     findings += pkgorigins.priority_findings()
+    findings += osupdates.kinds_report(_simulated_upgrade())["findings"]
     return findings
 
 
@@ -6298,6 +6300,13 @@ def security_fix(req):
         "security-updates",
         "security-reach-fetch",
         "security-reach-install",
+        "os-check",
+        "os-fetch",
+        "os-updates",
+        "board-check",
+        "board-fetch",
+        "board-updates",
+        "board-hold",
     ) or choice.startswith("autoupdate-set:")
     if pattern and choice.startswith("autoupdate-set:"):
         security.parse_pattern(choice.split(":", 1)[1])

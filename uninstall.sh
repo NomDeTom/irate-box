@@ -62,6 +62,12 @@ fi
 # The hotspot first, while its code is still here: off, and its units, connection and files gone. Its
 # firewall (irate-box-firewall.service, below) goes only after that: a hotspot left up without it would hand guests
 # an unfiltered way onto the box. When the hotspot cannot be confirmed off, stop here with the firewall in place.
+# The board's own packages go back to moving with the board's repository (osupdates.py): the hold install.sh put
+# on them is released while its record is still here.
+if [ -x "$CODE/irate-box" ]; then
+	"$CODE/irate-box" osupdates release-board >/dev/null 2>&1 || true
+fi
+
 say "Turning off the hotspot"
 if [ -x "$CODE/irate-box" ]; then
 	if ! "$CODE/irate-box" hub_control ap-remove; then
