@@ -11685,6 +11685,111 @@ window.addEventListener("hashchange", () => {
   }
 });
 
+// An app's docs, when its manifest names a book: whether the book is on the box, being fetched, or
+// still to add, and whether Kiwix (which serves it) is here. Step 3's line on the app's page and its
+// All apps line read this.
+function docsOf(m) {
+  return m && Array.isArray(m.docs) ? m.docs : [];
+}
+function docState(doc) {
+  const st = (lastLibrary && lastLibrary.status && lastLibrary.status[doc.book]) || {};
+  const onBox = !!st.current;
+  const fetching = !onBox && !!(st.fetched || st.pending);
+  const added =
+    !!lastLibrary &&
+    (lastLibrary.sources || []).some(
+      (src) => src.name === doc.book && src.kind !== "app",
+    );
+  const kiwix =
+    lastAddons &&
+    (lastAddons.addons || []).find((addon) => addon.id === "wiki");
+  const kiwixReady = kiwix ? kiwix.added !== false && kiwix.added !== null : null;
+  return { st, onBox, fetching, added, kiwixReady };
+}
+function docsFacts(m) {
+  return docsOf(m).map((doc) => {
+    const st = docState(doc);
+    if (st.onBox) return `Docs: ${doc.title} on the box`;
+    if (st.fetching) return `Docs: ${doc.title} downloading`;
+    if (st.kiwixReady === false) return `Docs: ${doc.title} needs Kiwix`;
+    if (st.added) return `Docs: ${doc.title} added`;
+    return `Docs: ${doc.title} not on the box`;
+  });
+}
+async function addDoc(doc, button) {
+  const st = docState(doc);
+  try {
+    if (st.kiwixReady === false) {
+      await postJSON("/admin/addons", { addon: "wiki", on: true });
+      await libAct(`docs:${doc.book}`, {
+        action: "add",
+        source: { name: doc.book, ...doc.source },
+      });
+      if (button)
+        button.textContent = "Kiwix queued; the book is added";
+      return;
+    }
+    await libAct(
+      `docs:${doc.book}`,
+      { action: "add", source: { name: doc.book, ...doc.source } },
+      button,
+    );
+    await libAct(
+      `docs:${doc.book}`,
+      { action: "update", names: [doc.book] },
+      button,
+    );
+  } catch (error) {
+    libNote = { key: `docs:${doc.book}`, busy: false, text: error.message };
+    loadLibrary();
+  }
+}
+function docsLine(m) {
+  const docs = docsOf(m);
+  if (!docs.length) return null;
+  const line = el("p", { className: "inv-facts" });
+  for (const doc of docs) {
+    const st = docState(doc);
+    const bits = [el("span", { className: "inv-fact", textContent: `Docs: ${doc.title}` })];
+    if (st.onBox) {
+      bits.push(
+        el("a", {
+          className: "inv-fact",
+          href: `/wiki/content/${encodeURIComponent(doc.book)}/`,
+          target: "_blank",
+          rel: "noopener",
+          textContent: "Open",
+        }),
+        el("span", {
+          className: "inv-fact",
+          textContent: "Kept up to date with Kiwix → Books",
+        }),
+      );
+    } else if (st.fetching) {
+      bits.push(el("span", { className: "inv-fact", textContent: "Downloading" }));
+    } else if (st.kiwixReady === false) {
+      bits.push(el("span", { className: "inv-fact bad", textContent: "Needs Kiwix" }));
+      const add = actionButton(
+        "Add Kiwix and the book",
+        (event) => addDoc(doc, event.currentTarget),
+        { dataset: { wait: `docs:${doc.book}` } },
+      );
+      bits.push(add);
+    } else {
+      bits.push(
+        el("span", { className: "inv-fact", textContent: `${doc.size_mb} MB` }),
+      );
+      bits.push(
+        actionButton("Add", (event) => addDoc(doc, event.currentTarget), {
+          dataset: { wait: `docs:${doc.book}` },
+        }),
+      );
+    }
+    line.append(...bits);
+  }
+  return line;
+}
+
 // The top of an app's page: what it is and what state it is in, and what can be done now: open
 // it, add it, start or stop its service. The facts are the All apps line's.
 function fillHeadBlocks() {
@@ -11789,6 +11894,7 @@ function fillHeadBlocks() {
         buttons.length
           ? el("p", { className: "library-buttons" }, ...buttons)
           : null,
+        docsLine(m),
       ].filter(Boolean),
     );
   });
@@ -18479,12 +18585,13 @@ function inventoryRows() {
   };
   for (const m of manifests.filter((x) => !x.folder)) {
     const appAccess = access.get(m.id);
-    add(
+    const row = add(
       m.id,
       m.name,
       (appAccess && appAccess.kind) ||
         (m.addon ? "addon" : m.local ? "local" : m.updates ? "app" : "builtin"),
     );
+    row.docs = docsOf(m);
   }
   for (const appAccess of access.values()) add(appAccess.id, appAccess.title, appAccess.kind);
   for (const addon of addons.values()) add(addon.id, addon.title, "addon");
@@ -18617,6 +18724,9 @@ function renderInventory() {
           "span",
           { className: "inv-facts" },
           ...row.facts.map((t) =>
+            el("span", { className: "inv-fact", textContent: t }),
+          ),
+          ...docsFacts({ docs: row.docs }).map((t) =>
             el("span", { className: "inv-fact", textContent: t }),
           ),
           ...row.attention.map((t) =>

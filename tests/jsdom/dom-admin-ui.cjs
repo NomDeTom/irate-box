@@ -261,6 +261,12 @@ setTimeout(() => {
     check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
       && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
     check('  an add-on whose state is unknown says so', /Installation status unavailable/.test(t('#inv-list')[0]));
+    check(
+      '  an app with known docs says so on its line and its page',
+      /Docs: Mermaid docs not on the box/.test(line('Mermaid').textContent)
+        && /Docs: Mermaid docs/.test(t('#app-head-mermaid')[0]),
+      JSON.stringify({ line: line('Mermaid') && line('Mermaid').textContent, head: t('#app-head-mermaid')[0] }),
+    );
     d.querySelector('[data-inv="builtin"]').click();
     const built = [...d.querySelectorAll('#inv-list .inv-row')];
     check('  Built in shows only the hub\'s own parts', built.length && built.every((r) => /Built-in app/.test(r.textContent)), built.length);

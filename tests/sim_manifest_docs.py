@@ -49,7 +49,7 @@ for path, (book, kind) in known.items():
         docs,
     )
     check(
-        f"  and the librarian takes its source as written",
+        "  and the librarian takes its source as written",
         librarian.validate_source({"name": docs[0]["book"], **docs[0]["source"]})["type"] == kind,
         docs[0]["source"],
     )
