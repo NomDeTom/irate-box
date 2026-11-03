@@ -1366,6 +1366,8 @@ install -d -o "$HUB_USER" -g "$HUB_USER" -m 755 "$STATE" # /var/lib is root's: n
 state_dir "$HUB_USER" "$HUB_USER" 755 "$STATE/notes" "$STATE/addons" "$STATE/apps.d"
 install -d -m 755 "$CODE" "$APPS"
 install -d -m 750 -g root "$ETC"
+# The owner's own Security doctor checks, in the manifests' format, one named group per file.
+install -d -m 755 -o root -g root /etc/irate-box/checks.d
 # Caddy runs as its own user and reads the front's includes and the server key under $ETC/tls (root/tls.py
 # gives the key to its group): the group may pass through $ETC, not list it. Every file in it that holds a
 # secret is root's alone (600); nginx's master reads as root, so nginx needs none of this.
