@@ -18,8 +18,9 @@ os.environ["HUB_STATE_DIR"] = str(T / "state")
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "tests"))
-from irate_box.library import librarian
 from zimgen import write_zim
+
+from irate_box.library import librarian
 
 fails = 0
 
@@ -68,7 +69,7 @@ for where, home in (("the card's zim/", T / "card" / "zim"), ("the library drive
         staged = librarian.staged_book(name)
         check(f"a download into {where} stays on that filesystem", staged.is_file() and staged.parent == home)
         check(
-            f"  and its temporary file was in the same home, not library/tmp",
+            "  and its temporary file was in the same home, not library/tmp",
             not (librarian.TMP_DIR / f"{name}.download").exists(),
         )
     except OSError as exc:
