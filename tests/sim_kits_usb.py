@@ -180,6 +180,12 @@ check(
     gpgv_calls[-1:],
 )
 check("  and apt can install it: the index written", "Package: gdb" in (kits.POOL / "Packages").read_text())
+st = kits.status()["kits"]["small"]
+check(
+    "  the import sets the check's time to the import, and says it was not checked against the lists",
+    st["check"]["state"] == "imported" and st["check"]["at"] == kits.manifest("small")["from_usb"],
+    st,
+)
 
 
 def refused(mutate, why):

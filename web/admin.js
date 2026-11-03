@@ -15145,6 +15145,9 @@ const REMOVE_AFTER = [
 ];
 const dayOf = (unix) =>
   unix ? new Date(unix * 1000).toISOString().slice(0, 10) : "";
+// A toolkit's dates, in the format the other admin pages use: the browser's own, date and time.
+const kitWhen = (unix) =>
+  unix ? new Date(unix * 1000).toLocaleString() : "";
 const kitsWaiting = new Set();
 const kitWaits = new Map(); // a request id -> the button that asked (and its data-wait key), for the redraw
 let kitsData = null;
@@ -15312,7 +15315,7 @@ function kitFacts(k, st) {
       ? Math.max(0, Math.round((inst.remove_at - Date.now() / 1000) / 3600))
       : null;
   return [
-    c ? `Cached ${dayOf(c.fetched)}, ${size(c.bytes)}.` : "Not cached.",
+    c ? `Cached ${kitWhen(c.from_usb || c.fetched)}, ${size(c.bytes)}.` : "Not cached.",
     kitState.previous
       ? `A set for rollback kept${kitState.previous.extra_bytes ? `, ${size(kitState.previous.extra_bytes)} more` : ""}.`
       : "",
@@ -15328,13 +15331,14 @@ function kitFacts(k, st) {
 }
 function kitCheckLine(check) {
   if (!check) return "Not checked for updates yet.";
-  const at = new Date(check.at * 1000).toLocaleString();
+  const at = kitWhen(check.at);
   if (check.state === "current") return `Checked ${at}: up to date.`;
   if (check.state === "newer") {
     const changes = (check.changes || []).map((c) => `${c.name} ${c.from} → ${c.to}`);
     return `Checked ${at}: ${changes.length} package${changes.length === 1 ? "" : "s"} newer (${changes.slice(0, 6).join(", ")}${changes.length > 6 ? ", …" : ""}); ${size(check.download_bytes || 0)} to download.`;
   }
   if (check.state === "not-cached") return `Checked ${at}: not cached yet; ${check.packages || 0} packages to download.`;
+  if (check.state === "imported") return `Checked ${at}: imported from a USB drive; not checked against the package lists.`;
   return `Checked ${at}: could not check (${check.why || "?"}).`;
 }
 // Its drawer (steps 2, 3): settings held until Save (keep current, removed after by default, extra
@@ -15466,7 +15470,7 @@ function kitBody(k, st, cfg, setDirty) {
       el("p", {
         className: "setting-desc",
         textContent:
-          `Kept for rollback: the set downloaded ${dayOf(kitState.previous.fetched)}` +
+          `Kept for rollback: the set downloaded ${kitWhen(kitState.previous.fetched)}` +
           (older.length
             ? `, with older versions of ${older.length} package${older.length === 1 ? "" : "s"} (${older.slice(0, 6).join(", ")}${older.length > 6 ? ", …" : ""})`
             : ", the same versions as now") +
@@ -15475,7 +15479,7 @@ function kitBody(k, st, cfg, setDirty) {
             : "") +
           ". The Security doctor checks only the newest version of each package." +
           (cfg.previous_days && c && c.fetched
-            ? ` The box removes it on ${dayOf(c.fetched + cfg.previous_days * 86400)} (Older sets kept for Roll back).`
+            ? ` The box removes it on ${kitWhen(c.fetched + cfg.previous_days * 86400)} (Older sets kept for Roll back).`
             : ""),
       }),
     );
@@ -15489,7 +15493,7 @@ function kitBody(k, st, cfg, setDirty) {
       ),
       kitState.previous
         ? actionButton(
-            `Roll back to ${dayOf(kitState.previous.fetched)}`,
+            `Roll back to ${kitWhen(kitState.previous.fetched)}`,
             (event) => {
               kitAct({ action: "rollback", kit: k.id }, false, event.currentTarget);
             },
@@ -15502,7 +15506,7 @@ function kitBody(k, st, cfg, setDirty) {
             async (event) => {
               if (
                 await AW.confirmHere(
-                  `Remove the older set of ${k.title}, downloaded ${dayOf(kitState.previous.fetched)}? This frees ${size(kitState.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
+                  `Remove the older set of ${k.title}, downloaded ${kitWhen(kitState.previous.fetched)}? This frees ${size(kitState.previous.extra_bytes || 0)}. Roll back is not possible until a refresh brings new versions.`, { anchor: event.currentTarget })
               )
                 kitAct({ action: "drop-previous", kit: k.id }, false, event.currentTarget);
             },

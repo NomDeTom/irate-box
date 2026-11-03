@@ -1499,6 +1499,13 @@ check(
     res,
 )
 check("  and the bytes still to download are counted", res["download_bytes"] > 0, res)
+kits.fetch("small", budget_mb=10, log=lambda *a: None)
+st = kits.status()["kits"]["small"]
+check(
+    "a fetch after a check moves the check's time to the fetch, and the cache is current",
+    st["check"]["state"] == "current" and st["check"]["at"] == st["cached"]["fetched"],
+    st,
+)
 saved = (kits.MANIFESTS / "small.json").read_text()
 (kits.MANIFESTS / "small.json").unlink()
 res = kits.check("small")
