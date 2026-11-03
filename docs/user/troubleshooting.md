@@ -72,7 +72,9 @@ Select the mode in **Recovery and monitoring → The status light**:
 - **Alive and on its network**
 - **Alive, on its network, nothing wrong**
 
-If the board has more than one LED, **Which light** selects the LED. The **Flash** buttons of the Box doctor make each LED blink fast, so you can identify it. The box never uses a power LED. On a Raspberry Pi, the green LED shows the activity of the SD card until you select another mode.
+If the board has more than one LED, **Which light** selects the LED. The **Flash** buttons of the Box doctor make each LED blink fast, so you can identify it. The box never uses a power LED unless the board's own table names it (the Banana Pi M2 Zero's only LED is one). On a Raspberry Pi, the green LED shows the activity of the SD card until you select another mode.
+
+If the board supports it, **When the light is off** chooses between driving the LED off and leaving its line high-impedance. High-impedance saves the LED stage's leakage, though the light may still glow faintly.
 
 ## SD card write frequency
 

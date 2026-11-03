@@ -14,7 +14,7 @@ CHOICE_RE = re.compile(
     r"|^clock-sources:(image|chrony):[01]:[01]:[01]:[01]:(-|[A-Za-z0-9][A-Za-z0-9.:-]{0,252})(:(gps|local|pool|module)(,(gps|local|pool|module)){0,3})?$|^clock-undo$"
     r"|^uplink-skip:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}:(reconnect|restart|radio|reboot)$"
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
-    r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^armbian-led:(on|off)$"
+    r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^led-off:(drive|float)$|^armbian-led:(on|off)$"
     r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
