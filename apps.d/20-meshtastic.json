@@ -12,5 +12,20 @@
     "subtitle": "Meshtastic tools and documentation on the box.",
     "about": "Meshtastic tools and documentation in one list. The list shows the entries that are configured on this box.",
     "art": "librarian"
-  }
+  },
+  "docs": [
+    {
+      "title": "Meshtastic docs",
+      "book": "meshtastic-docs",
+      "source": {
+        "type": "nightly-link",
+        "repo": "NomDeTom/meshtasticDocs",
+        "workflow": "docs-zim.yml",
+        "branch": "zim-build",
+        "pattern": "meshtastic-docs-*"
+      },
+      "lang": "en",
+      "size_mb": 57
+    }
+  ]
 }

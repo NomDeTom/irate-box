@@ -65,6 +65,11 @@ on it. Every part but "id" and "order" is optional:
                                       the "adapt" script from the hub's code); pin: the full
                                       hash of the last commit known good, which the librarian
                                       installs unless the owner follows the newest (librarian.py)
+    "docs":    [{"title", "book", "source", "lang", "size_mb"}]
+                                      the book that documents it, where that is known: book is the
+                                      librarian's name (<book>.zim, /wiki/content/<book>/), source
+                                      the librarian's own source shape, size_mb a hint for the
+                                      queue. At most 3; an app with nothing known has none
     "access":  {"title", "note"}       who may open it is set on /admin (public, private, off) for
                                       the apps access.py names; these word its line there
     "core": true                      kept current by default ("Keep all apps current")
@@ -137,11 +142,29 @@ def svg_icon(icon):
 GIT_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+$")
 
 
-LOCAL_KEYS = {"api", "id", "order", "tile", "menu", "entries", "source", "needs", "addon", "capabilities", "checks"}
+LOCAL_KEYS = {
+    "api",
+    "id",
+    "order",
+    "tile",
+    "menu",
+    "entries",
+    "source",
+    "needs",
+    "addon",
+    "capabilities",
+    "checks",
+    "docs",
+}
 # The manifest format this irate-box reads: a manifest says which it was written for ("api", 1 if left out).
 # API goes up only when a change would mislead an older reader; API_OLDEST up only when an old form is dropped.
 # Outside the range, a local add-on is listed with the reason and not loaded; a built-in one stops the hub.
 API, API_OLDEST = 1, 1
+# The docs an app may name: a book's name, the librarian's source kinds, and a size hint.
+MAX_DOCS = 3
+DOC_TYPES = ("release", "actions", "nightly-link", "url", "kiwix")
+BOOK_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+LANG_RE = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
 # A path inside an add-on: no scheme, no host, no "..", no leading "/".
 LOCAL_PATH_RE = re.compile(r"^(?![./])(?!.*\.\.)[A-Za-z0-9._~/-]*(\?[A-Za-z0-9._~=&%+-]*)?$")
 # What an add-on's pages may connect to: {box} is the hub's own host.
@@ -193,6 +216,45 @@ def _api_problem(m):
     if api < API_OLDEST:
         return f"written for manifest format {api}, which this irate-box no longer reads (from {API_OLDEST}): update the add-on"
     return None
+
+
+def _check_docs(m, need):
+    """The optional docs list: the book, its librarian source, language and a size hint."""
+    docs = m.get("docs")
+    if docs is None:
+        return
+    need(isinstance(docs, list) and 0 < len(docs) <= MAX_DOCS, f"docs: a list of 1 to {MAX_DOCS} books")
+    for doc in docs:
+        need(isinstance(doc, dict), "docs: each book an object")
+        need(set(doc) <= {"title", "book", "source", "lang", "size_mb"}, "docs: title, book, source, lang, size_mb")
+        need(
+            isinstance(doc.get("title"), str) and 0 < len(doc["title"]) <= 120,
+            "docs.title: a string up to 120 characters",
+        )
+        need(
+            isinstance(doc.get("book"), str) and BOOK_RE.match(doc["book"]),
+            "docs.book: letters, digits, '.', '_' and '-'",
+        )
+        need(isinstance(doc.get("lang"), str) and LANG_RE.match(doc["lang"]), "docs.lang: a language such as en")
+        need(type(doc.get("size_mb")) is int and 0 < doc["size_mb"] <= 100000, "docs.size_mb: whole megabytes")
+        src = doc.get("source")
+        need(isinstance(src, dict) and src.get("type") in DOC_TYPES, f"docs.source.type: one of {', '.join(DOC_TYPES)}")
+        if src["type"] == "kiwix":
+            need(
+                isinstance(src.get("kiwix_name"), str) and BOOK_RE.match(src["kiwix_name"]),
+                "docs.source.kiwix_name: a Kiwix catalogue name",
+            )
+        elif src["type"] == "url":
+            need(str(src.get("url", "")).startswith("https://"), "docs.source.url: must start with https://")
+        else:
+            need(isinstance(src.get("repo"), str) and REPO_RE.match(src["repo"]), "docs.source.repo: OWNER/REPO")
+            if src["type"] in ("actions", "nightly-link"):
+                need(
+                    isinstance(src.get("workflow"), str) and re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", src["workflow"]),
+                    "docs.source.workflow: a file name",
+                )
+            need("branch" not in src or isinstance(src["branch"], str), "docs.source.branch: a string")
+            need("pattern" not in src or isinstance(src["pattern"], str), "docs.source.pattern: a string")
 
 
 def _check(m, where):
@@ -252,6 +314,7 @@ def _check(m, where):
         need(re.match(r"^[a-z0-9_.-]+\.json$", str(disc.get("file", ""))), "discover.file: a .json name")
         need("{page}" in str(disc.get("href", "")), "discover.href: containing {page}")
         need(isinstance(disc.get("groups"), dict), "discover.groups: group -> menu id")
+    _check_docs(m, need)
     status = m.get("status")
     if status is not None:
         need(isinstance(status.get("name"), str), "status.name: a string")
@@ -623,6 +686,7 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
         not any(m["id"] in e["menus"] for e in m.get("entries", [])) or menu is not None,
         "entries for the add-on's own list need a menu",
     )
+    _check_docs(m, need)
     src = m.get("source")
     need(isinstance(src, dict) and src.get("type") in ("git", "bundle"), "source: git or bundle")
     if src["type"] == "git":
@@ -697,6 +761,8 @@ def local(m):
             "local": bool(m.get("capabilities", {}).get("local", False)),
         },
     }
+    if m.get("docs"):
+        full["docs"] = [dict(d) for d in m["docs"]]
     if m.get("checks"):
         full["checks"] = [dict(c) for c in m["checks"]]
     if m.get("menu"):

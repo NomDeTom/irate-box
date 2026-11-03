@@ -25,5 +25,20 @@
     "workflow": "irate-box-bundle.yml",
     "pattern": "irate-box-mermaid-*"
   },
-  "core": true
+  "core": true,
+  "docs": [
+    {
+      "title": "Mermaid docs",
+      "book": "mermaid-docs",
+      "source": {
+        "type": "nightly-link",
+        "repo": "NomDeTom/mermaid",
+        "workflow": "docs-zim.yml",
+        "branch": "zim-build",
+        "pattern": "mermaid-docs-*"
+      },
+      "lang": "en",
+      "size_mb": 12
+    }
+  ]
 }

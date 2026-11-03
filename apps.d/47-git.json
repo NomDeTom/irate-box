@@ -18,5 +18,17 @@
       "git",
       "mirrors"
     ]
-  }
+  },
+  "docs": [
+    {
+      "title": "Git Docs",
+      "book": "git-docs",
+      "source": {
+        "type": "kiwix",
+        "kiwix_name": "devdocs_en_git"
+      },
+      "lang": "en",
+      "size_mb": 2
+    }
+  ]
 }
