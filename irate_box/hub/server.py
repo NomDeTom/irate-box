@@ -4345,7 +4345,7 @@ def moderation_queue():
                     key=k,
                     by=m.get("name", ""),
                     text=m.get("text", ""),
-                    where="Shoutbox",
+                    where="Hub shoutbox",
                 )
             )
         elif k in posts:
@@ -4356,7 +4356,7 @@ def moderation_queue():
                     key=k,
                     by=p.get("author", ""),
                     text=p.get("text", ""),
-                    where=f"Board: {t.get('title', '')}",
+                    where=f"Hub board: {t.get('title', '')}",
                     thread=t["id"],
                     index=i,
                 )
@@ -4624,7 +4624,7 @@ class Handler(BaseHTTPRequestHandler):
             "settings, the library's and mirrors' sources), none of what was made on the box.\n"
             if level == "settings"
             else "SETTINGS AND DATA: what was chosen, and what was made on the box (notes, saved work,\n"
-            "the board, the shoutbox, dropped files, the box's own git repositories).\n"
+            "the hub board, the hub shoutbox, dropped files, the box's own git repositories).\n"
         )
         about = (
             f"Irate-Box state backup, {stamp} UTC, from {hub_version()}.\n\n{held}\n{about}\n"
@@ -8046,7 +8046,7 @@ class Handler(BaseHTTPRequestHandler):
                 refused.say(
                     M("shoutbox.closed", "The shoutbox is closed.")
                     if shout
-                    else M("board.closed", "The forum is closed.")
+                    else M("board.closed", "The message board is closed.")
                 ),
             )
             return None
@@ -8065,7 +8065,7 @@ class Handler(BaseHTTPRequestHandler):
                         if shout
                         else M(
                             "board.sign-in",
-                            "Sign in to post on the forum (/account.html).",
+                            "Sign in to post on the message board (/account.html).",
                         )
                     ),
                     login=True,
