@@ -1343,7 +1343,7 @@ def _api(path, auth=None):
                     answer = getattr(second, "message", None)
                     args2 = answer.get("args", {}) if isinstance(answer, dict) else {}
                     if not (answer and answer.get("id") == "library.download.http-error" and args2.get("code") == 404):
-                        raise exc
+                        raise exc from second
                 else:
                     raise LibrarianError(
                         M(
