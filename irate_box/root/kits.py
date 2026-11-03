@@ -133,19 +133,28 @@ def _covered_alternatives(alternatives):
         parts = line.split("\t")
         if len(parts) != 4:
             continue
-        name, provides, conflicts, breaks = parts
+        name, provides, conflicts, _breaks = parts
         if not name:
             continue
         names = set()
-        for group in (provides, conflicts, breaks):
-            for item in group.split(","):
-                token = item.strip().split()[0].split("(")[0].split(":")[0]
-                if token:
-                    names.add(token)
+        # A Provides always covers. A Conflicts covers only when it names no version: a versioned
+        # one does not replace the package at every version. Breaks is not a replacement at all.
+        for item in provides.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            token = item.split()[0].split("(")[0].split(":")[0]
+            if token:
+                names.add(token)
+        for item in conflicts.split(","):
+            item = item.strip()
+            if not item or "(" in item:
+                continue
+            token = item.split()[0].split(":")[0]
+            if token:
+                names.add(token)
         for alt in wanted & names:
             out.setdefault(alt, name)
-        if name in wanted:
-            out.setdefault(name, name)
     return out
 
 
