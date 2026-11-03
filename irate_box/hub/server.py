@@ -8017,9 +8017,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(
                 403,
                 refused.say(
-                    M("shoutbox.closed", "The hub shoutbox is closed.")
+                    M("shoutbox.closed", "The shoutbox is closed.")
                     if shout
-                    else M("board.closed", "The forum is closed.")
+                    else M("board.closed", "The message board is closed.")
                 ),
             )
             return None
@@ -8033,12 +8033,12 @@ class Handler(BaseHTTPRequestHandler):
                     refused.say(
                         M(
                             "shoutbox.sign-in",
-                            "Sign in to post on the hub shoutbox (/account.html).",
+                            "Sign in to post on the shoutbox (/account.html).",
                         )
                         if shout
                         else M(
                             "board.sign-in",
-                            "Sign in to post on the forum (/account.html).",
+                            "Sign in to post on the message board (/account.html).",
                         )
                     ),
                     login=True,
