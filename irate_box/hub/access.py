@@ -55,6 +55,7 @@ ROUTED = {
     "appstore": ("public", False),
     "notepad": ("public", False),
     "pastebin": ("public", False),
+    "music": ("public", False),
 }
 REALM = "Irate-Box"
 

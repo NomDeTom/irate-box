@@ -325,6 +325,21 @@ check(
     "forward_auth 127.0.0.1:8000" in access.caddy_snippets(st_, "HASH")["draw.caddy"]
     and "uri /_irate/user?redirect=1" in access.caddy_snippets(st_, "HASH")["draw.caddy"],
 )
+check(
+    "the music player's page can be switched off or to users",
+    "music" in access.ROUTED
+    and 'set $irate_box_off_music "1";' in access.nginx_conf(access.clean({"music": "off"}))
+    and "auth_request /_irate_user;" in access.nginx_gates(access.clean({"music": "users"}))["gate-music.conf"],
+)
+nginx = (Path(__file__).resolve().parents[1] / "config" / "irate-box.nginx").read_text()
+caddy = (Path(__file__).resolve().parents[1] / "config" / "Caddyfile").read_text()
+check(
+    "  its page reads that switch in both web servers",
+    "location = /music.html {" in nginx
+    and "include @ACCESS@.d/gate-music.conf*;" in nginx
+    and "handle /music.html {" in caddy
+    and "music.caddy*" in caddy,
+)
 
 # The notepad and the paste bin: a page and the text it writes, both behind one switch.
 check(
