@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="addon-bridge.head.title">Add-on bridge · Hub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌉</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="addon-bridge">
+  <header>
+    <h1 data-i18n="addon-bridge.head.heading">🌉 From an add-on</h1>
+    <p class="subtitle" data-i18n="addon-bridge.head.subtitle">The box asks you here. The add-on gets only what you select.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="addon-bridge.head.aria-theme"></div>
+  </header>
+  <section>
+    <p class="setting-desc" id="addon-bridge-say" role="status" data-i18n="addon-bridge.body.waiting">Waiting for the add-on…</p>
+    <div id="addon-bridge-body"></div>
+  </section>
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/lock.js"></script>
+  <script src="/addon-bridge.js"></script>
+</body>
+</html>
