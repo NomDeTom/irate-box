@@ -7796,6 +7796,446 @@ def check_boards(spots=None, seen=None):
     return findings
 
 
+# --- the image underneath, and the kernel it runs (plan-sweep-up item 11) ----------------------
+# The box inherits its image and kernel from its board's maker. These checks say what both are, so an
+# owner can tell an image's own choice from a fault, and know which of the hub's guarantees the kernel
+# can keep. Read-only: a file read, `apt-config`, and one release lookup when the box is online.
+
+OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
+MPWRD_RELEASE = Path(os.environ.get("HUB_MPWRD_RELEASE", "/etc/mPWRD-release"))
+IMAGE_RELEASE = Path(os.environ.get("HUB_ARMBIAN_IMAGE_RELEASE", "/etc/armbian-image-release"))
+KERNEL_SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
+KERNEL_PROC = Path(os.environ.get("HUB_PROC", "/proc"))
+KERNEL_BOOT = Path(os.environ.get("HUB_BOOT_DIR", "/boot"))
+KERNEL_RELEASE = os.environ.get("HUB_KERNEL_RELEASE") or os.uname().release
+IMAGE_PROJECTS = {"mPWRD-OS/mPWRD-OS": "mPWRD-OS"}
+IMAGE_OLD_DAYS = 183  # six months: the age past which an image is worth looking at again
+
+
+def _fields(path):
+    """A KEY=VALUE file (os-release, armbian-release) as a dict, quotes taken off."""
+    out = {}
+    for line in _output(_read_text(path)).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        out[key.strip()] = value.strip().strip('"').strip("'")
+    return out
+
+
+def _read_text(path):
+    try:
+        return path.read_text(errors="replace")
+    except OSError:
+        return ""
+
+
+def _image_date(fields, paths):
+    """When the image was built: a date field when one is there, else the newest change of its release files."""
+    for key in ("BUILD_DATE", "BUILD_DATE_UTC", "IMAGE_DATE", "DATE", "VERSION_DATE"):
+        value = fields.get(key)
+        if not value:
+            continue
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%SZ", "%Y%m%d"):
+            try:
+                return time.mktime(time.strptime(value[: len(fmt) + 2].strip(), fmt))
+            except ValueError:
+                continue
+    stamps = []
+    for path in paths:
+        try:
+            stamps.append(path.stat().st_mtime)
+        except OSError:
+            continue
+    return min(stamps) if stamps else None
+
+
+def _image_facts():
+    osf = _fields(OS_RELEASE)
+    mp = _fields(MPWRD_RELEASE)
+    ar = _fields(ARMBIAN_RELEASE)
+    ir = _fields(IMAGE_RELEASE)
+    release_paths = [p for p in (MPWRD_RELEASE, ARMBIAN_RELEASE, IMAGE_RELEASE) if p.exists()]
+    paths = [p for p in (OS_RELEASE, *release_paths) if p.exists()]
+    name = (
+        mp.get("NAME")
+        or mp.get("PRETTY_NAME")
+        or (f"{ar.get('BOARD_NAME', '')} (Armbian)" if ar.get("BOARD_NAME") else "")
+        or osf.get("PRETTY_NAME")
+        or osf.get("NAME")
+        or ""
+    )
+    version = mp.get("VERSION") or ar.get("VERSION") or osf.get("VERSION_ID") or osf.get("VERSION") or ""
+    commit = (
+        mp.get("ARMBIAN_COMMIT")
+        or mp.get("COMMIT")
+        or ir.get("ARMBIAN_COMMIT")
+        or ir.get("COMMIT")
+        or ar.get("ARMBIAN_COMMIT")
+        or ""
+    )
+    if not commit:
+        found = re.search(r"\b[0-9a-f]{7,40}\b", " ".join(mp.values()) + " " + " ".join(ir.values()))
+        commit = found.group(0) if found else ""
+    project = "mPWRD-OS/mPWRD-OS" if MPWRD_RELEASE.exists() else None
+    built = _image_date({**ir, **mp, **ar}, release_paths)
+    return {
+        "name": name,
+        "version": version or "?",
+        "commit": commit,
+        "project": project,
+        "built": built,
+        "files": [str(p) for p in paths],
+    }
+
+
+def _newest_image_release(project):
+    """(tag, published) from GitHub's newest release of the image's project, or None when that cannot be asked."""
+    if not project:
+        return None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{project}/releases/latest",
+        headers={"User-Agent": "irate-box", "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as resp:  # nosec B310 - a fixed API address
+            data = json.load(resp)
+        published = data.get("published_at") or ""
+        at = time.mktime(time.strptime(published[:19], "%Y-%m-%dT%H:%M:%S")) if published else None
+        return data.get("tag_name") or data.get("name"), at
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def check_image():
+    """The image's name, release and age, and the newest release of its project when the box is online. An image
+    older than six months is worth looking at again, and a newer release is the maker's own fix for what this one
+    has; re-imaging is the owner's, off the box (a new card, not an update)."""
+    title = M("image.title", "Operating system image")
+    facts = _image_facts()
+    if not facts["files"]:
+        return [
+            finding(
+                "os-image",
+                title,
+                "warn",
+                M("image.unreadable", "The box could not read its image's release files."),
+                M("image.unreadable.why", "Without them the doctor cannot say which image this is or how old."),
+                evidence=[str(OS_RELEASE), str(MPWRD_RELEASE), str(ARMBIAN_RELEASE)],
+            )
+        ]
+    now = time.time()
+    age_days = (now - facts["built"]) / 86400 if facts["built"] else None
+    made = (
+        M(
+            "image.made",
+            "{name} {version}, built {date}.",
+            name=facts["name"],
+            version=facts["version"],
+            date=when(facts["built"]),
+        )
+        if facts["built"]
+        else M("image.made-undated", "{name} {version}.", name=facts["name"], version=facts["version"])
+    )
+    notes = []
+    if facts["commit"]:
+        notes.append(M("image.commit", "Armbian commit {commit}.", commit=facts["commit"]))
+    if age_days is not None:
+        notes.append(M("image.age", "About {days} days old.", days=round(age_days)))
+    newest = _newest_image_release(facts["project"]) if facts["project"] else None
+    if newest:
+        tag, at = newest
+        newer = tag and tag.lstrip("v") != facts["version"].lstrip("v")
+        notes.append(
+            M("image.newest", "The newest release of {project} is {tag}.", project=facts["project"], tag=tag or "?")
+            if newer
+            else M(
+                "image.newest-same", "{project}'s newest release is {tag}.", project=facts["project"], tag=tag or "?"
+            )
+        )
+    elif facts["project"]:
+        notes.append(
+            M(
+                "image.offline",
+                "The newest release of {project} was not checked: the box is offline.",
+                project=facts["project"],
+            )
+        )
+    old = age_days is not None and age_days > IMAGE_OLD_DAYS
+    if newest and newest[0] and newest[0].lstrip("v") != facts["version"].lstrip("v"):
+        return [
+            finding(
+                "os-image",
+                title,
+                "warn",
+                M(
+                    "image.newer",
+                    "A newer release of {project} is available: {tag}. This box runs {version}.",
+                    project=facts["project"],
+                    tag=newest[0],
+                    version=facts["version"],
+                ),
+                M(
+                    "image.newer.why",
+                    "An image is replaced, not updated: a new release carries its maker's kernel and fixes, "
+                    "which no package update can bring.",
+                ),
+                M(
+                    "image.newer.fix",
+                    "Read the release's notes. To take it, write the new image to a card, then restore this box's "
+                    "backup (the administrator's guide's migration page).",
+                ),
+                notes=[made, *notes],
+                evidence=[str(p) for p in facts["files"]],
+            )
+        ]
+    if old:
+        return [
+            finding(
+                "os-image",
+                title,
+                "warn",
+                M("image.old", "The image was built more than six months ago."),
+                M(
+                    "image.old.why",
+                    "Its maker's newer releases carry kernel and package fixes that this image does not, and an "
+                    "image is replaced rather than updated.",
+                ),
+                M(
+                    "image.old.fix",
+                    "Look for a newer release from the image's maker. Taking one means a new card and a restore "
+                    "from this box's backup.",
+                ),
+                notes=[made, *notes],
+                evidence=[str(p) for p in facts["files"]],
+            )
+        ]
+    return [
+        finding(
+            "os-image",
+            title,
+            "ok",
+            made,
+            notes=notes,
+            evidence=[str(p) for p in facts["files"]],
+        )
+    ]
+
+
+def check_apt_recommends():
+    """Whether apt installs recommended packages. Armbian builds its images with them off, which is why packages
+    Debian only recommends (linux-sysctl-defaults among them) can be missing. Not a fault: said once, as the
+    reason a package a check names may not be there."""
+    title = M("recommends.title", "Recommended packages")
+    if not shutil.which("apt-config"):
+        return [
+            finding(
+                "apt-recommends",
+                title,
+                "note",
+                M("recommends.unknown", "apt-config is not installed, so apt's recommends setting is not known."),
+            )
+        ]
+    out = run("apt-config", "dump", "APT::Install-Recommends", timeout=30).stdout
+    said = [line.strip() for line in out.splitlines() if "Install-Recommends" in line]
+    off = any(re.search(r'"\s*(0|false)\s*"', line, re.I) for line in said)
+    if off:
+        return [
+            finding(
+                "apt-recommends",
+                title,
+                "note",
+                M("recommends.off", "apt does not install recommended packages: APT::Install-Recommends is off."),
+                M(
+                    "recommends.off.why",
+                    "This is the image's own choice, and the reason a package Debian only recommends can be missing "
+                    "here. The System toolkit installs the ones the hub uses.",
+                ),
+                evidence=said or ["APT::Install-Recommends off"],
+            )
+        ]
+    return [
+        finding(
+            "apt-recommends",
+            title,
+            "ok",
+            M("recommends.on", "apt installs recommended packages."),
+            evidence=said,
+        )
+    ]
+
+
+def _kernel_config():
+    """The booted kernel's configuration, as {CONFIG_NAME: value} (value "n" when it says unset), or None when the
+    kernel does not publish it."""
+    candidates = [KERNEL_BOOT / f"config-{KERNEL_RELEASE}", KERNEL_PROC / "config.gz"]
+    for path in candidates:
+        try:
+            if path.suffix == ".gz":
+                import gzip
+
+                text = gzip.decompress(path.read_bytes()).decode("utf-8", "replace")
+            else:
+                text = path.read_text(errors="replace")
+        except (OSError, ValueError):
+            continue
+        out = {}
+        for line in text.splitlines():
+            m = re.match(r"^(CONFIG_[A-Z0-9_]+)=(.*)$", line)
+            if m:
+                out[m[1]] = m[2].strip()
+            m = re.match(r"^# (CONFIG_[A-Z0-9_]+) is not set$", line)
+            if m:
+                out[m[1]] = "n"
+        if out:
+            return out
+    return None
+
+
+def _bpf_errors():
+    """systemd's own words when the kernel cannot attach its cgroup programs, from this boot's kernel log."""
+    try:
+        out = run("journalctl", "-k", "-b", "--no-pager", "-g", "bpf-firewall|error 524", timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return [line.strip()[:200] for line in out.stdout.splitlines() if re.search(r"bpf-firewall|524", line)][-3:]
+
+
+def _cgroup_bpf(config):
+    """Whether the kernel can attach systemd's cgroup network programs: True, False, or None when it cannot say."""
+    if config is not None:
+        return config.get("CONFIG_CGROUP_BPF", "n") in ("y", "m")
+    return False if _bpf_errors() else None
+
+
+def _apparmor(config):
+    """Whether the kernel has AppArmor: True, False, or None when it cannot say."""
+    if (KERNEL_SYS / "module/apparmor").exists() or (KERNEL_SYS / "kernel/security/apparmor").is_dir():
+        return True
+    if config is not None:
+        return config.get("CONFIG_SECURITY_APPARMOR", "n") in ("y", "m")
+    return None
+
+
+def check_kernel_features():
+    """The kernel features the hub relies on: cgroup BPF for systemd's IPAddressDeny and IPAccounting, AppArmor for
+    a second layer around a program, and a driver for the owner's clock module. Each said for what it means here,
+    with no cure where the image's kernel is the only one that can supply it."""
+    from irate_box.root import rtc
+
+    config = _kernel_config()
+    out = []
+    bpf = _cgroup_bpf(config)
+    title = M("kernel-bpf.title", "Kernel network accounting")
+    if bpf is False:
+        out.append(
+            finding(
+                "kernel-cgroup-bpf",
+                title,
+                "warn",
+                M("kernel-bpf.missing", "The kernel cannot attach systemd's cgroup network programs."),
+                M(
+                    "kernel-bpf.missing.why",
+                    "IPAddressDeny and IPAddressAllow do nothing here, and IPAccounting reads 0. A unit that relies "
+                    "on them is not walled off or counted, so the hub uses nftables for builds instead.",
+                ),
+                M(
+                    "kernel-bpf.missing.fix",
+                    "There is no cure on this kernel. Its maker's newer image can bring one.",
+                ),
+                evidence=[
+                    *_bpf_errors(),
+                    f"CONFIG_CGROUP_BPF={config.get('CONFIG_CGROUP_BPF', 'n') if config else '?'}",
+                ],
+            )
+        )
+    elif bpf is None:
+        out.append(
+            finding(
+                "kernel-cgroup-bpf",
+                title,
+                "note",
+                M("kernel-bpf.unknown", "Whether the kernel supports systemd's cgroup network programs is not known."),
+                notes=[M("kernel-bpf.unknown.why", "The kernel publishes no configuration, and its log says nothing.")],
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "kernel-cgroup-bpf",
+                title,
+                "ok",
+                M("kernel-bpf.ok", "The kernel supports systemd's IPAddressDeny and IPAccounting."),
+            )
+        )
+    aa = _apparmor(config)
+    aa_title = M("kernel-apparmor.title", "AppArmor")
+    if aa is False:
+        out.append(
+            finding(
+                "kernel-apparmor",
+                aa_title,
+                "warn",
+                M("kernel-apparmor.missing", "AppArmor is not in this kernel."),
+                M(
+                    "kernel-apparmor.missing.why",
+                    "A program has no profile limiting what it can touch. The hub's units use systemd's sandbox "
+                    "instead, which is narrower than AppArmor but not the same.",
+                ),
+                M(
+                    "kernel-apparmor.missing.fix",
+                    "There is no cure on this kernel. Its maker's newer image can bring one.",
+                ),
+                evidence=[f"CONFIG_SECURITY_APPARMOR={config.get('CONFIG_SECURITY_APPARMOR', 'n') if config else '?'}"],
+            )
+        )
+    elif aa is None:
+        out.append(
+            finding(
+                "kernel-apparmor",
+                aa_title,
+                "note",
+                M("kernel-apparmor.unknown", "Whether AppArmor is in this kernel is not known."),
+            )
+        )
+    else:
+        out.append(finding("kernel-apparmor", aa_title, "ok", M("kernel-apparmor.ok", "AppArmor is in this kernel.")))
+    cfg = rtc.load_config()
+    if cfg:
+        rtc_title = M("kernel-rtc.title", "Clock module driver")
+        if cfg.get("mode") == "kernel":
+            out.append(
+                finding(
+                    "kernel-rtc",
+                    rtc_title,
+                    "ok",
+                    M("kernel-rtc.kernel", "The kernel drives the {chip} clock module.", chip=cfg.get("chip", "?")),
+                )
+            )
+        else:
+            out.append(
+                finding(
+                    "kernel-rtc",
+                    rtc_title,
+                    "note",
+                    M(
+                        "kernel-rtc.userspace",
+                        "The kernel has no driver for the {chip} clock module. irate-box reads it itself.",
+                        chip=cfg.get("chip", "?"),
+                    ),
+                    notes=[
+                        M(
+                            "kernel-rtc.userspace.note",
+                            "That works now. A kernel update cannot take the driver away, because there is none, but "
+                            "a change to the I2C bus can stop irate-box's own reader.",
+                        )
+                    ],
+                )
+            )
+    return out
+
+
 def scan(quick=False):
     """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
     Lyra's slow step: 132.6 of a 143.5 s run), and the books' headers without opening each in Kiwix. Each check's
@@ -7838,6 +8278,9 @@ def scan(quick=False):
         check_package_files,
         check_hardening,
         check_boards,
+        check_image,
+        check_apt_recommends,
+        check_kernel_features,
     ):
         start = time.monotonic()
         try:
