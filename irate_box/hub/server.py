@@ -979,6 +979,12 @@ def home_page(signed_in=False):
 # The list pages (a manifest with a "menu"), at their tile's href. Rendered on each request:
 # discovered entries come from the installed apps, which an update changes.
 MENU_PAGES = {m["tile"]["href"]: m for m in manifests.menus(MANIFESTS).values()}
+# List pages that were merged into another: a bookmark to the old one lands on its part of the new page.
+MENU_REDIRECTS = {
+    "/tools-general.html": "/calculators.html#general",
+    "/tools-electronics.html": "/calculators.html#electronics",
+    "/tools-rf.html": "/calculators.html#rf-lora",
+}
 # A page's tab icon: its emoji drawn as an SVG in the page itself (no request). The first emoji of a tile's icon
 # ("📡📻" is 📡), with what joins to it (U+FE0F, a skin tone, a ZWJ sequence, a flag's pair).
 FIRST_EMOJI = re.compile("[\U0001f1e6-\U0001f1ff]{2}|.[\ufe0f\U0001f3fb-\U0001f3ff]*(?:\u200d.[\ufe0f]*)*")
@@ -1016,11 +1022,7 @@ MENU_TEMPLATE = """<!DOCTYPE html>
     <div class="theme-picker" role="group" aria-label="Theme"></div>
   </header>
 
-  <section class="item-section">
-    <ul class="item-list">
-{items}
-    </ul>
-  </section>
+{sections}
 
 {art}{banner}  <script src="hub.js"></script>
 </body>
@@ -1033,18 +1035,45 @@ def menu_page(m, signed_in=False):
     for _, e, service in menu_entries(m["id"], hidden_apps(signed_in)):
         if e.get("admin") and signed_in != "admin":
             continue  # an administrator's page: not listed to anyone else
-        href = e["href"]
-        if href.startswith("/app.html#"):
-            # The hub bar then offers ↑ back to this list (app.js).
-            href = f"/app.html?from={m['id']}#" + href[len("/app.html#") :]
-        attrs = f'href="{html.escape(href)}"'
-        if service:
-            attrs += f' data-service="{html.escape(service)}"'
-        if e.get("new_tab", True):
-            attrs += ' target="_blank"'
-        desc = f'<span class="desc">{html.escape(e["desc"])}</span>' if e.get("desc") else ""
-        items.append(f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>')
+        items.append((e, service))
     menu = m["menu"]
+    sections = menu.get("sections") or []
+    groups = []
+    if sections:
+        known = {s["id"] for s in sections}
+        for section in sections:
+            found = [(e, service) for e, service in items if e.get("section") == section["id"]]
+            if found:
+                groups.append((section, found))
+        # An entry put in from another folder (or one the manifest leaves unsectioned): after the rest.
+        loose = [(e, service) for e, service in items if e.get("section") not in known]
+        if loose:
+            groups.append((None, loose))
+    else:
+        groups.append((None, items))
+    blocks = []
+    for section, found in groups:
+        lines = []
+        for e, service in found:
+            href = e["href"]
+            if href.startswith("/app.html#"):
+                # The hub bar then offers ↑ back to this list (app.js).
+                href = f"/app.html?from={m['id']}#" + href[len("/app.html#") :]
+            attrs = f'href="{html.escape(href)}"'
+            if service:
+                attrs += f' data-service="{html.escape(service)}"'
+            if e.get("new_tab", True):
+                attrs += ' target="_blank"'
+            desc = f'<span class="desc">{html.escape(e["desc"])}</span>' if e.get("desc") else ""
+            lines.append(f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>')
+        heading = f'    <h2 id="{html.escape(section["id"])}">{html.escape(section["title"])}</h2>\n' if section else ""
+        blocks.append(
+            '  <section class="item-section">\n'
+            + heading
+            + '    <ul class="item-list">\n'
+            + "\n".join(lines)
+            + "\n    </ul>\n  </section>"
+        )
     # A krab in the bottom-left corner, if the manifest names one (style.css: data-art).
     art = menu.get("art")
     lines = menu.get("banner")
@@ -1061,7 +1090,7 @@ def menu_page(m, signed_in=False):
         subtitle=html.escape(menu["subtitle"]),
         icon=emoji_icon((m.get("tile") or {}).get("icon")),
         about=html.escape(menu.get("about", "")).replace("--", "-"),
-        items="\n".join(items),
+        sections="\n\n".join(blocks),
     ).encode()
 
 
@@ -6177,6 +6206,13 @@ class Handler(BaseHTTPRequestHandler):
                         report_reasons=settings_snapshot()["report_reasons"],
                     ),
                 )
+            return
+
+        if path in MENU_REDIRECTS:
+            self.send_response(302)
+            self.send_header("Location", MENU_REDIRECTS[path])
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return
 
         if path in MENU_PAGES and not (

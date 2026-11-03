@@ -15,12 +15,17 @@ on it. Every part but "id" and "order" is optional:
                 "row": "apps" | "box"}  a tile on the home page; or {"widget": "people" | "qr" |
                                       "system", "row": "box"}, one of the hub's live tiles
     "menu":    {"title", "subtitle", "about", "art": "librarian" | "doctor" | "controller" | "electronics",
-                "banner": ["<line>", ...]}
+                "banner": ["<line>", ...],
+                "sections": [{"id", "title"}, ...]}
                                       the tile opens a list page (at its href), which the hub
                                       renders from every manifest's entries aimed at it; art: a
                                       krab in its bottom-left corner (web/art/); banner: text art,
-                                      as written, as a faint ident in the bottom-right corner
-    "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool, "admin": bool}]
+                                      as written, as a faint ident in the bottom-right corner;
+                                      sections: sub-headings on the page, in this order, each entry
+                                      naming its own with "section" (entries naming none, or one
+                                      not here, come after them)
+    "entries": [{"menus": {"<menu id>": order, ...}, "name", "desc", "href", "new_tab": bool, "admin": bool,
+                 "section": "<a menu section's id>"}]
                                       admin: listed only to someone signed in as an administrator (a page
                                       under /admin that only they can use)
                                       lines on those list pages (greyed with this app's status)
@@ -301,6 +306,25 @@ def _check(m, where):
             ),
             "menu.banner: up to 20 lines of up to 120 characters",
         )
+        sections = menu.get("sections")
+        if sections is not None:
+            need(
+                isinstance(sections, list) and 0 < len(sections) <= 32,
+                "menu.sections: 1 to 32 sub-headings",
+            )
+            ids = []
+            for s in sections:
+                need(
+                    isinstance(s, dict) and set(s) == {"id", "title"},
+                    "menu.sections: each an id and a title",
+                )
+                need(isinstance(s["id"], str) and SECTION_RE.match(s["id"]), "menu.sections.id: a lower-case id")
+                need(
+                    isinstance(s["title"], str) and 0 < len(s["title"]) <= 80,
+                    "menu.sections.title: up to 80 characters",
+                )
+                ids.append(s["id"])
+            need(len(ids) == len(set(ids)), "menu.sections: each id once")
     for e in m.get("entries", []):
         need(isinstance(e, dict) and isinstance(e.get("menus"), dict) and e["menus"], "entries: each with menus")
         need(all(type(v) is int for v in e["menus"].values()), "entries.menus: menu id -> order")
@@ -308,6 +332,10 @@ def _check(m, where):
             need(isinstance(e.get(k), str), f"entries.{k}: a string")
         need(e["href"].startswith("/"), "entries.href: a path on this hub")
         need(e.get("admin", False) in (True, False), "entries.admin: true or false")
+        need(
+            "section" not in e or (isinstance(e["section"], str) and SECTION_RE.match(e["section"])),
+            "entries.section: a lower-case section id",
+        )
     disc = m.get("discover")
     if disc is not None:
         need(m.get("install") is not None, "discover needs an install")

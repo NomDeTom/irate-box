@@ -15,13 +15,13 @@ async function open(path, storage = {}) {
   return dom.window.document;
 }
 (async () => {
-  let d = await open('/tools-rf.html');
+  let d = await open('/calculators.html');
   const links = [...d.querySelectorAll('.item-list a')].map((a) => a.getAttribute('href'));
-  check('a list page links its apps with ?from=<list>', links.length && links.filter((h) => h.startsWith('/app.html')).every((h) => h.startsWith('/app.html?from=tools-rf#/')), links.slice(0, 3).join(' '));
+  check('a list page links its apps with ?from=<list>', links.length && links.filter((h) => h.startsWith('/app.html')).every((h) => h.startsWith('/app.html?from=calculators#/')), links.slice(0, 3).join(' '));
   check('a list page says 🏠 Hub', /🏠\s*Hub/.test(d.querySelector('.head-nav').textContent));
-  d = await open('/app.html?from=tools-rf#/tools/');
+  d = await open('/app.html?from=calculators#/tools/');
   const up = d.getElementById('app-up');
-  check('opened from a list: ↑ to it, with its title', !up.hidden && up.textContent === '↑ RF & LoRa' && up.getAttribute('href') === '/tools-rf.html', `${up.hidden} ${up.textContent} ${up.getAttribute('href')}`);
+  check('opened from a list: ↑ to it, with its title', !up.hidden && up.textContent === '↑ Calculators and Tools' && up.getAttribute('href') === '/calculators.html', `${up.hidden} ${up.textContent} ${up.getAttribute('href')}`);
   d = await open('/app.html#/tools/');
   check('opened from a tile: no ↑', d.getElementById('app-up').hidden);
   d = await open('/app.html?from=no-such-list#/tools/');

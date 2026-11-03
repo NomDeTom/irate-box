@@ -1,0 +1,22 @@
+{
+  "id": "calculators",
+  "order": 51,
+  "tile": {
+    "icon": "🧮",
+    "name": "Calculators and Tools",
+    "desc": "Converters, electronics and radio",
+    "href": "/calculators.html"
+  },
+  "menu": {
+    "title": "Calculators and Tools",
+    "subtitle": "Converters, electronics and radio calculators.",
+    "about": "Converters, circuit, radio and Meshtastic calculators from nomdetom.github.io.",
+    "art": "librarian",
+    "sections": [
+      {"id": "general", "title": "General calculators & misc tools"},
+      {"id": "computing-data", "title": "Computing & Data"},
+      {"id": "electronics", "title": "Electronics"},
+      {"id": "rf-lora", "title": "RF & LoRa"}
+    ]
+  }
+}

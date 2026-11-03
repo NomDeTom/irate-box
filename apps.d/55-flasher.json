@@ -22,7 +22,6 @@
     {
       "menus": {
         "meshtastic": 2,
-        "tools-rf": 2,
         "flashing": 0
       },
       "name": "ESP32 web flasher",

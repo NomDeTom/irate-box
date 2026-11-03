@@ -127,18 +127,18 @@ try:
     seen = json.loads(body).get("seen", {})
     check(
         "seen-only tiles listed: About and the folders",
-        "about" in seen and "tools-general" in seen and "notes" not in seen,
+        "about" in seen and "calculators" in seen and "notes" not in seen,
         seen,
     )
-    check("a folder's tile there by default", tile(home, "Calculators") is not None)
-    st1, _ = go("POST", "/admin/visibility", {"app": "tools-general", "visible": "hidden"})
+    check("a folder's tile there by default", tile(home, "Calculators and Tools") is not None)
+    st1, _ = go("POST", "/admin/visibility", {"app": "calculators", "visible": "hidden"})
     st2, _ = go("POST", "/admin/visibility", {"app": "about", "visible": "users"})
     _, home = go("GET", "/")
-    check("a folder hidden: no tile", st1 == 200 and tile(home, "Calculators") is None)
+    check("a folder hidden: no tile", st1 == 200 and tile(home, "Calculators and Tools") is None)
     check("About for users: no tile for a guest", st2 == 200 and tile(home, "About") is None)
-    st, page = go("GET", "/tools-general.html")
+    st, page = go("GET", "/calculators.html")
     check("a hidden folder's list still opens at its address", st == 200, st)
-    go("POST", "/admin/visibility", {"app": "tools-general", "visible": "auto"})
+    go("POST", "/admin/visibility", {"app": "calculators", "visible": "auto"})
     go("POST", "/admin/visibility", {"app": "about", "visible": "auto"})
     # The sign-in offer (setup decision "sign-in-offer"): a users-only app at "as its access".
     go("POST", "/admin/visibility", {"app": "notes", "visible": "auto"})
@@ -314,7 +314,7 @@ try:
     )
     go("POST", "/admin/visibility", {"app": "notes", "locked": "signin"})
     st, body = go("GET", "/menus.json")
-    check("/menus.json still answers", st == 200 and "tools-general" in json.loads(body), body[:120])
+    check("/menus.json still answers", st == 200 and "calculators" in json.loads(body), body[:120])
 finally:
     hub.terminate()
 print(f"failures: {fails}")
