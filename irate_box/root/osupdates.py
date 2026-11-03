@@ -672,7 +672,7 @@ def kind_findings(simulated):
     return kinds_report(simulated)["findings"]
 
 
-def _report_quietly(simulated=None):
+def report_quietly(simulated=None):
     """The page's copy after an action that worked the kinds out. A report that cannot be made must not fail the
     action that asked for it."""
     with contextlib.suppress(Exception):
@@ -686,12 +686,12 @@ def _main(argv):
     verb = argv[0]
     if verb == "hold-board":
         said = hold_board()
-        _report_quietly()
+        report_quietly()
         print(render(said))
         return 0
     if verb == "release-board":
         said = release_board()
-        _report_quietly()
+        report_quietly()
         print(render(said))
         return 0
     if verb == "kinds":
