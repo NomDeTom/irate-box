@@ -5968,29 +5968,29 @@
           <div class="findings" id="housecall-findings"></div>
         </section>
 
-        <section class="admin-pane" id="pins" aria-label="Pin map" data-i18n-aria-label="admin-pins.main.aria-pin-map">
-          <p class="setting-desc" data-i18n="admin-pins.main.intro">
+        <section class="admin-pane" id="pins" aria-label="Pin map" data-i18n-aria-label="admin.pins.aria-pin-map">
+          <p class="setting-desc" data-i18n="admin.pins.intro">
             The box reads the GPIO lines with <code>gpioinfo</code> and, on a Rockchip board, the pin mux as well. The
             header below is the board's 40-pin layout: a pin that a radio hat, a display, an I2C device or irate-box
             already uses is marked taken, with the name of what claims it. A free pin is the one to select for a new
             overlay.
           </p>
           <div class="library-buttons">
-            <button class="action-btn" type="button" id="pins-scan" data-i18n="admin-pins.main.read">Read the pins</button>
-            <button class="action-btn" type="button" id="pins-copy" data-i18n="admin-pins.main.copy" disabled>Copy as text</button>
+            <button class="action-btn" type="button" id="pins-scan" data-i18n="admin.pins.read">Read the pins</button>
+            <button class="action-btn" type="button" id="pins-copy" data-i18n="admin.pins.copy" disabled>Copy as text</button>
           </div>
           <p class="setting-desc action-note" id="pins-note" role="status" hidden></p>
           <p class="setting-desc" id="pins-board"></p>
           <p class="pin-legend" aria-hidden="true">
-            <span class="pin-key used"></span><span data-i18n="admin-pins.main.legend-taken">Taken</span>
-            <span class="pin-key free"></span><span data-i18n="admin-pins.main.legend-free">Free</span>
-            <span class="pin-key power"></span><span data-i18n="admin-pins.main.legend-power">Power or ground</span>
+            <span class="pin-key used"></span><span data-i18n="admin.pins.legend-taken">Taken</span>
+            <span class="pin-key free"></span><span data-i18n="admin.pins.legend-free">Free</span>
+            <span class="pin-key power"></span><span data-i18n="admin.pins.legend-power">Power or ground</span>
           </p>
           <div class="pinheader" id="pins-map"></div>
-          <h3 data-i18n="admin-pins.main.claims">In use now</h3>
+          <h3 data-i18n="admin.pins.claims">In use now</h3>
           <div id="pins-claims"></div>
-          <h3 data-i18n="admin-pins.main.board-roles">The board's fixed roles</h3>
-          <p class="setting-desc" data-i18n="admin-pins.main.roles-note">
+          <h3 data-i18n="admin.pins.board-roles">The board's fixed roles</h3>
+          <p class="setting-desc" data-i18n="admin.pins.roles-note">
             These are the pinout's own names for these pins, not claims. A pin can carry one of these
             functions only when an overlay enables it. Until then it stays free.
           </p>
