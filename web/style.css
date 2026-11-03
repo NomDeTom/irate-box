@@ -5371,6 +5371,23 @@ a.action-btn.go-btn {
   gap: 0.75rem;
   margin: 0.75rem 0;
 }
+.net-cards-stack {
+  grid-template-columns: 1fr;
+}
+.setting-cols {
+  columns: 1;
+  column-gap: 2rem;
+  margin-top: 0.5rem;
+}
+.setting-cols > * {
+  break-inside: avoid;
+  margin-bottom: 0.75rem;
+}
+@media (min-width: 64rem) {
+  .setting-cols {
+    columns: 2;
+  }
+}
 .net-card {
   display: flex;
   flex-direction: column;
