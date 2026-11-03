@@ -84,6 +84,47 @@ w.eval(`renderUpdoctor({ at: 1790950000, findings: [
     actions: [{ choice: 'force-install', label: 'Install anyway',
       confirm: 'Install the downloaded version although it failed these 2 checks: Python files compile and Shell syntax? The installer still stops on its own errors.' }] }] })`);
 const doctorButton = (label) => [...d.querySelectorAll('#doctor-findings button.action-btn')].filter((b) => b.textContent === label);
+const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
+// A question asked on a finding's button outlives the poll that redraws the finding, follows the button's
+// stable data-wait key, acts when answered, and is cancelled with a word when the finding is gone for good.
+async function questionTrials() {
+  const finding = { id: 'last-check', title: 'Last update check', status: 'problem', summary: 'A security change is held.',
+    actions: [{ choice: 'approve-install', label: 'Approve and install', confirm: 'Approve this security change and install the update?' }] };
+  const show = (findings) => w.eval(`renderUpdoctor(${JSON.stringify({ at: 1790950000, findings })})`);
+  const box = () => d.querySelector('.aw-ask');
+  w.answerAsks = false;
+  show([finding]);
+  const askedBefore = posted.length;
+  const first = doctorButton('Approve and install')[0];
+  const key = first && first.dataset.wait;
+  first.click();
+  await tick();
+  check('a doctor question is drawn beside the button that asked', !!box() && box().previousElementSibling
+    && box().previousElementSibling.contains(first), box() && box().textContent);
+  for (const n of [1, 2]) {
+    show([finding]);
+    await tick();
+    const fresh = [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === key);
+    check(`  after poll ${n} it stays, beside the button drawn again`, !!box() && !!fresh && box().previousElementSibling
+      && box().previousElementSibling.contains(fresh), t('#doctor-findings .finding'));
+  }
+  box().querySelector('button.primary').click();
+  await tick();
+  check('  answering it acts', posted.slice(askedBefore).some(([, body]) => /"action":"approve-install"/.test(body || '')), posted.slice(askedBefore));
+  const goneBefore = posted.length;
+  show([finding]);
+  await tick();
+  doctorButton('Approve and install')[0].click();
+  await tick();
+  check('a question is open again', !!box());
+  show([]);
+  await tick();
+  const note = d.querySelector('.aw-ask-gone');
+  check('a finding gone while its question is open: the question cancelled, with a word',
+    !box() && note && /question was cancelled/.test(note.textContent), note && note.textContent);
+  await tick(50);
+  check('  and nothing is sent for the answer it never got', posted.length === goneBefore, posted.slice(goneBefore));
+}
 check('the cache finding has a Clear the update cache button, and the last check an Install anyway button',
   doctorButton('Clear the update cache').length === 1 && doctorButton('Install anyway').length === 1, t('#doctor-findings .finding'));
 const asks = [];
@@ -160,7 +201,7 @@ land.click();
 // The page lands a moment after the click (landOn waits 50 ms): wait for what it does, not for a fixed time.
 const until = (done, then, left = 40) => (done() || left === 0 ? then() : setTimeout(() => until(done, then, left - 1), 50));
 const branchLanded = () => d.getElementById('update-maint').open && d.getElementById('update-source-branch').classList.contains('landed');
-until(branchLanded, () => {
+until(branchLanded, async () => {
   check('  it asks the update helper (poll-target), not the box doctor', posted.some(([u, b]) => /\/admin\/update$/.test(u) && /"action":"poll-target"/.test(b)), posted);
   check('  the link opens the fold and marks the Branch field', branchLanded(),
     [d.getElementById('update-maint').open, d.getElementById('update-source-branch').className]);
@@ -170,6 +211,7 @@ until(branchLanded, () => {
     posted.slice(0, before).every(([, b]) => !/set-source/.test(b)) && sent.some((b) => b.action === 'set-source' && b.repo === 'https://example.org/fork/irate-box' && b.branch === 'dev' && b.confirmed === true), sent);
   check('  its warning beside Save, while not saved: the box runs it as root', /as root/.test(srcWarn), srcWarn);
   check('  its poll asks about the typed repository', sent.some((b) => b.action === 'poll-source' && b.repo === 'https://example.org/fork/irate-box'), sent);
+  await questionTrials();
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
 });

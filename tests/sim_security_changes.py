@@ -111,15 +111,56 @@ said = secchanges.save({"toggles": {"outbound": "flag"}})
 check("an authorise level can be lowered over HTTPS", said["id"] == "security.changes.saved", said)
 
 changes = ["a new root action, pins"]
-record = secchanges.approve("a" * 40, "aaaaaaa", changes, "https", "an administrator over HTTPS", secchanges.levels())
+items = [{"toggle": "root_actions", "text": changes[0]}]
+install = "0" * 40
+record = secchanges.approve(
+    "a" * 40,
+    "aaaaaaa",
+    changes,
+    "https",
+    "an administrator over HTTPS",
+    secchanges.levels(),
+    items=items,
+    installed=install,
+)
 check(
     "an approval names its release, its changes and how it was given",
-    record["sha"] == "a" * 40 and record["how"] == "https",
+    record["sha"] == "a" * 40
+    and record["how"] == "https"
+    and record["items"] == items
+    and record["installed"] == install,
     record,
 )
-check("  it matches the release and the same changes", secchanges.approved("a" * 40, changes) is not None)
-check("  and not another release", secchanges.approved("b" * 40, changes) is None)
-check("  nor other changes", secchanges.approved("a" * 40, changes + ["a new host, evil.example"]) is None)
+check(
+    "  it matches the release and the same changes",
+    secchanges.approved("a" * 40, changes, installed=install) is not None,
+)
+check(
+    "  a later release with the same change carries it, on the same installed version",
+    secchanges.approved("b" * 40, changes, installed=install) is not None
+    and secchanges.covering(items, installed=install)["record"]["commit"] == "aaaaaaa",
+    secchanges.covering(items, installed=install),
+)
+check(
+    "  but an install by another route ends it",
+    secchanges.approved("b" * 40, changes, installed="1" * 40) is None,
+)
+check(
+    "  nor other changes",
+    secchanges.approved("a" * 40, changes + ["a new host, evil.example"], installed=install) is None,
+)
+check(
+    "  and not the same words under another toggle",
+    secchanges.approved("b" * 40, [], items=[{"toggle": "outbound", "text": changes[0]}], installed=install) is None,
+)
+secchanges.clear()
+secchanges.approve("c" * 40, "ccccccc", changes, "https", "an administrator over HTTPS", secchanges.levels())
+check(
+    "a record written before toggles and the installed version were kept is matched on its text, for its own release",
+    secchanges.covering(items, installed="x" * 40, sha="c" * 40)["covered"] == items
+    and secchanges.covering(items, installed="x" * 40, sha="d" * 40) is None,
+    secchanges.covering(items, installed="x" * 40, sha="c" * 40),
+)
 
 secchanges.record_install(
     "abcdef0",

@@ -2735,7 +2735,7 @@ def update_approve_security(req):
                 "The downloaded version has not been checked. Check for updates again.",
             )
         )
-    report = security_report(UPDATE_SRC, state.get("installed"))
+    report = security_report(UPDATE_SRC, state.get("installed"), sha=full)
     if not report["manifest"] or report["problems"]:
         raise Refused(
             M(
@@ -2745,7 +2745,20 @@ def update_approve_security(req):
             )
         )
     held = report["held"]
+    covered = report.get("covered") or []
     if not held:
+        if report.get("approved"):
+            # Already covered by the approval the fetch carried: the one button installs it as it stands.
+            state["security_approved_sha"] = full
+            _write_update_state(state)
+            if req.get("install"):
+                return update_install(req)
+            return M(
+                "update.security.already",
+                "The security changes are approved for {commit}. The same change. Install the update when you "
+                "are ready.",
+                commit=(report.get("approval") or {}).get("commit") or "",
+            )
         raise Refused(M("update.security.nothing", "This update has no security changes to approve."))
     levels = secchanges.levels()
     console = any(levels.get(item["toggle"]) == "console" for item in held)
@@ -2760,13 +2773,23 @@ def update_approve_security(req):
                 "sudo /opt/irate-box/irate-box hub_control update-authorise at the console or over SSH.",
             )
         )
+    # The record keeps every change approved since the installed version, so approving one more does not
+    # take back the approval the earlier fetch carried.
+    items, seen = [], set()
+    for item in [*covered, *held]:
+        key = (item.get("toggle"), item.get("text"))
+        if key not in seen:
+            seen.add(key)
+            items.append({"toggle": item.get("toggle"), "text": item.get("text")})
     secchanges.approve(
         full,
         full[:7],
-        [item["text"] for item in held],
+        [item["text"] for item in items],
         "console" if at_console else "https",
         "the console" if at_console else "an administrator over HTTPS",
         levels,
+        items=items,
+        installed=state.get("installed"),
     )
     state["security_approved_sha"] = full
     _write_update_state(state)
@@ -2815,7 +2838,7 @@ def _strictest_level(levels):
     return max(levels, key=lambda name: secchanges.RANK.get(levels[name], 0)) if levels else "root_code"
 
 
-def security_report(src, installed):
+def security_report(src, installed, sha=None):
     """What the fetched tree's manifest says, how it differs from the installed one, and which
     widenings the owner's levels hold. Read statically: the fetched code is never imported. When the
     builder itself changed, it is not used on the new tree: the change is held as its own widening."""
@@ -2825,6 +2848,9 @@ def security_report(src, installed):
         "changes": _no_changes(),
         "levels": secchanges.levels(),
         "held": [],
+        "covered": [],
+        "approved": False,
+        "approval": None,
         "builder_changed": False,
     }
     try:
@@ -2866,12 +2892,25 @@ def security_report(src, installed):
                 }
             )
         held = [item for item in changes["widenings"] if levels.get(item["toggle"], "authorise") != "flag"]
+        # An approval covers the changes it named since the installed version. A later fetch with the same
+        # change carries it; one with a new or different change is held for that one alone.
+        cover = secchanges.covering(held, installed=installed, sha=sha)
+        covered = cover["covered"] if cover else []
+        uncovered = cover["uncovered"] if cover else held
+        if cover and (cover["record"].get("how") or "") != "console":
+            # A level that needs the console is not carried by an approval given over HTTPS.
+            at_console = [item for item in covered if levels.get(item["toggle"]) == "console"]
+            covered = [item for item in covered if item not in at_console]
+            uncovered = [*at_console, *uncovered]
         return {
             "manifest": True,
             "problems": problems,
             "changes": changes,
             "levels": levels,
-            "held": held,
+            "held": uncovered,
+            "covered": covered,
+            "approved": bool(covered) and not uncovered,
+            "approval": cover["record"] if cover else None,
             "builder_changed": builder_changed,
             "builder_differences": differences[:20],
         }
@@ -2912,6 +2951,7 @@ def _security_check(src, installed):
         )
     widenings = report["changes"]["widenings"]
     held = report["held"]
+    covered = report.get("covered") or []
     if held:
         console = any(report["levels"].get(item["toggle"]) == "console" for item in held)
         return _check(
@@ -2937,6 +2977,42 @@ def _security_check(src, installed):
                 "Approve and install the changes in the Updates doctor, or use Install anyway only if you meant them.",
             ),
             evidence=[item["text"] for item in held] + list(report.get("builder_differences") or [])[:8],
+            note=M(
+                "update.verify.security.carried-note",
+                {
+                    "one": "The update's other security change was approved for {commit}. The same change.",
+                    "other": "The update's other {n} security changes were approved for {commit}. The same changes.",
+                },
+                n=len(covered),
+                commit=(report.get("approval") or {}).get("commit") or "",
+            )
+            if covered
+            else None,
+            go=GO_UPDATE_DOCTOR,
+        )
+    if covered:
+        return _check(
+            "security",
+            False,
+            SECURITY_TITLE,
+            M(
+                "update.verify.security.carried",
+                {
+                    "one": "The update widens {n} thing in the box's reach: {changes}. Approved for {commit}. "
+                    "The same change.",
+                    "other": "The update widens {n} things in the box's reach: {changes}. Approved for {commit}. "
+                    "The same changes.",
+                },
+                n=len(covered),
+                changes=[item["text"] for item in covered],
+                commit=(report.get("approval") or {}).get("commit") or "",
+            ),
+            fix=M(
+                "update.verify.security.carried.fix",
+                "The security changes are approved for {commit}. Install the update from Updates when you are ready.",
+                commit=(report.get("approval") or {}).get("commit") or "",
+            ),
+            evidence=[item["text"] for item in covered],
             go=GO_UPDATE_DOCTOR,
         )
     if widenings:
@@ -3671,17 +3747,33 @@ def update_fetch(req):
     head = state["available"]
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
     failed = [c for c in checks if not c["ok"] and not c["warn"]]
+    report = security_report(UPDATE_SRC, state.get("installed"), sha=full)
+    # The security check stays failed when only approved changes hold it, as it does after an approval for
+    # the same version. A later fetch with those same changes carries that approval; Install reads it.
+    carried = bool(report.get("approved")) and bool(failed) and all(c.get("id") == "security" for c in failed)
     state.update(
         checks=checks,
         checked_sha=full,
-        security=security_report(UPDATE_SRC, state.get("installed")),
-        security_approved_sha=state.get("security_approved_sha")
-        if state.get("security_approved_sha") == full
-        else None,
+        security=report,
+        security_approved_sha=full if carried or state.get("security_approved_sha") == full else None,
+        security_approved_commit=(report.get("approval") or {}).get("commit") if carried else None,
         verified=None if failed else head,
         verified_sha=None if failed else full,
     )
     _write_update_state(state)
+    if failed and carried:
+        _doctor_again()
+        return M(
+            "update.fetch.approved",
+            {
+                "one": "Download complete. The update's security change was approved for {commit}. The same "
+                "change. Install the update when you are ready.",
+                "other": "Download complete. The update's {n} security changes were approved for {commit}. The "
+                "same changes. Install the update when you are ready.",
+            },
+            n=len(report.get("covered") or []),
+            commit=(report.get("approval") or {}).get("commit") or "",
+        )
     if failed:
         _doctor_again()
         return M(
@@ -3812,10 +3904,23 @@ def _approved_only(state, full):
 
 
 def _security_approval(state, full):
-    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"))
+    report = state.get("security") or security_report(UPDATE_SRC, state.get("installed"), sha=full)
     if not report.get("manifest") or report.get("problems"):
         return None
-    return secchanges.approved(full, [item["text"] for item in report.get("held") or []])
+    if report.get("approved") and state.get("security_approved_sha") == full:
+        record = report.get("approval")
+    else:
+        held = report.get("held") or []
+        record = secchanges.approved(
+            full, [item["text"] for item in held], items=held, installed=state.get("installed")
+        )
+    if not record:
+        return None
+    levels = report.get("levels") or secchanges.levels()
+    at_console = report.get("held") or report.get("covered") or []
+    if (record.get("how") or "") != "console" and any(levels.get(item["toggle"]) == "console" for item in at_console):
+        return None
+    return record
 
 
 def _install_fetched(state, how="https", forced=False, overridden=()):
@@ -3835,6 +3940,7 @@ def _install_fetched(state, how="https", forced=False, overridden=()):
             changes=[],
             install_steps=seen,
             security_approved_sha=None,
+            security_approved_commit=None,
         )
         _write_update_state(state)
     return _installed_now()
@@ -4840,6 +4946,13 @@ def updates_doctor_findings():
                         else _console_refusal(last)
                         or (
                             M(
+                                "update.last-check.fix.approved-carried",
+                                "The security changes were approved for {commit}. The same change. Install it from "
+                                "Updates when you are ready.",
+                                commit=last.get("security_approved_commit"),
+                            )
+                            if approved and last.get("security_approved_commit")
+                            else M(
                                 "update.last-check.fix.approved",
                                 "The security changes are approved for this downloaded version. Install it from "
                                 "Updates when you are ready.",
@@ -4859,7 +4972,15 @@ def updates_doctor_findings():
                         *(_said_check(c) for c in failed),
                         *(c["fix"] for c in failed if is_message(c.get("fix"))),
                         *(
-                            [M("update.security.approved-note", "Approved for this downloaded version.")]
+                            [
+                                M(
+                                    "update.security.carried-note",
+                                    "Approved for {commit}. The same change.",
+                                    commit=last.get("security_approved_commit"),
+                                )
+                            ]
+                            if approved and last.get("security_approved_commit")
+                            else [M("update.security.approved-note", "Approved for this downloaded version.")]
                             if approved
                             else []
                         ),
@@ -4950,7 +5071,8 @@ def _security_record_finding():
 
 def _security_only_held(state):
     """The security check is the only failed one, and what it holds can be approved: the tree matches its own
-    manifest, and there is a held widening. A tree that does not match is only for Install anyway."""
+    manifest, and there is a held widening or only changes an earlier approval already covers. A tree that does
+    not match is only for Install anyway."""
     report = state.get("security") or {}
     failed = _force_failed(state)
     return (
@@ -4958,7 +5080,7 @@ def _security_only_held(state):
         and all(c.get("id") == "security" for c in failed)
         and bool(report.get("manifest"))
         and not report.get("problems")
-        and bool(report.get("held"))
+        and bool(report.get("held") or report.get("approved"))
     )
 
 

@@ -182,6 +182,42 @@ const wait = (ms = 80) => new Promise((r) => setTimeout(r, ms));
   sec.pending = 0;
   d.documentElement.dataset.helperBusy = 'false';
 
+  // A question asked beside a finding action in the Security doctor survives the poll's redraw, follows the
+  // action's data-wait key, acts when answered, and is cancelled with a word when the finding is gone.
+  sec.scan.findings.push({ id: 'test-action', title: 'A test action', status: 'problem', summary: 'Something to do.',
+    actions: [{ choice: 'test-choice', label: 'Do the thing' }] });
+  w.eval('loadSecurity')();
+  await wait(100);
+  w.answerAsks = false;
+  const actionButton = () => d.querySelector('#sec-test-action button.action-btn');
+  const box = () => d.querySelector('.aw-ask');
+  let answered = null;
+  w.eval("window.__answer = null; AW.confirmHere('Do the thing?', { anchor: document.querySelector('#sec-test-action button.action-btn') }).then((yes) => { window.__answer = yes; })");
+  await wait();
+  const questionKey = actionButton() && actionButton().dataset.wait;
+  check('a Security doctor question is drawn beside the finding action', !!box() && questionKey && box().previousElementSibling
+    && box().previousElementSibling.contains(actionButton()), box() && box().textContent);
+  for (const n of [1, 2]) {
+    w.eval('loadSecurity')();
+    await wait();
+    const fresh = [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === questionKey);
+    check(`  after poll ${n} it stays, beside the action drawn again`, !!box() && !!fresh && box().previousElementSibling
+      && box().previousElementSibling.contains(fresh), card('test-action') && t(card('test-action')));
+  }
+  box().querySelector('button.primary').click();
+  await wait();
+  check('  answering it acts', w.__answer === true, w.__answer);
+  w.eval("window.__answer = null; AW.confirmHere('Do the thing?', { anchor: document.querySelector('#sec-test-action button.action-btn') }).then((yes) => { window.__answer = yes; })");
+  await wait();
+  check('a Security doctor question is open again', !!box());
+  sec.scan.findings = sec.scan.findings.filter((finding) => finding.id !== 'test-action');
+  w.eval('loadSecurity')();
+  await wait();
+  const gone = d.querySelector('.aw-ask-gone');
+  check('a finding gone while its question is open: the question cancelled, with a word',
+    !box() && gone && /question was cancelled/.test(gone.textContent), gone && gone.textContent);
+  check('  and the answer it never got did not act', w.__answer === false, w.__answer);
+
   const all = d.body.textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
