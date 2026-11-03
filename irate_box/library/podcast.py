@@ -42,7 +42,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from irate_box.library import librarian
@@ -157,7 +157,7 @@ def validate_feed(raw, existing=True):
     if not feed_id:
         feed_id = re.sub(r"[^a-z0-9]+", "-", (title or urllib.parse.urlparse(url).netloc).lower()).strip("-")[:32]
         if not feed_id or not NAME_RE.match(feed_id):
-            feed_id = hashlib.sha1(url.encode()).hexdigest()[:16]
+            feed_id = hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest()[:16]
     if not isinstance(feed_id, str) or not NAME_RE.match(feed_id):
         raise LibrarianError(
             M("podcast.feed.id", "Invalid feed name. Use letters, digits, dots, hyphens and underscores.")
@@ -175,7 +175,7 @@ def validate_feed(raw, existing=True):
 def _fetch(url, limit, accept="application/rss+xml, application/atom+xml, application/xml, text/xml, */*"):
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:  # http(s) checked before and after. # nosec B310
             final = response.geturl()
             if urllib.parse.urlparse(final).scheme not in ("http", "https"):
                 raise LibrarianError(M("podcast.feed.scheme", "The feed is not on http or https."))
@@ -254,6 +254,7 @@ def parse_feed(data, url):
         # Expat's own refusal also stops an entity expansion; make the words plain.
         raise LibrarianError(M("podcast.feed.doctype", "This feed uses a document type the box does not read."))
     try:
+        # A DOCTYPE or ENTITY was refused just above, so entity expansion does not reach Expat. # nosec B405
         root = ET.fromstring(data)
     except ET.ParseError as exc:
         raise LibrarianError(
@@ -427,7 +428,7 @@ def _save_index(feed_id, index):
 
 
 def _episode_id(guid):
-    return hashlib.sha1(str(guid).encode()).hexdigest()[:16]
+    return hashlib.sha1(str(guid).encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def _extension(url, mime):
@@ -479,7 +480,7 @@ def _download(url, path, cfg, log):
     limit = cfg["max_episode_mb"] * (1 << 20)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=60) as response:  # http(s) checked before and after. # nosec B310
             if urllib.parse.urlparse(response.geturl()).scheme not in ("http", "https"):
                 raise LibrarianError(M("podcast.episode.scheme", "The episode is not on http or https."))
             length = int(response.headers.get("Content-Length") or 0)
@@ -860,7 +861,7 @@ def _xml(text):
 
 def import_opml(text):
     try:
-        root = ET.fromstring(text.encode() if isinstance(text, str) else text)
+        root = ET.fromstring(text.encode() if isinstance(text, str) else text)  # OPML pasted by the admin. # nosec B405
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.opml.invalid", "That is not an OPML file: {error}.", error=str(exc)[:120])
@@ -878,7 +879,7 @@ def import_opml(text):
             continue
         feed = validate_feed({"url": url, "title": _attr(node, "title") or _attr(node, "text")})
         if any(f["id"] == feed["id"] for f in cfg["feeds"]):
-            feed["id"] = hashlib.sha1(url.encode()).hexdigest()[:16]
+            feed["id"] = hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest()[:16]
         cfg["feeds"].append(feed)
         known.add(url)
         added += 1
