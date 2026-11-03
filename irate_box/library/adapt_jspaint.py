@@ -222,12 +222,12 @@ async function file_save_to_box() {
 async function file_open_from_box() {
 	let saves;
 	try {
-		const response = await fetch("/api/saves?full=1");
+		const response = await fetch("/api/saves");
 		if (!response.ok) {
 			throw new Error(`the gallery answered ${response.status}`);
 		}
 		const data = await response.json();
-		saves = (data.saves || []).filter((save) => save.kind === "jspaint" && typeof save.state === "string");
+		saves = (data.saves || []).filter((save) => save.kind === "jspaint");
 	} catch (error) {
 		show_error_message("The box's gallery could not be read.", error);
 		return;
@@ -257,7 +257,12 @@ async function file_open_from_box() {
 		return;
 	}
 	try {
-		const info = await load_image_from_uri(save.state);
+		const whole = await fetch(`/api/saves/${encodeURIComponent(save.id)}`);
+		if (!whole.ok) {
+			throw new Error(`the gallery answered ${whole.status}`);
+		}
+		const full = await whole.json();
+		const info = await load_image_from_uri(full.state);
 		box_save_id = save.id;
 		file_name = `${save.name || "Picture"}.png`;
 		open_from_image_info(info);

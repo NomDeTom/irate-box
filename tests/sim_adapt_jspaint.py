@@ -103,8 +103,9 @@ check(
 )
 check(
     "  Open reads the gallery's saved pictures and loads the chosen one",
-    'fetch("/api/saves?full=1")' in functions
-    and "load_image_from_uri(save.state)" in functions
+    'fetch("/api/saves")' in functions
+    and "fetch(`/api/saves/${encodeURIComponent(save.id)}`)" in functions
+    and "load_image_from_uri(full.state)" in functions
     and "open_from_image_info(info)" in functions,
 )
 try:
