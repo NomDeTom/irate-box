@@ -14,6 +14,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# A newer push to a pull request's branch cancels its older run, as Trunk check does; pushes to main and tags
+# each keep their own run (run_id).
+concurrency:
+  group: guide-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 jobs:
   book:
     runs-on: ubuntu-latest
