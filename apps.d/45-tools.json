@@ -21,25 +21,205 @@
   "entries": [
     {
       "menus": {
-        "tools-rf": 10,
+        "calculators": 10
+      },
+      "section": "general",
+      "name": "Unit Converter and Calculator",
+      "desc": "Convert and calculate across units",
+      "href": "/app.html#/tools/unit-conversion.html"
+    },
+    {
+      "menus": {
+        "calculators": 11
+      },
+      "section": "general",
+      "name": "Discord Timestamp Generator",
+      "desc": "Timestamps that show in each reader’s time zone",
+      "href": "/app.html#/tools/discord-timestamps.html"
+    },
+    {
+      "menus": {
+        "calculators": 12
+      },
+      "section": "general",
+      "name": "URL Cleaner",
+      "desc": "Strip tracking from shop links",
+      "href": "/app.html#/tools/url-cleaner.html"
+    },
+    {
+      "menus": {
+        "calculators": 20
+      },
+      "section": "computing-data",
+      "name": "Computing Units",
+      "desc": "Bits, bytes and binary prefixes",
+      "href": "/app.html#/tools/computing-units.html"
+    },
+    {
+      "menus": {
+        "calculators": 21
+      },
+      "section": "computing-data",
+      "name": "Datatype Byte Converter",
+      "desc": "Integers and floats to bytes and back",
+      "href": "/app.html#/tools/datatype-converter.html"
+    },
+    {
+      "menus": {
+        "calculators": 22
+      },
+      "section": "computing-data",
+      "name": "Protobuf Encoding Demonstrator",
+      "desc": "Inspect Protocol Buffers field and varint encoding",
+      "href": "/app.html#/tools/protobuf-encoding-demonstrator.html"
+    },
+    {
+      "menus": {
+        "calculators": 23
+      },
+      "section": "computing-data",
+      "name": "ASCII and Unicode Converter",
+      "desc": "Text to code points, bytes and escapes",
+      "href": "/app.html#/tools/ascii-unicode-converter.html"
+    },
+    {
+      "menus": {
+        "calculators": 24
+      },
+      "section": "computing-data",
+      "name": "Unicode Explorer",
+      "desc": "Browse and inspect characters",
+      "href": "/app.html#/tools/unicode-explorer.html"
+    },
+    {
+      "menus": {
+        "calculators": 25
+      },
+      "section": "computing-data",
+      "name": "Emoji Version Explorer",
+      "desc": "Browse the complete emoji set as it stood at each Unicode Emoji version, with release years",
+      "href": "/app.html#/tools/emoji-version-explorer.html"
+    },
+    {
+      "menus": {
+        "calculators": 26
+      },
+      "section": "computing-data",
+      "name": "Integer Arithmetic Calculator",
+      "desc": "Fixed-width maths with overflow shown",
+      "href": "/app.html#/tools/integer-arithmetic-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 30
+      },
+      "section": "electronics",
+      "name": "Solar Panel Sense Checker",
+      "desc": "Check a solar panel and battery pair against the expected power",
+      "href": "/app.html#/tools/solar-panel-sense-checker.html"
+    },
+    {
+      "menus": {
+        "calculators": 31
+      },
+      "section": "electronics",
+      "name": "Voltage Divider Calculator",
+      "desc": "Resistor pairs for a target ratio",
+      "href": "/app.html#/tools/voltage-divider-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 32
+      },
+      "section": "electronics",
+      "name": "Ohm's Law Calculator",
+      "desc": "Enter two of V, I, R and P. The calculator computes the others",
+      "href": "/app.html#/tools/ohms-law-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 33
+      },
+      "section": "electronics",
+      "name": "Capacitor Discharge Calculator",
+      "desc": "RC discharge over time",
+      "href": "/app.html#/tools/capacitor-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 34
+      },
+      "section": "electronics",
+      "name": "MLCC Derating Lookup",
+      "desc": "Capacitance lost to DC bias",
+      "href": "/app.html#/tools/mlcc-derating-lookup.html"
+    },
+    {
+      "menus": {
+        "calculators": 35
+      },
+      "section": "electronics",
+      "name": "Wire Voltage Drop Calculator",
+      "desc": "Loss along a cable run",
+      "href": "/app.html#/tools/wire-voltage-drop-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 36
+      },
+      "section": "electronics",
+      "name": "Battery Runtime Calculator",
+      "desc": "How long a cell lasts at a given load",
+      "href": "/app.html#/tools/battery-runtime-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 37
+      },
+      "section": "electronics",
+      "name": "IC Pinout ASCII Generator",
+      "desc": "Draw a chip’s pinout as text",
+      "href": "/app.html#/tools/ic-pinout-generator.html"
+    },
+    {
+      "menus": {
+        "calculators": 38
+      },
+      "section": "electronics",
+      "name": "Buck and Boost Duty Cycle Calculator",
+      "desc": "Ideal or efficiency-adjusted duty cycle, ripple and loss estimates for buck and boost converters",
+      "href": "/app.html#/tools/buck-boost-duty-cycle-calculator.html"
+    },
+    {
+      "menus": {
+        "calculators": 41,
         "meshtastic": 60
       },
+      "section": "rf-lora",
       "name": "LoRa Airtime Calculator",
       "desc": "Time on air of a packet for a spreading factor (SF), a bandwidth and a coding rate",
       "href": "/app.html#/tools/lora-airtime-calculator.html"
     },
     {
       "menus": {
-        "tools-rf": 20,
-        "meshtastic": 70
+        "calculators": 42
       },
+      "section": "rf-lora",
       "name": "LoRa Frame Structure Visualiser",
       "desc": "Chirps, timing and audio of a LoRa frame",
       "href": "/app.html#/tools/lora-frame-structure-visualiser.html"
     },
     {
       "menus": {
-        "tools-rf": 30,
+        "calculators": 43
+      },
+      "section": "rf-lora",
+      "name": "USB RF Power Meter V3 Reader",
+      "desc": "Read the meter over Web Serial",
+      "href": "/app.html#/tools/rf-power-meter-v3-reader.html"
+    },
+    {
+      "menus": {
         "meshtastic": 30
       },
       "name": "Meshtastic Node ID Tool",
@@ -48,7 +228,6 @@
     },
     {
       "menus": {
-        "tools-rf": 40,
         "meshtastic": 40
       },
       "name": "Meshtastic URL & QR Tool",
@@ -62,162 +241,7 @@
       "name": "meshtasticd Pinout Map",
       "desc": "The Raspberry Pi header pins that a config.d YAML file uses",
       "href": "/app.html#/tools/meshtasticd-pinout-map.html"
-    },
-    {
-      "menus": {
-        "tools-rf": 50
-      },
-      "name": "USB RF Power Meter V3 Reader",
-      "desc": "Read the meter over Web Serial",
-      "href": "/app.html#/tools/rf-power-meter-v3-reader.html"
-    },
-    {
-      "menus": {
-        "tools-general": 10
-      },
-      "name": "Computing Units",
-      "desc": "Bits, bytes and binary prefixes",
-      "href": "/app.html#/tools/computing-units.html"
-    },
-    {
-      "menus": {
-        "tools-general": 20
-      },
-      "name": "Unit Converter and Calculator",
-      "desc": "Convert and calculate across units",
-      "href": "/app.html#/tools/unit-conversion.html"
-    },
-    {
-      "menus": {
-        "tools-general": 30
-      },
-      "name": "Datatype Byte Converter",
-      "desc": "Integers and floats to bytes and back",
-      "href": "/app.html#/tools/datatype-converter.html"
-    },
-    {
-      "menus": {
-        "tools-general": 40
-      },
-      "name": "Integer Arithmetic Calculator",
-      "desc": "Fixed-width maths with overflow shown",
-      "href": "/app.html#/tools/integer-arithmetic-calculator.html"
-    },
-    {
-      "menus": {
-        "tools-general": 50
-      },
-      "name": "Protobuf Encoding Demonstrator",
-      "desc": "Inspect Protocol Buffers field and varint encoding",
-      "href": "/app.html#/tools/protobuf-encoding-demonstrator.html"
-    },
-    {
-      "menus": {
-        "tools-general": 60
-      },
-      "name": "ASCII and Unicode Converter",
-      "desc": "Text to code points, bytes and escapes",
-      "href": "/app.html#/tools/ascii-unicode-converter.html"
-    },
-    {
-      "menus": {
-        "tools-general": 70
-      },
-      "name": "Unicode Explorer",
-      "desc": "Browse and inspect characters",
-      "href": "/app.html#/tools/unicode-explorer.html"
-    },
-    {
-      "menus": {
-        "tools-general": 80
-      },
-      "name": "Discord Timestamp Generator",
-      "desc": "Timestamps that show in each reader’s time zone",
-      "href": "/app.html#/tools/discord-timestamps.html"
-    },
-    {
-      "menus": {
-        "tools-general": 90
-      },
-      "name": "URL Cleaner",
-      "desc": "Strip tracking from shop links",
-      "href": "/app.html#/tools/url-cleaner.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 10
-      },
-      "name": "Solar Panel Sense Checker",
-      "desc": "Check a solar panel and battery pair against the expected power",
-      "href": "/app.html#/tools/solar-panel-sense-checker.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 20
-      },
-      "name": "Voltage Divider Calculator",
-      "desc": "Resistor pairs for a target ratio",
-      "href": "/app.html#/tools/voltage-divider-calculator.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 30
-      },
-      "name": "Ohm's Law Calculator",
-      "desc": "Enter two of V, I, R and P. The calculator computes the others",
-      "href": "/app.html#/tools/ohms-law-calculator.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 40
-      },
-      "name": "Capacitor Discharge Calculator",
-      "desc": "RC discharge over time",
-      "href": "/app.html#/tools/capacitor-calculator.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 50
-      },
-      "name": "MLCC Derating Lookup",
-      "desc": "Capacitance lost to DC bias",
-      "href": "/app.html#/tools/mlcc-derating-lookup.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 60
-      },
-      "name": "Wire Voltage Drop Calculator",
-      "desc": "Loss along a cable run",
-      "href": "/app.html#/tools/wire-voltage-drop-calculator.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 70
-      },
-      "name": "Battery Runtime Calculator",
-      "desc": "How long a cell lasts at a given load",
-      "href": "/app.html#/tools/battery-runtime-calculator.html"
-    },
-    {
-      "menus": {
-        "tools-electronics": 80
-      },
-      "name": "IC Pinout ASCII Generator",
-      "desc": "Draw a chip’s pinout as text",
-      "href": "/app.html#/tools/ic-pinout-generator.html"
     }
   ],
-  "discover": {
-    "file": "irate-box-index.json",
-    "href": "/app.html#/tools/{page}",
-    "order": 1000,
-    "groups": {
-      "Power": "tools-electronics",
-      "Data": "tools-general",
-      "RF": "tools-rf",
-      "Tiny Tools": "tools-general"
-    }
-  },
   "admin": {"title": "Calculators", "icon": "🧮"}
 }

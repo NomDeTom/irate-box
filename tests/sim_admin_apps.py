@@ -62,7 +62,7 @@ check(
 )
 check(
     "the folders are marked",
-    all(by[i]["folder"] for i in ("meshtastic", "tools-rf", "tools-general", "tools-electronics") if i in by),
+    all(by[i]["folder"] for i in ("meshtastic", "calculators", "flashing") if i in by),
 )
 check(
     "box widgets without an admin part are left out",
@@ -166,7 +166,7 @@ try:
     check("  refused without the front's header, as /admin is", st == 403, st)
     check(
         "/admin/apps: who sees it alone for About and the folders, not a switched app",
-        seen.get("about") is True and seen.get("tools-rf") is True and seen.get("draw") is False,
+        seen.get("about") is True and seen.get("calculators") is True and seen.get("draw") is False,
         seen,
     )
     sw = {x["id"]: x["switch"] for x in got}

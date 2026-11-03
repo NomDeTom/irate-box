@@ -22,16 +22,17 @@
   "entries": [
     {
       "menus": {
-        "tools-rf": 0,
-        "meshtastic": 0
+        "calculators": 40,
+        "meshtastic": 0,
+        "flashing": 5
       },
+      "section": "rf-lora",
       "name": "Serial terminal and log analyser",
       "desc": "Open a saved Meshtastic log to analyse it. For live USB serial, use the download below",
       "href": "/app.html#/serial/"
     },
     {
       "menus": {
-        "tools-rf": 1,
         "meshtastic": 1,
         "flashing": 4
       },

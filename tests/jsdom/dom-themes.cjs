@@ -50,7 +50,7 @@ async function open(path, storage = {}) {
   check('an old saved "cybercore" moves to hub-theme, base dark', w.localStorage.getItem('hub-theme') === 'cybercore' && w.localStorage.getItem('theme') === 'dark' && d.documentElement.dataset.theme === 'cybercore');
   ({ w, d } = await open('/', { 'hub-theme': 'nonsense', theme: 'purple' }));
   check('unknown saved values: Auto', !d.documentElement.hasAttribute('data-theme'));
-  ({ w, d } = await open('/tools-rf.html', { theme: 'light', 'hub-theme': 'cybercore' }));
+  ({ w, d } = await open('/calculators.html', { theme: 'light', 'hub-theme': 'cybercore' }));
   check('a list page (server-rendered) gets the picker and the theme', d.querySelector('.theme-picker .theme-more') && d.documentElement.dataset.theme === 'cybercore' && d.getElementById('hub-theme-css'));
   ({ w, d } = await open('/app.html#/tools/', { theme: 'dark', 'hub-theme': 'cybercore' }));
   check('app.html: apps told the base (dark)', w.localStorage.getItem('excalidraw-theme') === 'dark' && w.localStorage.getItem('nomdetom-theme-mode') === 'dark', w.localStorage.getItem('excalidraw-theme'));

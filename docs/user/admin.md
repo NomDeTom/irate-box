@@ -20,7 +20,7 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - **All apps** lists every app on one line: installed, available and built in. It has a search. It also holds the installer for add-ons and the catalogue of web add-ons.
 - **Hub layout**: what visitors see.
   - **Home tiles**: set the place, the size, the Visibility and the icon of each tile. Set what a locked tile does for a visitor who cannot open it. One **Save** keeps all of these.
-  - **Folders**: the folders of tiles on the hub (Meshtastic, RF and LoRa, Calculators, Electronics). Each folder has a page for its Visibility and its contents.
+  - **Folders**: the folders of tiles on the hub (Meshtastic, Calculators and Tools, Flashing tools, Drawing). Each folder has a page for its Visibility and its contents.
   - **Status widgets**: the row of readouts.
   - **Appearance**: the name of the hub, its colours, its page widths and its emoji.
   - **Colours**: the box has one light palette and one dark palette. Presets set both.

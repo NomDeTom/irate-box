@@ -21,7 +21,7 @@ const accessData = { apps: [
   { id: 'git', title: 'Git', mode: 'public', login: false, kind: 'builtin', unit: false },
   { id: 'notes', title: 'Notes', mode: 'off', login: false, kind: 'addon', unit: true },
   { id: 'term', title: 'Terminal', mode: 'public', login: true, kind: 'addon', unit: true },
-], results: [], seen: { about: 'auto', 'tools-rf': 'hidden' } };
+], results: [], seen: { about: 'auto', 'calculators': 'hidden' } };
 // The librarian's snapshot, with Excalidraw kept current (its own updates on its page).
 const library = { policy: { keep_old: 1, check_every_hours: 24, min_free_mb: 500, auto_install: 1, hub_check_every_hours: 24, hub_auto: 2, hub_window_start: 2, hub_window_end: 5 }, token_set: false, running: false, types: [],
   progress: null, free_mb: 51000, job: {}, status: { draw: { last_check: '2026-10-08 03:00', outcome: 'up to date' } },
@@ -152,7 +152,7 @@ setTimeout(() => {
     && d.querySelector('.admin-side-list a[href="/admin/pins.html"]'));
   check('Hub layout: Home tiles, Folders, Status widgets, Appearance, and no folder of its own in the sidebar',
     ['Home tiles', 'Folders', 'Status widgets', 'Appearance'].every((x, i, all) => side.indexOf(x) > (i ? side.indexOf(all[i - 1]) : side.indexOf('Hub layout')))
-    && !d.querySelector('.admin-side-list a[href="#page-app-tools-rf"]'));
+    && !d.querySelector('.admin-side-list a[href="#page-app-calculators"]'));
   check('sidebar: a page per app that owns sections, in the hub\'s order', (() => { const at = (n) => side.findIndex((x) => x.endsWith(n)); return ['Kiwix', 'Git', 'Web flasher', 'Mesh', 'Firmware Factory'].every((a, i, all) => at(a) > side.indexOf('Apps') && at(a) < side.indexOf('Moderation') && (!i || at(a) > at(all[i - 1]))); })(), side.join('|'));
   const sections = [...d.querySelectorAll('.admin-pane')];
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
@@ -175,8 +175,8 @@ setTimeout(() => {
     && !!d.querySelector('#app-tile-wiki a[href="#tile-order"]'), t('#app-tile-wiki')[0]);
   check('an app with no sections still has its page, for its access', !!d.querySelector('#page-app-draw .access-block'));
   check('About\'s page: its state and its tile, nothing of access', panes('page-app-about') === 'app-head-about app-tile-about' && !d.getElementById('app-access-about'), panes('page-app-about'));
-  check('a folder\'s page: what\'s in it, then its tile', panes('page-app-tools-rf') === 'folder-tools-rf app-tile-tools-rf', panes('page-app-tools-rf'));
-  check('  a folder with no home tile says so', /No tile on the home page/.test(t('#app-tile-tools-rf')[0]), t('#app-tile-tools-rf')[0]);
+  check('a folder\'s page: what\'s in it, then its tile', panes('page-app-calculators') === 'folder-calculators app-tile-calculators', panes('page-app-calculators'));
+  check('  a folder with no home tile says so', /No tile on the home page/.test(t('#app-tile-calculators')[0]), t('#app-tile-calculators')[0]);
   check('apps with a switch and no tile have a page: Serial, the calculators\' site, Syncthing', ['serial', 'tools', 'sync'].every((i) => d.querySelector(`#page-app-${i} .access-block`)));
   {
     // Home tiles: each tile's place, size, who sees it, what a locked one does and its icon, held until one Save.
@@ -257,7 +257,7 @@ setTimeout(() => {
   {
     const lines = [...d.querySelectorAll('#inv-list .inv-row')];
     const line = (name) => lines.find((r) => r.querySelector('.inv-name').textContent === name);
-    check('All apps: a line per app, folders left out', lines.length > 5 && !line('RF & LoRa') && !!line('File drop'), lines.map((r) => r.querySelector('.inv-name').textContent).join('|'));
+    check('All apps: a line per app, folders left out', lines.length > 5 && !line('Calculators and Tools') && !!line('File drop'), lines.map((r) => r.querySelector('.inv-name').textContent).join('|'));
     check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
       && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
     check('  an add-on whose state is unknown says so', /Installation status unavailable/.test(t('#inv-list')[0]));
@@ -276,7 +276,7 @@ setTimeout(() => {
     check('  searching narrows the list', [...d.querySelectorAll('#inv-list .inv-name')].map((x) => x.textContent).join('|') === 'Kiwix');
     q.value = ''; q.dispatchEvent(new w.Event('input'));
   }
-  check('Folders: a line per folder, leading to its page', !!d.querySelector('#folder-index-list a[href="#page-app-tools-rf"]'));
+  check('Folders: a line per folder, leading to its page', !!d.querySelector('#folder-index-list a[href="#page-app-calculators"]'));
   check('the Clock page is the one shown', !pageOf('clock').hidden && pageOf('health').hidden);
   check('the Clock pane: its settings, no finding cards', !d.querySelector('#clock .finding'), t('#clock .finding'));
   check('the clock\'s findings on the Box doctor, as every other', t('#health-findings .finding .ftitle, #health-fine .finding .ftitle').some((x) => /Clock/.test(x)), t('#health-findings .finding .ftitle'));

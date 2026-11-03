@@ -62,51 +62,52 @@ try:
     fol = {f["id"]: f for f in snap["folders"]}
     check(
         "the list pages are the folders",
-        {"meshtastic", "tools-rf", "tools-general", "tools-electronics"} <= set(fol),
+        {"meshtastic", "calculators", "flashing"} <= set(fol),
         list(fol),
     )
-    rf = [e["href"] for e in fol["tools-rf"]["entries"]]
-    air = next(h for h in rf if "lora-airtime" in h)
+    cal = [e["href"] for e in fol["calculators"]["entries"]]
+    air = next(h for h in cal if "lora-airtime" in h)
     check(
         "an entry can be in two folders already (the airtime calculator)",
         air in [e["href"] for e in fol["meshtastic"]["entries"]],
     )
     check(
         "entries say what they are",
-        all(e["kind"] in ("page", "download", "switches") for e in fol["tools-rf"]["entries"]),
+        all(e["kind"] in ("page", "download", "switches") for e in fol["calculators"]["entries"]),
     )
-    _, page = go("GET", "/tools-rf.html")
-    check("the RF page lists the airtime calculator", "LoRa Airtime Calculator" in page)
-    ohm = next(e["href"] for e in fol["tools-electronics"]["entries"] if "ohms-law" in e["href"])
-    gen = [e["href"] for e in fol["tools-general"]["entries"]]
+    _, page = go("GET", "/calculators.html")
+    check("the Calculators page lists the airtime calculator", "LoRa Airtime Calculator" in page)
+    node = next(e["href"] for e in fol["meshtastic"]["entries"] if "meshtastic-nodeid" in e["href"])
+    gen = [e["href"] for e in fol["calculators"]["entries"]]
     st, body = go(
         "POST",
         "/admin/folders",
-        {"state": {"tools-rf": {"hidden": [air], "extra": [ohm]}, "tools-general": {"order": [gen[1], gen[0]]}}},
+        {"state": {"calculators": {"hidden": [air], "extra": [node]}}},
     )
     check("the arrangement saved", st == 200, body[:200])
-    _, page = go("GET", "/tools-rf.html")
-    check("hidden from RF: gone from its page", "LoRa Airtime Calculator" not in page)
+    _, page = go("GET", "/calculators.html")
+    check("hidden from Calculators: gone from its page", "LoRa Airtime Calculator" not in page)
     _, page = go("GET", "/meshtastic.html")
     check("still in Meshtastic, where it wasn't hidden", "LoRa Airtime Calculator" in page)
-    _, page = go("GET", "/tools-rf.html")
-    check("put in RF from Electronics: there too", "Ohm" in page)
-    _, page = go("GET", "/tools-electronics.html")
-    check("and still in Electronics", "Ohm" in page)
-    _, page = go("GET", "/tools-general.html")
-    names = [n for n in (e["name"] for e in fol["tools-general"]["entries"][:2])]
-    check("a folder's own order followed", page.find(names[1]) < page.find(names[0]), names)
-    every = [e["href"] for e in fol["tools-electronics"]["entries"]]
-    go("POST", "/admin/folders", {"state": {"tools-electronics": {"hidden": every}}})
+    _, page = go("GET", "/calculators.html")
+    check("put in Calculators from Meshtastic: there too", "Meshtastic Node ID Tool" in page)
+    _, page = go("GET", "/meshtastic.html")
+    check("and still in Meshtastic", "Meshtastic Node ID Tool" in page)
+    st, body = go("POST", "/admin/folders", {"state": {"calculators": {"order": [gen[1], gen[0]]}}})
+    _, page = go("GET", "/calculators.html")
+    names = [n for n in (e["name"] for e in fol["calculators"]["entries"][:2])]
+    check("a folder's own order followed", st == 200 and page.find(names[1]) < page.find(names[0]), names)
+    every = [e["href"] for e in fol["calculators"]["entries"]]
+    go("POST", "/admin/folders", {"state": {"calculators": {"hidden": every}}})
     _, home = go("GET", "/")
-    check("a folder with nothing shown: no tile", '<span class="name">Electronics</span>' not in home)
+    check("a folder with nothing shown: no tile", '<span class="name">Calculators and Tools</span>' not in home)
     go("POST", "/admin/folders", {"state": {}})
     _, home = go("GET", "/")
-    check("and back", '<span class="name">Electronics</span>' in home)
+    check("and back", '<span class="name">Calculators and Tools</span>' in home)
     for bad in (
         {"nowhere": {"hidden": []}},
-        {"tools-rf": {"hidden": ["/not/an/entry"]}},
-        {"tools-rf": {"hidden": "x"}},
+        {"calculators": {"hidden": ["/not/an/entry"]}},
+        {"calculators": {"hidden": "x"}},
         "x",
     ):
         st, _ = go("POST", "/admin/folders", {"state": bad})

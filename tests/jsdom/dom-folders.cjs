@@ -13,8 +13,8 @@ const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 const wait = (ms = 200) => new Promise((r) => setTimeout(r, ms));
 const E = (href, name, kind = 'page', from) => ({ href, name, desc: '', kind, from, hidden: false, extra: false });
 let snap = { state: {}, folders: [
-  { id: 'tools-rf', title: 'RF & LoRa', entries: [E('/app.html#/tools/air.html', 'Airtime', 'page', 'tools'), E('/app.html#/tools/frame.html', 'Frame', 'page', 'tools'), E('/serial/dl.html', 'Serial download', 'download', 'serial')] },
-  { id: 'tools-electronics', title: 'Electronics', entries: [E('/app.html#/tools/ohm.html', 'Ohm', 'page', 'tools')] },
+  { id: 'folder-one', title: 'Calculators and Tools', entries: [E('/app.html#/tools/air.html', 'Airtime', 'page', 'tools'), E('/app.html#/tools/frame.html', 'Frame', 'page', 'tools'), E('/serial/dl.html', 'Serial download', 'download', 'serial')] },
+  { id: 'folder-two', title: 'Electronics', entries: [E('/app.html#/tools/ohm.html', 'Ohm', 'page', 'tools')] },
   { id: 'meshtastic', title: 'Meshtastic', entries: [E('/app.html#/tools/air.html', 'Airtime', 'page', 'tools')] }] };
 const posted = [];
 const errors = [];
@@ -22,19 +22,23 @@ const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const dom = new JSDOM(html, { url: 'http://box/admin/#page-app-tools-rf', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
+const dom = new JSDOM(html, { url: 'http://box/admin/#page-app-folder-one', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window, d = w.document;
+// The two folders this test arranges, as /admin/apps tells the page about them (their pages exist only there).
+const folders = [
+  { id: 'folder-one', name: 'Calculators and Tools', icon: '🧮', sections: [], folder: true, art: 'librarian', local: false, page: false, width: null, updates: false, addon: false, href: '/calculators.html', switch: false, seen: true },
+  { id: 'folder-two', name: 'Electronics', icon: '🔌', sections: [], folder: true, art: 'electronics', local: false, page: false, width: null, updates: false, addon: false, href: '/electronics.html', switch: false, seen: true }];
 w.fetch = async (u, o = {}) => {
   const json = (x, s = 200) => new Response(JSON.stringify(x), { status: s });
   if (o.method === 'POST' && u === '/admin/folders') { const b = JSON.parse(o.body); posted.push(b); snap = { ...snap, state: b.state }; return json(snap); }
   if (u === '/admin/folders') return json(snap);
-  if (u === '/admin/apps') return json({ apps: adminApps() });
+  if (u === '/admin/apps') return json({ apps: [...adminApps(), ...folders] });
   return json({}, 404);
 };
 w.confirm = () => true;
 ['admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
 const click = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-const block = () => d.querySelector('.folder-block[data-folder="tools-rf"]');
+const block = () => d.querySelector('.folder-block[data-folder="folder-one"]');
 const row = (name) => [...block().querySelectorAll('.aw-row')].find((r) => t(r.querySelector('.t')) === name);
 const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
 // A yes/no setting's chip (AW.onOffChips): its group by name, then On or Off.
@@ -43,8 +47,8 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   await wait();
   const groups = [...d.querySelectorAll('.admin-side-group')].map(t);
   check('a Hub layout group, after Apps', groups.indexOf('Hub layout') === groups.indexOf('Apps') + 1, groups.join('|'));
-  const page = d.getElementById('page-app-tools-rf');
-  check('the RF folder\'s page opens, with what\'s in it', page && !page.hidden && !!block(), page && page.hidden);
+  const page = d.getElementById('page-app-folder-one');
+  check('the folder\'s page opens, with what\'s in it', page && !page.hidden && !!block(), page && page.hidden);
   check('  one line per entry, each saying what it is', block().querySelectorAll('.aw-row').length === 3 && /a download/i.test(t(row('Serial download'))));
   const save = () => block().querySelector('.aw-save');
   check('Save waits for a change', save().disabled);
@@ -55,7 +59,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   click(button(row('Airtime'), 'Electronics'));
   check('a change to another folder: said here, saved from that folder\'s page', /Also changed, and saved from their own pages: Electronics/.test(t(block())),
     t(block()));
-  const elec = () => d.querySelector('.folder-block[data-folder="tools-electronics"]');
+  const elec = () => d.querySelector('.folder-block[data-folder="folder-two"]');
   check('  that folder\'s own Save offered there', elec() && !elec().querySelector('.aw-save').disabled);
   click(button(row('Airtime'), '↓ Later'));
   check('moved: the order changes', [...block().querySelectorAll('.aw-row .t')].map(t).join('|') === 'Frame|Airtime|Serial download', [...block().querySelectorAll('.aw-row .t')].map(t).join('|'));
@@ -63,14 +67,14 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   await wait();
   const st = (posted[0] || {}).state || {};
   check('Save sends this folder\'s arrangement (hidden here, the order), not another folder\'s unsaved change',
-    JSON.stringify(st['tools-rf'].hidden) === '["/app.html#/tools/air.html"]' && !((st['tools-electronics'] || {}).extra || []).includes('/app.html#/tools/air.html')
-    && st['tools-rf'].order[0] === '/app.html#/tools/frame.html', JSON.stringify(st));
+    JSON.stringify(st['folder-one'].hidden) === '["/app.html#/tools/air.html"]' && !((st['folder-two'] || {}).extra || []).includes('/app.html#/tools/air.html')
+    && st['folder-one'].order[0] === '/app.html#/tools/frame.html', JSON.stringify(st));
   check('  and Save waits again; Electronics still unsaved', save().disabled && !elec().querySelector('.aw-save').disabled);
   click(elec().querySelector('.aw-save'));
   await wait();
   const st2 = (posted[1] || {}).state || {};
-  check('Electronics saved from its page: put in, and RF as saved', (st2['tools-electronics'].extra || []).includes('/app.html#/tools/air.html')
-    && JSON.stringify(st2['tools-rf'].hidden) === '["/app.html#/tools/air.html"]', JSON.stringify(st2));
+  check('Electronics saved from its page: put in, and Calculators as saved', (st2['folder-two'].extra || []).includes('/app.html#/tools/air.html')
+    && JSON.stringify(st2['folder-one'].hidden) === '["/app.html#/tools/air.html"]', JSON.stringify(st2));
   click(row('Frame').querySelector('.aw-row-head'));
   click(onOffChip(row('Frame'), 'Visible in this folder', 'Off'));
   click(block().querySelector('.aw-discard'));
