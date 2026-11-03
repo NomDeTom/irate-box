@@ -77,7 +77,7 @@ from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
 from irate_box.msg import M, Refused, duration, named, render, sentences, when
-from irate_box.root import memguard, rtc
+from irate_box.root import kernelinfo, memguard, rtc
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -7796,7 +7796,7 @@ def check_boards(spots=None, seen=None):
     return findings
 
 
-# --- the image underneath, and the kernel it runs (plan-sweep-up item 11) ----------------------
+# --- the image underneath, and the kernel it runs ------------------------------------------------
 # The box inherits its image and kernel from its board's maker. These checks say what both are, so an
 # owner can tell an image's own choice from a fault, and know which of the hub's guarantees the kernel
 # can keep. Read-only: a file read, `apt-config`, and one release lookup when the box is online.
@@ -7804,12 +7804,11 @@ def check_boards(spots=None, seen=None):
 OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
 MPWRD_RELEASE = Path(os.environ.get("HUB_MPWRD_RELEASE", "/etc/mPWRD-release"))
 IMAGE_RELEASE = Path(os.environ.get("HUB_ARMBIAN_IMAGE_RELEASE", "/etc/armbian-image-release"))
-KERNEL_SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
-KERNEL_PROC = Path(os.environ.get("HUB_PROC", "/proc"))
-KERNEL_BOOT = Path(os.environ.get("HUB_BOOT_DIR", "/boot"))
-KERNEL_RELEASE = os.environ.get("HUB_KERNEL_RELEASE") or os.uname().release
 IMAGE_PROJECTS = {"mPWRD-OS/mPWRD-OS": "mPWRD-OS"}
-IMAGE_OLD_DAYS = 183  # six months: the age past which an image is worth looking at again
+IMAGE_RELEASE_STATE = CONTROL / "image-release.json"
+IMAGE_CACHE_SECONDS = 86400  # the newest release is asked at most once a day
+IMAGE_OLD_MONTHS_DEFAULT = 6
+IMAGE_AGE_MONTHS = (3, 6, 12, 24)
 
 
 def _fields(path):
@@ -7890,28 +7889,76 @@ def _image_facts():
     }
 
 
+def _doctor_choice(key, default):
+    """The administrator's choice of a doctor setting, or its safe default."""
+    from irate_box.root import recommended
+
+    value = recommended.chosen().get(key)
+    return value if value else default
+
+
+def _image_lookup_on():
+    return _doctor_choice("image-lookup", "on") != "off"
+
+
+def _image_old_months():
+    try:
+        return int(_doctor_choice("image-age", str(IMAGE_OLD_MONTHS_DEFAULT)))
+    except (TypeError, ValueError):
+        return IMAGE_OLD_MONTHS_DEFAULT
+
+
 def _newest_image_release(project):
-    """(tag, published) from GitHub's newest release of the image's project, or None when that cannot be asked."""
+    """(tag, published) from the newest release of the image's project, or None when it cannot be asked. The answer
+    is kept in control/ for a day, so a doctor run does not ask GitHub every time (60 requests an hour without a
+    token, shared with the update check)."""
     if not project:
         return None
+    now = time.time()
+    try:
+        cached = json.loads(IMAGE_RELEASE_STATE.read_text())
+    except (OSError, ValueError):
+        cached = {}
+    if (
+        isinstance(cached, dict)
+        and cached.get("project") == project
+        and now - (cached.get("at") or 0) < IMAGE_CACHE_SECONDS
+    ):
+        release = cached.get("release") or {}
+        return (release.get("tag"), release.get("published")) if release else None
     request = urllib.request.Request(
         f"https://api.github.com/repos/{project}/releases/latest",
         headers={"User-Agent": "irate-box", "Accept": "application/vnd.github+json"},
     )
+    release = None
     try:
         with urllib.request.urlopen(request, timeout=8) as resp:  # nosec B310 - a fixed API address
             data = json.load(resp)
         published = data.get("published_at") or ""
-        at = time.mktime(time.strptime(published[:19], "%Y-%m-%dT%H:%M:%S")) if published else None
-        return data.get("tag_name") or data.get("name"), at
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return None
+        release = {
+            "tag": data.get("tag_name") or data.get("name"),
+            "published": time.mktime(time.strptime(published[:19], "%Y-%m-%dT%H:%M:%S")) if published else None,
+        }
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+        release = None
+    try:
+        from irate_box.root import safeio
+
+        safeio.mkdir(CONTROL, mode=0o755)
+        safeio.write(
+            IMAGE_RELEASE_STATE,
+            json.dumps({"at": now, "project": project, "release": release}, indent=1, sort_keys=True) + "\n",
+        )
+    except (OSError, ValueError):
+        pass
+    return (release.get("tag"), release.get("published")) if release else None
 
 
 def check_image():
-    """The image's name, release and age, and the newest release of its project when the box is online. An image
-    older than six months is worth looking at again, and a newer release is the maker's own fix for what this one
-    has; re-imaging is the owner's, off the box (a new card, not an update)."""
+    """The image's name, release and age against the newest release of its project. The lookup is the
+    administrator's setting, asked at most once a day; "newer" means published after this image was built, and a
+    different release with no date to compare is said as different, not newer. An image older than the months set
+    on the Box doctor's page is worth looking at again; re-imaging is the administrator's, off the box."""
     title = M("image.title", "Operating system image")
     facts = _image_facts()
     if not facts["files"]:
@@ -7943,27 +7990,45 @@ def check_image():
         notes.append(M("image.commit", "Armbian commit {commit}.", commit=facts["commit"]))
     if age_days is not None:
         notes.append(M("image.age", "About {days} days old.", days=round(age_days)))
-    newest = _newest_image_release(facts["project"]) if facts["project"] else None
-    if newest:
-        tag, at = newest
-        newer = tag and tag.lstrip("v") != facts["version"].lstrip("v")
-        notes.append(
-            M("image.newest", "The newest release of {project} is {tag}.", project=facts["project"], tag=tag or "?")
-            if newer
-            else M(
-                "image.newest-same", "{project}'s newest release is {tag}.", project=facts["project"], tag=tag or "?"
+    newest = None
+    if facts["project"]:
+        if _image_lookup_on():
+            newest = _newest_image_release(facts["project"])
+            if newest is None:
+                notes.append(
+                    M(
+                        "image.lookup-failed",
+                        "The newest release of {project} was not checked: the box is offline or GitHub did not answer.",
+                        project=facts["project"],
+                    )
+                )
+        else:
+            notes.append(
+                M(
+                    "image.lookup-off",
+                    "The newest release of {project} was not checked: the lookup is off in the Box doctor's settings.",
+                    project=facts["project"],
+                )
             )
-        )
-    elif facts["project"]:
+    different = bool(newest and newest[0] and newest[0].lstrip("v") != facts["version"].lstrip("v"))
+    newer = bool(different and newest[1] and facts["built"] and newest[1] > facts["built"])
+    if newest:
         notes.append(
             M(
-                "image.offline",
-                "The newest release of {project} was not checked: the box is offline.",
+                "image.newest",
+                "The newest release of {project} is {tag}.",
                 project=facts["project"],
+                tag=newest[0] or "?",
+            )
+            if different
+            else M(
+                "image.newest-same",
+                "{project}'s newest release is {tag}.",
+                project=facts["project"],
+                tag=newest[0] or "?",
             )
         )
-    old = age_days is not None and age_days > IMAGE_OLD_DAYS
-    if newest and newest[0] and newest[0].lstrip("v") != facts["version"].lstrip("v"):
+    if newer:
         return [
             finding(
                 "os-image",
@@ -7990,13 +8055,28 @@ def check_image():
                 evidence=[str(p) for p in facts["files"]],
             )
         ]
+    if different:
+        notes.append(
+            M(
+                "image.different",
+                "A different release is available: {tag}. This box runs {version}, and which is newer is not known.",
+                tag=newest[0],
+                version=facts["version"],
+            )
+        )
+    months = _image_old_months()
+    old = age_days is not None and age_days > months * 30.44
     if old:
         return [
             finding(
                 "os-image",
                 title,
                 "warn",
-                M("image.old", "The image was built more than six months ago."),
+                M(
+                    "image.old",
+                    "The image was built more than the {months} months set on the Box doctor's page ago.",
+                    months=months,
+                ),
                 M(
                     "image.old.why",
                     "Its maker's newer releases carry kernel and package fixes that this image does not, and an "
@@ -8066,86 +8146,30 @@ def check_apt_recommends():
     ]
 
 
-def _kernel_config():
-    """The booted kernel's configuration, as {CONFIG_NAME: value} (value "n" when it says unset), or None when the
-    kernel does not publish it."""
-    candidates = [KERNEL_BOOT / f"config-{KERNEL_RELEASE}", KERNEL_PROC / "config.gz"]
-    for path in candidates:
-        try:
-            if path.suffix == ".gz":
-                import gzip
-
-                text = gzip.decompress(path.read_bytes()).decode("utf-8", "replace")
-            else:
-                text = path.read_text(errors="replace")
-        except (OSError, ValueError):
-            continue
-        out = {}
-        for line in text.splitlines():
-            m = re.match(r"^(CONFIG_[A-Z0-9_]+)=(.*)$", line)
-            if m:
-                out[m[1]] = m[2].strip()
-            m = re.match(r"^# (CONFIG_[A-Z0-9_]+) is not set$", line)
-            if m:
-                out[m[1]] = "n"
-        if out:
-            return out
-    return None
-
-
-def _bpf_errors():
-    """systemd's own words when the kernel cannot attach its cgroup programs, from this boot's kernel log."""
-    try:
-        out = run("journalctl", "-k", "-b", "--no-pager", "-g", "bpf-firewall|error 524", timeout=20)
-    except (OSError, subprocess.SubprocessError):
-        return []
-    return [line.strip()[:200] for line in out.stdout.splitlines() if re.search(r"bpf-firewall|524", line)][-3:]
-
-
-def _cgroup_bpf(config):
-    """Whether the kernel can attach systemd's cgroup network programs: True, False, or None when it cannot say."""
-    if config is not None:
-        return config.get("CONFIG_CGROUP_BPF", "n") in ("y", "m")
-    return False if _bpf_errors() else None
-
-
-def _apparmor(config):
-    """Whether the kernel has AppArmor: True, False, or None when it cannot say."""
-    if (KERNEL_SYS / "module/apparmor").exists() or (KERNEL_SYS / "kernel/security/apparmor").is_dir():
-        return True
-    if config is not None:
-        return config.get("CONFIG_SECURITY_APPARMOR", "n") in ("y", "m")
-    return None
-
-
 def check_kernel_features():
     """The kernel features the hub relies on: cgroup BPF for systemd's IPAddressDeny and IPAccounting, AppArmor for
-    a second layer around a program, and a driver for the owner's clock module. Each said for what it means here,
-    with no cure where the image's kernel is the only one that can supply it."""
+    a second layer around a program, and a driver for the administrator's clock module. The Security doctor warns
+    of a unit that relies on cgroup BPF; these are notes of what the kernel can do, for what it means here."""
     from irate_box.root import rtc
 
-    config = _kernel_config()
+    config = kernelinfo.config()
     out = []
-    bpf = _cgroup_bpf(config)
-    title = M("kernel-bpf.title", "Kernel network accounting")
+    bpf = kernelinfo.cgroup_bpf(config)
+    title = M("box.kernel-bpf.title", "Kernel network accounting")
     if bpf is False:
         out.append(
             finding(
                 "kernel-cgroup-bpf",
                 title,
-                "warn",
-                M("kernel-bpf.missing", "The kernel cannot attach systemd's cgroup network programs."),
+                "note",
+                M("box.kernel-bpf.missing", "The kernel cannot attach systemd's cgroup network programs."),
                 M(
-                    "kernel-bpf.missing.why",
-                    "IPAddressDeny and IPAddressAllow do nothing here, and IPAccounting reads 0. A unit that relies "
-                    "on them is not walled off or counted, so the hub uses nftables for builds instead.",
-                ),
-                M(
-                    "kernel-bpf.missing.fix",
-                    "There is no cure on this kernel. Its maker's newer image can bring one.",
+                    "box.kernel-bpf.missing.why",
+                    "IPAddressDeny and IPAddressAllow do nothing here, and IPAccounting reads 0. The Security doctor "
+                    "names any unit that relies on them. The hub uses nftables for builds instead.",
                 ),
                 evidence=[
-                    *_bpf_errors(),
+                    *kernelinfo.bpf_errors(),
                     f"CONFIG_CGROUP_BPF={config.get('CONFIG_CGROUP_BPF', 'n') if config else '?'}",
                 ],
             )
@@ -8156,8 +8180,13 @@ def check_kernel_features():
                 "kernel-cgroup-bpf",
                 title,
                 "note",
-                M("kernel-bpf.unknown", "Whether the kernel supports systemd's cgroup network programs is not known."),
-                notes=[M("kernel-bpf.unknown.why", "The kernel publishes no configuration, and its log says nothing.")],
+                M(
+                    "box.kernel-bpf.unknown",
+                    "Whether the kernel supports systemd's cgroup network programs is not known.",
+                ),
+                notes=[
+                    M("box.kernel-bpf.unknown.why", "The kernel publishes no configuration, and its log says nothing.")
+                ],
             )
         )
     else:
@@ -8166,27 +8195,25 @@ def check_kernel_features():
                 "kernel-cgroup-bpf",
                 title,
                 "ok",
-                M("kernel-bpf.ok", "The kernel supports systemd's IPAddressDeny and IPAccounting."),
+                M("box.kernel-bpf.ok", "The kernel supports systemd's IPAddressDeny and IPAccounting."),
             )
         )
-    aa = _apparmor(config)
-    aa_title = M("kernel-apparmor.title", "AppArmor")
+    aa = kernelinfo.apparmor(config)
+    aa_title = M("box.kernel-apparmor.title", "AppArmor")
     if aa is False:
         out.append(
             finding(
                 "kernel-apparmor",
                 aa_title,
-                "warn",
-                M("kernel-apparmor.missing", "AppArmor is not in this kernel."),
-                M(
-                    "kernel-apparmor.missing.why",
-                    "A program has no profile limiting what it can touch. The hub's units use systemd's sandbox "
-                    "instead, which is narrower than AppArmor but not the same.",
-                ),
-                M(
-                    "kernel-apparmor.missing.fix",
-                    "There is no cure on this kernel. Its maker's newer image can bring one.",
-                ),
+                "note",
+                M("box.kernel-apparmor.missing", "AppArmor is not in this kernel."),
+                notes=[
+                    M(
+                        "box.kernel-apparmor.missing.note",
+                        "The hub's units rely on systemd's sandbox instead, which is narrower than AppArmor but not "
+                        "the same. The Security doctor keeps the warning.",
+                    )
+                ],
                 evidence=[f"CONFIG_SECURITY_APPARMOR={config.get('CONFIG_SECURITY_APPARMOR', 'n') if config else '?'}"],
             )
         )
@@ -8196,21 +8223,23 @@ def check_kernel_features():
                 "kernel-apparmor",
                 aa_title,
                 "note",
-                M("kernel-apparmor.unknown", "Whether AppArmor is in this kernel is not known."),
+                M("box.kernel-apparmor.unknown", "Whether AppArmor is in this kernel is not known."),
             )
         )
     else:
-        out.append(finding("kernel-apparmor", aa_title, "ok", M("kernel-apparmor.ok", "AppArmor is in this kernel.")))
+        out.append(
+            finding("kernel-apparmor", aa_title, "ok", M("box.kernel-apparmor.ok", "AppArmor is in this kernel."))
+        )
     cfg = rtc.load_config()
     if cfg:
-        rtc_title = M("kernel-rtc.title", "Clock module driver")
+        rtc_title = M("box.kernel-rtc.title", "Clock module driver")
         if cfg.get("mode") == "kernel":
             out.append(
                 finding(
                     "kernel-rtc",
                     rtc_title,
                     "ok",
-                    M("kernel-rtc.kernel", "The kernel drives the {chip} clock module.", chip=cfg.get("chip", "?")),
+                    M("box.kernel-rtc.kernel", "The kernel drives the {chip} clock module.", chip=cfg.get("chip", "?")),
                 )
             )
         else:
@@ -8220,13 +8249,13 @@ def check_kernel_features():
                     rtc_title,
                     "note",
                     M(
-                        "kernel-rtc.userspace",
+                        "box.kernel-rtc.userspace",
                         "The kernel has no driver for the {chip} clock module. irate-box reads it itself.",
                         chip=cfg.get("chip", "?"),
                     ),
                     notes=[
                         M(
-                            "kernel-rtc.userspace.note",
+                            "box.kernel-rtc.userspace.note",
                             "That works now. A kernel update cannot take the driver away, because there is none, but "
                             "a change to the I2C bus can stop irate-box's own reader.",
                         )
@@ -8355,6 +8384,50 @@ def clock_choice():
         return None
 
 
+def image_groups():
+    """The image's checks as the administrator's settings: the newest-release lookup (once a day, on) and the age
+    past which the image is worth looking at again (six months)."""
+    from irate_box.root import recommended
+
+    chosen = recommended.chosen()
+    lookup = chosen.get("image-lookup", "on")
+    months = chosen.get("image-age", str(IMAGE_OLD_MONTHS_DEFAULT))
+    return [
+        {
+            "key": "image-lookup",
+            "label": M("hs.image-lookup", "The image's newest release"),
+            "desc": M(
+                "hs.image-lookup.desc",
+                "Ask the image's project for its newest release, at most once a day, and keep the answer. Off, the "
+                "Box doctor says the release was not checked.",
+            ),
+            "current": lookup,
+            "options": [
+                {"value": "on", "label": ON, "choice": "image-lookup:on"},
+                {"value": "off", "label": OFF, "choice": "image-lookup:off"},
+            ],
+        },
+        {
+            "key": "image-age",
+            "label": M("hs.image-age", "An image worth looking at again"),
+            "desc": M(
+                "hs.image-age.desc",
+                "Warn when the image was built longer ago than this. A newer release carries its maker's fixes, and "
+                "an image is replaced rather than updated.",
+            ),
+            "current": months,
+            "options": [
+                {
+                    "value": str(m),
+                    "label": M("hs.image-age.months", "{n} months", n=m),
+                    "choice": f"image-age:{m}",
+                }
+                for m in IMAGE_AGE_MONTHS
+            ],
+        },
+    ]
+
+
 def doctor_settings():
     """The doctor's own settings, as they are now, for its settings card: crash watch's snapshots, and what
     restarts a frozen box (a panic, the watchdog), with whether this board has a watchdog to use."""
@@ -8372,7 +8445,8 @@ def doctor_settings():
             "led": {"name": ls["led"], "show": ls["show"]} if ls else None,
             "groups": setting_groups(s, wd)
             + led_groups(ls, armbian_led_state() if ls else None)
-            + rfkill_groups(rfkill_status()),
+            + rfkill_groups(rfkill_status())
+            + image_groups(),
             "card_groups": card_groups(),
             "hardening_groups": hardening_groups(),
         }
@@ -8409,6 +8483,11 @@ def fix(choice):
         said = crashwatch.set_option(kind[len("crashwatch-") :], arg)
         recommended.record(kind, arg)  # the owner's own choice: never offered back
         return said
+    if kind in ("image-lookup", "image-age"):
+        from irate_box.root import recommended
+
+        recommended.record(kind, arg)  # the administrator's own choice: never offered back
+        return M("repair.image-setting.saved", "The setting is saved.")
     if kind in ("health-timer", "lost-writes", "canary"):
         from irate_box.root import recommended
 

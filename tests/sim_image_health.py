@@ -18,8 +18,8 @@ from unittest import mock
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="image-health-"))
 ETC, SYS, PROC, BOOT = T / "etc", T / "sys", T / "proc", T / "boot"
-for d in (ETC, SYS, PROC, BOOT):
-    d.mkdir()
+for d in (ETC, SYS, PROC, BOOT, T / "state" / "control"):
+    d.mkdir(parents=True)
 os.environ.update(
     HUB_ETC_DIR=str(ETC),
     HUB_STATE_DIR=str(T / "state"),
@@ -53,7 +53,18 @@ def R(rc=0, out="", err=""):
     return mock.Mock(returncode=rc, stdout=out, stderr=err)
 
 
-def world(*, version="0.2.1", built_days=10, recommends="1", config=None, apparmor=None, journal="", newest=None):
+def world(
+    *,
+    version="0.2.1",
+    built_days=10,
+    recommends="1",
+    config=None,
+    apparmor=None,
+    journal="",
+    newest=None,
+    newest_at="2026-09-01T00:00:00Z",
+    chosen=None,
+):
     (T / "os-release").write_text(
         'NAME="Debian GNU/Linux"\nPRETTY_NAME="Debian GNU/Linux 13 (trixie)"\nVERSION_ID="13"\nVERSION_CODENAME=trixie\n'
     )
@@ -63,6 +74,9 @@ def world(*, version="0.2.1", built_days=10, recommends="1", config=None, apparm
     if (T / "armbian-release").exists():
         (T / "armbian-release").unlink()
     (T / "armbian-image-release").write_text("ARMBIAN_COMMIT=8de11a0\n")
+    (ETC / "chosen.json").write_text(json.dumps(chosen or {}))
+    if (T / "state" / "control" / "image-release.json").exists():
+        (T / "state" / "control" / "image-release.json").unlink()
     os.utime(T / "armbian-image-release", (stamp, stamp))
     conf = "CONFIG_CGROUP_BPF=%s\nCONFIG_SECURITY_APPARMOR=%s\n" % (
         "y" if config is None or config.get("bpf") else "n",
@@ -90,7 +104,7 @@ def world(*, version="0.2.1", built_days=10, recommends="1", config=None, apparm
     def urlopen(request, timeout=8):
         if newest is None:
             raise OSError("offline")
-        return Resp(json.dumps({"tag_name": newest, "published_at": "2026-09-01T00:00:00Z"}).encode())
+        return Resp(json.dumps({"tag_name": newest, "published_at": newest_at}).encode())
 
     return [
         mock.patch.object(health, "run", run),
@@ -130,19 +144,20 @@ try:
     check("recommends off is said once, as a note", rec["status"] == "note" and "recommends.off" in msg_ids(rec), rec)
     feats = {f["id"]: f for f in health.check_kernel_features()}
     check(
-        "no cgroup BPF: a warning saying IPAddressDeny and IPAccounting do nothing",
-        feats["kernel-cgroup-bpf"]["status"] == "warn"
-        and "kernel-bpf.missing.why" in msg_ids(feats["kernel-cgroup-bpf"]),
+        "no cgroup BPF: a note saying IPAddressDeny and IPAccounting do nothing, and where the per-unit warning is",
+        feats["kernel-cgroup-bpf"]["status"] == "note"
+        and "box.kernel-bpf.missing.why" in msg_ids(feats["kernel-cgroup-bpf"]),
         feats["kernel-cgroup-bpf"],
     )
     check(
-        "no AppArmor: a warning, no cure on this kernel",
-        feats["kernel-apparmor"]["status"] == "warn" and "kernel-apparmor.missing" in msg_ids(feats["kernel-apparmor"]),
+        "no AppArmor: a note here, the warning is the Security doctor's",
+        feats["kernel-apparmor"]["status"] == "note"
+        and "box.kernel-apparmor.missing" in msg_ids(feats["kernel-apparmor"]),
         feats["kernel-apparmor"],
     )
     check(
         "a clock module on irate-box's own reader: a note, not a fault",
-        feats["kernel-rtc"]["status"] == "note" and "kernel-rtc.userspace" in msg_ids(feats["kernel-rtc"]),
+        feats["kernel-rtc"]["status"] == "note" and "box.kernel-rtc.userspace" in msg_ids(feats["kernel-rtc"]),
         feats["kernel-rtc"],
     )
 finally:
@@ -175,9 +190,66 @@ try:
     img = ids(health.check_image(), "os-image")
     check(
         "offline and more than six months old: a warning, and the lookup said not done",
-        img["status"] == "warn" and "image.old" in msg_ids(img) and "image.offline" in msg_ids(img),
+        img["status"] == "warn" and "image.old" in msg_ids(img) and "image.lookup-failed" in msg_ids(img),
         img,
     )
+finally:
+    for p in patches:
+        p.stop()
+
+# 3b. The lookup is the administrator's setting: off, the finding says so and asks nothing.
+patches = with_world(version="0.2.3", built_days=10, newest="v0.2.3", chosen={"image-lookup": "off"})
+try:
+    img = ids(health.check_image(), "os-image")
+    check(
+        "the newest-release lookup off: the image is fine, and it was not checked by the setting",
+        img["status"] == "ok" and "image.lookup-off" in msg_ids(img),
+        img,
+    )
+finally:
+    for p in patches:
+        p.stop()
+
+# 3c. A different release published before this image was built: different, not newer.
+patches = with_world(version="0.2.1", built_days=10, newest="v0.2.3", newest_at="2026-09-01T00:00:00Z")
+try:
+    img = ids(health.check_image(), "os-image")
+    check(
+        "a different release older than the image: said as different, not as newer",
+        img["status"] == "ok" and "image.different" in msg_ids(img) and "image.newer" not in msg_ids(img),
+        img,
+    )
+finally:
+    for p in patches:
+        p.stop()
+
+# 3d. The age is the administrator's: twelve months, a 200-day image is not old.
+patches = with_world(version="0.2.1", built_days=200, chosen={"image-age": "12"})
+try:
+    img = ids(health.check_image(), "os-image")
+    check(
+        "twelve months set: a 200-day image is not warned about",
+        img["status"] == "ok" and "image.old" not in msg_ids(img),
+        img,
+    )
+finally:
+    for p in patches:
+        p.stop()
+
+# 3e. The release is asked at most once a day: a second run reads the kept answer.
+patches = with_world(version="0.2.1", built_days=200, newest="v0.2.3")
+try:
+    calls = []
+    real = health.urllib.request.urlopen
+
+    def counted(request, timeout=8):
+        calls.append(request)
+        return real(request, timeout=timeout)
+
+    health.urllib.request.urlopen = counted
+    health.check_image()
+    health.check_image()
+    check("the newest release is asked once and kept for the day", len(calls) == 1, len(calls))
 finally:
     for p in patches:
         p.stop()
