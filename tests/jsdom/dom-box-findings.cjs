@@ -52,8 +52,9 @@ w.fetch = async (u, opts = {}) => (u === '/admin/health' && opts.method !== 'POS
 w.eval(js);
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
-setTimeout(() => {
+setTimeout(async () => {
   const d = w.document;
+  const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
   const row = (id) => d.getElementById(`hl-${id}`);
 
@@ -89,6 +90,60 @@ setTimeout(() => {
   const all = d.getElementById('health-findings').textContent + d.getElementById('health-fine').textContent;
   check('no message drawn as an object, no placeholder left unfilled', !/\[object Object\]|\{[a-z_]+\}/.test(all),
     (all.match(/.{40}(\[object Object\]|\{[a-z_]+\}).{40}/) || [''])[0]);
+  // A finding's question outlives the poll that redraws the Box doctor, follows the button's data-wait key,
+  // acts when answered, and is cancelled with a word when the finding is gone for good.
+  const clock = { id: 'clock', title: 'The clock', status: 'warn', summary: 'No network time.', fix: '',
+    actions: [{ choice: 'clock-set', label: 'Set the clock from this browser' }] };
+  const calm = { ...data, pending: 0, progress: null, helper: { ...(data.helper || {}), waiting: 0, oldest: 0, stuck: false } };
+  const withClock = (findings, at) => ({ ...calm, report: { ...data.report, at, findings } });
+  const fixes = [];
+  let shown = withClock([clock], 1790000001);
+  const plainFetch = w.fetch;
+  w.fetch = async (u, opts = {}) => {
+    if (u === '/admin/health' && opts.method === 'POST') {
+      fixes.push(opts.body);
+      return new Response('{"id":"h1"}', { status: 202 });
+    }
+    if (u === '/admin/health') return new Response(JSON.stringify(shown), { status: 200 });
+    return plainFetch(u, opts);
+  };
+  w.answerAsks = false;
+  w.renderHealth(shown);
+  await tick();
+  const clockButton = () => [...d.querySelectorAll('#hl-clock button.action-btn')].find((b) => /Set the clock/.test(b.textContent));
+  const box = () => d.querySelector('.aw-ask');
+  const first = clockButton();
+  const key = first && first.dataset.wait;
+  w.eval(`hlFix('clock', ${JSON.stringify(clock.actions[0])}, document.querySelector('#hl-clock button.action-btn'))`);
+  await tick();
+  check('a Box doctor question is drawn beside the button that asked', !!box() && box().previousElementSibling
+    && box().previousElementSibling.contains(first), box() && box().textContent);
+  for (const n of [1, 2]) {
+    shown = withClock([clock], 1790000001 + n);
+    w.renderHealth(shown);
+    await tick();
+    const fresh = [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === key);
+    check(`  after poll ${n} it stays, beside the button drawn again`, !!box() && !!fresh && box().previousElementSibling
+      && box().previousElementSibling.contains(fresh), row('clock') && t(row('clock')));
+  }
+  box().querySelector('button.primary').click();
+  await tick();
+  check('  answering it acts', fixes.some((body) => /"choice":"clock-set:/.test(body || '')), fixes);
+  const goneBefore = fixes.length;
+  shown = withClock([clock], 1790000010);
+  w.renderHealth(shown);
+  await tick();
+  w.eval(`hlFix('clock', ${JSON.stringify(clock.actions[0])}, document.querySelector('#hl-clock button.action-btn'))`);
+  await tick();
+  check('a Box doctor question is open again', !!box());
+  shown = withClock([], 1790000011);
+  w.renderHealth(shown);
+  await tick();
+  const gone = d.querySelector('.aw-ask-gone');
+  check('a finding gone while its question is open: the question cancelled, with a word',
+    !box() && gone && /question was cancelled/.test(gone.textContent), gone && gone.textContent);
+  await tick(50);
+  check('  and nothing is sent for the answer it never got', fixes.length === goneBefore, fixes.slice(goneBefore));
   check('no errors', !errors.length, errors.join(' | '));
   console.log(fails ? `${fails} failure(s)` : 'ok');
   process.exit(fails ? 1 : 0);

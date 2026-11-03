@@ -78,6 +78,7 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   );
   check('  and when it was examined is said', /\d/.test(d.getElementById('housecall-when').textContent), d.getElementById('housecall-when').textContent);
   check('a damaged file with a way back offers Restore', /Restore from Box doctor/.test(findings[0].textContent));
+  const realConfirmHere = w.AW.confirmHere;
   w.AW.confirmHere = async () => true;
   posted.length = 0;
   findings[0].querySelector('.fdo-controls .action-btn').click();
@@ -151,6 +152,38 @@ const later = (ms) => new Promise((r) => setTimeout(r, ms));
   d.getElementById('housecall-stop').click();
   await later(100);
   check('  Stop asks the root helper to stop it', posted.some((b) => b.action === 'stop'), posted);
+  // A Housecall question outlives the redraw of its finding, follows the button's data-wait key, acts when
+  // answered, and is cancelled with a word when the finding is gone for good.
+  w.AW.confirmHere = realConfirmHere;
+  w.eval(`hcRender(${JSON.stringify(report)})`);
+  await later(30);
+  const restoreButton = () => d.querySelector('#housecall-findings .action-btn');
+  const hcKey = restoreButton() && restoreButton().dataset.wait;
+  const hcBox = () => d.querySelector('.aw-ask');
+  w.eval("window.__hcAnswer = null; AW.confirmHere('Put /etc/key.pem back?', { anchor: document.querySelector('#housecall-findings .action-btn') }).then((yes) => { window.__hcAnswer = yes; })");
+  await later(30);
+  check('a Housecall question is drawn beside the finding action', !!hcBox() && hcKey && hcBox().previousElementSibling
+    && hcBox().previousElementSibling.contains(restoreButton()), hcBox() && hcBox().textContent);
+  for (const n of [1, 2]) {
+    w.eval(`hcRender(${JSON.stringify(report)})`);
+    await later(30);
+    const fresh = [...d.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === hcKey);
+    check(`  after redraw ${n} it stays, beside the action drawn again`, !!hcBox() && !!fresh && hcBox().previousElementSibling
+      && hcBox().previousElementSibling.contains(fresh), d.getElementById('housecall-findings').textContent);
+  }
+  hcBox().querySelector('button.primary').click();
+  await later(30);
+  check('  answering it acts', w.__hcAnswer === true, w.__hcAnswer);
+  w.eval("window.__hcAnswer = null; AW.confirmHere('Put /etc/key.pem back?', { anchor: document.querySelector('#housecall-findings .action-btn') }).then((yes) => { window.__hcAnswer = yes; })");
+  await later(30);
+  check('a Housecall question is open again', !!hcBox());
+  w.eval(`hcRender(${JSON.stringify({ ...report, findings: [] })})`);
+  await later(30);
+  const hcGone = d.querySelector('.aw-ask-gone');
+  check('a finding gone while its question is open: the question cancelled, with a word',
+    !hcBox() && hcGone && /question was cancelled/.test(hcGone.textContent), hcGone && hcGone.textContent);
+  check('  and the answer it never got did not act', w.__hcAnswer === false, w.__hcAnswer);
+
   check('no page errors', errors.length === 0, errors);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

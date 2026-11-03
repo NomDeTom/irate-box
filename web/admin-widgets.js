@@ -388,16 +388,32 @@ const AW = (() => {
   // A question drawn on the page, not the browser's pop-up: the words, then
   // Confirm and Cancel, beside what was pressed (anchor, else the focused control). Resolves true or false.
   // One at a time: a new one answers the last one No. Cancel has the focus; Escape cancels.
+  // A doctor redraws its findings at every poll. A button with a stable data-wait key (as the spinners use)
+  // carries its question to the button drawn again; a question whose button is gone for good is cancelled
+  // with a word, not left pending.
+  const ASK_GONE = 'That action is no longer there, so the question was cancelled.';
   let asked = null;
+  const askPlace = (anchor) => (anchor && anchor.isConnected
+    ? anchor.closest('.library-buttons, .aw-foot, .setting-actions') || anchor
+    : null);
   function confirmHere(text, opts = {}) {
     if (asked) asked(false);
     const at = opts.anchor || (document.activeElement !== document.body ? document.activeElement : null);
+    const key = (at && at.dataset && at.dataset.wait) || '';
+    const pane = at && (at.closest('.admin-pane, main') || document.body);
     return new Promise((resolve) => {
       const box = h('div', { class: 'aw-ask', role: 'alertdialog', 'aria-label': opts.label || 'Confirm' });
-      const answer = (yes) => {
+      let watcher = null;
+      const answer = (yes, gone) => {
         if (asked !== answer) return;
         asked = null;
+        if (watcher) watcher.disconnect();
         box.remove();
+        if (gone) {
+          const note = h('p', { class: 'setting-desc aw-ask-gone', role: 'status', text: ASK_GONE });
+          (pane || document.body).append(note);
+          setTimeout(() => note.remove(), 8000);
+        }
         resolve(yes);
       };
       asked = answer;
@@ -405,9 +421,22 @@ const AW = (() => {
       box.append(h('p', { class: 'setting-desc', text }),
         h('span', { class: 'library-buttons' }, btn(opts.label || 'Confirm', { class: 'action-btn primary', onclick: () => answer(true) }), no));
       box.addEventListener('keydown', (event) => { if (event.key === 'Escape') answer(false); });
-      const place = at && at.isConnected ? at.closest('.library-buttons, .aw-foot, .setting-actions') || at : null;
+      const place = askPlace(at);
       if (place && place.parentNode) place.after(box);
       else document.querySelector('.admin-main, main, body').prepend(box);
+      if (key) {
+        const scope = pane || document.body;
+        watcher = new MutationObserver(() => {
+          if (asked !== answer) return;
+          const fresh = [...scope.querySelectorAll('[data-wait]')].find((node) => node.dataset.wait === key);
+          if (!fresh) answer(false, true);
+          else {
+            const target = askPlace(fresh);
+            if (target && target.nextSibling !== box) target.after(box);
+          }
+        });
+        watcher.observe(scope, { childList: true, subtree: true });
+      }
       no.focus();
     });
   }
@@ -674,7 +703,7 @@ const AW = (() => {
     const sorted = [...items].sort((left, right) => (RANK[left.status] ?? 2) - (RANK[right.status] ?? 2));
     return shortList(sorted.map((finding) => ({ ...finding, badges: [finding.status].concat(finding.badges || []), detail: () => [
       finding.detail ? h('p', { class: 'setting-desc', text: finding.detail }) : null,
-      (finding.actions || []).map((action) => btn(action.label, { onclick: async (event) => {
+      (finding.actions || []).map((action) => btn(action.label, { 'data-wait': `finding:${finding.id}:${action.choice || action.label}`, onclick: async (event) => {
         if ((!action.confirm || (await confirmHere(action.confirm, { anchor: event.currentTarget, label: action.label }))) && opts.act) opts.act(action.choice, finding);
       } })),
     ] })), { id: opts.id });
@@ -1036,7 +1065,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, drawKept, say, localise, h, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, say, localise, h, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
