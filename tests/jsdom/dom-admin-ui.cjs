@@ -407,8 +407,11 @@ setTimeout(() => {
   const shape = (c) => [c.querySelector('.setting-name') ? 'title' : '-', c.querySelector('.update-pattern, .chip-group') ? 'chips' : '-',
     c.id === 'update-hub-card' ? (['update-check', 'update-fetch', 'update-install'].every((id) => c.querySelector(`#${id}`)) ? 'check' : '-')
       : [...c.querySelectorAll('button')].some((b) => /^(Check now|Check for updates)$/.test(b.textContent.trim())) ? 'check' : '-'].join(' ');
-  check('Updates: a card each for the hub, Debian and every package, the same shape (title, chips, its check buttons)', cards.length === 3
-    && cards.map((c) => c.id || 'pkg').join(' ') === 'update-hub-card updates-debian pkg' && cards.every((c) => shape(c) === 'title chips check'), cards.map(shape));
+  check('Updates: a card each for the hub, Debian, the two OS kinds and every package, the same shape (title, chips, its check buttons)', cards.length === 5
+    && cards.map((c) => c.id || 'pkg').join(' ') === 'update-hub-card updates-debian updates-os updates-board pkg' && cards.every((c) => shape(c) === 'title chips check'), cards.map(shape));
+  const kindChips = (id) => [...d.querySelectorAll(`#${id} .chip`)].map((c) => c.textContent);
+  check('  the two OS kinds\' chips: what waits, what is downloaded, and the board\'s hold', kindChips('updates-os').join('|') === 'None waiting|None downloaded'
+    && kindChips('updates-board').join('|') === 'None waiting|None downloaded|Not held', [kindChips('updates-os'), kindChips('updates-board')]);
   check('  the hub card holds what an update must carry, folded; the doctors\' places still there', !!d.querySelector('#update-hub-card details #update-signing-form')
     && !!d.getElementById('pkg-makers') && d.getElementById('updates-debian').classList.contains('update-card'));
   const pkChips = pk ? [...pk.querySelectorAll('.chip')].map((c) => c.textContent + (c.classList.contains('selected') || c.getAttribute('aria-pressed') === 'true' ? '*' : '')) : [];

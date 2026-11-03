@@ -24,7 +24,7 @@ from pathlib import Path
 from irate_box.finding import action, english, finding
 from irate_box.hub import services
 from irate_box.msg import M, Refused, is_message, named, render, sentences, when
-from irate_box.root import aptram, safeio
+from irate_box.root import aptram, osupdates, safeio
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 # Whether the hotspot is up now (root/ap.py writes it): a port is open to hotspot guests only while it is.
@@ -3603,6 +3603,24 @@ def fix(choice, updates_log):
         return check_security_updates(rec, updates_log)
     elif choice in ("security-reach-fetch", "security-reach-install"):
         return reach_security_updates(updates_log, choice == "security-reach-install")
+    elif choice in ("os-updates", "os-fetch", "os-check"):
+        if choice == "os-check":
+            return osupdates.check_kind("os", updates_log)
+        return (
+            osupdates.install_kind("os", updates_log)
+            if choice == "os-updates"
+            else osupdates.fetch_kind("os", updates_log)
+        )
+    elif choice in ("board-updates", "board-fetch", "board-check"):
+        if choice == "board-check":
+            return osupdates.check_kind("board", updates_log)
+        return (
+            osupdates.install_kind("board", updates_log)
+            if choice == "board-updates"
+            else osupdates.fetch_kind("board", updates_log)
+        )
+    elif choice == "board-hold":
+        return osupdates.hold_board()
     elif choice == "apt-lists":
         return refresh_lists(updates_log)
     else:

@@ -75,6 +75,7 @@ run sim_sbdocs.py
 run sim_pkgwatch.py
 run sim_pkgcache.py
 run sim_update_pattern.py
+run sim_os_updates.py
 run sim_wifijoin.py
 run sim_nmconf.py
 run sim_nmhandover.py

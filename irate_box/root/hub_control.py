@@ -220,6 +220,7 @@ from irate_box.root import (
     aptram,
     health,
     kits,
+    osupdates,
     partswatch,
     pkgorigins,
     safeio,
@@ -4258,6 +4259,14 @@ def _tls_get(url, timeout=15):
     return _web_open(req, timeout=timeout)
 
 
+def _simulated_upgrade():
+    """`apt-get -s upgrade`'s output, run once per doctor run: several checks read what waits."""
+    try:
+        return run("apt-get", "-s", "-o", "Debug::NoLocking=1", "upgrade", timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def updates_doctor_findings():
     """The Updates doctor: what an update needs from outside the box, as findings (docs/dev/doctors.md)."""
     import socket
@@ -5061,9 +5070,10 @@ def updates_doctor_findings():
     findings += appstore_findings()
     findings += partswatch.findings()
     # 11. The packages themselves: where they come from and Debian's own priorities. One simulation serves
-    # every check that reads what waits.
+    # every check that reads what waits, the OS's kinds included.
     findings += pkgorigins.origin_findings()
     findings += pkgorigins.priority_findings()
+    findings += osupdates.kinds_report(_simulated_upgrade())["findings"]
     return findings
 
 
@@ -6298,6 +6308,13 @@ def security_fix(req):
         "security-updates",
         "security-reach-fetch",
         "security-reach-install",
+        "os-check",
+        "os-fetch",
+        "os-updates",
+        "board-check",
+        "board-fetch",
+        "board-updates",
+        "board-hold",
     ) or choice.startswith("autoupdate-set:")
     if pattern and choice.startswith("autoupdate-set:"):
         security.parse_pattern(choice.split(":", 1)[1])
@@ -6314,6 +6331,8 @@ def security_fix(req):
         msg = security.fix(choice, SECURITY_LOG)
     finally:
         _write_security(security.scan())
+        if choice.startswith(("os-", "board-")):
+            osupdates.kinds_report()
     return msg
 
 

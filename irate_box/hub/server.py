@@ -3060,6 +3060,13 @@ UPDATE_ACTIONS = {
     "approve-security": "update-approve-security",
     "approve-install": "update-approve-security",
     "security-record-read": "security-record-read",
+    # The OS's other updates and the board's own packages: the helper's security-fix choices, so a doctor button
+    # and the Updates cards reach the same code.
+    "os-updates": "security-fix",
+    "os-fetch": "security-fix",
+    "board-updates": "security-fix",
+    "board-fetch": "security-fix",
+    "board-hold": "security-fix",
 }
 # Terminal colour codes, in logs written before install.sh stopped sending them to files.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -3347,6 +3354,10 @@ def security_snapshot():
             }
         except (OSError, ValueError):
             pass
+    try:
+        kinds = json.loads((CONTROL_DIR / "update-kinds.json").read_text())
+    except (OSError, ValueError):
+        kinds = None
     return {
         "scan": scan,
         "audit": audit,
@@ -3356,6 +3367,9 @@ def security_snapshot():
         "pending": _pending_actions("security-"),
         "results": control_results(5),
         "accepted": security_accepted(),
+        # The Updates page's other two kinds come from their own report (osupdates.kind_findings), not the
+        # Security scan: they are the Updates doctor's.
+        "kinds": kinds,
     }
 
 
@@ -6562,6 +6576,8 @@ class Handler(BaseHTTPRequestHandler):
                 request.update(endpoint=payload["endpoint"], candidate=payload.get("candidate"))
             if action == "update-approve-security" and payload.get("action") == "approve-install":
                 request.update(install=True)
+            if action == "security-fix" and str(payload.get("action", "")).startswith(("os-", "board-")):
+                request.update(choice=str(payload["action"]))
             if action in ("update-poll-target", "update-set-source"):
                 request.update(repo=str(payload.get("repo") or "")[:300])
             if action == "update-set-source":
