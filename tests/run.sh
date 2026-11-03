@@ -140,6 +140,7 @@ run sim_configs.py
 run sim_inspircd.py
 run sim_irc_group.py
 run sim_books.py
+run sim_podcast.py
 run sim_ghpace.py
 run sim_cut_short.py
 run sim_download_bounds.py

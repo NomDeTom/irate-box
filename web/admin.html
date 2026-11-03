@@ -1364,6 +1364,19 @@
 
         <section
           class="admin-pane"
+          id="podcasts"
+          aria-labelledby="podcasts-title"
+        >
+          <h2 id="podcasts-title" data-i18n="admin.podcasts.title">Podcasts</h2>
+          <p class="setting-desc" data-i18n="admin.podcasts.intro">
+            Follow podcast feeds. The librarian checks them and keeps their episodes on the box,
+            for the Music page. The box downloads. A visitor's browser never reaches the feed.
+          </p>
+          <div id="podcasts-panel"></div>
+        </section>
+
+        <section
+          class="admin-pane"
           id="firmware"
           aria-labelledby="firmware-title"
         >
@@ -6031,6 +6044,7 @@
     <script src="/admin-widgets.js"></script>
     <script src="/admin-layout.js"></script>
     <script src="/admin.js"></script>
+    <script src="/admin-podcasts.js"></script>
     <script src="/admin-mock.js"></script>
     <script src="/admin-tour.js"></script>
   </body>

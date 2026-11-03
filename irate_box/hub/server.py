@@ -66,7 +66,7 @@ from irate_box.hub import (
     uplink,
     watchlog,
 )
-from irate_box.library import firmware, holder, librarian, zimcheck
+from irate_box.library import firmware, holder, librarian, podcast, zimcheck
 from irate_box.msg import M, render
 
 CHECKOUT = Path(__file__).resolve().parents[2]  # irate_box/hub/server.py → the checkout
@@ -2627,6 +2627,40 @@ def firmware_action(payload):
         return _busy_or(400, exc)
     snap = firmware.snapshot()
     snap.update(running=librarian.is_running(), progress=librarian.progress())
+    return 200, snap
+
+
+def podcast_action(payload):
+    """(status, body) for POST /admin/podcasts: its settings and feeds, an OPML in or out, or a run under the
+    librarian's lock. A run is answered with the snapshot, which the page polls (running, progress)."""
+    action = payload.get("action")
+    try:
+        if action == "settings":
+            podcast.set_settings(**{k: payload[k] for k in podcast.DEFAULTS if k != "feeds" and k in payload})
+        elif action == "add":
+            podcast.add_feed(str(payload.get("url") or ""), str(payload.get("title") or ""))
+        elif action == "remove":
+            podcast.remove_feed(str(payload.get("id") or ""), bool(payload.get("delete_files")))
+        elif action == "import":
+            podcast.import_opml(str(payload.get("opml") or ""))
+        elif action == "export":
+            return 200, {"opml": podcast.export_opml()}
+        elif action in ("check", "update"):
+            if not library_start(
+                f"podcasts-{action}",
+                lambda: {"podcasts": podcast.sync(check_only=(action == "check"), log=lambda *_: None)},
+            ):
+                return 409, refused.say(librarian.BUSY)
+        else:
+            return 400, refused.say(UNKNOWN_ACTION)
+    except librarian.LibrarianError as exc:
+        return _busy_or(400, exc)
+    except OSError as exc:
+        return 400, refused.say(
+            M("podcast.change.failed", "The change could not be saved: {error}.", error=str(exc)[:120])
+        )
+    snap = podcast.snapshot()
+    snap.update(running=librarian.is_running() or action in ("check", "update"), progress=librarian.progress())
     return 200, snap
 
 
@@ -5400,6 +5434,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, setup_status(query.get("id", "")[:40]))
             return
 
+        if path == "/api/podcasts":
+            self.send_json(200, {"episodes": podcast.episodes()})
+            return
+
+        if path.startswith("/podcasts/"):
+            self._podcast_file(path)
+            return
+
         if store.handle(self, "GET", path, STORE, DROP):
             return
 
@@ -5707,6 +5749,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/appstore":
             self.send_json(200, appstore_admin.snapshot())
+            return
+
+        if path == "/admin/podcasts":
+            snap = podcast.snapshot()
+            snap.update(running=librarian.is_running(), progress=librarian.progress())
+            self.send_json(200, snap)
             return
 
         if path == "/admin/factory":
@@ -6250,6 +6298,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, refused.say(BAD_REQUEST))
             return
 
+        if path == "/api/podcasts":
+            try:
+                podcast.set_episode(
+                    str(payload.get("feed") or ""),
+                    str(payload.get("id") or ""),
+                    starred=payload.get("starred"),
+                    played=payload.get("played"),
+                )
+            except librarian.LibrarianError as exc:
+                self.send_json(404, refused.answer(exc))
+                return
+            self.send_json(200, {"ok": True})
+            return
+
         if path == "/api/account":
             self._account_post(payload)
             return
@@ -6607,6 +6669,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/appstore":
             self.send_json(*appstore_action(payload))
+            return
+
+        if path == "/admin/podcasts":
+            self.send_json(*podcast_action(payload))
             return
 
         if path == "/admin/mesh":
@@ -8018,6 +8084,56 @@ class Handler(BaseHTTPRequestHandler):
             )
         )
         self.send_json(200, {"origin": f"{scheme}://{host}:{port}"})
+
+    def _podcast_file(self, path):
+        """An episode's file from the podcasts' folder, with Range for seeking. Only the folder's own files:
+        the feed and file names are checked, and the resolved path must stay under the root."""
+        rest = unquote(path[len("/podcasts/") :])
+        parts = rest.split("/")
+        if len(parts) != 2 or not podcast.NAME_RE.match(parts[0]) or "/" in parts[1] or parts[1].startswith("."):
+            self._not_found()
+            return
+        root = podcast.ROOT.resolve()
+        file_path = (root / parts[0] / parts[1]).resolve()
+        if not file_path.is_relative_to(root) or not file_path.is_file():
+            self._not_found()
+            return
+        size = file_path.stat().st_size
+        start, end = 0, size - 1
+        status = 200
+        header = self.headers.get("Range", "")
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", header.strip())
+        if m and size:
+            if m.group(1):
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else size - 1
+            elif m.group(2):
+                start = max(0, size - int(m.group(2)))
+            if start >= size or start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            end = min(end, size - 1)
+            status = 206
+        self.send_response(status)
+        self.send_header("Content-Type", MIME.get(file_path.suffix, "application/octet-stream"))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(end - start + 1))
+        if status == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        with open(file_path, "rb") as fh:
+            fh.seek(start)
+            left = end - start + 1
+            while left > 0:
+                block = fh.read(min(1 << 20, left))
+                if not block:
+                    break
+                self.wfile.write(block)
+                left -= len(block)
 
     def _appstore(self, path):
         """The App store (appstore.py): the page, the files held by the keeper, their lists. The app's own

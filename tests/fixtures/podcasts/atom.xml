@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>An Atom Podcast</title>
+  <link rel="self" href="https://example.org/atom.xml"/>
+  <entry>
+    <id>atom-1</id>
+    <title>Atom One</title>
+    <published>2026-11-02T11:00:00Z</published>
+    <link rel="enclosure" href="https://example.org/a1.ogg" type="audio/ogg" length="300"/>
+  </entry>
+  <entry>
+    <id>atom-2</id>
+    <title>Atom Two</title>
+    <published>2026-11-01T11:00:00Z</published>
+    <link rel="enclosure" href="http://example.org/a2.mp3" type="audio/mpeg" length="400"/>
+  </entry>
+</feed>
