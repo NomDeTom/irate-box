@@ -172,6 +172,28 @@ try:
     check("  a scheduled run waits 30 seconds", slept == [30], slept)
 finally:
     L.time.sleep = real_sleep
+# The allowance follows the token: a budget learned without one is dropped, and the next answer sets it anew.
+L._write_json(L.PACE_FILE, {"budget": 50, "limit": 60, "hits": [int(time.time())], "failures": 0})
+L.set_token("github_pat_test")
+check("saving a token drops the budget learned without it", not L.pace().get("budget"), L.pace())
+L._note_rate(
+    {
+        "X-RateLimit-Limit": "5000",
+        "X-RateLimit-Remaining": "5000",
+        "X-RateLimit-Reset": str(int(time.time()) + 1800),
+    }
+)
+check("  the next answer starts it from the token's allowance: 4990", L.pace()["budget"] == 4990, L.pace())
+L.set_token("")
+check("removing a token drops it too", not L.pace().get("budget"), L.pace())
+L._note_rate(
+    {
+        "X-RateLimit-Limit": "60",
+        "X-RateLimit-Remaining": "60",
+        "X-RateLimit-Reset": str(int(time.time()) + 1800),
+    }
+)
+check("  and the next answer starts it from 60: 50", L.pace()["budget"] == 50, L.pace())
 limit["n"] = 5000
 check("with a token's allowance: 4990", L.adapt_rate()["budget"] == 4990)
 L.clear_pace()

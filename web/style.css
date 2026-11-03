@@ -6394,3 +6394,18 @@ label > .aw-onoff-box ~ .chip-group,
 .music-player-box { display: flex; flex-direction: column; gap: 8px; max-width: 48rem; }
 .music-player-box audio { width: 100%; }
 
+
+/* A fold under a form, its own steps under its summary, and the heading after it keep the page's bands. */
+.library-form + .sec-fold {
+  margin-top: 1rem;
+}
+.sec-fold > summary + .admin-list {
+  margin-top: 0.4rem;
+}
+.sec-fold + h4 {
+  margin-top: 1rem;
+}
+/* A form under a fold's words stands off them. */
+.sec-fold p.setting-desc + .library-form {
+  margin-top: 0.6rem;
+}
