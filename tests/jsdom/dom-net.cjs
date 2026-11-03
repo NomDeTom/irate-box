@@ -25,10 +25,11 @@ vc.on('error', (...a) => errors.push('console: ' + a.join(' ')));
 const dom = new JSDOM(html, { url: BASE + '/admin/#network', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window;
 const posted = [];
+let holdResults = false, failPost = false;
 w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/network') posted.push(JSON.parse(opts.body));
   if (opts.method === 'POST' && u === '/admin/health') { posted.push({ health: JSON.parse(opts.body) }); return new Response(JSON.stringify({ accepted: {} }), { status: 200 }); }
-  if (opts.method === 'POST' && u === '/admin/network') return new Response(JSON.stringify({ id: 'x' }), { status: 202 });
+  if (opts.method === 'POST' && u === '/admin/network') return failPost ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ id: 'x' }), { status: 202 });
   if (u === '/admin/network') {
     // The root helper's answer to what was posted: done, so the page is not left busy.
     const front = process.env.FRONT_SECRET ? { 'X-Irate-Front': process.env.FRONT_SECRET, 'X-Irate-Admin': '1' } : {};
@@ -65,7 +66,7 @@ w.fetch = async (u, opts = {}) => {
       repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} },
       events: [{ at: now - 600, text: 'wlan0 down: the gateway missed 3 checks' }, { at: now - 540, text: 'Reconnected wlan0 (nmcli device connect)' },
         { at: now - 530, text: 'wlan0 up again after 70 s' }] };
-    data.results = [...(data.results || []), { id: 'x', ok: true, message: 'Done.' }];
+    data.results = holdResults ? [] : [...(data.results || []), { id: 'x', ok: true, message: 'Done.' }];
     data.pending = 0;
     return new Response(JSON.stringify(data), { status: 200 });
   }
@@ -74,8 +75,9 @@ w.fetch = async (u, opts = {}) => {
 };
 w.confirm = () => true;
 w.eval(js);
-setTimeout(() => {
+setTimeout(async () => {
   const d = w.document;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const t = (sel) => [...d.querySelectorAll(sel)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('WHEN:', t('#net-when')[0]);
   console.log('DEVICES:', [...d.querySelectorAll('#up-iface option')].map((o) => o.value).join(', '));
@@ -243,7 +245,7 @@ setTimeout(() => {
     save.click();
   }, 1500);
   // The WiFi country: a dropdown, the kernel's country chosen; another one chosen is warned of beside it and saved.
-  setTimeout(() => {
+  setTimeout(async () => {
     const pick = d.querySelector('#net-country select');
     const warnNow = () => (d.querySelector('#net-country .aw-warn') || {}).textContent || '';
     check('WiFi country: a dropdown with "Not set" and the countries, the kernel\'s chosen, no warning',
@@ -269,7 +271,7 @@ setTimeout(() => {
   setTimeout(() => {
     check('  Save sends the hostname action', posted.some((p) => p.action === 'hostname' && p.hostname === 'lyra-2'), JSON.stringify(posted.slice(-3)));
   }, 2900);
-  setTimeout(() => {
+  setTimeout(async () => {
     const sent = posted.find((p) => p.action === 'settings');
     check('Save posts both dials, the rest, and custom values', sent && sent.settings.pace === 'urgent' && sent.settings.reach === 'radio'
       && sent.settings.guests === 'protect' && sent.settings.on_wedge === 'ladder' && sent.settings.sensitivity === 2
@@ -313,6 +315,26 @@ setTimeout(() => {
     check('  Manage asks the box to hand that file over', posted.some((b) => b.action === 'handover' && b.name === '90-NM-wlan0.yaml' && !b.undo), JSON.stringify(posted.slice(-2)));
     [...d.getElementById('net-handover').querySelectorAll('button')].find((b) => b.textContent === 'Restore netplan management').click();
     check('  Restore asks for its undo', posted.some((b) => b.action === 'handover' && b.name === '91-NM-guest.yaml' && b.undo === true), JSON.stringify(posted.slice(-2)));
+    // The clicked button keeps its wait across the poll that redraws the card, and clears on the answer or a refusal.
+    holdResults = true;
+    const manage = [...d.getElementById('net-handover').querySelectorAll('button')].find((b) => b.textContent === 'Manage with NetworkManager');
+    const wkey = manage && manage.dataset.wait;
+    manage.click();
+    await sleep(150);
+    const fresh = () => [...d.querySelectorAll('[data-wait]')].find((n) => n.dataset.wait === wkey);
+    check('a Network action: its button waits while the helper has it', wkey && fresh() && fresh().classList.contains('is-busy')
+      && fresh().getAttribute('aria-busy') === 'true', wkey);
+    holdResults = false;
+    w.eval('loadNetwork')();
+    await sleep(200);
+    check('  and the wait ends with the answer, on the redrawn button', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
+    failPost = true;
+    [...d.getElementById('net-handover').querySelectorAll('button')].find((b) => b.textContent === 'Manage with NetworkManager').click();
+    await sleep(150);
+    check('  a refused request clears it too', fresh() && !fresh().classList.contains('is-busy') && !fresh().hasAttribute('aria-busy'));
+    failPost = false;
+    const waitKeys = [...d.querySelectorAll('[data-wait]')].map((n) => n.dataset.wait);
+    check('no two connected buttons share a wait key', new Set(waitKeys).size === waitKeys.length, waitKeys.filter((k, i) => waitKeys.indexOf(k) !== i));
     const chipLine = [...d.querySelectorAll('#net-devices .net-line')].find((p) => /^Chip/.test(p.textContent));
     check('a known chip on its card: its name, its driver in the kernel, the notes, who tested it',
       chipLine && /Broadcom onboard/.test(chipLine.textContent) && /driver is in the kernel/.test(chipLine.textContent)

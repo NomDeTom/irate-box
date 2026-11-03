@@ -48,7 +48,7 @@ w.fetch = async (u, opts = {}) => {
   }
   if (u === '/admin/kits') {
     // The root helper's answer to the first request, once asked for again.
-    const results = answered ? [{ id: 'id-1', ok: true, message: 'Debugging: removed 1 packages' }] : [];
+    const results = answered && posted.length ? [{ id: `id-${posted.length}`, ok: true, message: 'Debugging: removed 1 packages' }] : [];
     return new Response(JSON.stringify(Object.assign({}, kitsData, { results })), { status: 200 });
   }
   return new Response('{}', { status: 404 });
@@ -215,6 +215,19 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   const adminJs = require('fs').readFileSync(require('path').resolve(__dirname, '../../web/admin.js'), 'utf8');
   const kitLists = [...new Set([...adminJs.matchAll(/el\(\s*"ul",\s*\{\s*className: "(kit-[a-z-]+)"/g)].map((m) => m[1]))];
   check('every list a kit card draws is styled (its class in style.css)', kitLists.length >= 2 && kitLists.every((c) => new RegExp(`\\.${c}\\b`).test(sheet)), kitLists);
+  // A toolkit action keeps its wait across the poll that redraws the card.
+  const kc = card('Debugging');
+  const kbtn = button(kc.querySelector('.aw-drawer'), 'Check for updates');
+  const kkey = kbtn && kbtn.dataset.wait;
+  kbtn.click();
+  await wait(100);
+  const kfresh = () => [...d.querySelectorAll('[data-wait]')].find((n) => n.dataset.wait === kkey);
+  check('a toolkit action: its button waits while the helper has it', kkey && kfresh() && kfresh().classList.contains('is-busy')
+    && kfresh().getAttribute('aria-busy') === 'true', kkey);
+  answered = true;
+  w.eval('loadKits')();
+  await wait(200);
+  check('  and the wait ends with the answer, on the redrawn button', kfresh() && !kfresh().classList.contains('is-busy') && !kfresh().hasAttribute('aria-busy'));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
