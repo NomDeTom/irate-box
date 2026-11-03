@@ -2349,11 +2349,22 @@ def identity_hash(identity):
 
 
 def port_listening(port):
-    try:
-        with socket.create_connection(("127.0.0.1", port), timeout=0.2):
-            return True
-    except OSError:
-        return False
+    """Whether a TCP socket is listening on this port, read from the kernel's own table rather than
+    opened. A connection is logged by the service: ngIRCd writes four lines for each, and the hub's
+    status poll every few seconds filled box 181's journal with them. /proc/net/tcp and tcp6 list
+    every socket; state 0A is LISTEN. The hub can read them under its sandbox."""
+    want = f":{port:04X}"
+    for name in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(name, encoding="ascii", errors="replace") as fh:
+                next(fh, None)  # the header line
+                for line in fh:
+                    fields = line.split()
+                    if len(fields) > 3 and fields[3] == "0A" and fields[1].endswith(want):
+                        return True
+        except OSError:
+            continue
+    return False
 
 
 def socket_listening(path):
