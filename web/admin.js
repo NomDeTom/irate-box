@@ -1602,7 +1602,7 @@ async function loadPackages() {
     else now.open = old.open;
     return card;
   };
-  box.replaceChildren(
+  AW.redrawIfChanged(box, JSON.stringify([data.packages, pkgWaiting && pkgWaiting.id]), () => [
     ...(pkgs.length
       ? pkgs.map(([id, pkg]) => carry(pkgCard(id, pkg)))
       : [
@@ -1619,7 +1619,7 @@ async function loadPackages() {
             { dataset: { wait: "pkg:check:" } }),
           ),
         ]),
-  );
+  ]);
   showWait(pkgWaiting);
 }
 // True once the root helper has the request; false when cancelled or refused (said under the package).
@@ -12617,7 +12617,7 @@ function addonGroupCard(group, members, busy, progressText, withAccess = true) {
           withAccess ? accessSlot(member.id) : null,
           groupMemberButtons(member, installed, busy))),
       note,
-      progressText ? el("span", { className: "setting-desc", role: "status", textContent: progressText }) : null),
+      progressText ? el("span", { className: "setting-desc addon-progress", role: "status", textContent: progressText }) : null),
   );
 }
 
@@ -12675,7 +12675,7 @@ function addonCard(addon, busy, withAccess, progressText) {
       note,
       !withAccess && progressText
         ? el("span", {
-            className: "setting-desc",
+            className: "setting-desc addon-progress",
             role: "status",
             textContent: progressText,
           })
@@ -12731,20 +12731,24 @@ function renderAddons(data) {
       cards.push(addonGroupCard(addon.group, listed.filter((x) => x.group === addon.group), busy, progressText));
     }
   }
-  ado.list.replaceChildren(...cards);
+  const addonKey = JSON.stringify([data.addons, busy, adoAsking, adoNote]);
+  AW.redrawIfChanged(ado.list, addonKey, () => cards);
   document.querySelectorAll(".addon-block").forEach((block) => {
     const addon = data.addons.find((entry) => entry.id === block.dataset.addon);
     const group = addon && addon.group ? data.addons.filter((entry) => entry.group === addon.group) : [];
-    block.replaceChildren(
-      addon
-        ? group.length > 1
-          ? addonGroupCard(addon.group, group, busy, progressText, false)
-          : addonCard(addon, busy, false, progressText)
-        : el("p", {
-            className: "setting-desc",
-            textContent: "Installation status is unavailable.",
-          }),
-    );
+    AW.redrawIfChanged(block, JSON.stringify([addon, group, busy, adoAsking, adoNote]), () => (addon
+      ? group.length > 1
+        ? addonGroupCard(addon.group, group, busy, progressText, false)
+        : addonCard(addon, busy, false, progressText)
+      : el("p", {
+          className: "setting-desc",
+          textContent: "Installation status is unavailable.",
+        })));
+  });
+  // The progress line changes at every poll; it is its own text, so the cards' fields and selection stay.
+  document.querySelectorAll(".addon-progress").forEach((line) => {
+    line.textContent = progressText || "";
+    line.hidden = !progressText;
   });
   // The run in flight: the same bar as Updates, for an add-on's run or an update's.
   ado.progress.hidden = !progress;
@@ -12849,7 +12853,9 @@ function renderLocal(data) {
       : null;
   const fetching =
     data.running || !!(data.job && data.job.action && !data.job.result);
-  loc.added.replaceChildren(
+  // Its cards hold a box to tick: drawn again only when what they show changes, so a poll that brings
+  // nothing new leaves a selection or a typed field alone.
+  AW.redrawIfChanged(loc.added, JSON.stringify([data.added, fetching, locNote, locAsking]), () => [
     ...(data.added.length
       ? data.added.map((addon) => {
           const inst = addon.installed;
@@ -12931,7 +12937,7 @@ function renderLocal(data) {
             textContent: "None added yet.",
           }),
         ]),
-  );
+  ]);
   const offered = data.catalogue.filter((c) => !c.added);
   // Drawn again only when it would show something else: its cards hold a box to tick, so the
   // guard for a selection (AW keepSelections) cannot tell an unchanged block by its HTML.
@@ -12942,9 +12948,7 @@ function renderLocal(data) {
     offered.filter((c) => agreedTo.has(`local:${c.id}`)).map((c) => c.id),
     locNote,
   ]);
-  if (loc.cat.dataset.key !== catKey) {
-    loc.cat.dataset.key = catKey;
-    loc.cat.replaceChildren(
+  AW.redrawIfChanged(loc.cat, catKey, () => [
     ...(data.catalogue_error
       ? [
           el("p", {
@@ -12985,8 +12989,7 @@ function renderLocal(data) {
             textContent: "Everything in the catalogue is added.",
           }),
         ]),
-  );
-  }
+  ]);
   loc.errors.replaceChildren(
     ...Object.values(data.errors || {}).map((why) =>
       el("p", {
@@ -13334,7 +13337,8 @@ function renderUsb(data) {
   usb.scan.disabled = busy;
   drawUsbFilesystems(data, busy);
   const devs = (data.scan && data.scan.devices) || [];
-  usb.devices.replaceChildren(
+  // Its drive rows hold a book picker: drawn again only when what they show changes, so a selection stays.
+  AW.redrawIfChanged(usb.devices, JSON.stringify([data.scan, data.books, busy, usbNote]), () => [
     ...devs.map((device) => {
       const pick = el(
         "select",
@@ -13416,15 +13420,16 @@ function renderUsb(data) {
         ),
       );
     }),
-  );
-  if (data.scan && !devs.length)
-    usb.devices.replaceChildren(
-      el("p", {
-        className: "setting-desc",
-        textContent:
-          "No USB drive found. Connect a USB drive. Select Scan USB drives.",
-      }),
-    );
+    ...(data.scan && !devs.length
+      ? [
+          el("p", {
+            className: "setting-desc",
+            textContent:
+              "No USB drive found. Connect a USB drive. Select Scan USB drives.",
+          }),
+        ]
+      : []),
+  ]);
   usb.progress.hidden = !progress;
   if (progress) {
     usb.bar.value = progress.total ? Math.min(progress.done / progress.total, 1) : 0;
@@ -14588,7 +14593,7 @@ function renderFirmware(data) {
         ]),
   );
   fw.boards.hidden = fields.all_boards.checked;
-  fw.boards.replaceChildren(
+  AW.redrawIfChanged(fw.boards, JSON.stringify([data.targets, q, [...fwChosen].sort()]), () => [
     ...(data.targets && data.targets.length
       ? targets.map((t) =>
           el(
@@ -14615,7 +14620,7 @@ function renderFirmware(data) {
               "No board list available. Enable firmware downloads, select Save, then select Check now.",
           }),
         ]),
-  );
+  ]);
   const versions = Object.entries(st.versions || {});
   fw.kept.replaceChildren(
     ...(versions.length
@@ -15227,9 +15232,12 @@ function renderKits(data) {
   const open = kitsEl.grid.querySelector(".aw-card.open");
   if (!(open && open._dirty && open._dirty())) {
     const openId = open && open.dataset.awId;
-    kitsHome.append(...kitsFormNodes);
-    kitsEl.grid.replaceChildren(
-      AW.cards(
+    // Its cards hold a budget form and each drawer's fields: drawn again only when what they show changes,
+    // so a poll that brings nothing new leaves a selection, a field or an open drawer alone.
+    const gridKey = JSON.stringify([kits, st.kits, st.installed, cfg.kits, data.flag_details || {}]);
+    const drew = AW.redrawIfChanged(kitsEl.grid, gridKey, () => {
+      kitsHome.append(...kitsFormNodes);
+      return AW.cards(
         [
           ...kits.map((k) => kitItem(k, st)),
           {
@@ -15247,10 +15255,10 @@ function renderKits(data) {
               : kitBody(it.kit, st, cfg, setDirty),
           save: (it) => kitSave(it),
         },
-      ),
-    );
+      );
+    });
     const again =
-      openId &&
+      drew && openId &&
       kitsEl.grid.querySelector(
         `.aw-card[data-aw-id="${openId}"] .aw-card-head`,
       );
@@ -15747,7 +15755,9 @@ async function loadKitsUsb() {
   const cached = Object.entries(st.kits || {}).filter(([, v]) => v.cached);
   const here = (cached[0] && cached[0][1].cached.arch) || "";
   const devs = (data.scan && data.scan.devices) || [];
-  noteEl("kits-usb").replaceChildren(
+  // The drives' choices hold fields: drawn again only when what they show changes. The progress line, which
+  // changes every poll, is its own text under them.
+  AW.redrawIfChanged(noteEl("kits-usb"), JSON.stringify([data.scan, cached, here, busy]), () => [
     ...(data.scan && !devs.length
       ? [
           el("p", {
@@ -15847,16 +15857,12 @@ async function loadKitsUsb() {
         ),
       );
     }),
-    // Nothing in progress: nothing (a null here showed as the word "null" under a listed stick).
-    ...(progress
-      ? [
-          el("p", {
-            className: "setting-desc",
-            textContent: `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)}` : "…"}`,
-          }),
-        ]
-      : []),
-  );
+  ]);
+  const progressLine = document.getElementById("kits-usb-progress");
+  progressLine.hidden = !progress;
+  progressLine.textContent = progress
+    ? `${said(progress.label)}${progress.total ? `: ${size(progress.done)} of ${size(progress.total)}` : "…"}`
+    : "";
   showWait(kitsUsbWait);
   markHelperWait(noteEl("kits-usb"), busy);
   markHelperButton(document.getElementById("kits-usb-scan"), busy);
@@ -19001,7 +19007,7 @@ function renderQuickInstaller(rows) {
         AW.setBusy(install, false);
       });
   });
-  box.replaceChildren(
+  AW.redrawIfChanged(box, JSON.stringify([quickQueue, rows]), () => [
     el("h3", { textContent: "Quick installer" }),
     el("p", {
       className: "setting-desc",
@@ -19027,7 +19033,7 @@ function renderQuickInstaller(rows) {
         )
       : el("p", { className: "setting-desc", textContent: "Nothing is in the queue." }),
     el("div", { className: "library-buttons" }, install),
-  );
+  ]);
 }
 function pollQuick() {
   if (quickBusy) return;

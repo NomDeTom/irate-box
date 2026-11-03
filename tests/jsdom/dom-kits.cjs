@@ -76,6 +76,24 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB\. Newest download: \d{4}-\d\d-\d\d\. Cached toolkits install without internet access\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));
   check('a card per kit, and the custom one last', d.querySelectorAll('#kits-grid .aw-card').length === 6 && /\+ Custom toolkit/.test(t([...d.querySelectorAll('#kits-grid .aw-card')].pop())));
+  // A poll with the same data leaves the grid alone: text selected in a card stays selected, and a field typed
+  // into keeps its value. A changed status draws the cards again.
+  const sel = w.getSelection();
+  const titleNode = head('Debugging').querySelector('.aw-card-head .t').firstChild;
+  const pick = d.createRange();
+  pick.selectNodeContents(titleNode);
+  sel.removeAllRanges();
+  sel.addRange(pick);
+  await w.eval('loadKits()');
+  await wait();
+  check('a poll that brings nothing new leaves the toolkit grid (and a selection in it)', titleNode.isConnected && !sel.isCollapsed);
+  const keyBefore = d.getElementById('kits-grid').dataset.key;
+  kitsData.kits.debug.summary = 'Debugging tools, changed.';
+  await w.eval('loadKits()');
+  await wait();
+  const keyAfter = d.getElementById('kits-grid').dataset.key;
+  check('  changed data draws the cards again', !titleNode.isConnected && keyBefore !== keyAfter);
+  sel.removeAllRanges();
   check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /Installed/.test(pills('Debugging')) && /Removal due/.test(pills('Debugging')), pills('Debugging'));
   check('  its badges are states only, the same words on every card: no date, size or hours in them (each is a filter)', [...d.querySelectorAll('#kits-grid .aw-card .p')].every((p) => !/\d/.test(t(p).replace(/\+1 set/, ''))), [...d.querySelectorAll('#kits-grid .aw-card .p')].map((p) => t(p)));
   check('  the drawer says what the badges leave out: when cached and its size, when removed', /^Cached \d{4}-\d\d-\d\d, [\d.]+ MB\. Installed: removed in [45] h\./.test(t(card('Debugging').querySelector('.kit-facts'))), t(card('Debugging').querySelector('.kit-facts')));

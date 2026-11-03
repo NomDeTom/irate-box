@@ -1053,6 +1053,19 @@ const AW = (() => {
     }
     box._shownAs = sections ? null : sigs;
   }
+  // A block a poll draws again: left alone while what it shows is the same, key being that. For a block
+  // holding a field (a typed value or a tick is not in its HTML), the page says what it shows in the key;
+  // a selection in it survives a poll that brings nothing new. draw() returns the node or nodes to show.
+  function redrawIfChanged(node, key, draw) {
+    if (!node) return false;
+    const k = typeof key === "string" ? key : JSON.stringify(key);
+    if (node.dataset.key === k) return false;
+    const made = draw();
+    const nodes = (Array.isArray(made) ? made.flat(Infinity) : [made]).filter((n) => n != null && n !== false);
+    node.dataset.key = k;
+    node.replaceChildren(...nodes);
+    return true;
+  }
   if (typeof document !== 'undefined' && typeof MutationObserver !== 'undefined') {
     keepSelections();
     const start = () => {
@@ -1066,7 +1079,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, say, localise, h, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
