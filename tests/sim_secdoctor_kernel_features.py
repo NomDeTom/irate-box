@@ -26,6 +26,7 @@ os.environ.update(
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_args as msg_args
 from irate_box.finding import message_ids as msg_ids
+from irate_box.root import kernelinfo
 from irate_box.root import secdoctor as sd
 
 fails = 0
@@ -57,7 +58,7 @@ def boot(*, bpf, apparmor, journal="", units=None):
         return None
 
     patches = [
-        mock.patch.object(sd, "_cmd", cmd),
+        mock.patch.object(kernelinfo, "run", cmd),
         mock.patch.object(sd, "_sysctl", lambda key: None),
     ]
     for p in patches:
@@ -101,6 +102,20 @@ finally:
     for p in patches:
         p.stop()
 
+# A kernel that ignores cgroup BPF, with no unit relying on it: a note, not a warning.
+patches, ctx = boot(bpf=False, apparmor=True, units={})
+try:
+    got = {f["id"]: f for f in sd.step_kernel(ctx)}
+    check(
+        "the kernel ignores cgroup BPF and no unit relies on it: a note, not a warning",
+        got["kernel-cgroup-net"]["status"] == "note"
+        and "kernel-cgroup-net.unused" in msg_ids(got["kernel-cgroup-net"]),
+        got["kernel-cgroup-net"],
+    )
+finally:
+    for p in patches:
+        p.stop()
+
 # A kernel with both, and a unit that relies on them.
 patches, ctx = boot(
     bpf=True,
@@ -128,7 +143,7 @@ for p in patches:
 if (SYS / "module/apparmor").exists():
     (SYS / "module/apparmor").rmdir()
 patches = [
-    mock.patch.object(sd, "_cmd", lambda *a, **k: R()),
+    mock.patch.object(kernelinfo, "run", lambda *a, **k: R()),
     mock.patch.object(sd, "_sysctl", lambda key: None),
 ]
 for p in patches:

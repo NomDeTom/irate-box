@@ -41,7 +41,7 @@ from pathlib import Path
 
 from irate_box.finding import current, finding
 from irate_box.msg import M, named, when
-from irate_box.root import secdoctor_xref
+from irate_box.root import kernelinfo, secdoctor_xref
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -4609,63 +4609,10 @@ def _sysctl(name):
         return None
 
 
-def _kernel_config():
-    """The booted kernel's configuration, as {CONFIG_NAME: value} ("n" for unset), or None when it is not published."""
-    import gzip
-
-    for path in (KERNEL_BOOT / f"config-{KERNEL_RELEASE}", PROC / "config.gz"):
-        try:
-            text = (
-                gzip.decompress(path.read_bytes()).decode("utf-8", "replace")
-                if path.suffix == ".gz"
-                else path.read_text(errors="replace")
-            )
-        except (OSError, ValueError):
-            continue
-        out = {}
-        for line in text.splitlines():
-            m = re.match(r"^(CONFIG_[A-Z0-9_]+)=(.*)$", line)
-            if m:
-                out[m[1]] = m[2].strip()
-            m = re.match(r"^# (CONFIG_[A-Z0-9_]+) is not set$", line)
-            if m:
-                out[m[1]] = "n"
-        if out:
-            return out
-    return None
-
-
-def _bpf_errors():
-    """systemd's own words when the kernel cannot attach its cgroup programs, from this boot's kernel log."""
-    try:
-        r = _cmd("journalctl", "-k", "-b", "--no-pager", "-g", "bpf-firewall|error 524", timeout=20)
-    except subprocess.SubprocessError:
-        return []
-    if r is None or r.returncode != 0:
-        return []
-    return [line.strip()[:200] for line in r.stdout.splitlines() if re.search(r"bpf-firewall|524", line)][-3:]
-
-
-def _cgroup_bpf(config):
-    """Whether the kernel can attach systemd's cgroup network programs: True, False, or None when it cannot say."""
-    if config is not None:
-        return config.get("CONFIG_CGROUP_BPF", "n") in ("y", "m")
-    return False if _bpf_errors() else None
-
-
-def _apparmor(config):
-    """Whether the kernel has AppArmor: True, False, or None when it cannot say."""
-    if (SYSFS / "module/apparmor").exists() or (SYSFS / "kernel/security/apparmor").is_dir():
-        return True
-    if config is not None:
-        return config.get("CONFIG_SECURITY_APPARMOR", "n") in ("y", "m")
-    return None
-
-
 def _cgroup_net_findings(ctx, config):
     """Units that count on systemd's cgroup network programs, and what the kernel can do with them."""
     title = M("kernel-cgroup-net.title", "Cgroup network programs")
-    bpf = _cgroup_bpf(config)
+    bpf = kernelinfo.cgroup_bpf(config)
     if bpf is True:
         return [
             finding(
@@ -4705,7 +4652,7 @@ def _cgroup_net_findings(ctx, config):
             finding(
                 "kernel-cgroup-net",
                 title,
-                "warn",
+                "note",
                 M(
                     "kernel-cgroup-net.unused",
                     "The kernel ignores IPAddressDeny and IPAccounting, and no unit here relies on them.",
@@ -4753,7 +4700,7 @@ def _cgroup_net_findings(ctx, config):
                 else []
             ),
             evidence=[f"{unit}: IPAddressDeny={deny or 'not set'}" for unit, deny, _protected in relying]
-            + _bpf_errors()
+            + kernelinfo.bpf_errors()
             + [f"CONFIG_CGROUP_BPF={config.get('CONFIG_CGROUP_BPF', 'n') if config else '?'}"],
         )
     ]
@@ -4761,7 +4708,7 @@ def _cgroup_net_findings(ctx, config):
 
 def _apparmor_findings(config):
     title = M("kernel-apparmor.title", "AppArmor")
-    aa = _apparmor(config)
+    aa = kernelinfo.apparmor(config)
     if aa is True:
         return [finding("kernel-apparmor", title, "ok", M("kernel-apparmor.ok", "AppArmor is in this kernel."))]
     if aa is None:
@@ -4798,7 +4745,7 @@ def _apparmor_findings(config):
 def step_kernel(ctx):
     """The kernel's own protections against link tricks and reading other processes, and the features the
     hub relies on: AppArmor, and systemd's cgroup network programs (IPAddressDeny and IPAccounting)."""
-    config = _kernel_config()
+    config = kernelinfo.config()
     out = _apparmor_findings(config) + _cgroup_net_findings(ctx, config)
     links = [(n, _sysctl(n)) for n in ("fs.protected_symlinks", "fs.protected_hardlinks")]
     reg = [(n, _sysctl(n)) for n in ("fs.protected_regular", "fs.protected_fifos")]
@@ -6921,9 +6868,6 @@ def step_mqtt(ctx):
 # own (accounts, the Security page).
 APT_DIR = Path(os.environ.get("HUB_APT_DIR", "/etc/apt"))
 PROC_VERSION = Path(os.environ.get("HUB_PROC_VERSION", "/proc/version"))
-SYSFS = Path(os.environ.get("HUB_SYSFS", "/sys"))
-KERNEL_BOOT = Path(os.environ.get("HUB_BOOT_DIR", "/boot"))
-KERNEL_RELEASE = os.environ.get("HUB_KERNEL_RELEASE") or os.uname().release
 NM_DIR = Path(os.environ.get("HUB_NM_DIR", "/etc/NetworkManager/system-connections"))
 DEBIAN_KEYS = ("debian-archive-", "debian-ports-archive-")
 
