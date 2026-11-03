@@ -77,7 +77,7 @@ from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
 from irate_box.msg import M, Refused, duration, named, render, sentences, when
-from irate_box.root import memguard, rtc
+from irate_box.root import kernelinfo, memguard, rtc
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -7811,6 +7811,475 @@ def check_boards(spots=None, seen=None):
     return findings
 
 
+# --- the image underneath, and the kernel it runs ------------------------------------------------
+# The box inherits its image and kernel from its board's maker. These checks say what both are, so an
+# owner can tell an image's own choice from a fault, and know which of the hub's guarantees the kernel
+# can keep. Read-only: a file read, `apt-config`, and one release lookup when the box is online.
+
+OS_RELEASE = Path(os.environ.get("HUB_OS_RELEASE", "/etc/os-release"))
+MPWRD_RELEASE = Path(os.environ.get("HUB_MPWRD_RELEASE", "/etc/mPWRD-release"))
+IMAGE_RELEASE = Path(os.environ.get("HUB_ARMBIAN_IMAGE_RELEASE", "/etc/armbian-image-release"))
+IMAGE_PROJECTS = {"mPWRD-OS/mPWRD-OS": "mPWRD-OS"}
+IMAGE_RELEASE_STATE = CONTROL / "image-release.json"
+IMAGE_CACHE_SECONDS = 86400  # the newest release is asked at most once a day
+IMAGE_OLD_MONTHS_DEFAULT = 6
+IMAGE_AGE_MONTHS = (3, 6, 12, 24)
+
+
+def _fields(path):
+    """A KEY=VALUE file (os-release, armbian-release) as a dict, quotes taken off."""
+    out = {}
+    for line in _output(_read_text(path)).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        out[key.strip()] = value.strip().strip('"').strip("'")
+    return out
+
+
+def _read_text(path):
+    try:
+        return path.read_text(errors="replace")
+    except OSError:
+        return ""
+
+
+def _image_date(fields, paths):
+    """When the image was built: a date field when one is there, else the newest change of its release files."""
+    for key in ("BUILD_DATE", "BUILD_DATE_UTC", "IMAGE_DATE", "DATE", "VERSION_DATE"):
+        value = fields.get(key)
+        if not value:
+            continue
+        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%SZ", "%Y%m%d"):
+            try:
+                return time.mktime(time.strptime(value[: len(fmt) + 2].strip(), fmt))
+            except ValueError:
+                continue
+    stamps = []
+    for path in paths:
+        try:
+            stamps.append(path.stat().st_mtime)
+        except OSError:
+            continue
+    return min(stamps) if stamps else None
+
+
+def _image_facts():
+    osf = _fields(OS_RELEASE)
+    mp = _fields(MPWRD_RELEASE)
+    ar = _fields(ARMBIAN_RELEASE)
+    ir = _fields(IMAGE_RELEASE)
+    release_paths = [p for p in (MPWRD_RELEASE, ARMBIAN_RELEASE, IMAGE_RELEASE) if p.exists()]
+    paths = [p for p in (OS_RELEASE, *release_paths) if p.exists()]
+    name = (
+        mp.get("NAME")
+        or mp.get("PRETTY_NAME")
+        or (f"{ar.get('BOARD_NAME', '')} (Armbian)" if ar.get("BOARD_NAME") else "")
+        or osf.get("PRETTY_NAME")
+        or osf.get("NAME")
+        or ""
+    )
+    version = mp.get("VERSION") or ar.get("VERSION") or osf.get("VERSION_ID") or osf.get("VERSION") or ""
+    commit = (
+        mp.get("ARMBIAN_COMMIT")
+        or mp.get("COMMIT")
+        or ir.get("ARMBIAN_COMMIT")
+        or ir.get("COMMIT")
+        or ar.get("ARMBIAN_COMMIT")
+        or ""
+    )
+    if not commit:
+        found = re.search(r"\b[0-9a-f]{7,40}\b", " ".join(mp.values()) + " " + " ".join(ir.values()))
+        commit = found.group(0) if found else ""
+    project = "mPWRD-OS/mPWRD-OS" if MPWRD_RELEASE.exists() else None
+    built = _image_date({**ir, **mp, **ar}, release_paths)
+    return {
+        "name": name,
+        "version": version or "?",
+        "commit": commit,
+        "project": project,
+        "built": built,
+        "files": [str(p) for p in paths],
+    }
+
+
+def _doctor_choice(key, default):
+    """The administrator's choice of a doctor setting, or its safe default."""
+    from irate_box.root import recommended
+
+    value = recommended.chosen().get(key)
+    return value if value else default
+
+
+def _image_lookup_on():
+    return _doctor_choice("image-lookup", "on") != "off"
+
+
+def _image_old_months():
+    try:
+        return int(_doctor_choice("image-age", str(IMAGE_OLD_MONTHS_DEFAULT)))
+    except (TypeError, ValueError):
+        return IMAGE_OLD_MONTHS_DEFAULT
+
+
+def _newest_image_release(project):
+    """(tag, published) from the newest release of the image's project, or None when it cannot be asked. The answer
+    is kept in control/ for a day, so a doctor run does not ask GitHub every time (60 requests an hour without a
+    token, shared with the update check)."""
+    if not project:
+        return None
+    now = time.time()
+    try:
+        cached = json.loads(IMAGE_RELEASE_STATE.read_text())
+    except (OSError, ValueError):
+        cached = {}
+    if (
+        isinstance(cached, dict)
+        and cached.get("project") == project
+        and now - (cached.get("at") or 0) < IMAGE_CACHE_SECONDS
+    ):
+        release = cached.get("release") or {}
+        return (release.get("tag"), release.get("published")) if release else None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{project}/releases/latest",
+        headers={"User-Agent": "irate-box", "Accept": "application/vnd.github+json"},
+    )
+    release = None
+    try:
+        with urllib.request.urlopen(request, timeout=8) as resp:  # nosec B310 - a fixed API address
+            data = json.load(resp)
+        published = data.get("published_at") or ""
+        release = {
+            "tag": data.get("tag_name") or data.get("name"),
+            "published": time.mktime(time.strptime(published[:19], "%Y-%m-%dT%H:%M:%S")) if published else None,
+        }
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError):
+        release = None
+    try:
+        from irate_box.root import safeio
+
+        safeio.mkdir(CONTROL, mode=0o755)
+        safeio.write(
+            IMAGE_RELEASE_STATE,
+            json.dumps({"at": now, "project": project, "release": release}, indent=1, sort_keys=True) + "\n",
+        )
+    except (OSError, ValueError):
+        pass
+    return (release.get("tag"), release.get("published")) if release else None
+
+
+def check_image():
+    """The image's name, release and age against the newest release of its project. The lookup is the
+    administrator's setting, asked at most once a day; "newer" means published after this image was built, and a
+    different release with no date to compare is said as different, not newer. An image older than the months set
+    on the Box doctor's page is worth looking at again; re-imaging is the administrator's, off the box."""
+    title = M("image.title", "Operating system image")
+    facts = _image_facts()
+    if not facts["files"]:
+        return [
+            finding(
+                "os-image",
+                title,
+                "warn",
+                M("image.unreadable", "The box could not read its image's release files."),
+                M("image.unreadable.why", "Without them the doctor cannot say which image this is or how old."),
+                evidence=[str(OS_RELEASE), str(MPWRD_RELEASE), str(ARMBIAN_RELEASE)],
+            )
+        ]
+    now = time.time()
+    age_days = (now - facts["built"]) / 86400 if facts["built"] else None
+    made = (
+        M(
+            "image.made",
+            "{name} {version}, built {date}.",
+            name=facts["name"],
+            version=facts["version"],
+            date=when(facts["built"]),
+        )
+        if facts["built"]
+        else M("image.made-undated", "{name} {version}.", name=facts["name"], version=facts["version"])
+    )
+    notes = []
+    if facts["commit"]:
+        notes.append(M("image.commit", "Armbian commit {commit}.", commit=facts["commit"]))
+    if age_days is not None:
+        notes.append(M("image.age", "About {days} days old.", days=round(age_days)))
+    newest = None
+    if facts["project"]:
+        if _image_lookup_on():
+            newest = _newest_image_release(facts["project"])
+            if newest is None:
+                notes.append(
+                    M(
+                        "image.lookup-failed",
+                        "The newest release of {project} was not checked: the box is offline or GitHub did not answer.",
+                        project=facts["project"],
+                    )
+                )
+        else:
+            notes.append(
+                M(
+                    "image.lookup-off",
+                    "The newest release of {project} was not checked: the lookup is off in the Box doctor's settings.",
+                    project=facts["project"],
+                )
+            )
+    different = bool(newest and newest[0] and newest[0].lstrip("v") != facts["version"].lstrip("v"))
+    newer = bool(different and newest[1] and facts["built"] and newest[1] > facts["built"])
+    if newest:
+        notes.append(
+            M(
+                "image.newest",
+                "The newest release of {project} is {tag}.",
+                project=facts["project"],
+                tag=newest[0] or "?",
+            )
+            if different
+            else M(
+                "image.newest-same",
+                "{project}'s newest release is {tag}.",
+                project=facts["project"],
+                tag=newest[0] or "?",
+            )
+        )
+    if newer:
+        return [
+            finding(
+                "os-image",
+                title,
+                "warn",
+                M(
+                    "image.newer",
+                    "A newer release of {project} is available: {tag}. This box runs {version}.",
+                    project=facts["project"],
+                    tag=newest[0],
+                    version=facts["version"],
+                ),
+                M(
+                    "image.newer.why",
+                    "An image is replaced, not updated: a new release carries its maker's kernel and fixes, "
+                    "which no package update can bring.",
+                ),
+                M(
+                    "image.newer.fix",
+                    "Read the release's notes. To take it, write the new image to a card, then restore this box's "
+                    "backup (the administrator's guide's migration page).",
+                ),
+                notes=[made, *notes],
+                evidence=[str(p) for p in facts["files"]],
+            )
+        ]
+    if different:
+        notes.append(
+            M(
+                "image.different",
+                "A different release is available: {tag}. This box runs {version}, and which is newer is not known.",
+                tag=newest[0],
+                version=facts["version"],
+            )
+        )
+    months = _image_old_months()
+    old = age_days is not None and age_days > months * 30.44
+    if old:
+        return [
+            finding(
+                "os-image",
+                title,
+                "warn",
+                M(
+                    "image.old",
+                    "The image was built more than the {months} months set on the Box doctor's page ago.",
+                    months=months,
+                ),
+                M(
+                    "image.old.why",
+                    "Its maker's newer releases carry kernel and package fixes that this image does not, and an "
+                    "image is replaced rather than updated.",
+                ),
+                M(
+                    "image.old.fix",
+                    "Look for a newer release from the image's maker. Taking one means a new card and a restore "
+                    "from this box's backup.",
+                ),
+                notes=[made, *notes],
+                evidence=[str(p) for p in facts["files"]],
+            )
+        ]
+    return [
+        finding(
+            "os-image",
+            title,
+            "ok",
+            made,
+            notes=notes,
+            evidence=[str(p) for p in facts["files"]],
+        )
+    ]
+
+
+def check_apt_recommends():
+    """Whether apt installs recommended packages. Armbian builds its images with them off, which is why packages
+    Debian only recommends (linux-sysctl-defaults among them) can be missing. Not a fault: said once, as the
+    reason a package a check names may not be there."""
+    title = M("recommends.title", "Recommended packages")
+    if not shutil.which("apt-config"):
+        return [
+            finding(
+                "apt-recommends",
+                title,
+                "note",
+                M("recommends.unknown", "apt-config is not installed, so apt's recommends setting is not known."),
+            )
+        ]
+    out = run("apt-config", "dump", "APT::Install-Recommends", timeout=30).stdout
+    said = [line.strip() for line in out.splitlines() if "Install-Recommends" in line]
+    off = any(re.search(r'"\s*(0|false)\s*"', line, re.I) for line in said)
+    if off:
+        return [
+            finding(
+                "apt-recommends",
+                title,
+                "note",
+                M("recommends.off", "apt does not install recommended packages: APT::Install-Recommends is off."),
+                M(
+                    "recommends.off.why",
+                    "This is the image's own choice, and the reason a package Debian only recommends can be missing "
+                    "here. The System toolkit installs the ones the hub uses.",
+                ),
+                evidence=said or ["APT::Install-Recommends off"],
+            )
+        ]
+    return [
+        finding(
+            "apt-recommends",
+            title,
+            "ok",
+            M("recommends.on", "apt installs recommended packages."),
+            evidence=said,
+        )
+    ]
+
+
+def check_kernel_features():
+    """The kernel features the hub relies on: cgroup BPF for systemd's IPAddressDeny and IPAccounting, AppArmor for
+    a second layer around a program, and a driver for the administrator's clock module. The Security doctor warns
+    of a unit that relies on cgroup BPF; these are notes of what the kernel can do, for what it means here."""
+    from irate_box.root import rtc
+
+    config = kernelinfo.config()
+    out = []
+    bpf = kernelinfo.cgroup_bpf(config)
+    title = M("box.kernel-bpf.title", "Kernel network accounting")
+    if bpf is False:
+        out.append(
+            finding(
+                "kernel-cgroup-bpf",
+                title,
+                "note",
+                M("box.kernel-bpf.missing", "The kernel cannot attach systemd's cgroup network programs."),
+                M(
+                    "box.kernel-bpf.missing.why",
+                    "IPAddressDeny and IPAddressAllow do nothing here, and IPAccounting reads 0. The Security doctor "
+                    "names any unit that relies on them. The hub uses nftables for builds instead.",
+                ),
+                evidence=[
+                    *kernelinfo.bpf_errors(),
+                    f"CONFIG_CGROUP_BPF={config.get('CONFIG_CGROUP_BPF', 'n') if config else '?'}",
+                ],
+            )
+        )
+    elif bpf is None:
+        out.append(
+            finding(
+                "kernel-cgroup-bpf",
+                title,
+                "note",
+                M(
+                    "box.kernel-bpf.unknown",
+                    "Whether the kernel supports systemd's cgroup network programs is not known.",
+                ),
+                notes=[
+                    M("box.kernel-bpf.unknown.why", "The kernel publishes no configuration, and its log says nothing.")
+                ],
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "kernel-cgroup-bpf",
+                title,
+                "ok",
+                M("box.kernel-bpf.ok", "The kernel supports systemd's IPAddressDeny and IPAccounting."),
+            )
+        )
+    aa = kernelinfo.apparmor(config)
+    aa_title = M("box.kernel-apparmor.title", "AppArmor")
+    if aa is False:
+        out.append(
+            finding(
+                "kernel-apparmor",
+                aa_title,
+                "note",
+                M("box.kernel-apparmor.missing", "AppArmor is not in this kernel."),
+                notes=[
+                    M(
+                        "box.kernel-apparmor.missing.note",
+                        "The hub's units rely on systemd's sandbox instead, which is narrower than AppArmor but not "
+                        "the same. The Security doctor keeps the warning.",
+                    )
+                ],
+                evidence=[f"CONFIG_SECURITY_APPARMOR={config.get('CONFIG_SECURITY_APPARMOR', 'n') if config else '?'}"],
+            )
+        )
+    elif aa is None:
+        out.append(
+            finding(
+                "kernel-apparmor",
+                aa_title,
+                "note",
+                M("box.kernel-apparmor.unknown", "Whether AppArmor is in this kernel is not known."),
+            )
+        )
+    else:
+        out.append(
+            finding("kernel-apparmor", aa_title, "ok", M("box.kernel-apparmor.ok", "AppArmor is in this kernel."))
+        )
+    cfg = rtc.load_config()
+    if cfg:
+        rtc_title = M("box.kernel-rtc.title", "Clock module driver")
+        if cfg.get("mode") == "kernel":
+            out.append(
+                finding(
+                    "kernel-rtc",
+                    rtc_title,
+                    "ok",
+                    M("box.kernel-rtc.kernel", "The kernel drives the {chip} clock module.", chip=cfg.get("chip", "?")),
+                )
+            )
+        else:
+            out.append(
+                finding(
+                    "kernel-rtc",
+                    rtc_title,
+                    "note",
+                    M(
+                        "box.kernel-rtc.userspace",
+                        "The kernel has no driver for the {chip} clock module. irate-box reads it itself.",
+                        chip=cfg.get("chip", "?"),
+                    ),
+                    notes=[
+                        M(
+                            "box.kernel-rtc.userspace.note",
+                            "That works now. A kernel update cannot take the driver away, because there is none, but "
+                            "a change to the I2C bus can stop irate-box's own reader.",
+                        )
+                    ],
+                )
+            )
+    return out
+
+
 def scan(quick=False):
     """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
     Lyra's slow step: 132.6 of a 143.5 s run), and the books' headers without opening each in Kiwix. Each check's
@@ -7853,6 +8322,9 @@ def scan(quick=False):
         check_package_files,
         check_hardening,
         check_boards,
+        check_image,
+        check_apt_recommends,
+        check_kernel_features,
     ):
         start = time.monotonic()
         try:
@@ -7927,6 +8399,50 @@ def clock_choice():
         return None
 
 
+def image_groups():
+    """The image's checks as the administrator's settings: the newest-release lookup (once a day, on) and the age
+    past which the image is worth looking at again (six months)."""
+    from irate_box.root import recommended
+
+    chosen = recommended.chosen()
+    lookup = chosen.get("image-lookup", "on")
+    months = chosen.get("image-age", str(IMAGE_OLD_MONTHS_DEFAULT))
+    return [
+        {
+            "key": "image-lookup",
+            "label": M("hs.image-lookup", "The image's newest release"),
+            "desc": M(
+                "hs.image-lookup.desc",
+                "Ask the image's project for its newest release, at most once a day, and keep the answer. Off, the "
+                "Box doctor says the release was not checked.",
+            ),
+            "current": lookup,
+            "options": [
+                {"value": "on", "label": ON, "choice": "image-lookup:on"},
+                {"value": "off", "label": OFF, "choice": "image-lookup:off"},
+            ],
+        },
+        {
+            "key": "image-age",
+            "label": M("hs.image-age", "An image worth looking at again"),
+            "desc": M(
+                "hs.image-age.desc",
+                "Warn when the image was built longer ago than this. A newer release carries its maker's fixes, and "
+                "an image is replaced rather than updated.",
+            ),
+            "current": months,
+            "options": [
+                {
+                    "value": str(m),
+                    "label": M("hs.image-age.months", "{n} months", n=m),
+                    "choice": f"image-age:{m}",
+                }
+                for m in IMAGE_AGE_MONTHS
+            ],
+        },
+    ]
+
+
 def doctor_settings():
     """The doctor's own settings, as they are now, for its settings card: crash watch's snapshots, and what
     restarts a frozen box (a panic, the watchdog), with whether this board has a watchdog to use."""
@@ -7944,7 +8460,8 @@ def doctor_settings():
             "led": {"name": ls["led"], "show": ls["show"]} if ls else None,
             "groups": setting_groups(s, wd)
             + led_groups(ls, armbian_led_state() if ls else None)
-            + rfkill_groups(rfkill_status()),
+            + rfkill_groups(rfkill_status())
+            + image_groups(),
             "card_groups": card_groups(),
             "hardening_groups": hardening_groups(),
         }
@@ -7981,6 +8498,11 @@ def fix(choice):
         said = crashwatch.set_option(kind[len("crashwatch-") :], arg)
         recommended.record(kind, arg)  # the owner's own choice: never offered back
         return said
+    if kind in ("image-lookup", "image-age"):
+        from irate_box.root import recommended
+
+        recommended.record(kind, arg)  # the administrator's own choice: never offered back
+        return M("repair.image-setting.saved", "The setting is saved.")
     if kind in ("health-timer", "lost-writes", "canary"):
         from irate_box.root import recommended
 
