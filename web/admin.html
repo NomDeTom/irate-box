@@ -1377,6 +1377,19 @@
 
         <section
           class="admin-pane"
+          id="library-drive"
+          aria-labelledby="library-drive-title"
+        >
+          <h2 id="library-drive-title" data-i18n="admin.library-drive.title">Library drive</h2>
+          <p class="setting-desc" data-i18n="admin.library-drive.intro">
+            Keep podcasts and books on a USB drive, so a large library lives beyond the card.
+            The drive stays mounted, and each kind selects the card or the drive.
+          </p>
+          <div id="library-drive-panel"></div>
+        </section>
+
+        <section
+          class="admin-pane"
           id="firmware"
           aria-labelledby="firmware-title"
         >
@@ -6045,6 +6058,7 @@
     <script src="/admin-layout.js"></script>
     <script src="/admin.js"></script>
     <script src="/admin-podcasts.js"></script>
+    <script src="/admin-librarydrive.js"></script>
     <script src="/admin-mock.js"></script>
     <script src="/admin-tour.js"></script>
   </body>

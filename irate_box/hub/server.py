@@ -51,6 +51,7 @@ from irate_box.hub import (
     hubclock,
     jsonlog,
     kitauto,
+    librarydrive,
     linkhistory,
     manifests,
     memhistory,
@@ -5757,6 +5758,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, snap)
             return
 
+        if path == "/admin/librarydrive":
+            snap = librarydrive.status()
+            snap["drives"] = storage.places().get("drives", [])
+            snap["pending"] = _pending_actions("librarydrive")
+            snap["results"] = control_results(5)
+            self.send_json(200, snap)
+            return
+
         if path == "/admin/factory":
             self.send_json(200, factory.snapshot())
             return
@@ -6673,6 +6682,27 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/podcasts":
             self.send_json(*podcast_action(payload))
+            return
+
+        if path == "/admin/librarydrive":
+            action = payload.get("action")
+            if action == "choose":
+                kinds = payload.get("kinds") if isinstance(payload.get("kinds"), dict) else {}
+                rid = control_request(
+                    {
+                        "action": "library-drive",
+                        "uuid": str(payload.get("uuid") or "")[:64],
+                        "kinds": {
+                            k: kinds.get(k) if kinds.get(k) in ("card", "drive") else "card" for k in librarydrive.KINDS
+                        },
+                    }
+                )
+                self.send_json(202, {"id": rid})
+                return
+            if action == "eject":
+                self.send_json(202, {"id": control_request({"action": "library-drive-eject"})})
+                return
+            self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/admin/mesh":

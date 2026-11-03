@@ -51,6 +51,8 @@ HTTPS_ONLY = frozenset(
         "rk-ssh-setup",
         "rk-finish",
         "board-install",
+        "library-drive",
+        "library-drive-eject",
     )
 )
 TRUSTED = ("https", "loopback", "hub")

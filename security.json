@@ -249,6 +249,18 @@
       "reads": [],
       "writes": []
     },
+    "library-drive": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
+    "library-drive-eject": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "net-scan": {
       "https_only": false,
       "policy": false,

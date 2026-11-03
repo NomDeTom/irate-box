@@ -49,9 +49,9 @@ from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
 
-ROOT = Path(os.environ.get("HUB_PODCAST_ROOT", librarian.STATE_DIR / "podcasts"))
+DEFAULT_ROOT = Path(os.environ.get("HUB_PODCAST_ROOT", librarian.STATE_DIR / "podcasts"))
 SETTINGS = librarian.LIB_DIR / "podcasts.json"
-STATUS = ROOT / "status.json"
+STATUS = librarian.LIB_DIR / "podcasts-status.json"
 DEFAULTS = {
     "enabled": False,
     "check_every_hours": 12,
@@ -401,8 +401,21 @@ class _Bytes:
 # --- the library ---------------------------------------------------------------------------
 
 
+def root():
+    """The folder the podcasts go in now: the card, the library drive's, or None when the drive is
+    chosen and not plugged in."""
+    from irate_box.hub import librarydrive
+
+    return librarydrive.place("podcasts", DEFAULT_ROOT)
+
+
 def feed_dir(feed_id):
-    return ROOT / feed_id
+    from irate_box.hub import librarydrive
+
+    base = root()
+    if base is None:
+        raise LibrarianError(librarydrive.said_drive_missing("podcasts"))
+    return base / feed_id
 
 
 def _index_path(feed_id):
@@ -742,6 +755,10 @@ def sync(check_only=False, log=print, scheduled=False):
         return "off"
     if not cfg["feeds"]:
         return "no feeds"
+    from irate_box.hub import librarydrive
+
+    if librarydrive.drive_missing("podcasts"):
+        return "waiting: the library drive is not plugged in"
     now = int(time.time())
     results = {}
     for feed in cfg["feeds"]:
@@ -785,7 +802,7 @@ def episodes():
     for feed in cfg["feeds"]:
         index = _load_index(feed["id"])
         for ep in index.get("episodes", []):
-            if not ep.get("file"):
+            if not ep.get("file") or not Path(ep["file"]).is_file():
                 continue
             out.append(
                 {
@@ -830,7 +847,7 @@ def snapshot():
         "settings": {k: v for k, v in cfg.items() if k != "feeds"},
         "feeds": feeds,
         "used": total,
-        "free_mb": _free_mb(ROOT),
+        "free_mb": _free_mb(root() or DEFAULT_ROOT),
     }
 
 
