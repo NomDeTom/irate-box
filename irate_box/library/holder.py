@@ -676,6 +676,28 @@ def active():
     return cfg["enabled"] and bool(cfg["holders"])
 
 
+def space_state(root=None, state=None):
+    """Where the App store's files are and how much room they have: the folder it writes (ROOT),
+    never the state folder or a parent. on_state: the folder is on the state filesystem while the
+    card is a different one (its card mount is missing), which is said as that, not as low space."""
+    folder = Path(root or ROOT)
+    state_dir = Path(state or librarian.STATE_DIR)
+    try:
+        st = os.statvfs(folder)
+    except OSError:
+        return {"known": False, "root": str(folder)}
+    free = st.f_bavail * st.f_frsize
+    on_state = False
+    try:
+        root_dev = os.stat(folder).st_dev
+        state_dev = os.stat(state_dir).st_dev
+        card_dev = os.stat("/").st_dev
+        on_state = root_dev == state_dev and state_dev != card_dev
+    except OSError:
+        pass
+    return {"known": True, "root": str(folder), "free_mb": free >> 20, "on_state": on_state}
+
+
 def sync(check_only=False, log=print, only=None):
     """Every holder (or those named), one failing never stopping the others. Returns a one-line outcome."""
     cfg = settings()

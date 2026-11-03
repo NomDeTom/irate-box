@@ -20,6 +20,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+from unittest import mock
 from email.utils import formatdate
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1390,9 +1391,10 @@ for hid, state in {
     (H.STATE / "holds" / hid / "status.json").write_text(json.dumps(state))
 fs = {f["id"]: f for f in H.appstore_findings(now=now)}
 check(
-    "App store: five said, the checked-and-quiet one nothing",
+    "App store: six said, the checked-and-quiet one nothing",
     set(fs)
     == {
+        "appstore:space",
         "appstore:android:newest",
         "appstore:android:digest",
         "appstore:android:budget",
@@ -1438,6 +1440,27 @@ check(
     all(f["go"]["section"] == "appstore" for f in fs.values()),
     [f["go"] for f in fs.values()],
 )
+with mock.patch(
+    "irate_box.library.holder.space_state",
+    return_value={"known": True, "root": str(H.STATE / "holds"), "free_mb": 40, "on_state": False},
+):
+    fs = {f["id"]: f for f in H.appstore_findings(now=now)}
+    check(
+        "  low space where the files go: a warning naming the free space and the reserve",
+        fs["appstore:space"]["status"] == "warn" and fs["appstore:space"]["summary"]["args"]["free"] == 40,
+        fs.get("appstore:space"),
+    )
+with mock.patch(
+    "irate_box.library.holder.space_state",
+    return_value={"known": True, "root": str(H.STATE / "holds"), "free_mb": 40, "on_state": True},
+):
+    fs = {f["id"]: f for f in H.appstore_findings(now=now)}
+    check(
+        "  a folder on the state flash, not the card: said as that, not as low space",
+        fs["appstore:space"]["status"] == "problem"
+        and fs["appstore:space"]["summary"]["id"] == "update.appstore.space.not-card",
+        fs.get("appstore:space"),
+    )
 (lib / "holders.json").write_text(json.dumps({"enabled": False, "holders": []}))
 check("off, or with nothing kept, the App store says nothing", H.appstore_findings(now=now) == [])
 (lib / "holders.json").unlink()
