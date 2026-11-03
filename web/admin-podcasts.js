@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 NomDeTom
-// /admin's Podcasts part: the settings, the feeds and OPML. The server runs the fetches; the page
+// /admin's Podcasts part: the settings, the feeds and OPML. The server runs the checks; the page
 // asks and redraws, as the other Library parts do.
 (() => {
   const panel = document.getElementById("podcasts-panel");
@@ -61,7 +61,7 @@
     box.append(check("enabled", "Follow podcasts", settings.enabled));
     box.append(
       number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours),
-      number("back_catalogue", "New feed: episodes to fetch (-1 all)", -1, 1000, settings.back_catalogue),
+      number("back_catalogue", "New feed: episodes to download (-1 all)", -1, 1000, settings.back_catalogue),
       number("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count),
       number("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days),
       number("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, settings.keep_mb),
