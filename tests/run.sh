@@ -91,6 +91,7 @@ run sim_roaming.py
 run sim_backup.py
 run sim_declared_services.py
 run sim_declared_checks.py
+run sim_ownchecks.py
 run sim_web_probes.py
 run sim_one_login.py
 run sim_device_pin.py

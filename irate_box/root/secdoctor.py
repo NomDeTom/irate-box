@@ -3212,6 +3212,10 @@ def probe_tailscale(ctx, a, show):
 
 
 DECLARED = Path(__file__).with_name("declared.py")
+# The owner's own checks, one named group per JSON file, in the manifests' check format. Root-owned: the doctor
+# reads them as root, and a file anyone could change would be a way to make the doctor say anything.
+CHECKS_D = Path(os.environ.get("HUB_CHECKS_D", "/etc/irate-box/checks.d"))
+CHECKS_GROUP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 DECLARED_SECONDS = 2  # all of one manifest's checks; a pattern that needs longer is broken or hostile
 DECLARED_ROOT = Path(os.environ.get("HUB_PRESENT_ROOT", "/"))  # where a check's paths are read (tests move it)
 
@@ -3359,6 +3363,76 @@ ADDON_PROBES = (
     ("ttyd", probe_ttyd),
     ("tailscaled", probe_tailscale),
 )
+
+
+def own_checks():
+    """The owner's checks in /etc/irate-box/checks.d/*.json, each file a named group in the manifests' format.
+    Each check is a finding of its own, keyed checks-<file>-<check>; a broken file or a file not root's is said,
+    never fatal."""
+    out = []
+    try:
+        paths = sorted(CHECKS_D.glob("*.json"))
+    except OSError:
+        return out
+    for path in paths:
+        stem = path.stem
+        if not CHECKS_GROUP_RE.match(stem):
+            out.append(
+                _issue(
+                    f"checks-{stem}",
+                    "warn",
+                    M("ownchecks.name", "The checks file {name} has a name the box will not use.", name=path.name),
+                    fix=M("ownchecks.name.fix", "Name it with letters, digits, dots, underscores or hyphens."),
+                )
+            )
+            continue
+        try:
+            st = path.stat()
+            if os.geteuid() == 0 and (st.st_uid != 0 or st.st_mode & 0o022):
+                out.append(
+                    _issue(
+                        f"checks-{stem}",
+                        "warn",
+                        M(
+                            "ownchecks.owner",
+                            "The checks in {name} are not root's alone, so they do not run.",
+                            name=path.name,
+                        ),
+                        fix=M("ownchecks.owner.fix", "Make the file root's, and not writable by anyone else."),
+                        evidence=[f"{st.st_uid}:{oct(st.st_mode & 0o777)}"],
+                    )
+                )
+                continue
+            data = json.loads(path.read_text())
+        except (OSError, ValueError) as exc:
+            out.append(
+                _issue(
+                    f"checks-{stem}",
+                    "warn",
+                    M("ownchecks.invalid", "The checks in {name} cannot be read, so they did not run.", name=path.name),
+                    evidence=[str(exc)[:200]],
+                )
+            )
+            continue
+        if not isinstance(data, dict) or not isinstance(data.get("checks"), list):
+            out.append(
+                _issue(
+                    f"checks-{stem}",
+                    "warn",
+                    M("ownchecks.invalid", "The checks in {name} cannot be read, so they did not run.", name=path.name),
+                    evidence=["name and checks"],
+                )
+            )
+            continue
+        a = {
+            "id": f"checks-{stem}",
+            "addon": {"title": str(data.get("name") or stem)},
+            "checks": data["checks"],
+            "unit": data.get("unit") if isinstance(data.get("unit"), str) else None,
+            "port": data.get("port") if isinstance(data.get("port"), int) else None,
+        }
+        out += [{**i, "key": f"checks-{stem}:{i['key']}"} for i in run_declared(a)]
+    return out
 
 
 def step_addons(ctx):
@@ -3684,6 +3758,7 @@ def step_addons(ctx):
                 evidence=_some(absent, 12),
             )
         )
+    out += own_checks()
     return out
 
 
