@@ -2459,6 +2459,225 @@ def write_tailscale_want(mode, hours=None):
 _library_job = {"thread": None, "action": None, "result": None}
 _library_lock = threading.Lock()
 
+# The quick installer's queue: kept in the hub's state so a reload finds it, run one item after
+# another. Apps and add-ons first, then the books their docs name.
+INSTALL_QUEUE = STATE_DIR / "install-queue.json"
+_queue_lock = threading.Lock()
+_queue_job = {"thread": None, "items": [], "current": None, "results": [], "settings": {}}
+
+
+def _queue_read():
+    try:
+        data = json.loads(INSTALL_QUEUE.read_text())
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    items = data.get("items") if isinstance(data.get("items"), list) else []
+    return {"items": items, "settings": data.get("settings") if isinstance(data.get("settings"), dict) else {}}
+
+
+def _queue_write(data):
+    INSTALL_QUEUE.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=INSTALL_QUEUE.parent, prefix=".install-queue.")
+    with os.fdopen(fd, "w") as fh:
+        json.dump(data, fh, indent=1)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, INSTALL_QUEUE)
+
+
+def queue_order(items):
+    """The install order: app bundles, service add-ons and web add-ons first, then books."""
+    first = {"app": 0, "addon": 1, "local": 2}
+    return sorted(items, key=lambda item: first.get(item.get("kind"), 3))
+
+
+def _queue_item(raw):
+    """One checked item from the page, or None. Ids are the manifests' own; a book must be one a
+    manifest's docs names, and its source comes from there, never from the request."""
+    if not isinstance(raw, dict):
+        return None
+    kind = raw.get("kind")
+    ident = str(raw.get("id") or "")
+    if kind == "app":
+        if not manifests.ID_RE.match(ident):
+            return None
+        return {"kind": kind, "id": ident, "title": str(raw.get("title") or ident)[:120]}
+    if kind == "addon":
+        if not manifests.ID_RE.match(ident):
+            return None
+        entry = manifests.addons(MANIFESTS).get(ident)
+        if not entry:
+            return None
+        return {
+            "kind": "addon",
+            "id": ident,
+            "title": entry["addon"]["title"],
+            **({"consent": entry["addon"]["consent"]} if entry["addon"].get("consent") else {}),
+        }
+    if kind == "local":
+        if not manifests.ID_RE.match(ident):
+            return None
+        entry = manifests.catalogue().get(ident)
+        if not entry:
+            return None
+        return {
+            "kind": "local",
+            "id": ident,
+            "title": entry["addon"]["title"],
+            "consent": entry["addon"]["consent"],
+        }
+    if kind == "book":
+        book = str(raw.get("book") or "")
+        if not book:
+            return None
+        for m in manifests.load_all():
+            for doc in m.get("docs", []):
+                if doc.get("book") == book:
+                    return {
+                        "kind": "book",
+                        "id": book,
+                        "book": book,
+                        "title": doc.get("title") or book,
+                        "source": dict(doc["source"]),
+                        "size_mb": int(doc.get("size_mb") or 0),
+                    }
+        return None
+    return None
+
+
+def queue_snapshot():
+    data = _queue_read()
+    with _queue_lock:
+        thread = _queue_job["thread"]
+        return {
+            **data,
+            "items": _queue_job["items"] if (thread and thread.is_alive()) else data["items"],
+            "running": bool(thread and thread.is_alive()),
+            "waiting": bool(_queue_job.get("waiting")),
+            "current": _queue_job["current"],
+            "results": list(_queue_job["results"]),
+        }
+
+
+def _queue_wait_control(rid, seconds=600):
+    for _ in range(seconds):
+        found = next((r for r in control_results(30) if r.get("id") == rid), None)
+        if found:
+            return found
+        time.sleep(1)
+    return {"ok": False, "message": "The root helper did not answer."}
+
+
+def _queue_run(items):
+    global _queue_job
+    results = []
+    for item in items:
+        with _queue_lock:
+            _queue_job["current"] = item
+        try:
+            if item["kind"] in ("app", "book"):
+                name = item["id"] if item["kind"] == "app" else item["book"]
+                kind = "apps" if item["kind"] == "app" else "books"
+
+                def work(name=name, item=item):
+                    have = {src["name"] for src in librarian.load_config()["sources"]}
+                    if name not in have:
+                        source = (
+                            librarian.default_app_source(name)
+                            if item["kind"] == "app"
+                            else {"name": name, **item["source"]}
+                        )
+                        librarian.add_source(source)
+                    return librarian.update([name], mode="update", log=lambda *_: None)
+
+                while not library_start("update", work, kind=kind):
+                    with _queue_lock:
+                        _queue_job["waiting"] = True
+                    time.sleep(2)
+                with _queue_lock:
+                    thread = _queue_job["thread"]
+                    _queue_job["waiting"] = False
+                while thread and thread.is_alive():
+                    time.sleep(1)
+                outcome = (_queue_job.get("result") or {}).get(name, "")
+                state = librarian.load_status().get(name) or {}
+                results.append({"item": item, "ok": not state.get("error"), "message": str(outcome)[:300]})
+            elif item["kind"] == "addon":
+                rid = control_request({"action": "addon", "addon": item["id"], "on": True})
+                answer = _queue_wait_control(rid)
+                results.append(
+                    {"item": item, "ok": bool(answer.get("ok")), "message": str(answer.get("message") or "")}
+                )
+            elif item["kind"] == "local":
+                code, body = local_addons_action({"action": "add", "id": item["id"], "agree": True})
+                results.append({"item": item, "ok": code in (200, 202), "message": str(body.get("message") or "")})
+        except Exception as exc:  # noqa: BLE001 - one item failing leaves the rest going
+            results.append({"item": item, "ok": False, "message": str(exc)[:300]})
+        with _queue_lock:
+            _queue_job["results"] = list(results)
+            _queue_job["current"] = None
+        _queue_write(
+            {
+                "items": [it for it in items if it not in [r["item"] for r in results if r.get("ok")]],
+                "settings": _queue_read()["settings"],
+            }
+        )
+    with _queue_lock:
+        _queue_job["current"] = None
+        _queue_job["waiting"] = False
+
+
+def queue_action(payload):
+    """(status, body) for POST /admin/queue: save the list, settings, clear it, or run it."""
+    action = payload.get("action")
+    data = _queue_read()
+    if action == "save":
+        items = []
+        seen = set()
+        for raw in payload.get("items") or []:
+            item = _queue_item(raw)
+            if item and (item["kind"], item["id"]) not in seen:
+                seen.add((item["kind"], item["id"]))
+                items.append(item)
+        _queue_write({"items": queue_order(items), "settings": data["settings"]})
+        return 200, queue_snapshot()
+    if action == "settings":
+        settings = {
+            "docs_with_app": bool(payload.get("docs_with_app")),
+            "metered": bool(payload.get("metered")),
+        }
+        _queue_write({"items": data["items"], "settings": settings})
+        return 200, queue_snapshot()
+    if action == "clear":
+        _queue_write({"items": [], "settings": data["settings"]})
+        return 200, queue_snapshot()
+    if action == "install":
+        ticks = payload.get("ticks") if isinstance(payload.get("ticks"), dict) else {}
+        with _queue_lock:
+            thread = _queue_job["thread"]
+            if thread and thread.is_alive():
+                return 409, refused.say(librarian.BUSY)
+            items = queue_order([i for i in (_queue_item(x) for x in data["items"]) if i])
+            if not items:
+                return 400, refused.say(M("install-queue.empty", "Select something to install first."))
+            for item in items:
+                if item.get("consent") and ticks.get(f"{item['kind']}:{item['id']}") is not True:
+                    return 400, refused.say(
+                        M(
+                            "install-queue.consent",
+                            "Tick the consent for {title} before installing it.",
+                            title=item["title"],
+                        )
+                    )
+            _queue_job.update(items=items, current=None, results=[], thread=None)
+            thread = threading.Thread(target=_queue_run, args=(items,), daemon=True)
+            _queue_job["thread"] = thread
+            thread.start()
+        return 200, queue_snapshot()
+    return 400, refused.say(UNKNOWN_ACTION)
+
 
 def library_snapshot():
     snap = librarian.snapshot()
@@ -5529,6 +5748,10 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/admin/queue":
+            self.send_json(200, queue_snapshot())
+            return
+
         if path == "/admin/tiles":
             self.send_json(200, tiles_snapshot())
             return
@@ -6718,6 +6941,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/podcasts":
             self.send_json(*podcast_action(payload))
+            return
+
+        if path == "/admin/queue":
+            self.send_json(*queue_action(payload))
             return
 
         if path == "/admin/librarydrive":

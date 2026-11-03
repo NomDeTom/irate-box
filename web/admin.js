@@ -18713,11 +18713,264 @@ function inventoryRows() {
   }
   return [...rows.values()];
 }
+// ---- Quick installer: apps, add-ons and their known books, one list, one Install ----------
+let quickQueue = { items: [], settings: {}, running: false, waiting: false, current: null, results: [] };
+let quickBusy = false;
+const quickTicks = new Set();
+function quickKind(row) {
+  return row.kind === "app"
+    ? "app"
+    : row.kind === "addon"
+      ? "addon"
+      : "local";
+}
+function quickDocItem(doc) {
+  return {
+    kind: "book",
+    id: doc.book,
+    book: doc.book,
+    title: doc.title,
+    source: doc.source,
+    size_mb: doc.size_mb,
+  };
+}
+function quickKey(item) {
+  return `${item.kind}:${item.id}`;
+}
+function quickSave(items) {
+  return postJSON("/admin/queue", { action: "save", items });
+}
+function quickState(data) {
+  const out = data && typeof data === "object" ? data : {};
+  return {
+    items: Array.isArray(out.items) ? out.items : [],
+    settings: out.settings && typeof out.settings === "object" ? out.settings : {},
+    running: !!out.running,
+    waiting: !!out.waiting,
+    current: out.current || null,
+    results: Array.isArray(out.results) ? out.results : [],
+  };
+}
+function renderQuickInstaller(rows) {
+  const box = document.getElementById("quick-installer");
+  if (!box || !AL.apps()) return;
+  quickQueue = quickState(quickQueue);
+  const selection = (document.getSelection && document.getSelection()) || null;
+  const range =
+    selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+  if (
+    selection &&
+    !selection.isCollapsed &&
+    range &&
+    ((range.intersectsNode && range.intersectsNode(box)) ||
+      box.contains(range.commonAncestorContainer))
+  )
+    return;
+  const installed = new Set(
+    rows
+      .filter((row) => row.state === "installed" || row.state === "builtin")
+      .map((row) => row.id),
+  );
+  const candidates = rows.filter(
+    (row) =>
+      !installed.has(row.id) &&
+      ["app", "addon", "local"].includes(row.kind) &&
+      !row.group,
+  );
+  const chosen = new Map(quickQueue.items.map((item) => [quickKey(item), item]));
+  const chips = [];
+  for (const row of candidates) {
+    const m = (AL.apps() || []).find((x) => x.id === row.id) || {};
+    const appItem = { kind: quickKind(row), id: row.id, title: row.name };
+    const appChip = el(
+      "button",
+      {
+        type: "button",
+        className: `chip${chosen.has(quickKey(appItem)) ? " on" : ""}`,
+        textContent: chosen.has(quickKey(appItem))
+          ? `${row.name}: in the queue`
+          : `${row.name}: add to queue`,
+      },
+    );
+    appChip.addEventListener("click", () => {
+      const item = appItem;
+      if (chosen.has(quickKey(item))) chosen.delete(quickKey(item));
+      else {
+        chosen.set(quickKey(item), item);
+        if (quickQueue.settings.docs_with_app)
+          for (const doc of docsOf(m)) {
+            chosen.set(`book:${doc.book}`, quickDocItem(doc));
+            if (docState(doc).kiwixReady === false)
+              chosen.set("addon:wiki", { kind: "addon", id: "wiki", title: "Kiwix" });
+          }
+      }
+      quickQueue.items = [...chosen.values()];
+      quickSave(quickQueue.items).then((data) => {
+        quickQueue = quickState(data);
+        renderQuickInstaller(rows);
+      });
+    });
+    chips.push(appChip);
+    for (const doc of docsOf(m)) {
+      const item = quickDocItem(doc);
+      const chip = el("button", {
+        type: "button",
+        className: `chip docs${chosen.has(quickKey(item)) ? " on" : ""}`,
+        textContent: chosen.has(quickKey(item))
+          ? `${doc.title}: in the queue`
+          : `${doc.title} (${doc.size_mb} MB): add to queue`,
+      });
+      chip.addEventListener("click", () => {
+        if (chosen.has(quickKey(item))) chosen.delete(quickKey(item));
+        else {
+          chosen.set(quickKey(item), item);
+          if (docState(doc).kiwixReady === false)
+            chosen.set("addon:wiki", { kind: "addon", id: "wiki", title: "Kiwix" });
+        }
+        quickQueue.items = [...chosen.values()];
+        quickSave(quickQueue.items).then((data) => {
+          quickQueue = data;
+          renderQuickInstaller(rows);
+        });
+      });
+      chips.push(chip);
+    }
+  }
+  const known = quickQueue.items.reduce(
+    (total, item) => total + (item.kind === "book" ? item.size_mb || 0 : 0),
+    0,
+  );
+  const list = el("ol", { className: "quick-queue" });
+  for (const item of quickQueue.items) {
+    const out = el("button", { type: "button", className: "small", textContent: "Take out" });
+    out.addEventListener("click", () => {
+      quickQueue.items = quickQueue.items.filter((x) => quickKey(x) !== quickKey(item));
+      quickSave(quickQueue.items).then((data) => {
+        quickQueue = quickState(data);
+        renderQuickInstaller(rows);
+      });
+    });
+    const state = quickQueue.results.find((r) => quickKey(r.item) === quickKey(item));
+    const line =
+      quickQueue.current && quickKey(quickQueue.current) === quickKey(item)
+        ? quickQueue.waiting
+          ? "waiting for the librarian"
+          : "running"
+        : state
+          ? state.ok
+            ? "done"
+            : `failed: ${state.message}`
+          : "waiting";
+    const row = el(
+      "li",
+      { className: "quick-line" },
+      el("span", { className: "setting-name", textContent: item.title }),
+      el("span", {
+        className: "setting-desc",
+        textContent: ` ${item.kind === "book" ? `${item.size_mb || 0} MB` : "size read when it downloads"} · ${line}`,
+      }),
+      out,
+    );
+    if (item.consent) {
+      const tick = el("input", { type: "checkbox", checked: quickTicks.has(quickKey(item)) });
+      tick.addEventListener("change", () => {
+        if (tick.checked) quickTicks.add(quickKey(item));
+        else quickTicks.delete(quickKey(item));
+        renderQuickInstaller(rows);
+      });
+      row.append(el("label", { className: "setting" }, tick, el("span", { className: "setting-desc", textContent: ` ${item.consent}` })));
+    }
+    list.append(row);
+  }
+  const settings = quickQueue.settings || {};
+  const docsWith = el("input", { type: "checkbox", checked: !!settings.docs_with_app });
+  docsWith.addEventListener("change", () => {
+    postJSON("/admin/queue", { action: "settings", docs_with_app: docsWith.checked, metered: !!settings.metered })
+      .then((data) => {
+        quickQueue = quickState(data);
+        renderQuickInstaller(rows);
+      });
+  });
+  const unticked = quickQueue.items.some((item) => item.consent && !quickTicks.has(quickKey(item)));
+  const install = el("button", {
+    type: "button",
+    className: "action-btn primary",
+    textContent: quickQueue.running ? "Installing…" : "Install queued",
+    disabled: quickQueue.running || !quickQueue.items.length || unticked,
+  });
+  install.addEventListener("click", () => {
+    install.disabled = true;
+    AW.setBusy(install, true);
+    const ticks = {};
+    for (const item of quickQueue.items) if (quickTicks.has(quickKey(item))) ticks[quickKey(item)] = true;
+    postJSON("/admin/queue", { action: "install", ticks })
+      .then((data) => {
+        quickQueue = quickState(data);
+        renderQuickInstaller(rows);
+        pollQuick();
+      })
+      .catch((error) => {
+        say(error.message, false, document.getElementById("quick-installer"));
+        install.disabled = false;
+        AW.setBusy(install, false);
+      });
+  });
+  box.replaceChildren(
+    el("h3", { textContent: "Quick installer" }),
+    el("p", {
+      className: "setting-desc",
+      textContent:
+        "Select apps and their known docs. Apps and add-ons go first, then the books, each as its own request.",
+    }),
+    el("div", { className: "quick-chips" }, ...chips),
+    el(
+      "label",
+      { className: "setting" },
+      docsWith,
+      el("span", { className: "setting-name", textContent: " Selecting an app also selects its docs" }),
+    ),
+    quickQueue.items.length
+      ? el(
+          "div",
+          {},
+          el("p", {
+            className: "setting-desc",
+            textContent: `${quickQueue.items.length} selected; ${known} MB of books known before download.`,
+          }),
+          list,
+        )
+      : el("p", { className: "setting-desc", textContent: "Nothing is in the queue." }),
+    el("div", { className: "library-buttons" }, install),
+  );
+}
+function pollQuick() {
+  if (quickBusy) return;
+  quickBusy = true;
+  getJSON("/admin/queue")
+    .then((data) => {
+      quickQueue = quickState(data);
+      renderQuickInstaller(inventoryRows());
+      if (data.running) setTimeout(pollQuick, 3000);
+    })
+    .catch(() => {})
+    .finally(() => {
+      quickBusy = false;
+    });
+}
+getJSON("/admin/queue")
+  .then((data) => {
+    quickQueue = quickState(data);
+    renderQuickInstaller(inventoryRows());
+    if (data.running) pollQuick();
+  })
+  .catch(() => {});
+
 function renderInventory() {
   const list = document.getElementById("inv-list");
   if (!list || !AL.apps()) return;
   const q = document.getElementById("inv-q").value.trim().toLowerCase();
   const all = inventoryRows();
+  renderQuickInstaller(all);
   const want = (row) =>
     invShow === "all" ||
     row.state === invShow ||

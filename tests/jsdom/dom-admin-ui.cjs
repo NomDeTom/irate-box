@@ -67,6 +67,7 @@ const appstore = { enabled: false, holders: [], presets: [],
 const fwFix = { settings: { enabled: false, boards: [], keep_alpha: 2, keep_beta: 1, cache: 'native', configs: true },
   status: { last_check: '2026-10-06T15:00:00Z', outcome: 'build cache 215 MB', cache: { version: '2.8.1.8e6a88d', mode: 'native', bytes: 215 * 2 ** 20 } },
   targets: [], free_mb: 9000, source: null };
+let queueData = { items: [], settings: {}, running: false, current: null, results: [] };
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
@@ -84,6 +85,13 @@ w.fetch = async (u, opts = {}) => {
       return new Response(JSON.stringify(fwFix), { status: 200 });
     }
     if (u === '/admin/accounts') return new Response(JSON.stringify(accountsData), { status: 200 });
+    if (u === '/admin/queue') {
+      const body = JSON.parse(opts.body);
+      if (body.action === 'save') queueData = { ...queueData, items: body.items };
+      if (body.action === 'settings') queueData = { ...queueData, settings: { ...queueData.settings, docs_with_app: !!body.docs_with_app } };
+      if (body.action === 'install') queueData = { ...queueData, running: true, current: queueData.items[0] || null };
+      return new Response(JSON.stringify(queueData), { status: 200 });
+    }
     return new Response('{"id":"x"}', { status: 202 });
   }
   if (u === '/admin/accounts') return new Response(JSON.stringify(accountsData), { status: 200 });
@@ -262,6 +270,11 @@ setTimeout(() => {
     check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
       && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
     check('  an add-on whose state is unknown says so', /Installation status unavailable/.test(t('#inv-list')[0]));
+    check(
+      'Quick installer: an uninstalled app and its known docs are chips',
+      /Mermaid: add to queue/.test(t('#quick-installer')[0]) && /Mermaid docs \(12 MB\): add to queue/.test(t('#quick-installer')[0]),
+      t('#quick-installer')[0],
+    );
     check(
       '  an app with known docs says so on its line and its page',
       /Docs: Mermaid docs added/.test(line('Mermaid').textContent)
@@ -609,6 +622,9 @@ setTimeout(() => {
     [...d.querySelectorAll('#app-install-irc button')].find((b) => b.textContent === 'Uninstall add-on').click();
     check('Remove on the IRC page sends the existing removal request', posted.some((post) => post[0] === '/admin/addons'
       && post[1].addon === 'irc' && post[1].on === false));
+    const docChip = [...d.querySelectorAll('#quick-installer .chip.docs')].find((b) => /Mermaid docs/.test(b.textContent));
+    check('Quick installer: a docs chip without its app', !!docChip, t('#quick-installer')[0]);
+    if (docChip) docChip.click();
     check('no page errors', !errors.length, errors);
     // A null handed to replaceChildren or append shows as the word itself: no text node on the page may be just that.
     const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
@@ -621,6 +637,19 @@ setTimeout(() => {
       const ans = d.querySelector('#pkg-list [data-pkg="meshtasticd"] .pkg-answer');
       check('packages: the answer on its own card, kept through a reload', ans && !ans.hidden && /Queued with the root helper/.test(ans.textContent)
         && d.getElementById('pkg-note').hidden, ans && ans.textContent);
+    }
+    {
+      check(
+        'Quick installer: docs chosen without their app, and kept in the hub\'s queue',
+        queueData.items.some((x) => x.kind === 'book' && x.id === 'mermaid-docs')
+          && !queueData.items.some((x) => x.kind === 'app' && x.id === 'mermaid'),
+        JSON.stringify({ posted: posted.filter((p) => p[0] === '/admin/queue'), queueData }),
+      );
+      check(
+        '  and its known size is in the totals',
+        /12 MB of books known/.test(t('#quick-installer')[0]),
+        t('#quick-installer')[0],
+      );
     }
     {
       const pol = d.querySelector('#pkg-list .pkg-policy');
