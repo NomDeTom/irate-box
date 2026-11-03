@@ -13,6 +13,22 @@
   let etag = "";
   let dirty = false;
   let pending = null;
+  let theirs = null;
+  const conflict = document.createElement("div");
+  conflict.className = "library-buttons";
+  conflict.hidden = true;
+  const conflictSay = document.createElement("span");
+  conflictSay.className = "setting-desc bad";
+  const useTheirs = document.createElement("button");
+  useTheirs.type = "button";
+  useTheirs.className = "action-btn";
+  useTheirs.textContent = "Use theirs";
+  const copyMine = document.createElement("button");
+  copyMine.type = "button";
+  copyMine.className = "action-btn";
+  copyMine.textContent = "Copy mine";
+  conflict.append(conflictSay, useTheirs, copyMine);
+  saveButton.closest(".library-buttons").after(conflict);
 
   const setState = (text) => {
     state.textContent = text;
@@ -49,16 +65,25 @@
     if (pending) return;
     saveButton.disabled = true;
     setState("Saving…");
-    const body = JSON.stringify({ text: area.value, updated: Math.floor(Date.now() / 1000) });
-    pending = fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body,
-    })
-      .then((response) => {
+    const body = JSON.stringify({ text: area.value });
+    const headers = { "Content-Type": "application/json" };
+    if (etag) headers["If-Match"] = etag;
+    else headers["If-None-Match"] = "*";
+    pending = fetch(url, { method: "PUT", headers, body })
+      .then(async (response) => {
+        if (response.status === 412) {
+          const now = await fetch(url);
+          theirs = now.ok ? await now.json() : null;
+          conflictSay.textContent = "Another person saved this page first. Your words are still here.";
+          conflict.hidden = false;
+          saveButton.disabled = false;
+          setState("Not saved: another person saved first.");
+          return;
+        }
         if (!response.ok) throw new Error(`the box answered ${response.status}`);
-        etag = "";
+        etag = response.headers.get("ETag") || "";
         dirty = false;
+        conflict.hidden = true;
         setState("Saved.");
         return load();
       })
@@ -73,7 +98,25 @@
     return pending;
   }
 
+  useTheirs.addEventListener("click", () => {
+    if (!theirs) return;
+    area.value = typeof theirs.text === "string" ? theirs.text : "";
+    dirty = false;
+    conflict.hidden = true;
+    saveButton.disabled = true;
+    etag = "";
+    setState("Their words are here. Save writes yours over them.");
+  });
+  copyMine.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(area.value);
+      setState("Your words are on the clipboard.");
+    } catch (_) {
+      setState("Could not copy. Select the words and copy them.");
+    }
+  });
   area.addEventListener("input", () => {
+    conflict.hidden = true;
     dirty = true;
     saveButton.disabled = false;
     setState("Unsaved.");

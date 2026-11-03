@@ -96,6 +96,24 @@ check(
     h4.code == 200 and json.loads(h5.body)["text"] == "a config",
     h5.body,
 )
+old_etag = h3.sent["ETag"]
+handled, hb = call("PUT", "/api/v2/notepad/text", json.dumps({"text": "mine"}).encode(), **{"If-Match": old_etag})
+check("a writer with the current ETag may save", handled and hb.code == 200 and hb.sent.get("ETag"), (hb.code, hb.sent))
+handled, hc = call("PUT", "/api/v2/notepad/text", json.dumps({"text": "stale"}).encode(), **{"If-Match": old_etag})
+check(
+    "  a second writer with the old ETag is refused, and the first words stay",
+    handled and hc.code == 412 and json.loads(hc.body)["error"],
+    (hc.code, hc.body),
+)
+handled, hd = call("GET", "/api/v2/notepad/text")
+check("  the stored text is still the first writer's", json.loads(hd.body)["text"] == "mine", hd.body)
+handled, he = call("PUT", "/api/v2/pastebin/text", json.dumps({"text": "now", "updated": 1}).encode())
+handled, hf = call("GET", "/api/v2/pastebin/text")
+check(
+    "the box sets the time, not the visitor's clock",
+    json.loads(hf.body)["updated"] != 1 and abs(json.loads(hf.body)["updated"] - __import__("time").time()) < 60,
+    hf.body,
+)
 handled, h6 = call("PUT", "/api/v2/notepad/other", b"{}")
 check("another key in the namespace is not found", handled and h6.code == 404, h6.code)
 big = b"{" + b"x" * store.SHARED_MAX + b"}"

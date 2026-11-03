@@ -32,6 +32,7 @@ import re
 import secrets
 import shutil
 import threading
+import time
 from pathlib import Path
 
 from irate_box import confine
@@ -979,6 +980,7 @@ def handle(handler, method, path, store, drop=None):
 
 
 SHARED_LARGE = M("shared.large", "This document is larger than {kb} KB. Paste a smaller one.", kb=SHARED_MAX >> 10)
+SHARED_CHANGED = M("shared.changed", "Another person saved this page first. Your words are still here.")
 
 
 def _handle_shared(handler, method, namespace, key, store):
@@ -998,11 +1000,30 @@ def _handle_shared(handler, method, namespace, key, store):
             _send_json(handler, 413, say(SHARED_LARGE))
             return True
         try:
+            body = json.loads(data)
+        except (ValueError, RecursionError):
+            _send_json(handler, 400, say(BAD_JSON))
+            return True
+        if not isinstance(body, dict):
+            _send_json(handler, 400, say(BAD_JSON))
+            return True
+        current = store.get(namespace, key)
+        tag = _etag(current) if current is not None else None
+        match = handler.headers.get("If-Match")
+        if (match and (current is None or match != tag)) or (
+            not match and handler.headers.get("If-None-Match") == "*" and current is not None
+        ):
+            _send_json(handler, 412, say(SHARED_CHANGED))
+            return True
+        # The box's own time: a phone on the hotspot can be hours out.
+        body["updated"] = time.time()
+        data = json.dumps(body).encode()
+        try:
             store.put(namespace, key, data)
         except TooLarge as exc:
             _send_json(handler, 413, answer(exc))
             return True
-        _send_json(handler, 200, {"ok": True})
+        _send_json(handler, 200, {"ok": True}, {"ETag": _etag(data)})
         return True
     _send_json(handler, 405, say(BAD_METHOD))
     return True
