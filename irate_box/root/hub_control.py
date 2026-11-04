@@ -792,7 +792,7 @@ def kit_choices(req):
     books = req.get("books", False)
     if books is True:
         zims = sorted(ZIM_DIR.glob("*.zim"))
-    elif isinstance(books, list) and all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+    elif isinstance(books, list) and all(isinstance(b, str) and usbstick.NAME_RE.fullmatch(b) for b in books):
         zims = [ZIM_DIR / f"{b}.zim" for b in books]
         missing = [z.stem for z in zims if not z.is_file() or z.is_symlink()]
         if missing:
@@ -817,10 +817,10 @@ def kit_choices(req):
             )
         )
     kit_ids = req.get("kits") or []
-    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.fullmatch(k) for k in kit_ids):
         raise Refused(KITS_BAD)
     repos = req.get("repos") or []
-    if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.match(r) for r in repos):
+    if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.fullmatch(r) for r in repos):
         raise Refused(
             M(
                 "control.kit.repos-bad",
@@ -1600,7 +1600,7 @@ def access_set(req):
     local = {m["id"] for m in manifests.load_local(builtin=MANIFESTS)[0]}
     # Off is always safe, so a web add-on just removed (its manifest gone) can still be switched
     # off: the hub asks that when one is added or removed.
-    if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
+    if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.fullmatch(app)):
         raise Refused(
             M(
                 "control.access.unknown-app",
@@ -2230,7 +2230,7 @@ def _installed_commit():
     except (OSError, IndexError):
         return None
     first = first.removesuffix("-dirty")
-    match = re.search(r"-g([0-9a-f]{7,40})$", first) or re.match(r"^([0-9a-f]{7,40})$", first)
+    match = re.search(r"-g([0-9a-f]{7,40})\Z", first) or re.fullmatch(r"^([0-9a-f]{7,40})$", first)
     return match.group(1) if match else None
 
 
@@ -6272,7 +6272,7 @@ def appstore_findings(now=None):
 def librarian_name(value):
     """A holder id as the librarian names things: letters, digits, dots, hyphens and underscores, from a file
     an administrator may have edited by hand. The doctor reads state by path, so only a real name is followed."""
-    return isinstance(value, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$", value) is not None
+    return isinstance(value, str) and re.fullmatch(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$", value) is not None
 
 
 def _holder_checked_epoch(value):
@@ -6335,7 +6335,7 @@ def update_set_source(req):
     cleared. Whoever can do this chooses the code root installs next, so it is a security-policy action."""
     repo = _source_repo(req.get("repo", ""))
     branch = str(req.get("branch", "")).strip()
-    if not SOURCE_BRANCH.match(branch) or ".." in branch or branch.endswith(("/", ".lock")):
+    if not SOURCE_BRANCH.fullmatch(branch) or ".." in branch or branch.endswith(("/", ".lock")):
         raise Refused(M("update.source.branch.bad", "Give the branch name as git writes it, for example main."))
     if req.get("confirmed") is not True:
         raise Refused(
@@ -6835,7 +6835,7 @@ KIT_BAD = M("control.kit.kit-bad", "The request must give a toolkit ID.")
 
 def usb_kit_export(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
-    if not kits.ID_RE.match(kit):
+    if not kits.ID_RE.fullmatch(kit):
         raise Refused(KIT_BAD)
     try:
         with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
@@ -6862,14 +6862,14 @@ def usb_export_many(req):
     """
     device = str(req.get("device", ""))
     books, kit_ids = req.get("books") or [], req.get("kits") or []
-    if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+    if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.fullmatch(b) for b in books):
         raise Refused(
             M(
                 "control.kit.book-list-bad",
                 "The request must give the books as a list of book names.",
             )
         )
-    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.fullmatch(k) for k in kit_ids):
         raise Refused(KITS_BAD)
     _, _, repo_dirs, state, _ = kit_choices({"repos": req.get("repos") or [], "state": req.get("state", "none")})
     if not books and not kit_ids and not repo_dirs and state == "none":
@@ -6945,7 +6945,7 @@ def backup_image(req):
 
 def usb_kit_import(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
-    if not kits.ID_RE.match(kit):
+    if not kits.ID_RE.fullmatch(kit):
         raise Refused(KIT_BAD)
     # Importing a release the clock cannot date is a security decision: the owner's, from the hub only while the
     # security policy accepts the hub's; otherwise root's, at the console (kits import-dir --unknown-time).
@@ -8495,7 +8495,7 @@ def _rk_serial_setup(req):
                 )
             )
         path = own["device"]
-    elif CONSOLE_RE.match(console) and (SERIAL_BY_ID / console).exists():
+    elif CONSOLE_RE.fullmatch(console) and (SERIAL_BY_ID / console).exists():
         path = str(SERIAL_BY_ID / console)
     else:
         raise Refused(M("rkserial.no-console", "That serial adapter is not connected to the box."))
@@ -9012,7 +9012,7 @@ def _kit_check_said(kit, result):
 
 def _kit_check(req):
     kit = req.get("kit")
-    if not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+    if not (isinstance(kit, str) and kits.ID_RE.fullmatch(kit)):
         raise Refused(KIT_BAD)
     try:
         result = kits.check(kit, _kit_lists_hours(req))
@@ -9099,7 +9099,7 @@ def _kit_req(fn):
                 return kits.define(kit)
             finally:
                 _kits_status()
-        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.fullmatch(kit)):
             raise Refused(KIT_BAD)
         try:
             if fn is kits.set_extra:
@@ -9306,7 +9306,7 @@ def main():
         if not pending:
             return 0
         for path in pending:
-            rid = path.stem if ID_RE.match(path.stem) else "invalid"
+            rid = path.stem if ID_RE.fullmatch(path.stem) else "invalid"
             what = None
             try:
                 text = safeio.read_request(path)  # never a link or a FIFO
@@ -9393,7 +9393,7 @@ def notebooks_sync():
         fd = os.open(STATE / "notebooks" / ".wanted.json", os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(fd) as fh:
             names = json.loads(fh.read(1 << 16)).get("run", [])
-        wanted = {n for n in names if isinstance(n, str) and NOTEBOOK_RE.match(n)}
+        wanted = {n for n in names if isinstance(n, str) and NOTEBOOK_RE.fullmatch(n)}
     except (OSError, ValueError, AttributeError):
         pass
     wanted = set(sorted(wanted)[:NOTEBOOK_MAX])

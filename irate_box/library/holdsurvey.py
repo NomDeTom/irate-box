@@ -111,7 +111,7 @@ def shape(name, tag):
     for form in sorted({tag, tag.lstrip("vV")}, key=len, reverse=True):
         if form:
             out = out.replace(form, "{v}")
-    commit = re.search(r"[0-9a-f]{7,40}$", tag)
+    commit = re.search(r"[0-9a-f]{7,40}\Z", tag)
     if commit:
         out = out.replace(commit.group(0), "{sha}")
     out = VERSION_IN_NAME.sub("{v}", out)
@@ -122,7 +122,7 @@ def shape(name, tag):
 
 def type_class(name):
     low = name.lower()
-    if CHECKSUM_LISTS.match(name):
+    if CHECKSUM_LISTS.fullmatch(name):
         return "checksum or signature"
     for label, extensions in CLASSES:
         if low.endswith(extensions):
@@ -198,10 +198,10 @@ def build_kinds(chosen):
         names = {asset["name"] for asset in release["assets"]}
         for asset in release["assets"]:
             name = asset["name"]
-            if not holder.FILE_RE.match(name):
+            if not holder.FILE_RE.fullmatch(name):
                 continue
             parent = parent_of(name, names)
-            if parent and holder.FILE_RE.match(parent):
+            if parent and holder.FILE_RE.fullmatch(parent):
                 host = kinds.setdefault(shape(parent, release["tag"]), _new_kind(shape(parent, release["tag"]), parent))
                 host["companions"].add(shape(name, release["tag"]))
                 continue
@@ -442,7 +442,7 @@ def parse_recipe(text):
         raise LibrarianError(
             M("library.holder.recipe-invalid", "The recipe cannot be read: it is not a JSON object from Obtainium.")
         ) from exc
-    match = re.match(
+    match = re.fullmatch(
         r"^https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?$", str(recipe.get("url", ""))
     )
     if not match:

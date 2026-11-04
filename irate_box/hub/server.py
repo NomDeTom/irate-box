@@ -2318,7 +2318,7 @@ def device_of(addr):
             continue
         for line in lines:
             f = line.split()
-            if len(f) > max(ip_col, mac_col) and f[ip_col] == addr and MAC_RE.match(f[mac_col].lower()):
+            if len(f) > max(ip_col, mac_col) and f[ip_col] == addr and MAC_RE.fullmatch(f[mac_col].lower()):
                 if f[mac_col] != "00:00:00:00:00:00":
                     return f[mac_col].lower()
     return None

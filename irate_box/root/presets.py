@@ -139,7 +139,7 @@ def apply_choices(choices_list, save=True):
     """Apply each choice in turn. One that fails leaves the others to go ahead. Returns the record."""
     entries, said = [], []
     for choice in choices_list or []:
-        if not isinstance(choice, str) or not choices.CHOICES_RE.match(choice):
+        if not isinstance(choice, str) or not choices.CHOICES_RE.fullmatch(choice):
             entries.append(
                 {
                     "choice": str(choice)[:120],
@@ -201,7 +201,7 @@ def undo():
             kept.append({"choice": choice, "now": now, "after": after})
             continue
         inverse = _inverse(choice, before)
-        if inverse is None or not choices.CHOICES_RE.match(inverse):
+        if inverse is None or not choices.CHOICES_RE.fullmatch(inverse):
             continue
         try:
             message = _apply(inverse)

@@ -328,7 +328,7 @@ def validate_source(src):
                 )
             spec = APPS[out["name"]]["source"]
             branch = str(src.get("branch") or spec.get("branch", "main")).strip()
-            if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
+            if not re.fullmatch(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
                 raise LibrarianError(BRANCH_INVALID)
             follow = str(src.get("follow") or _default_follow(out["name"]))
             if follow not in ("latest", "pinned") or (follow == "pinned" and not spec.get("pin")):
@@ -349,7 +349,7 @@ def validate_source(src):
         # could repoint draw, the flasher or the room relay at someone else's build.
         spec = APPS[out["name"]]["source"]
         branch = str(src.get("branch") or spec.get("branch", "main")).strip()
-        if not re.match(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
+        if not re.fullmatch(r"^[A-Za-z0-9_./-]+$", branch) or branch.startswith("-"):
             raise LibrarianError(BRANCH_INVALID)
         out.update(
             repo=spec["repo"],
@@ -359,7 +359,7 @@ def validate_source(src):
             enabled=bool(src.get("enabled", True)),
         )
         return out
-    if not NAME_RE.match(out["name"]) or out["name"] == "library":
+    if not NAME_RE.fullmatch(out["name"]) or out["name"] == "library":
         raise LibrarianError(
             M(
                 "library.source.name-invalid",
@@ -375,7 +375,7 @@ def validate_source(src):
         # A book from Kiwix's catalogue (library.kiwix.org), kept current by its catalogue name:
         # each release has a new file name, so a plain url source would never move on.
         kname = str(src.get("kiwix_name", "")).strip()
-        if not KIWIX_NAME_RE.match(kname):
+        if not KIWIX_NAME_RE.fullmatch(kname):
             raise LibrarianError(
                 M(
                     "library.source.kiwix-name-invalid",
@@ -384,7 +384,7 @@ def validate_source(src):
                 )
             )
         flavour = str(src.get("flavour", "")).strip()
-        if flavour and not KIWIX_NAME_RE.match(flavour):
+        if flavour and not KIWIX_NAME_RE.fullmatch(flavour):
             raise LibrarianError(
                 M(
                     "library.source.flavour-invalid",
@@ -406,7 +406,7 @@ def validate_source(src):
             ) from None
     else:
         repo = str(src.get("repo", "")).strip()
-        if not REPO_RE.match(repo):
+        if not REPO_RE.fullmatch(repo):
             raise LibrarianError(
                 M(
                     "library.source.repo-invalid",
@@ -419,7 +419,7 @@ def validate_source(src):
         out["prerelease"] = bool(src.get("prerelease"))
     if out["type"] in ("actions", "nightly-link"):
         workflow = str(src.get("workflow", "")).strip()
-        if not re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", workflow):
+        if not re.fullmatch(r"^[A-Za-z0-9_.-]+\.ya?ml$", workflow):
             raise LibrarianError(
                 M(
                     "library.source.workflow-invalid",

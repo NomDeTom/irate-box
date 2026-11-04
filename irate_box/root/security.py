@@ -146,7 +146,7 @@ def _unit_of(pid):
     """The systemd unit a process runs in, from its cgroup, or None."""
     try:
         for line in Path(f"/proc/{pid}/cgroup").read_text().splitlines():
-            m = re.search(r"/([^/]+\.(?:service|scope))$", line)
+            m = re.search(r"/([^/]+\.(?:service|scope))\Z", line)
             if m:
                 return m.group(1)
     except OSError:
@@ -162,7 +162,7 @@ def _socket_units():
     for line in out.stdout.splitlines():
         parts = line.split()
         if len(parts) >= 2:
-            m = re.search(r":(\d+)$", parts[0])
+            m = re.search(r":(\d+)\Z", parts[0])
             if m:
                 units[int(m.group(1))] = parts[1]
     return units
@@ -252,7 +252,7 @@ def _owner(f, decl, cache):
     program that may be left over and could be stopped."""
     if decl:
         return {"kind": "app", "name": decl.get("name") or decl.get("id")}
-    if f.get("unit") and OUR_UNITS.match(f["unit"]):
+    if f.get("unit") and OUR_UNITS.fullmatch(f["unit"]):
         return {"kind": "hub", "name": "irate-box"}
     exe = None
     if f.get("pid"):
@@ -367,7 +367,7 @@ def listener_findings(found, rec):
                     evidence=where,
                 )
             )
-        elif key not in OURS and f["unit"] and OUR_UNITS.match(f["unit"]):
+        elif key not in OURS and f["unit"] and OUR_UNITS.fullmatch(f["unit"]):
             out.append(
                 finding(
                     fid,
@@ -451,7 +451,7 @@ def listener_findings(found, rec):
             # stop it; keep it for the box's own networks (the hotspot firewall keeps hotspot guests off: the default);
             # or open its port to hotspot guests too.
             unit = f["unit"]
-            stoppable = bool(unit) and not PROTECTED.match(unit)
+            stoppable = bool(unit) and not PROTECTED.fullmatch(unit)
             fw = rec.get("firewall")
             opened = bool(fw) and f"port:{f['proto']}/{f['port']}" in fw.get("services", [])
             loopback = f["addr"] in ("127.0.0.1", "::1", "[::1]", "localhost")
@@ -1778,7 +1778,7 @@ def group_findings(rec):
 
 def _group(rec, arg, on):
     user, _, group = arg.partition("@")
-    if group not in ROOTISH_GROUPS or not NAME_RE.match(user):
+    if group not in ROOTISH_GROUPS or not NAME_RE.fullmatch(user):
         raise Refused(
             M("security-fix.group.unknown", "{choice} is not an account and group that this page changes.", choice=arg)
         )
@@ -2162,7 +2162,7 @@ def sudo_findings(rec, settings=None):
     for f, _, a in rules:
         by_file.setdefault(f, set()).add(a)
     accounts = sorted({a for _, _, a in rules})
-    drops = [f for f in by_file if f != SUDOERS.name and FILE_RE.match(f)]
+    drops = [f for f in by_file if f != SUDOERS.name and FILE_RE.fullmatch(f)]
     return [
         finding(
             "sudo-nopasswd",
@@ -2199,7 +2199,7 @@ def sudo_findings(rec, settings=None):
 
 
 def _sudo(rec, name, on):
-    if not FILE_RE.match(name) or name == SUDOERS.name:
+    if not FILE_RE.fullmatch(name) or name == SUDOERS.name:
         raise Refused(
             M("security-fix.sudo.unknown", "{name} is not a file in sudoers.d that this page removes.", name=name)
         )
@@ -2287,7 +2287,7 @@ def apt_findings(rec):
     actions = []
     for f, _ in unsigned:
         k = _key_for(f[: -len(".list")], keys)
-        if k and FILE_RE.match(k):
+        if k and FILE_RE.fullmatch(k):
             actions += [
                 _chip(k, f"apt-any:{k}", any_repo, True),
                 _chip(
@@ -2340,7 +2340,7 @@ def apt_findings(rec):
 
 
 def _apt(rec, key, on):
-    if not FILE_RE.match(key):
+    if not FILE_RE.fullmatch(key):
         raise Refused(M("security-fix.apt.unknown", "{key} is not a key that this page moves.", key=key))
     ours = rec.setdefault("apt", {})
     trusted, ring, kept = APT_DIR / "trusted.gpg.d" / key, KEYRINGS / key, KEYS_KEPT / key
@@ -2526,7 +2526,7 @@ def _logs(rec, on):
 
 # --- process visibility: who sees which processes --------------------------------------------------------
 
-HIDEPID = re.compile(r"(?:^|,)hidepid=(1|2|invisible|noaccess|ptraceable)(?:,|$)")
+HIDEPID = re.compile(r"(?:^|,)hidepid=(1|2|invisible|noaccess|ptraceable)(?:,|\Z)")
 # The options systemd mounts /proc with, and hidepid: "defaults" would turn suid, dev and exec back on at boot, when
 # systemd-remount-fs applies this line.
 PROC_LINE = "proc /proc proc nosuid,nodev,noexec,hidepid=2 0 0"
@@ -2847,7 +2847,7 @@ def firewall_findings(rec):
         )
     by_hand = []
     for w in wanted:
-        if firewall.PORT_SERVICE.match(w):
+        if firewall.PORT_SERVICE.fullmatch(w):
             port = w[5:].replace("/", " ").upper()
             by_hand.append(port)
             switches.append(
@@ -2977,7 +2977,7 @@ def _firewall(rec, what):
             )
         )
     if act in ("port-on", "port-off") and not (
-        firewall.PORT_SERVICE.match(f"port:{arg}") and 0 < int(arg.split("/")[1]) < 65536
+        firewall.PORT_SERVICE.fullmatch(f"port:{arg}") and 0 < int(arg.split("/")[1]) < 65536
     ):
         raise Refused(M("security-fix.firewall.bad-port", "A port is tcp/N or udp/N, with N from 1 to 65535."))
     if act not in ("on", "apps", "hub", "ssh-on", "ssh-off", "svc-on", "svc-off", "port-on", "port-off"):
@@ -3394,7 +3394,7 @@ UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@._-]*\.(service|socket)$")  # no
 
 
 def _unit(rec, unit, on, reason="from this page"):
-    if not UNIT_RE.match(unit) or PROTECTED.match(unit):
+    if not UNIT_RE.fullmatch(unit) or PROTECTED.fullmatch(unit):
         raise Refused(M("security-fix.unit.unknown", "{unit} is not a unit that this page switches off.", unit=unit))
     units = rec.setdefault("units", {})
     if on:

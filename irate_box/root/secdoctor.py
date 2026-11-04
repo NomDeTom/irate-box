@@ -3377,7 +3377,7 @@ def own_checks(doctor="security"):
         return out
     for path in paths:
         stem = path.stem
-        if not CHECKS_GROUP_RE.match(stem):
+        if not CHECKS_GROUP_RE.fullmatch(stem):
             out.append(
                 _issue(
                     f"checks-{stem}",
@@ -3483,7 +3483,7 @@ def step_addons(ctx):
                     ),
                 )
             )
-        wide = [t for t in argv if t in WIDE_WORDS or re.search(r"(?:^|[=:])(0\.0\.0\.0|\[?::\]?)(?::\d+)?$", t)]
+        wide = [t for t in argv if t in WIDE_WORDS or re.search(r"(?:^|[=:])(0\.0\.0\.0|\[?::\]?)(?::\d+)?\Z", t)]
         wide += [
             f"{k}={v}"
             for k, v in env.items()
@@ -3792,7 +3792,7 @@ def step_cmdlines(ctx):
         name = os.path.basename(args[0]) if args else "?"
         for i, a in enumerate(args):
             nxt = args[i + 1] if i + 1 < len(args) else ""
-            if SECRET_FLAGS.match(a) and a.lstrip("-").lower() != "plaintext" and nxt:
+            if SECRET_FLAGS.fullmatch(a) and a.lstrip("-").lower() != "plaintext" and nxt:
                 hits.append(f"{name} (pid {pid}) {a} …")
             elif a.lstrip("-").lower() == "plaintext" and nxt:
                 hits.append(f"{name} (pid {pid}) {a} …")
@@ -5334,7 +5334,7 @@ def _debsecan(cmd, env, suite, status=None, timeout=900, feed=DEBSECAN_FEED):
         raise RuntimeError((r.stderr.strip().splitlines() or ["debsecan failed"])[-1][:300])
     out = {}
     for line in r.stdout.splitlines():
-        m = SUMMARY_RE.match(line.strip())
+        m = SUMMARY_RE.fullmatch(line.strip())
         if not m:
             continue
         notes = [n.strip() for n in (m.group(3) or "").split(",") if n.strip()]
@@ -5828,7 +5828,7 @@ def _dress_cis(f):
     if one and f.get("source") == "debian-cis" and f["status"] != "ok" and not f.get("tier"):
         f["tier"] = (secdoctor_xref.cis(one.group(1)) or (None, "suggest"))[1]
         return
-    m = CIS_SECTION_RE.match(f.get("id", ""))
+    m = CIS_SECTION_RE.fullmatch(f.get("id", ""))
     known = m and secdoctor_xref.cis(m.group(1))
     if not known or f["status"] == "ok":
         return

@@ -221,7 +221,7 @@ def validate(raw, caps):
         raise Refused(NO_WPA3)
     password = str(raw.get("password", ""))
     needs_pw = mode == "sae" or (mode == "two" and second == "sae")
-    if needs_pw and not PASSWORD_RE.match(password):
+    if needs_pw and not PASSWORD_RE.fullmatch(password):
         raise Refused(BAD_PASSWORD)
     ssid = _ssid_ok(str(raw["ssid"] if raw.get("ssid") is not None else DEFAULT_SSID))
     second_ssid = str(raw.get("second_ssid") or "")
@@ -343,7 +343,7 @@ def nm_properties(settings, kind):
                     "on this box. To start the hotspot, clear the option that lets older WPA2 devices join.",
                 )
             )
-        if not PASSWORD_RE.match(str(settings.get("password", ""))):
+        if not PASSWORD_RE.fullmatch(str(settings.get("password", ""))):
             raise Refused(BAD_PASSWORD)
         return {
             "802-11-wireless-security.key-mgmt": "sae",
@@ -363,7 +363,7 @@ def hostapd_lines(settings, kind, ssid):
         return lines + ["wpa_key_mgmt=OWE", "ieee80211w=2"]
     if kind == "sae":
         pw = settings["password"]
-        if not PASSWORD_RE.match(pw):
+        if not PASSWORD_RE.fullmatch(pw):
             raise Refused(BAD_PASSWORD)
         if settings.get("allow_wpa2"):
             return lines + ["wpa_key_mgmt=WPA-PSK SAE", f"wpa_passphrase={pw}", f"sae_password={pw}", "ieee80211w=1"]

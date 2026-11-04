@@ -368,7 +368,7 @@ def config_line(key, value, what="The setting"):
     """One key=value line for a hostapd, dnsmasq or NetworkManager-style file: a checked key and a
     value that cannot end the line."""
     key = _need(key, "The setting name")
-    if not KEY_RE.match(key):
+    if not KEY_RE.fullmatch(key):
         raise Invalid("The setting name is not valid.")
     value = _need(value, what)
     if any(char in value for char in "\x00\r\n"):

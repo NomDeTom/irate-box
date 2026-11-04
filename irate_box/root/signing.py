@@ -44,7 +44,7 @@ def parse_signers(text):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        m = SIGNER.match(line)
+        m = SIGNER.fullmatch(line)
         if not m:
             raise Refused(
                 M(
@@ -120,7 +120,7 @@ def public(data):
     """What /admin may show: the level, the owner trusted, and each key's name, type and comment (never the key)."""
     keys = []
     for line in data["signers"]:
-        m = SIGNER.match(line)
+        m = SIGNER.fullmatch(line)
         if m:
             keys.append({"name": m.group(1), "type": m.group(2), "comment": m.group(4) or ""})
     return {"level": data["level"], "owner": data.get("owner", ""), "keys": keys}

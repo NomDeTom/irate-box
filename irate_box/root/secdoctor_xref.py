@@ -171,7 +171,7 @@ def _lynis_section(check):
     if test == "SSH-7408":
         return "5.2"
     if test == "KRNL-6000" and setting.startswith(("net.ipv4.", "net.ipv6.")):
-        return "3.2" if SYSCTL_REDIRECTS.match(setting) else "3.3"
+        return "3.2" if SYSCTL_REDIRECTS.fullmatch(setting) else "3.3"
     return None
 
 
@@ -224,7 +224,7 @@ def about(source, check):
     decl = _declared_about(source, check)
     if decl:
         return {"kind": "service", "key": "{}/{}".format(*decl["listen"][0])}
-    m = PORT_RE.match(check or "")
+    m = PORT_RE.fullmatch(check or "")
     if m:
         return {"kind": "service", "key": f"{m.group(1)}/{m.group(2)}"}
     return None
@@ -732,7 +732,7 @@ def _declared_about(source, fid):
     or a listener finding on one of its ports. None otherwise."""
     from irate_box.hub import services
 
-    m = re.match(r"^addon-([a-z0-9-]+)$", fid or "")
+    m = re.fullmatch(r"^addon-([a-z0-9-]+)$", fid or "")
     if m and source == "doctor":
         # addon-<id>, or addon-<id>-<point> (step_addons: one finding for each point its checks find).
         sid = m.group(1)
@@ -742,7 +742,7 @@ def _declared_about(source, fid):
                 return found
             sid = sid.rpartition("-")[0]
         return None
-    m = re.match(r"^(?:page-)?port-(tcp|udp)-(\d+)$", fid or "")
+    m = re.fullmatch(r"^(?:page-)?port-(tcp|udp)-(\d+)$", fid or "")
     return services.by_port(m.group(1), int(m.group(2))) if m else None
 
 
@@ -789,7 +789,11 @@ def do_for(source, fid):
     its own words, on Add-ons."""
     decl = _declared_about(source, fid)
     # Its state, what listens, or the port: not every point of it (addon-<id>-<point> has a fix of its own).
-    if decl and fid not in (f"addon-{decl['id']}", f"addon-{decl['id']}-listen") and not PORT_ANY_RE.match(fid or ""):
+    if (
+        decl
+        and fid not in (f"addon-{decl['id']}", f"addon-{decl['id']}-listen")
+        and not PORT_ANY_RE.fullmatch(fid or "")
+    ):
         decl = None
     if decl and decl["risk"] != "ok":
         return {
