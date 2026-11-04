@@ -4686,8 +4686,14 @@ label > .select-chips {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
+.source-row.has-tick {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
 .source-row .source-row-head {
   grid-column: 1;
+}
+.source-row.has-tick .source-row-head {
+  grid-column: 2;
 }
 .source-row-actions {
   grid-column: 2;
@@ -4695,18 +4701,44 @@ label > .select-chips {
   padding: 0.2rem 0.6rem;
   flex-wrap: nowrap;
 }
+.source-row.has-tick .source-row-actions {
+  grid-column: 3;
+}
+.source-tick {
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 0 0 0.6rem;
+}
 .source-row-detail {
   grid-column: 1 / -1;
   padding-left: 1.9rem;
 }
 @media (max-width: 40rem) {
-  .source-row {
-    grid-template-columns: minmax(0, 1fr);
+  .source-row,
+  .source-row.has-tick {
+    grid-template-columns: auto minmax(0, 1fr);
   }
-  .source-row-actions {
+  .source-row.has-tick .source-tick {
     grid-column: 1;
+    grid-row: 1;
+    padding-left: 0.7rem;
+  }
+  .source-row .source-row-head,
+  .source-row.has-tick .source-row-head {
+    grid-column: 2;
+  }
+  .source-row-actions,
+  .source-row.has-tick .source-row-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
     padding: 0 0.7rem 0.45rem 1.9rem;
     flex-wrap: wrap;
+  }
+  .source-row-detail {
+    grid-row: 3;
   }
 }
 .aw-dl {

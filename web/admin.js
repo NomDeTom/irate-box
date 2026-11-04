@@ -1252,7 +1252,7 @@ function bookTick(b) {
       paintBookBulk();
     },
   });
-  return el("label", { className: "setting source-tick" }, input, el("span", { className: "setting-name", textContent: " Select" }));
+  return el("label", { className: "source-tick", title: `Select ${b.title}` }, input);
 }
 function paintBookBulk() {
   const bar = document.querySelector("#books-cards .books-bulk");

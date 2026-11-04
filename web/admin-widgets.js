@@ -324,9 +324,9 @@ const AW = (() => {
         h('span', { class: 's', text: it.summary || '' }),
         h('span', { class: 'p' }, it.pill || null));
       const actions = h('span', { class: 'library-buttons source-row-actions' },
-        it.tick || null, ...[it.actions].flat(Infinity).filter(Boolean));
-      list.append(h('div', { class: 'aw-row source-row', 'data-aw-id': it.id, ...rowData({ title: it.title, summary: it.summary, badges: it.badges || [] }) },
-        head, actions, detail));
+        ...[it.actions].flat(Infinity).filter(Boolean));
+      list.append(h('div', { class: 'aw-row source-row' + (it.tick ? ' has-tick' : ''), 'data-aw-id': it.id, ...rowData({ title: it.title, summary: it.summary, badges: it.badges || [] }) },
+        it.tick || null, head, actions, detail));
     }
     if (!items.length && opts.empty) list.append(h('p', { class: 'setting-desc', text: opts.empty }));
     return h('div', { class: 'aw-block source-list-block' }, items.length > FILTER_AT ? filterBar(list, '.aw-row', items, { sort: opts.sort }) : null, list);
