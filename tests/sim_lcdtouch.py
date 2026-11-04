@@ -67,6 +67,16 @@ check(
     and lcdtouch.status()["pins"][0] == {"signal": "SPI1 CLK", "pin": 27, "soc": "GPIO1_B1", "rmio": 24, "gpio": 41},
     lcdtouch.status(),
 )
+pins = {item["signal"]: item for item in lcdtouch.status()["pins"]}
+check(
+    "D/C and RST are off the radio pins: 26 and 28, and PEN is unassigned",
+    pins["Display D/C"]["pin"] == 26
+    and pins["Display RST"]["pin"] == 28
+    and "Touch PEN" not in pins
+    and lcdtouch.lcdpanel.DC == 9
+    and lcdtouch.lcdpanel.RST == 27,
+    pins,
+)
 check(
     "the backlight is header 36 (GPIO1_D1) and a gpio-leds node in the overlay",
     lcdtouch.status()["pins"][-1] == {"signal": "Display BL", "pin": 36, "soc": "GPIO1_D1", "rmio": 29, "gpio": 57}

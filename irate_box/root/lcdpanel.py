@@ -3,7 +3,7 @@
 """The 480x320 ILI9488 on SPI1: a static test card, on/off, and the one-minute animation sequence.
 
 The overlay (lcdtouch.py) puts the display on spidev1.0; this is the userspace side that initialises it,
-because there is no kernel display driver. D/C is GPIO0 line 12 (header 18), RST GPIO0 line 11 (header 22).
+because there is no kernel display driver. D/C is GPIO0 line 9 (header 26), RST GPIO1 line 27 (header 28).
 18-bit RGB666 over SPI, MADCTL 0x68 (landscape and BGR), 10 MHz. Stdlib, spidev and gpiod.
 """
 
@@ -13,8 +13,10 @@ import time
 from pathlib import Path
 
 W, H = 480, 320
-DC = 12
-RST = 11
+DC_CHIP = "/dev/gpiochip0"
+DC = 9
+RST_CHIP = "/dev/gpiochip1"
+RST = 27
 SPEED = 10_000_000
 BL = Path(os.environ.get("HUB_LCD_BL", "/sys/class/leds/lcd-backlight/brightness"))
 
@@ -53,24 +55,20 @@ class Panel:
         self.spi.open(1, 0)
         self.spi.mode = 0
         self.spi.max_speed_hz = SPEED
-        self.gpio = gpiod.request_lines(
-            "/dev/gpiochip0",
-            consumer="irate-box-lcd",
-            config={
-                (RST, DC): gpiod.LineSettings(
-                    direction=gpiod.line.Direction.OUTPUT,
-                    output_value=gpiod.line.Value.ACTIVE,
-                )
-            },
+        output = gpiod.LineSettings(
+            direction=gpiod.line.Direction.OUTPUT,
+            output_value=gpiod.line.Value.ACTIVE,
         )
+        self.gpio_dc = gpiod.request_lines(DC_CHIP, consumer="irate-box-lcd", config={DC: output})
+        self.gpio_rst = gpiod.request_lines(RST_CHIP, consumer="irate-box-lcd", config={RST: output})
 
     def dc(self, high):
         v = self._gpiod.line.Value
-        self.gpio.set_value(DC, v.ACTIVE if high else v.INACTIVE)
+        self.gpio_dc.set_value(DC, v.ACTIVE if high else v.INACTIVE)
 
     def rst(self, high):
         v = self._gpiod.line.Value
-        self.gpio.set_value(RST, v.ACTIVE if high else v.INACTIVE)
+        self.gpio_rst.set_value(RST, v.ACTIVE if high else v.INACTIVE)
 
     def cmd(self, c, data=None):
         self.dc(False)
@@ -135,9 +133,12 @@ class Panel:
 
     def close(self):
         try:
-            self.gpio.release()
+            self.gpio_dc.release()
         finally:
-            self.spi.close()
+            try:
+                self.gpio_rst.release()
+            finally:
+                self.spi.close()
 
     def run(self, seconds=60):
         start = time.monotonic()
