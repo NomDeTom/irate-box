@@ -4264,63 +4264,65 @@
                     Automatic
                   </option>
                 </select>
-                <label
-                  class="setting-name"
-                  for="ap-ssid"
-                  id="ap-ssid-label"
-                  data-i18n="admin.network.ap-ssid-label"
-                  >Hotspot name</label
-                >
-                <input
-                  id="ap-ssid"
-                  class="net-input"
-                  type="text"
-                  maxlength="32"
-                  spellcheck="false"
-                  autocapitalize="off"
-                  autocomplete="off"
-                />
-                <p
-                  class="setting-desc"
-                  id="ap-ssid-note"
-                  data-i18n="admin.network.ap-ssid-note"
-                >
-                  1 to 32 bytes on one line. Devices on the hotspot rejoin under
-                  the new name when you save it.
-                </p>
-                <label
-                  class="setting-name"
-                  for="ap-second"
-                  id="ap-second-label"
-                  hidden
-                  data-i18n="admin.network.ap-second-label"
-                  >Encrypted network name</label
-                >
-                <input
-                  id="ap-second"
-                  class="net-input"
-                  type="text"
-                  maxlength="32"
-                  spellcheck="false"
-                  autocapitalize="off"
-                  autocomplete="off"
-                  hidden
-                />
-                <p
-                  class="setting-desc"
-                  id="ap-second-note"
-                  hidden
-                  data-i18n="admin.network.ap-second-note"
-                >
-                  Left empty, it is the hotspot name with " (encrypted)" after
-                  it.
-                </p>
-                <p
-                  class="setting-desc action-note"
-                  id="ap-name-note"
-                  role="status"
-                  hidden
-                ></p>
+                <div class="library-form" id="ap-names">
+                  <label class="setting-name" for="ap-ssid">
+                    <span
+                      id="ap-ssid-label"
+                      data-i18n="admin.network.ap-ssid-label"
+                      >Hotspot name</span
+                    >
+                    <input
+                      id="ap-ssid"
+                      type="text"
+                      maxlength="32"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      autocomplete="off"
+                    />
+                    <span
+                      class="setting-desc"
+                      id="ap-ssid-note"
+                      data-i18n="admin.network.ap-ssid-note"
+                    >
+                      1 to 32 bytes on one line. Devices on the hotspot rejoin
+                      under the new name when you save it.
+                    </span>
+                  </label>
+                  <label
+                    class="setting-name"
+                    for="ap-second"
+                    id="ap-second-field"
+                    hidden
+                  >
+                    <span
+                      id="ap-second-label"
+                      data-i18n="admin.network.ap-second-label"
+                      >Encrypted network name</span
+                    >
+                    <input
+                      id="ap-second"
+                      type="text"
+                      maxlength="32"
+                      spellcheck="false"
+                      autocapitalize="off"
+                      autocomplete="off"
+                    />
+                    <span
+                      class="setting-desc"
+                      id="ap-second-note"
+                      data-i18n="admin.network.ap-second-note"
+                    >
+                      Left empty, it is the hotspot name with " (encrypted)"
+                      after it.
+                    </span>
+                  </label>
+                  <span
+                    class="setting-desc action-note"
+                    id="ap-name-note"
+                    role="status"
+                    hidden
+                  ></span>
+                </div>
                 <label
                   class="inline"
                   id="ap-take-label"

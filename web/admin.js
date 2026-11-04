@@ -10579,8 +10579,7 @@ const apEl = {
   ssid: document.getElementById("ap-ssid"),
   ssidLabel: document.getElementById("ap-ssid-label"),
   second: document.getElementById("ap-second"),
-  secondLabel: document.getElementById("ap-second-label"),
-  secondNote: document.getElementById("ap-second-note"),
+  secondField: document.getElementById("ap-second-field"),
   nameNote: noteEl("ap-name-note"),
   saveNames: document.getElementById("ap-save-names"),
   take: document.getElementById("ap-take"),
@@ -10658,7 +10657,7 @@ function apNamesShow() {
     (hsData && (hsChosen() || settings.mode)) || settings.mode || "open";
   const two = mode === "two";
   apEl.ssidLabel.textContent = two ? "Open network name" : "Hotspot name";
-  apEl.second.hidden = apEl.secondLabel.hidden = apEl.secondNote.hidden = !two;
+  apEl.secondField.hidden = !two;
   if (!apEl.ssid.dataset.dirty) apEl.ssid.value = settings.ssid || "Irate-Box";
   if (two && !apEl.second.dataset.dirty)
     apEl.second.value = settings.second_ssid || "";

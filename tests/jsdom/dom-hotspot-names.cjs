@@ -89,8 +89,7 @@ function page({ up = false, refuse = null } = {}) {
       d.getElementById("ap-ssid").value === "Irate-Box" &&
       t(d.getElementById("ap-ssid-label")) === "Hotspot name" &&
       /1 to 32 bytes on one line/.test(t(d.getElementById("ap-ssid-note"))) &&
-      d.getElementById("ap-second").hidden &&
-      d.getElementById("ap-second-label").hidden,
+      d.getElementById("ap-second-field").hidden,
     t(d.getElementById("ap-ssid-note")),
   );
   check(
@@ -111,7 +110,7 @@ function page({ up = false, refuse = null } = {}) {
   await wait();
   check(
     "two networks: the second field shows, the first is the open network, and the placeholder is the suffixed name",
-    !d.getElementById("ap-second").hidden &&
+    !d.getElementById("ap-second-field").hidden &&
       t(d.getElementById("ap-ssid-label")) === "Open network name" &&
       t(d.getElementById("ap-second-label")) === "Encrypted network name" &&
       d.getElementById("ap-second").placeholder === "Irate-Box (encrypted)",

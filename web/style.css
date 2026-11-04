@@ -2991,14 +2991,6 @@ body.drop > section + section {
   gap: 0.4rem;
   max-width: 40rem;
 }
-.net-settings .net-input {
-  padding: 0.35rem 0.5rem;
-  font: inherit;
-  color: inherit;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
 .up-settings {
   max-width: none;
 }
