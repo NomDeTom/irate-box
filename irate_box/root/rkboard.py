@@ -23,6 +23,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from irate_box import validate
 from irate_box.hub import rkusb
 from irate_box.hub.rkusb import boards, loaders, status, tools  # noqa: F401 - the root helper's names for them
 from irate_box.msg import M, Refused
@@ -86,7 +87,7 @@ def to_loader():
     board = _one(("system",))
     _need("adb")
     serial = board["serial"]
-    r = run("adb", *(["-s", serial] if SERIAL_RE.match(serial) else []), "reboot", "loader", timeout=60)
+    r = run("adb", *(["-s", serial] if SERIAL_RE.fullmatch(serial) else []), "reboot", "loader", timeout=60)
     if r.returncode:
         raise Refused(
             M(
@@ -107,6 +108,12 @@ def to_loader():
 
 
 def _send_loader(loader_id):
+    try:
+        loader_id = validate.loader(loader_id)
+    except ValueError:
+        raise Refused(
+            M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader.")
+        ) from None
     loader = next((x for x in loaders() if x["id"] == loader_id), None)
     if not loader:
         raise Refused(M("rkboard.loader-unknown", "Select the board's chip, so that the box sends the right loader."))
@@ -267,8 +274,10 @@ def erase(loader_id=None, confirm=None):
 
 def _image(name):
     """An image in rkusb.IMAGES, opened without following a link: a regular file, or refused."""
-    if not rkusb.IMAGE_RE.match(name or ""):
-        raise Refused(M("rkboard.image-name", "Select an image to write."))
+    try:
+        name = validate.image(name)
+    except ValueError:
+        raise Refused(M("rkboard.image-name", "Select an image to write.")) from None
     try:
         fd = os.open(rkusb.IMAGES / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
     except OSError:
@@ -427,8 +436,10 @@ def write_card(name, sha256, loader_id=None):
     shows, in pieces: each written (rkdeveloptool wl), read back (rl) and compared before the next; then the card's
     last sectors cleared and the board reset. Its checksum (the publisher's) checked first. Refused unless the
     loader shows a card."""
-    if not SHA_RE.match(sha256 or ""):
-        raise Refused(M("rkboard.image-sha", "Give the image's sha256, as its publisher lists it."))
+    try:
+        sha256 = validate.sha256(sha256)
+    except ValueError:
+        raise Refused(M("rkboard.image-sha", "Give the image's sha256, as its publisher lists it.")) from None
     with _image(name) as fh:
         h = hashlib.sha256()
         for block in iter(lambda: fh.read(1 << 20), b""):

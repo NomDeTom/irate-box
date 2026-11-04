@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 
+from irate_box import validate
 from irate_box.hub import rkusb
 from irate_box.msg import M, Refused
 from irate_box.root import rkboard
@@ -42,8 +43,10 @@ def run(*cmd, timeout=600):
 
 def _card(name, size, serial):
     """The card the page showed: still there, the same size and serial, nothing on it mounted."""
-    if not NAME_RE.match(name or ""):
-        raise Refused(M("rkcard.name", "Select a card."))
+    try:
+        name = validate.card(name)
+    except ValueError:
+        raise Refused(M("rkcard.name", "Select a card.")) from None
     found = next((c for c in rkusb.cards() if c["name"] == name), None)
     if not found:
         raise Refused(M("rkcard.gone", "That card is not in a reader on the box any more."))
@@ -122,8 +125,10 @@ def genuine(name, size, serial):
 
 def flash(name, size, serial, image, sha256):
     """An image from rkusb.IMAGES written to the card, checked against its sha256 first, read back and compared."""
-    if not rkboard.SHA_RE.match(sha256 or ""):
-        raise Refused(M("rkboard.image-sha", "Give the image's sha256, as its publisher lists it."))
+    try:
+        sha256 = validate.sha256(sha256)
+    except ValueError:
+        raise Refused(M("rkboard.image-sha", "Give the image's sha256, as its publisher lists it.")) from None
     with rkboard._image(image) as fh:
         h = hashlib.sha256()
         for block in iter(lambda: fh.read(1 << 20), b""):

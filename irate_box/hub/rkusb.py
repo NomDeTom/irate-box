@@ -103,7 +103,7 @@ def images():
     except OSError:
         return out
     for name in names:
-        if not IMAGE_RE.match(name):
+        if not IMAGE_RE.fullmatch(name):
             continue
         side = _read(IMAGES / f"{name}.sha256").split()
         sha = side[0].lower() if side and re.fullmatch(r"[0-9a-fA-F]{64}", side[0]) else ""
@@ -144,7 +144,7 @@ def _bundle(meta, state):
     files, missing, damaged, seen = [], [], [], {}
     for item in meta.get("files") or []:
         name, offset = str(item.get("name") or ""), item.get("offset")
-        if not BUNDLE_RE.match(name) or not isinstance(offset, int) or offset < 0:
+        if not BUNDLE_RE.fullmatch(name) or not isinstance(offset, int) or offset < 0:
             damaged.append(name or "?")
             continue
         if name not in seen:
@@ -185,13 +185,13 @@ def bootloaders():
     return [
         _bundle(meta, BOOTLOADER_STATE)
         for meta in shipped
-        if isinstance(meta, dict) and BUNDLE_RE.match(str(meta.get("id") or ""))
+        if isinstance(meta, dict) and BUNDLE_RE.fullmatch(str(meta.get("id") or ""))
     ]
 
 
 def rescues():
     """The Alpine rescue images among the images on the box: [{name, size, sha256}]."""
-    return [image for image in images() if RESCUE_RE.match(image["name"])]
+    return [image for image in images() if RESCUE_RE.fullmatch(image["name"])]
 
 
 def _root_disk():

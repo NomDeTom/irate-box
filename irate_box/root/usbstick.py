@@ -27,6 +27,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from irate_box import validate
 from irate_box.library import zimcheck
 from irate_box.msg import M, Refused, render
 from irate_box.root import safeio
@@ -363,14 +364,16 @@ def import_zim(device, file, zim_dir, hub_user, min_free, librarian_cmd, state_d
     if rel.is_absolute() or ".." in rel.parts or rel.suffix.lower() != ".zim":
         raise Refused(M("usb.import.not-a-book", "{file} is not a book on the USB drive.", file=file))
     name = rel.stem
-    if not NAME_RE.match(name):
+    try:
+        name = validate.name(name, "The book name", 64)
+    except ValueError:
         raise Refused(
             M(
                 "usb.import.bad-name",
                 "The box cannot use the name {file}. On the USB drive, rename the file with only letters, digits, '-', '_' and '.'.",
                 file=rel.name,
             )
-        )
+        ) from None
     dest = Path(zim_dir) / f"{name}.zim"
     if dest.exists():
         raise Refused(
@@ -486,8 +489,12 @@ def import_kit(device, kit, budget_mb, report=None, freshness=None):
 
 def export_zim(device, book, zim_dir, report=None):
     """Copy the hub's <book>.zim to the stick's irate-box/ folder; returns where it went."""
-    if not NAME_RE.match(book):
-        raise Refused(M("usb.export.bad-book", "The request is not valid: {book} is not a book name.", book=book))
+    try:
+        book = validate.name(book, "The book name", 64)
+    except ValueError:
+        raise Refused(
+            M("usb.export.bad-book", "The request is not valid: {book} is not a book name.", book=book)
+        ) from None
     src = Path(zim_dir) / f"{book}.zim"
     # A plain file, not a link: zim/ is the hub's, and a link there would have root copy
     # any file it can read onto the stick.
