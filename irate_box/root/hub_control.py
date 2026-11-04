@@ -199,7 +199,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from irate_box import setup_code
+from irate_box import setup_code, validate
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
 from irate_box.hub import access, gitrepos, manifests, netinv, transport, uplink
@@ -7301,7 +7301,7 @@ IFACE_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$")  # no leading "-": 
 
 def net_scan(req):
     iface = req.get("iface") or None
-    if iface is not None and not IFACE_RE.match(str(iface)):
+    if iface is not None and not IFACE_RE.fullmatch(str(iface)):
         raise Refused(NOT_IFACE)
     if req.get("rescan") is True:
         # A fresh WiFi scan first (NetworkManager's list is otherwise its last one); a moment's work for the radio.
@@ -7358,9 +7358,10 @@ def _ap_owner(req):
     give the box's WiFi link up for it (only where a radio can't do both)."""
     out = {}
     if req.get("radio"):
-        if not IFACE_RE.match(str(req["radio"])):
-            raise Refused(NOT_IFACE)
-        out["radio"] = str(req["radio"])
+        try:
+            out["radio"] = validate.iface(req["radio"])
+        except ValueError:
+            raise Refused(NOT_IFACE) from None
     if req.get("band") in ("2.4 GHz", "5 GHz"):
         out["band"] = req["band"]
     if req.get("channel") is not None:
@@ -7918,11 +7919,16 @@ def wifi_country(req):
     from irate_box.hub import wificountry
 
     names = wificountry.countries()
-    code = req.get("country")
-    if not isinstance(code, str) or code not in names:
+    try:
+        code = validate.country(req.get("country"), names)
+    except ValueError:
         raise Refused(
-            M("control.country.unknown", "{country} is not a country code the box knows.", country=str(code)[:8])
-        )
+            M(
+                "control.country.unknown",
+                "{country} is not a country code the box knows.",
+                country=str(req.get("country"))[:8],
+            )
+        ) from None
     wificountry.REGDOM_CONF.parent.mkdir(parents=True, exist_ok=True)
     safeio.write(wificountry.REGDOM_CONF, wificountry.conf_text(code), 0o644)
     try:
@@ -8384,19 +8390,19 @@ def _rk_write(rkboard, req):
 # The box's name on its networks: the hostname (one for every interface: mDNS announces <name>.local on each, and
 # NetworkManager sends it to each network's DHCP server by default), in /etc/hostname and on /etc/hosts' 127.0.1.1
 # line. Debian's rules for a hostname: lowercase letters, digits and hyphens, not at either end, at most 63.
-HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 HOSTS = Path(os.environ.get("HUB_HOSTS", "/etc/hosts"))
 
 
 def box_hostname(req):
-    name = req.get("hostname")
-    if not isinstance(name, str) or not HOSTNAME_RE.match(name):
+    try:
+        name = validate.hostname(req.get("hostname"))
+    except ValueError:
         raise Refused(
             M(
                 "control.hostname.bad",
                 "A box name has 1 to 63 lowercase letters, digits and hyphens, and does not start or end with a hyphen.",
             )
-        )
+        ) from None
     old = socket.gethostname().split(".")[0]
     r = run("hostnamectl", "set-hostname", name, timeout=30)
     if r.returncode:
@@ -9114,7 +9120,7 @@ def notebooks_sync():
 
 if __name__ == "__main__":
     # NetworkManager's dispatcher (root/ap.py's hook): a link came up; a following hotspot moves.
-    if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.match(sys.argv[2]):
+    if len(sys.argv) == 3 and sys.argv[1] == "ap-follow" and IFACE_RE.fullmatch(sys.argv[2]):
         if os.geteuid() != 0:
             sys.exit("run as root")
         rec = ap._load(ap.RECORD, {})

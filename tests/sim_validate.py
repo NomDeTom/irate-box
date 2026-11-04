@@ -66,6 +66,24 @@ refused("unit: option", V.unit, "-x.service")
 refused("ip: hostname", V.ip, "example.com")
 check("ip: address", V.ip("192.168.4.10") == "192.168.4.10")
 
+# A trailing newline is still a second line: every name validator uses fullmatch, not match.
+for fn, value in (
+    (V.hostname, "box\n"),
+    (V.iface, "wlan0\n"),
+    (V.name, "name\n"),
+    (V.account, "account\n"),
+    (V.package, "package\n"),
+    (V.version, "1.0\n"),
+    (V.repo, "account/repository\n"),
+    (V.branch, "main\n"),
+    (V.sha256, "a" * 64 + "\n"),
+    (V.card, "sda\n"),
+    (V.country, "GB\n"),
+    (V.unit, "irate-box.service\n"),
+    (V.fs_uuid, "abcd\n"),
+):
+    refused(f"{fn.__name__}: a trailing newline refused", fn, value)
+
 
 # --- text, choices, numbers, argv ---
 refused("text: NUL", V.text, "a\0b")

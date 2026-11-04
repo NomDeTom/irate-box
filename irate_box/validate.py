@@ -41,6 +41,7 @@ BRANCH_RE = re.compile(r"^[A-Za-z0-9_./-]{1,200}$")
 COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CARD_RE = re.compile(r"^sd[a-z]{1,2}$")
+FS_UUID_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9.-]{0,63}$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
@@ -76,7 +77,7 @@ def ssid(value):
 
 def hostname(value):
     value = _need(value, "The box name")
-    if not HOSTNAME_RE.match(value):
+    if not HOSTNAME_RE.fullmatch(value):
         raise Invalid(
             "The box name must be 1 to 63 lowercase letters, digits and hyphens, not starting or ending with a hyphen."
         )
@@ -85,42 +86,42 @@ def hostname(value):
 
 def iface(value):
     value = _need(value, "The interface name")
-    if not IFACE_RE.match(value):
+    if not IFACE_RE.fullmatch(value):
         raise Invalid("The interface name is not valid.")
     return value
 
 
 def name(value, what="The name", most=64):
     value = _need(value, what)
-    if len(value) > most or not NAME_RE.match(value):
+    if len(value) > most or not NAME_RE.fullmatch(value):
         raise Invalid(f"{what} may use letters, digits, '.', '_' and '-', starting with a letter or digit.")
     return value
 
 
 def account(value):
     value = _need(value, "The account name")
-    if not ACCOUNT_RE.match(value):
+    if not ACCOUNT_RE.fullmatch(value):
         raise Invalid("An account name has 3 to 32 letters, digits, '.', '_' or '-'.")
     return value
 
 
 def package(value):
     value = _need(value, "The package name")
-    if not PACKAGE_RE.match(value):
+    if not PACKAGE_RE.fullmatch(value):
         raise Invalid("The package name is not valid.")
     return value
 
 
 def version(value):
     value = _need(value, "The version")
-    if not VERSION_RE.match(value):
+    if not VERSION_RE.fullmatch(value):
         raise Invalid("The version is not valid.")
     return value
 
 
 def repo(value):
     value = _need(value, "The repository")
-    if not REPO_RE.match(value):
+    if not REPO_RE.fullmatch(value):
         raise Invalid("Enter the repository as account/repository.")
     return value
 
@@ -128,7 +129,7 @@ def repo(value):
 def branch(value):
     value = _need(value, "The branch")
     if (
-        not BRANCH_RE.match(value)
+        not BRANCH_RE.fullmatch(value)
         or value.startswith(("-", "/", "."))
         or value.endswith(("/", ".", ".lock"))
         or ".." in value
@@ -140,21 +141,21 @@ def branch(value):
 
 def sha256(value):
     value = _need(value, "The checksum").lower()
-    if not SHA256_RE.match(value):
+    if not SHA256_RE.fullmatch(value):
         raise Invalid("The checksum must be 64 hexadecimal digits.")
     return value
 
 
 def card(value):
     value = _need(value, "The card")
-    if not CARD_RE.match(value):
+    if not CARD_RE.fullmatch(value):
         raise Invalid("The card name is not valid.")
     return value
 
 
 def country(value, allowed=None):
     value = _need(value, "The country")
-    if not COUNTRY_RE.match(value):
+    if not COUNTRY_RE.fullmatch(value):
         raise Invalid("The country must be a two-letter code.")
     if allowed is not None and value not in allowed:
         raise Invalid("That country is not in the box's list.")
@@ -163,8 +164,16 @@ def country(value, allowed=None):
 
 def unit(value):
     value = _need(value, "The service")
-    if not UNIT_RE.match(value) or value.startswith("-"):
+    if not UNIT_RE.fullmatch(value) or value.startswith("-"):
         raise Invalid("The service name is not valid.")
+    return value
+
+
+def fs_uuid(value):
+    """A filesystem UUID as lsblk gives it, safe in a systemd mount unit and a /dev/disk link."""
+    value = _need(value, "The filesystem UUID")
+    if not FS_UUID_RE.fullmatch(value):
+        raise Invalid("The filesystem UUID is not valid.")
     return value
 
 

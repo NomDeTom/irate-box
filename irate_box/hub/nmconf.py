@@ -21,6 +21,7 @@ import os
 import re
 from pathlib import Path
 
+from irate_box import validate as checks
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -250,17 +251,22 @@ def dropin_text(mine, ifaces=None):
     for iface in sorted(ifaces or {}):
         for sec in ("connection", "device"):
             keys = [
-                f"{SETTINGS[n]['key']}={v}"
+                checks.config_line(SETTINGS[n]["key"], v)
                 for n, v in sorted((ifaces[iface] or {}).items())
                 if v is not None and SETTINGS[n]["section"] == sec
             ]
             if keys:
-                lines += ["", f"[{sec}-irate-box-{iface}]", f"match-device=interface-name:{iface}", *keys]
+                lines += [
+                    "",
+                    f"[{sec}-irate-box-{checks.iface(iface)}]",
+                    checks.config_line("match-device", f"interface-name:{checks.iface(iface)}"),
+                    *keys,
+                ]
     by_section = {}
     for n, v in mine.items():
         if v is not None:
             s = SETTINGS[n]
-            by_section.setdefault(s["section"], []).append(f"{s['key']}={v}")
+            by_section.setdefault(s["section"], []).append(checks.config_line(s["key"], v))
     for sec in ("main", "connection", "device"):
         if sec in by_section:
             lines += ["", f"[{sec}]", *by_section[sec]]

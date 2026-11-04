@@ -25,6 +25,8 @@ import re
 import unicodedata
 from pathlib import Path
 
+from irate_box import validate
+
 ISO_CODES = Path(os.environ.get("HUB_ISO_CODES", "/usr/share/iso-codes/json/iso_3166-1.json"))
 SHIPPED = Path(__file__).with_name("countries.json")
 REGDOM_CONF = Path(os.environ.get("HUB_MODPROBE_DIR", "/etc/modprobe.d")) / "irate-box-regdom.conf"
@@ -78,4 +80,4 @@ def saved():
 
 
 def conf_text(code):
-    return f"{SET_HERE}\noptions cfg80211 ieee80211_regdom={code}\n"
+    return f"{SET_HERE}\noptions cfg80211 ieee80211_regdom={validate.country(code)}\n"
