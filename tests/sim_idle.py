@@ -112,9 +112,9 @@ check(
 )
 check(
     "the doctor takes idle-off and idle-on for these only",
-    health.CHOICE_RE.match("idle-off:meshtasticd.service")
-    and health.CHOICE_RE.match("idle-on:bluetooth.service")
-    and not health.CHOICE_RE.match("idle-off:ssh.service"),
+    health.CHOICES_RE.match("idle-off:meshtasticd.service")
+    and health.CHOICES_RE.match("idle-on:bluetooth.service")
+    and not health.CHOICES_RE.match("idle-off:ssh.service"),
 )
 msg = health.fix("idle-off:meshtasticd.service")
 rec = json.loads(health.IDLE_OFF.read_text())

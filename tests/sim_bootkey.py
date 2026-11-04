@@ -108,7 +108,7 @@ bootkey.ADC = Path(T / "adc")
 os.environ["HUB_BOOTKEY_ADC"] = str(bootkey.ADC)
 check(
     "the Recovery setting is offered on the Lyra, and health.fix switches it",
-    health.CHOICE_RE.match("bootkey:on")
+    health.CHOICES_RE.match("bootkey:on")
     and any(
         g["key"] == "bootkey"
         for g in health.setting_groups(

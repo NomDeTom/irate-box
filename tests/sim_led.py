@@ -422,9 +422,9 @@ board(["rockchip,rk3506"], "Luckfox Lyra Zero W", {"work-led": (None, "platform"
 f = health.check_led(led.status(), active=lambda u: {"ActiveState": "active"})
 check("  a kernel with no triggers: said that the box drives it", "led.driven-no-triggers" in msg_ids(f[0]), f)
 for good in ("led-show:network", "led-led:auto", "led-led:green:status", "led-flash:work-led", "armbian-led:off"):
-    check(f"the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
+    check(f"the doctor takes {good}", bool(health.CHOICES_RE.match(good)))
 for bad in ("led-show:blink", "led-led:../x", "led-flash:a b", "armbian-led:remove"):
-    check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
+    check(f"  and refuses {bad}", not health.CHOICES_RE.match(bad))
 said = health.fix("led-show:alive")
 check(
     "  a choice saved: the setting changed, and said",
@@ -435,8 +435,8 @@ from irate_box.hub import server
 
 check(
     "the hub passes the same choices on",
-    all(server.HEALTH_CHOICE_RE.match(c) for c in ("led-show:all", "led-flash:ACT", "armbian-led:on"))
-    and not server.HEALTH_CHOICE_RE.match("led-show:x"),
+    all(server.HEALTH_CHOICES_RE.match(c) for c in ("led-show:all", "led-flash:ACT", "armbian-led:on"))
+    and not server.HEALTH_CHOICES_RE.match("led-show:x"),
 )
 
 print("ok" if not fails else f"{fails} failure(s)")

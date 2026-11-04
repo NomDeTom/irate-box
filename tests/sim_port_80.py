@@ -95,9 +95,9 @@ check(
     len(moved) == 1 and moved[0]["confirm"]["args"]["port"] == "8080",
     f.get("actions"),
 )
-from irate_box.hub.server import HEALTH_CHOICE_RE
+from irate_box.hub.server import HEALTH_CHOICES_RE
 
-check("  the hub passes that choice to the root helper", bool(HEALTH_CHOICE_RE.match("rerun-install-port-80")))
+check("  the hub passes that choice to the root helper", bool(HEALTH_CHOICES_RE.match("rerun-install-port-80")))
 from irate_box.root.hub_control import _with_port
 
 check(

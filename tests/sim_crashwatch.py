@@ -296,9 +296,9 @@ check(
 )
 check("  in the report too", health.scan()["settings"]["groups"][0]["key"] == "snapshots")
 for good in ("crashwatch-panic:on", "crashwatch-snapshots:off"):
-    check(f"  the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
+    check(f"  the doctor takes {good}", bool(health.CHOICES_RE.match(good)))
 for bad in ("crashwatch-preempt:reboot", "crashwatch-rm:on", "crashwatch-panic:on;reboot"):
-    check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
+    check(f"  and refuses {bad}", not health.CHOICES_RE.match(bad))
 said = health.fix("crashwatch-snapshots:off")
 check(
     "  a switch pressed: the setting changed, and said",

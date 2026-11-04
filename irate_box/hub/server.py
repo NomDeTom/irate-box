@@ -33,7 +33,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from irate_box import confine, durable, finding, presets, security_levels, setup_code, validate
-from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
+from irate_box.choices import CHOICES_RE as HEALTH_CHOICES_RE
 from irate_box.hub import (
     access,
     accounts,
@@ -7945,7 +7945,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/health":
             if payload.get("action") == "scan":
                 self.send_json(202, {"id": control_request({"action": "health-scan"})})
-            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.fullmatch(str(payload.get("choice", ""))):
+            elif payload.get("action") == "fix" and HEALTH_CHOICES_RE.fullmatch(str(payload.get("choice", ""))):
                 self.send_json(
                     202,
                     {"id": control_request({"action": "health-fix", "choice": payload["choice"]})},
