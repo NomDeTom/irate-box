@@ -42,6 +42,7 @@ COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CARD_RE = re.compile(r"^sd[a-z]{1,2}$")
 FS_UUID_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9.-]{0,63}$")
+IMAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.img(?:\.xz)?$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
@@ -150,6 +151,22 @@ def card(value):
     value = _need(value, "The card")
     if not CARD_RE.fullmatch(value):
         raise Invalid("The card name is not valid.")
+    return value
+
+
+def image(value):
+    """An image name for a board's card: .img or .img.xz, with no path."""
+    value = _need(value, "The image name")
+    if not IMAGE_RE.fullmatch(value):
+        raise Invalid("The image name is not valid.")
+    return value
+
+
+def loader(value):
+    """A loader's id, as the board list names it (a chip's short lower-case name)."""
+    value = _need(value, "The loader")
+    if not re.fullmatch(r"[a-z0-9]{1,16}", value):
+        raise Invalid("The loader name is not valid.")
     return value
 
 
