@@ -14419,7 +14419,7 @@ function renderMirrors(data) {
               st.tags_error
                 ? el("p", { className: "setting-desc bad", textContent: `The tags: ${st.tags_error}` })
                 : null,
-              el("p", { className: "library-buttons" },
+              el("div", { className: "library-buttons mirror-description" },
                 el("input", {
                   type: "text",
                   maxLength: 200,
@@ -14447,40 +14447,44 @@ function renderMirrors(data) {
                   { className: "small" },
                 ),
               ),
-              el("p", { className: "setting-desc", textContent: "Submodules" }),
-              AW.onOffChips("Mirror its submodules too", !!m.submodules, false, (on) =>
-                act({
-                  action: "mirror-change",
-                  mirror: Object.assign({}, m, { status: undefined, submodules: on }),
-                })(),
-              ),
-              relGroups.length
-                ? actionButton(
-                    skipping ? "Include revoked releases" : "Exclude revoked releases",
-                    act(
-                      {
-                        action: "mirror-change",
-                        mirror: Object.assign({}, m, {
-                          status: undefined,
-                          groups: m.groups.map((g) =>
-                            g.kind === "tags" ? g : Object.assign({}, g, { skip_revoked: !skipping }),
-                          ),
-                        }),
-                      },
-                      skipping
-                        ? "Include releases that their project has revoked? The mirror excludes them by default. Include them only to investigate them."
-                        : null,
-                    ),
-                    { className: "small" },
-                  )
-                : null,
-              actionButton(
-                "Remove local mirror",
-                act(
-                  { action: "mirror-remove", name: m.name },
-                  `Remove the local mirror ${m.name}.git and its copy on the box? The upstream repository is not changed.`,
+              el("div", { className: "aw-field mirror-submodules" },
+                el("span", { className: "aw-label", textContent: "Submodules" }),
+                AW.onOffChips("Mirror its submodules too", !!m.submodules, false, (on) =>
+                  act({
+                    action: "mirror-change",
+                    mirror: Object.assign({}, m, { status: undefined, submodules: on }),
+                  })(),
                 ),
-                { className: "small" },
+              ),
+              el("p", { className: "library-buttons source-danger" },
+                relGroups.length
+                  ? actionButton(
+                      skipping ? "Include revoked releases" : "Exclude revoked releases",
+                      act(
+                        {
+                          action: "mirror-change",
+                          mirror: Object.assign({}, m, {
+                            status: undefined,
+                            groups: m.groups.map((g) =>
+                              g.kind === "tags" ? g : Object.assign({}, g, { skip_revoked: !skipping }),
+                            ),
+                          }),
+                        },
+                        skipping
+                          ? "Include releases that their project has revoked? The mirror excludes them by default. Include them only to investigate them."
+                          : null,
+                      ),
+                      { className: "small" },
+                    )
+                  : null,
+                actionButton(
+                  "Remove local mirror",
+                  act(
+                    { action: "mirror-remove", name: m.name },
+                    `Remove the local mirror ${m.name}.git and its copy on the box? The upstream repository is not changed.`,
+                  ),
+                  { className: "small" },
+                ),
               ),
             ],
           });

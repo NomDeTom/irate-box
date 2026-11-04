@@ -3636,6 +3636,25 @@ body.drop > section + section {
 .source-panel > .source-drawer > :is(p, div, form, section, .admin-list, h3, h4, .library-buttons, .settings) {
   grid-column: 1 / -1;
 }
+.source-panel .mirror-description {
+  grid-column: 1 / -1;
+  flex-wrap: nowrap;
+}
+.source-panel .mirror-description input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.source-panel .mirror-submodules {
+  border-top: 0;
+  padding: 0;
+  flex-wrap: nowrap;
+}
 .source-panel .appstore-settings {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
