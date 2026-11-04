@@ -4511,6 +4511,21 @@ label > .select-chips {
   cursor: pointer;
   color: var(--text);
 }
+/* A package list in an update card: inside the card's padding, its bullets and names inside the box. */
+#os-packages .field-help,
+#board-packages .field-help,
+#debian-packages .field-help,
+.update-card .field-help {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-top: 0.35rem;
+  margin-left: 0;
+  margin-right: 0;
+}
+.field-help ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
 .output-value {
   display: inline-block;
   padding: 0.3rem 0.6rem;

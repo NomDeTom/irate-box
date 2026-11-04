@@ -5630,12 +5630,13 @@ function drawKindState(kind, lines, busy) {
     ].filter(Boolean),
   );
   const packages = (w && w.packages) || [];
+  const wasOpen = !!card.packages.querySelector("details")?.open;
   card.packages.replaceChildren(
     ...(packages.length
       ? [
           el(
             "details",
-            { className: "field-help" },
+            { className: "field-help", open: wasOpen },
             el("summary", {
               textContent: `${packages.length} package${packages.length === 1 ? "" : "s"} waiting`,
             }),
@@ -5715,12 +5716,14 @@ function drawDebianState(lines, scan) {
       noteUnder("unattended"),
     ].filter(Boolean),
   );  // Last, as a package card's builds kept: the packages waiting.
-  document.getElementById("debian-packages").replaceChildren(
+  const debPkgs = document.getElementById("debian-packages");
+  const wasOpen = !!debPkgs.querySelector("details")?.open;
+  debPkgs.replaceChildren(
     ...(packages.length
       ? [
           el(
             "details",
-            { className: "field-help" },
+            { className: "field-help", open: wasOpen },
             el("summary", {
               textContent: `${packages.length} package${packages.length === 1 ? "" : "s"} waiting`,
             }),
