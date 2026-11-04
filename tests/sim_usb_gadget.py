@@ -300,6 +300,17 @@ check(
 store.DROP_MAX_TOTAL = old_total
 usbgadget.run = fake_run
 st_drive = usbgadget.status()
+check(
+    "  the drive state keeps the stopped import",
+    st_drive["drive"]["import"]["stopped"] and "storage" in st_drive["drive"]["import"]["stopped"].lower(),
+    st_drive["drive"].get("import"),
+)
+found = health.check_usb_gadget(st_drive)
+check(
+    "  the doctor says the import stopped at the full drop",
+    found and found[0]["status"] == "warn" and "usb-gadget.import-stopped" in message_ids(found[0]),
+    found,
+)
 st_drive["drive"]["tools"]["mkfs.vfat"] = False
 found = health.check_usb_gadget(st_drive)
 check(

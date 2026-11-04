@@ -7134,6 +7134,7 @@ def check_usb_gadget(st=None):
     from irate_box.root import usbgadget
 
     title = M("usb-gadget.title", "USB networking")
+    go = _go("usb", M("go.usb", "System → USB"), "usb-usb-gadget")
     drive = st.get("drive") or {}
     if settings.get("drive"):
         missing = [name for name, present in (drive.get("tools") or {}).items() if not present]
@@ -7173,6 +7174,30 @@ def check_usb_gadget(st=None):
                     glance=M("usb-gadget.drive-down.glance", "The USB drive did not come up."),
                 )
             ]
+        imported = drive.get("import") or {}
+        if imported.get("stopped"):
+            return [
+                finding(
+                    "usb-gadget:import",
+                    title,
+                    "warn",
+                    M(
+                        "usb-gadget.import-stopped",
+                        "Some files from the USB drive were not imported: {why}",
+                        why=str(imported.get("stopped"))[:300],
+                    ),
+                    M(
+                        "usb-gadget.import-stopped.why",
+                        "The file drop is full. The box stopped importing rather than removing a guest's file.",
+                    ),
+                    M(
+                        "usb-gadget.import-stopped.fix",
+                        "Remove files from the file drop, then connect the drive again.",
+                    ),
+                    go=go,
+                    glance=M("usb-gadget.import-stopped.glance", "Some USB drive files were not imported."),
+                )
+            ]
         if not settings.get("on"):
             return [
                 finding(
@@ -7183,7 +7208,6 @@ def check_usb_gadget(st=None):
                     glance=M("usb-gadget.drive-ok.glance", "The USB drive is up."),
                 )
             ]
-    go = _go("health-settings", RECOVERY, "hs-usb-gadget")
     if st.get("why") == "starting":
         return [
             finding(

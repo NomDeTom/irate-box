@@ -51,6 +51,7 @@ SRC = Path(os.environ.get("HUB_GADGET_SRC", "/usr/src/usb-gadget-1.1.0"))
 SETTINGS = ETC / "usb-gadget.json"
 STATUS = RUN / "status.json"
 ACTIVE = RUN / "active.json"
+IMPORT_STATUS = RUN / "drive-import.json"
 GADGET = CONFIGFS / "usb_gadget" / "irate"
 FUNCTIONS = GADGET / "functions"
 CONFIGS = GADGET / "configs"
@@ -187,6 +188,14 @@ def active_settings():
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def import_status():
+    try:
+        data = json.loads(IMPORT_STATUS.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def read_status():
@@ -528,7 +537,9 @@ def refresh_drive(log=print):
 
 def import_drive(log=print):
     """Bring files the host added to the USB drive into the file drop. Existing names are left
-    alone; the drive is a copy, not a two-way mirror. Returns how many were added."""
+    alone; the drive is a copy, not a two-way mirror. It stops when the drop is full, rather
+    than evicting a guest's file. Returns how many were added."""
+    IMPORT_STATUS.unlink(missing_ok=True)
     if not DRIVE_IMAGE.is_file():
         return 0
     tools = drive_tools()
@@ -547,6 +558,7 @@ def import_drive(log=print):
     drop = store.Drop(DRIVE_IMAGE.parent)
     manifest = drive_manifest()
     added = 0
+    stopped = ""
     for raw in (line.strip() for line in (listed.stdout or "").splitlines()):
         name = raw[3:] if raw.startswith("::/") else raw
         if not name or name in known or name in (".", "..") or "/" in name:
@@ -566,6 +578,7 @@ def import_drive(log=print):
                 meta = drop.receive(fh, size, name, by="USB drive", evict=False)
         except Refused as exc:
             one.unlink(missing_ok=True)
+            stopped = str(exc)
             log(f"usbgadget: stopped importing at {name}: {exc}")
             break
         except (OSError, ValueError) as exc:
@@ -579,7 +592,9 @@ def import_drive(log=print):
     if added:
         DRIVE_MANIFEST.write_text(json.dumps(manifest))
     shutil.rmtree(tmp, ignore_errors=True)
-    log(f"usbgadget: imported {added} file(s) from the USB drive")
+    RUN.mkdir(parents=True, exist_ok=True)
+    IMPORT_STATUS.write_text(json.dumps({"added": added, "stopped": stopped, "at": time.time()}))
+    log(f"usbgadget: imported {added} file(s) from the USB drive" + (f". Stopped: {stopped}" if stopped else ""))
     return added
 
 
@@ -592,6 +607,7 @@ def drive_state():
         "image": DRIVE_IMAGE.is_file(),
         "file": read(DRIVE_LUN / "file") or "",
         "tools": drive_tools(),
+        "import": import_status(),
     }
 
 
