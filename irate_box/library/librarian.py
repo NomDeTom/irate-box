@@ -1049,7 +1049,7 @@ def _urlopen(request, timeout=None):
     """The one place a download opens. A test that stands the network in by replacing
     urllib.request.urlopen is answered by its stand-in; the real one follows checked redirects."""
     if urllib.request.urlopen is not _ORIGINAL_URLOPEN:
-        return urllib.request.urlopen(request, timeout=timeout)
+        return urllib.request.urlopen(request, timeout=timeout)  # nosec B310 - a test's stand-in, not a URL
     return _URLOPENER.open(request, timeout=timeout)
 
 
