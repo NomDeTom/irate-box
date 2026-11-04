@@ -19,6 +19,7 @@ os.environ.update(
 (T / "state").mkdir(parents=True)
 (T / "etc").mkdir()
 sys.path.insert(0, str(REPO))
+from irate_box import validate
 from irate_box.hub import hotspot
 from irate_box.msg import Refused
 from irate_box.root import ap
@@ -68,8 +69,8 @@ check("saved: the name is kept", saved["ssid"] == "Guests" and hotspot.load()["s
 one = settings(ssid="Guests")
 kf = ap.keyfile(PLAN, one)
 conf = ap.hostapd_conf(PLAN, one)
-check("one network: the keyfile's ssid", "ssid=Guests\n" in kf, kf)
-check("  the hostapd lines' ssid", f"ssid2={b'Guests'.hex()}\n" in conf, conf)
+check("one network: the keyfile's ssid", validate.keyfile_ssid("Guests") + "\n" in kf, kf)
+check("  the hostapd lines' ssid", validate.hostapd_ssid("Guests") + "\n" in conf, conf)
 
 # Two networks: the second name set, and left empty (then the suffixed default).
 two = settings(mode="two", ssid="Guests", second_ssid="Guests-Enc")
@@ -84,7 +85,8 @@ nets = hotspot.networks(two_empty, two_empty["ssid"], two_empty["second_ssid"])
 check("  left empty: the suffixed default", [n["ssid"] for _, n in nets] == ["Guests", "Guests (encrypted)"], nets)
 check(
     "  the first name is still the one the keyfile and hostapd use",
-    "ssid=Guests\n" in ap.keyfile(PLAN, two) and f"ssid2={b'Guests'.hex()}\n" in ap.hostapd_conf(PLAN, two),
+    validate.keyfile_ssid("Guests") + "\n" in ap.keyfile(PLAN, two)
+    and validate.hostapd_ssid("Guests") + "\n" in ap.hostapd_conf(PLAN, two),
 )
 
 # The same name for both is refused, in plain words.
@@ -124,8 +126,8 @@ check(
 default = {"mode": "open"}
 check(
     "nothing set: the default name reaches the keyfile and hostapd",
-    "ssid=Irate-Box\n" in ap.keyfile(PLAN, default)
-    and f"ssid2={b'Irate-Box'.hex()}\n" in ap.hostapd_conf(PLAN, default),
+    validate.keyfile_ssid("Irate-Box") + "\n" in ap.keyfile(PLAN, default)
+    and validate.hostapd_ssid("Irate-Box") + "\n" in ap.hostapd_conf(PLAN, default),
 )
 
 print("ok" if not fails else f"{fails} failure(s)")

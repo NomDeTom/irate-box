@@ -103,7 +103,7 @@ def per_account(plan, settings, caps, binary=None):
     }
 
 
-def hostapd_conf(plan, settings, ssid=None, second_ssid=None, country=None):
+def hostapd_conf(plan, settings, ssid=None, country=None, second_ssid=None):
     """hostapd's configuration, for a box whose radio NetworkManager doesn't run (Pi OS Lite and the
     like). One network, as the NetworkManager route; the security lines from hotspot.py."""
     ssid, second_ssid = _names(settings, ssid, second_ssid)
@@ -513,7 +513,7 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
     if plan.get("backend") == "hostapd":
         # Following the link's channel needs NetworkManager's hook: here a following hotspot takes the
         # link's channel when it starts (and after a reboot), not when the link roams.
-        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, second_ssid, inv.get("country")), 0o600)
+        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, inv.get("country"), second_ssid), 0o600)
         units = {DNSMASQ_UNIT: dnsmasq_unit(), HOSTAPD_UNIT: hostapd_unit()}
     else:
         _put(Path(keyfile_path or KEYFILE), keyfile(plan, settings, ssid, second_ssid), 0o600)
