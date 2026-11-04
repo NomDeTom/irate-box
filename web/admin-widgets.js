@@ -332,6 +332,15 @@ const AW = (() => {
     return h('div', { class: 'aw-block source-list-block' }, items.length > FILTER_AT ? filterBar(list, '.aw-row', items, { sort: opts.sort }) : null, list);
   }
 
+  // A "new …" mini-card's only action: open its details. The real Add/Create button stays in the form.
+  function enterButton() {
+    return btn('enter details', { class: 'action-btn small source-enter', onclick: (event) => {
+      const card = event.currentTarget.closest('.source-card');
+      const head = card && card.querySelector('.source-head');
+      if (head) head.click();
+    } });
+  }
+
   // ---- Records (3e): newest first, a limited height and a scroll bar ----
   //   items: [{id, title}]   opts: {id, noun}
   function records(items, opts = {}) {
@@ -387,6 +396,7 @@ const AW = (() => {
         card.style.minHeight = `${height}px`;
         card.style.visibility = 'hidden';
         panel.classList.add('open');
+        if (actionsNode) actionsNode.hidden = actionsNode.children.length === 1 && actionsNode.firstElementChild.classList.contains('source-enter');
         panel.replaceChildren(head, body, actionsNode || '');
         place();
         onResize = () => place();
@@ -395,7 +405,7 @@ const AW = (() => {
         panel.classList.remove('open');
         panel.remove();
         card.append(head);
-        if (actionsNode) card.append(actionsNode);
+        if (actionsNode) { actionsNode.hidden = false; card.append(actionsNode); }
         card.style.minHeight = '';
         card.style.visibility = '';
         if (onResize) window.removeEventListener('resize', onResize);
@@ -1201,7 +1211,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, sourceCard, sourceList, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, sourceCard, sourceList, enterButton, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

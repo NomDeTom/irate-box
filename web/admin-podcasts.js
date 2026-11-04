@@ -172,8 +172,9 @@
         el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Feed URL" }), url),
         el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Name" }), title),
         note,
+        el("p", { className: "library-buttons" }, add),
       ],
-      actions: [add],
+      actions: [AW.enterButton()],
     });
   }
   function feedView() {

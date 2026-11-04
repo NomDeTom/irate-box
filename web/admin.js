@@ -590,8 +590,6 @@ function bookCard(b) {
 function bookAddCard() {
   const form = lib.add;
   if (!form) return null;
-  const submit = form.querySelector('button[type="submit"]');
-  if (submit) submit.setAttribute("form", form.id);
   const templates = [
     ["release", "A project's releases"],
     ["actions", "A fork's Actions builds"],
@@ -618,7 +616,7 @@ function bookAddCard() {
     state: "Template, name and source",
     facts: ["Access: Guests", "Schedule: shared"],
     body: [chips, form, lib.addNote],
-    actions: submit ? [submit] : [],
+    actions: [AW.enterButton()],
   });
 }
 function renderBookAddCard() {
@@ -13747,8 +13745,6 @@ function renderGit(data) {
 }
 
 function newCard() {
-  const submit = git.form.querySelector('button[type="submit"]');
-  if (submit) submit.setAttribute("form", git.form.id);
   return AW.sourceCard({
     id: "git-add",
     title: "New repository",
@@ -13756,7 +13752,7 @@ function newCard() {
     state: "Name, access and a description",
     facts: ["Access", "Clone URL"],
     body: [git.form, git.createNote],
-    actions: submit ? [submit] : [],
+    actions: [AW.enterButton()],
     open: gitView.open === "new",
     onToggle: (open) => { gitView.open = open ? "new" : null; },
   });
@@ -14498,8 +14494,6 @@ function renderMirrors(data) {
 let mirrorAddOpen = false;
 function mirrorAddCard() {
   const form = git.mirrorForm;
-  const submit = form.querySelector('button[type="submit"]');
-  if (submit) submit.setAttribute("form", form.id);
   return AW.sourceCard({
     id: "mirror-add",
     title: "Add a mirror",
@@ -14507,7 +14501,7 @@ function mirrorAddCard() {
     state: "Upstream, access, branches and budget",
     facts: ["Access", "Schedule", "Budget"],
     body: [form, git.mirrorNote],
-    actions: submit ? [submit] : [],
+    actions: [AW.enterButton()],
     open: mirrorAddOpen,
     onToggle: (open) => { mirrorAddOpen = open; },
   });
@@ -15233,8 +15227,8 @@ function asAddFlow(data) {
     source: "a GitHub repository",
     state: "A preset, a recipe, or a repository",
     facts: ["Access: Guests", "Schedule: shared"],
-    body: [modeGroup, part],
-    actions: [add],
+    body: [modeGroup, part, el("p", { className: "library-buttons" }, add)],
+    actions: [AW.enterButton()],
   }));
 }
 
@@ -15464,6 +15458,7 @@ function renderKits(data) {
         state: "Managed by the librarian",
         facts: [],
         body: [customBody()],
+        actions: [AW.enterButton()],
       });
       kitsEl.grid.className = "";
       return el("div", { className: "kits-list-view" },
