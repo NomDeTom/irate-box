@@ -77,7 +77,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from irate_box import confine
+from irate_box import confine, validate
 from irate_box.hub import manifests
 from irate_box.hub.refused import Said
 from irate_box.library import zimcheck
@@ -394,13 +394,15 @@ def validate_source(src):
         return out
     if out["type"] == "url":
         url = str(src.get("url", "")).strip()
-        if urllib.parse.urlparse(url).scheme != "https":
+        try:
             # A book over plain HTTP can be swapped on the way, and its pages are served on the
-            # hub's own origin.
+            # hub's own origin. A LAN address is allowed; a user name, a control character or a
+            # non-web scheme is not.
+            out["url"] = validate.url(url, schemes=("https",), what="The source URL", allow_ip=True)
+        except ValueError:
             raise LibrarianError(
                 M("library.source.url-not-https", "Invalid source settings. The URL must start with https://.")
-            )
-        out["url"] = url
+            ) from None
     else:
         repo = str(src.get("repo", "")).strip()
         if not REPO_RE.match(repo):
@@ -1027,9 +1029,14 @@ class _Answer:
 
 
 def _open(url, auth=None, method="GET", timeout=60, extra=None):
-    if urllib.parse.urlparse(url).scheme not in ("https", "http"):
-        # urllib would also open file: and ftp: addresses; nothing here is fetched that way.
-        raise LibrarianError(M("library.download.not-web", "Download rejected. {url} is not a web address.", url=url))
+    try:
+        # urllib would also open file: and ftp: addresses, and a URL with a user name or a
+        # control character is never one of the box's own.
+        validate.url(url, schemes=("https", "http"), what="The download address", allow_ip=True)
+    except ValueError:
+        raise LibrarianError(
+            M("library.download.not-web", "Download rejected. {url} is not a web address.", url=url)
+        ) from None
     if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
         _pace_hit()
     try:
