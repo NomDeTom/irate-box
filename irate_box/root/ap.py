@@ -29,7 +29,7 @@ DNSMASQ_UNIT = "irate-box-ap-dns.service"
 LEASES = "/var/lib/misc/dnsmasq.leases"  # the hub counts guests from it (server.py LEASES)
 NETWORK = ipaddress.ip_network(f"{apmode.ADDRESS}/24", strict=False)
 DHCP_FIRST, DHCP_LAST = 10, 200
-DEFAULT_SSID = "Irate-Box"
+DEFAULT_SSID = hotspot.DEFAULT_SSID
 HOSTAPD_CONF = "/etc/hub/ap-hostapd.conf"
 HOSTAPD_UNIT = "irate-box-ap-hostapd.service"
 HOSTAPD_BIN = Path(os.environ.get("HUB_HOSTAPD_BIN", "/usr/sbin/hostapd"))
@@ -103,10 +103,11 @@ def per_account(plan, settings, caps, binary=None):
     }
 
 
-def hostapd_conf(plan, settings, ssid=DEFAULT_SSID, country=None):
+def hostapd_conf(plan, settings, ssid=None, country=None, second_ssid=None):
     """hostapd's configuration, for a box whose radio NetworkManager doesn't run (Pi OS Lite and the
     like). One network, as the NetworkManager route; the security lines from hotspot.py."""
-    nets = hotspot.networks(settings, ssid)
+    ssid, second_ssid = _names(settings, ssid, second_ssid)
+    nets = hotspot.networks(settings, ssid, second_ssid)
     _, net = nets[0]
     lines = [
         "# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
@@ -155,14 +156,28 @@ def ap_iface(plan):
     return plan["iface"] if plan["kind"] == "own-radio" or plan.get("drops_uplink") else SHARED_IFACE
 
 
+def _names(settings, ssid=None, second_ssid=None):
+    """The names this hotspot uses, checked here: never a raw string from the hub into hostapd or a
+    keyfile. An empty second name is the first with " (encrypted)" after it, trimmed to 32 bytes."""
+    given = ssid if ssid is not None else settings.get("ssid")
+    ssid = hotspot._ssid_ok(str(given if given is not None else DEFAULT_SSID))
+    second = str(second_ssid if second_ssid is not None else settings.get("second_ssid") or "")
+    if second:
+        second = hotspot._ssid_ok(second)
+    if settings.get("mode") == "two" and hotspot._ssid_ok(second or hotspot._with_suffix(ssid)) == ssid:
+        raise Refused(hotspot.SAME_SSID)
+    return ssid, second
+
+
 def _keyfile_value(v):
     return validate.keyfile_value(v)
 
 
-def keyfile(plan, settings, ssid=DEFAULT_SSID):
+def keyfile(plan, settings, ssid=None, second_ssid=None):
     """The NetworkManager connection, as a keyfile (root's, 600). One network: the "two networks"
     choice needs a second access point interface, which comes later."""
-    nets = hotspot.networks(settings, ssid)
+    ssid, second_ssid = _names(settings, ssid, second_ssid)
+    nets = hotspot.networks(settings, ssid, second_ssid)
     role, net = nets[0]
     sec = hotspot.nm_properties(settings, net["kind"])
     band = "a" if plan.get("band") == "5 GHz" else "bg"
@@ -406,7 +421,7 @@ def refresh_units():
     return changed
 
 
-def boot(run, inv, settings, ssid=DEFAULT_SSID):
+def boot(run, inv, settings, ssid=None):
     """The boot unit's call. Off: nothing. On and confirmed (or never needing it): planned and started
     again. A hotspot that took the box's own link and was never confirmed: the link comes back instead."""
     rec = _load(RECORD, {})
@@ -482,10 +497,11 @@ def _install_hostapd(run, log=print):
     log("installed hostapd from Debian")
 
 
-def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, conf_path=None):
+def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_path=None):
     """Plan for this box and bring the hotspot up. Returns the plan; a plan that waits on the owner, or
     none, is returned without starting anything. On a failed step, what was done is undone."""
     owner = owner or {}
+    ssid, second_ssid = _names(settings, ssid)
     plan = apmode.plan(inv, inv.get("ap") or [], owner, _load(TRIED, {}))
     if plan.get("needs_choice") or plan["kind"] == "none":
         return plan
@@ -497,10 +513,10 @@ def start(run, inv, settings, owner=None, ssid=DEFAULT_SSID, keyfile_path=None, 
     if plan.get("backend") == "hostapd":
         # Following the link's channel needs NetworkManager's hook: here a following hotspot takes the
         # link's channel when it starts (and after a reboot), not when the link roams.
-        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, inv.get("country")), 0o600)
+        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, inv.get("country"), second_ssid), 0o600)
         units = {DNSMASQ_UNIT: dnsmasq_unit(), HOSTAPD_UNIT: hostapd_unit()}
     else:
-        _put(Path(keyfile_path or KEYFILE), keyfile(plan, settings, ssid), 0o600)
+        _put(Path(keyfile_path or KEYFILE), keyfile(plan, settings, ssid, second_ssid), 0o600)
         units = {DNSMASQ_UNIT: dnsmasq_unit()}
     _put(Path(conf_path or DNSMASQ_CONF), dnsmasq_conf(plan))
     for name, text in units.items():
@@ -616,7 +632,7 @@ def channels_now(run):
     return {i: d.get("channel") for i, d in netinv.parse_iw_dev(out.stdout or "").items()}
 
 
-def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=time.sleep):
+def try_own_channel(run, inv, settings, ssid=None, wait=TRY_WAIT, sleep=time.sleep):
     """Rung 2 or 3, tried on this box: the hotspot up on a channel other than the link's, held for a
     while with the link still up there? Recorded per radio; the hotspot left running as the plan
     then says. Returns (worked, plan)."""
@@ -646,7 +662,7 @@ def try_own_channel(run, inv, settings, ssid=DEFAULT_SSID, wait=TRY_WAIT, sleep=
     return worked, start(run, inv, settings, owner, ssid)
 
 
-def follow(run, inv, settings, iface, ssid=DEFAULT_SSID):
+def follow(run, inv, settings, iface, ssid=None):
     """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel.
     (moved, note): whether it moved, and what happened in words."""
     rec = _load(RECORD, {})

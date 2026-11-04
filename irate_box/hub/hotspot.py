@@ -34,8 +34,16 @@ STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
 SETTINGS = STATE / "hotspot.json"
 NETINV = STATE / "control" / "netinv.json"
 MODES = ("open", "owe", "sae", "two")
+DEFAULT_SSID = "Irate-Box"
 # No password until the owner sets one.
-DEFAULT = {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"}  # nosec B105
+DEFAULT = {
+    "mode": "open",
+    "password": "",
+    "allow_wpa2": False,
+    "second": "owe",
+    "ssid": DEFAULT_SSID,
+    "second_ssid": "",
+}  # nosec B105
 PASSWORD_RE = re.compile(r"^[\x20-\x7e]{8,63}$")  # what WPA accepts as a passphrase
 
 # Refusals said in several places.
@@ -45,6 +53,10 @@ NO_WPA3 = M(
 BAD_PASSWORD = M(
     "hotspot.password.invalid",
     "The WPA3 password must have 8 to 63 characters. Use letters, digits, spaces or punctuation.",
+)
+SAME_SSID = M(
+    "hotspot.ssid.same",
+    "The two networks need different names, or devices cannot tell them apart.",
 )
 
 LABEL_SAID = {
@@ -211,11 +223,19 @@ def validate(raw, caps):
     needs_pw = mode == "sae" or (mode == "two" and second == "sae")
     if needs_pw and not PASSWORD_RE.match(password):
         raise Refused(BAD_PASSWORD)
+    ssid = _ssid_ok(str(raw["ssid"] if raw.get("ssid") is not None else DEFAULT_SSID))
+    second_ssid = str(raw.get("second_ssid") or "")
+    if second_ssid:
+        second_ssid = _ssid_ok(second_ssid)
+    if mode == "two" and _ssid_ok(second_ssid or _with_suffix(ssid)) == ssid:
+        raise Refused(SAME_SSID)
     return {
         "mode": mode,
         "password": password if needs_pw else "",
         "allow_wpa2": bool(raw.get("allow_wpa2")) and needs_pw,
         "second": second,
+        "ssid": ssid,
+        "second_ssid": second_ssid,
     }
 
 

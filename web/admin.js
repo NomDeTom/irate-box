@@ -10555,6 +10555,12 @@ const apEl = {
   form: document.getElementById("ap-form"),
   radio: document.getElementById("ap-radio"),
   channel: document.getElementById("ap-channel"),
+  ssid: document.getElementById("ap-ssid"),
+  ssidLabel: document.getElementById("ap-ssid-label"),
+  second: document.getElementById("ap-second"),
+  secondField: document.getElementById("ap-second-field"),
+  nameNote: noteEl("ap-name-note"),
+  saveNames: document.getElementById("ap-save-names"),
   take: document.getElementById("ap-take"),
   takeLabel: document.getElementById("ap-take-label"),
   sw: document.getElementById("ap-switch"),
@@ -10605,9 +10611,73 @@ function renderAp(run) {
   apEl.takeLabel.hidden = run.up || !(plan && plan.needs_choice);
   apEl.tryB.hidden = run.up || !(plan && plan.to_try);
   apEl.confirmB.hidden = !(run.up && run.confirmed === false);
-  [apEl.sw, apEl.tryB, apEl.confirmB].forEach((b) => {
+  [apEl.sw, apEl.tryB, apEl.confirmB, apEl.saveNames].forEach((b) => {
     b.disabled = !!apWait;
   });
+  apNamesShow();
+}
+// The hotspot's name, and the second network's in two-network mode: the first is "Hotspot name" in the
+// one-network modes and "Open network name" in two. A field the owner is typing in is not overwritten.
+function apBytes(text) {
+  return typeof TextEncoder !== "undefined"
+    ? new TextEncoder().encode(text).length
+    : text.length;
+}
+function apSuffix(ssid) {
+  const suffix = " (encrypted)";
+  let name = ssid || "Irate-Box";
+  while (apBytes(name) > 32 - apBytes(suffix)) name = name.slice(0, -1);
+  return name.trimEnd() + suffix;
+}
+function apNamesShow() {
+  if (!apEl.ssid) return;
+  const settings = (hsData && hsData.settings) || {};
+  const mode =
+    (hsData && (hsChosen() || settings.mode)) || settings.mode || "open";
+  const two = mode === "two";
+  apEl.ssidLabel.textContent = two ? "Open network name" : "Hotspot name";
+  apEl.secondField.hidden = !two;
+  if (!apEl.ssid.dataset.dirty) apEl.ssid.value = settings.ssid || "Irate-Box";
+  if (two && !apEl.second.dataset.dirty)
+    apEl.second.value = settings.second_ssid || "";
+  if (two) apEl.second.placeholder = apSuffix(apEl.ssid.value.trim());
+  apEl.saveNames.disabled = !!apWait;
+}
+async function apSaveNames() {
+  if (!hsData) {
+    say(
+      "The hotspot settings have not been read yet. Try again in a moment.",
+      false,
+      apEl.nameNote,
+    );
+    return;
+  }
+  const ssid = apEl.ssid.value.trim();
+  const second = apEl.second.value.trim();
+  const settings = { ...hsData.settings, ssid, second_ssid: second };
+  try {
+    const reply = await postJSON("/admin/hotspot", { settings });
+    hsData.settings = reply.settings || settings;
+    hsSavedKey = "";
+    delete apEl.ssid.dataset.dirty;
+    delete apEl.second.dataset.dirty;
+    say(
+      "Saved. Devices on the hotspot rejoin under the new name.",
+      true,
+      apEl.nameNote,
+    );
+    if (apRun && apRun.up) {
+      const body = { action: "on" };
+      if (apEl.radio.value) body.radio = apEl.radio.value;
+      if (apEl.channel.value) body.channel = Number(apEl.channel.value);
+      apAct(body);
+    } else {
+      loadHotspot();
+    }
+    apNamesShow();
+  } catch (err) {
+    say(err.message, false, apEl.nameNote);
+  }
 }
 async function loadAp() {
   try {
@@ -10660,6 +10730,15 @@ apEl.form.addEventListener("submit", (event) => {
 apEl.radio.addEventListener("change", () => renderAp(apRun || {}));
 apEl.tryB.addEventListener("click", () => apAct({ action: "try" }));
 apEl.confirmB.addEventListener("click", () => apAct({ action: "confirm" }));
+apEl.ssid.addEventListener("input", () => {
+  apEl.ssid.dataset.dirty = "1";
+  apNamesShow();
+});
+apEl.second.addEventListener("input", () => {
+  apEl.second.dataset.dirty = "1";
+  apNamesShow();
+});
+apEl.saveNames.addEventListener("click", apSaveNames);
 window.addEventListener("hashchange", () => {
   if (paneShown("network")) loadAp();
 });
@@ -10696,7 +10775,13 @@ const hsSec = AW.section({
   warn: (c, v) =>
     v.mode !== "open" ? "Read the warnings under the choices." : null,
   save: async (c, v) => {
-    const reply = await postJSON("/admin/hotspot", { settings: v });
+    const settings = {
+      ...v,
+      ssid: (hsData && hsData.settings && hsData.settings.ssid) || "Irate-Box",
+      second_ssid:
+        (hsData && hsData.settings && hsData.settings.second_ssid) || "",
+    };
+    const reply = await postJSON("/admin/hotspot", { settings });
     loadHotspot();
     return resultSaid(reply);
   },
@@ -10767,6 +10852,7 @@ function hsShowFields() {
     ...warn.map((w) => checkItem("warn", w, "", "")),
     checkItem("warn", hsData.always, "", ""),
   );
+  apNamesShow();
 }
 
 function renderHotspot(data) {
@@ -10789,6 +10875,7 @@ function renderHotspot(data) {
   } else if (first) hsDraw(hsSec.values());
   else hsShowFields();
   drawGuestNet(data.share || "off", data.results);
+  apNamesShow();
 }
 
 // Guests' onward internet (root/share.py): five stops from nobody to everyone, the safest the

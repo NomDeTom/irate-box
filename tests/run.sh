@@ -27,6 +27,7 @@ run() {
 run sim_uplink.py
 run sim_links.py
 run sim_hotspot_guards.py
+run sim_hotspot_names.py
 run sim_crashwatch.py
 run sim_card_history.py
 run sim_servicewrites.py
