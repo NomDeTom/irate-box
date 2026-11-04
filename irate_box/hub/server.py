@@ -1253,8 +1253,7 @@ def online_names(now):
 def note_client(handler):
     """Record that this address is around. Behind the web server every request arrives from
     loopback, so the forwarded address is what distinguishes one guest from another."""
-    fwd = handler.headers.get("X-Forwarded-For", "")
-    addr = fwd.split(",")[0].strip() if fwd.strip() else handler.client_address[0]
+    addr = handler._client_addr() if hasattr(handler, "_client_addr") else handler.client_address[0]
     if not addr:
         return
     with _seen_lock:
@@ -3144,7 +3143,8 @@ def drop_unvouched(headers):
     del headers[VIA_HEADER]
     if not vouched:
         for name in FORWARDED_HEADERS:
-            del headers[name]
+            if name in headers:
+                del headers[name]
     return vouched
 
 
@@ -3269,7 +3269,12 @@ def request_over():
     handler = getattr(_REQUEST, "handler", None)
     if handler is None:
         return "hub"
-    if not FRONT_SECRET and "X-Forwarded-For" not in handler.headers:
+    forwarded = (
+        handler._forwarded("X-Forwarded-For")
+        if hasattr(handler, "_forwarded")
+        else handler.headers.get("X-Forwarded-For", "")
+    )
+    if not FRONT_SECRET and not forwarded:
         return "loopback"  # the hub run bare: no web server in front, nothing on the network to copy a session
     return "https" if handler._https() else "http"
 
@@ -5001,7 +5006,7 @@ class Handler(BaseHTTPRequestHandler):
         # next request down a connection about to close.
         self._close_after = False
         if ok:
-            drop_unvouched(self.headers)
+            self._vouched = drop_unvouched(self.headers)
             try:
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -5102,7 +5107,7 @@ class Handler(BaseHTTPRequestHandler):
         """What the operator asked for, and what the unit is doing. They differ for the
         second or two the path unit takes to act, and permanently if it is not set up.
         """
-        proxied = "X-Forwarded-For" in self.headers
+        proxied = bool(self._forwarded("X-Forwarded-For"))
         state = next(
             (s["state"] for s in service_status(proxied) if s["name"] == TAILSCALE_NAME),
             "missing",
@@ -5198,7 +5203,7 @@ class Handler(BaseHTTPRequestHandler):
     def _https(self):
         """Over HTTPS: the web server says so (X-Forwarded-Proto, which it always sets, replacing a
         guest's own, and which stays only beside its VIA_SECRET). Run bare, the hub is plain HTTP."""
-        return "X-Forwarded-For" in self.headers and self.headers.get("X-Forwarded-Proto") == "https"
+        return bool(self._forwarded("X-Forwarded-For")) and self._forwarded("X-Forwarded-Proto") == "https"
 
     def _irate_check(self, path):
         """The front's questions (nginx auth_request, Caddy forward_auth), never with a body.
@@ -5277,7 +5282,7 @@ class Handler(BaseHTTPRequestHandler):
         administrator set it (Status tiles: hidden, or for signed-in users or administrators only). The
         services: those of the apps this visitor sees, and the box's own only with the Services tile."""
         # The web server's proxy adds X-Forwarded-For; a direct hit has none.
-        proxied = "X-Forwarded-For" in self.headers
+        proxied = bool(self._forwarded("X-Forwarded-For"))
         viewer = self._viewer()
         unseen = set() if viewer == "admin" else box_unseen(viewer)
         apps_unseen = set() if viewer == "admin" else hidden_tiles(viewer)
@@ -5374,9 +5379,24 @@ class Handler(BaseHTTPRequestHandler):
             + ("; Secure" if self._https() else ""),
         )
 
+    def _forwarded(self, name, default=""):
+        """A header the front sets: read only beside its VIA_SECRET when one is configured. The hub run
+        bare has no front, and keeps believing them as it always did."""
+        if VIA_SECRET and not getattr(self, "_vouched", False):
+            return default
+        return self.headers.get(name, default)
+
     def _client_addr(self):
-        fwd = self.headers.get("X-Forwarded-For", "")
-        return fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
+        """The visitor's address: the front's X-Forwarded-For first entry when it is vouched, else the
+        socket's peer. A forwarded value that is not an IP is ignored, never kept as a name."""
+        fwd = self._forwarded("X-Forwarded-For")
+        if fwd:
+            first = fwd.split(",")[0].strip()
+            try:
+                return str(ipaddress.ip_address(first))
+            except ValueError:
+                pass
+        return self.client_address[0]
 
     def _hue(self, payload, poster):
         """The colour a post is written in: the page's choice, or for someone logged in with none, their
@@ -5567,10 +5587,8 @@ class Handler(BaseHTTPRequestHandler):
         net = net or ap_net()
         if not net:
             return False
-        fwd = self.headers.get("X-Forwarded-For", "")
-        addr = fwd.split(",")[0].strip() if fwd.strip() else self.client_address[0]
         try:
-            return ipaddress.ip_address(addr) in net
+            return ipaddress.ip_address(self._client_addr()) in net
         except ValueError:
             return False
 
@@ -5999,7 +6017,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/box":
-            self.send_json(200, admin_box("X-Forwarded-For" in self.headers))
+            self.send_json(200, admin_box(bool(self._forwarded("X-Forwarded-For"))))
             return
 
         if path == "/admin/moderation":
@@ -6353,8 +6371,8 @@ class Handler(BaseHTTPRequestHandler):
             # login will do (nginx then asks for it). Anything on loopback may ask what a guest may
             # do; an account's answer needs its password.
             mode = access.mode_of(access.read(ACCESS_STATE), "git")
-            fwd = self.headers.get("X-Forwarded-For", "")
-            account = accounts.check_basic(self.headers.get("Authorization", ""), device_of(fwd) or fwd)
+            addr = self._client_addr()
+            account = accounts.check_basic(self.headers.get("Authorization", ""), device_of(addr) or addr)
             ok = gitrepos.decide(
                 self.headers.get("X-Original-URI", ""),
                 self.headers.get("X-Original-Method", "GET"),

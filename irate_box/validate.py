@@ -44,7 +44,7 @@ CARD_RE = re.compile(r"^sd[a-z]{1,2}$")
 FS_UUID_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9.-]{0,63}$")
 UNIT_RE = re.compile(r"^[A-Za-z0-9@_][A-Za-z0-9@_.-]*\.service$")
 KEY_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
-TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
 
 
 class Invalid(ValueError):
@@ -174,6 +174,15 @@ def fs_uuid(value):
     value = _need(value, "The filesystem UUID")
     if not FS_UUID_RE.fullmatch(value):
         raise Invalid("The filesystem UUID is not valid.")
+    return value
+
+
+def token(value, what="The session token", low=20, high=100):
+    """A session cookie's shape: the URL-safe letters, digits, '-' and '_' that token_urlsafe makes,
+    with a length before anything hashes or looks it up."""
+    value = _need(value, what)
+    if not low <= len(value) <= high or not TOKEN_RE.fullmatch(value):
+        raise Invalid(f"{what} is not valid.")
     return value
 
 
