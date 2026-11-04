@@ -9,6 +9,7 @@
   let lastAt = 0;
   let lastPins = null;
   let lastOverlay = null;
+  let lastAssignments = new Map();
   const say = (text, ok) => { const n = $('pins-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const ovSay = (text, ok) => { const n = $('pins-overlay-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const dispSay = (text, ok) => { const n = $('pins-display-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
@@ -63,6 +64,7 @@
       if (hwResponse.ok) {
         const hw = await hwResponse.json();
         data.overlay = overlayFromHardware(hw) || data.overlay;
+        data.assignments = hw.assignments || data.assignments || [];
         if (!data.pins && hw.pins && hw.pins.header) data.pins = hw.pins;
       }
     } catch (_) { /* the pin page's own copy still stands */ }
@@ -79,9 +81,20 @@
     if (pin.label) return pin.label;
     return pin.name || (pin.gpio === null || pin.gpio === undefined ? 'power' : `GPIO${pin.gpio}`);
   }
+  function assignmentFor(pin) {
+    return pin && typeof pin.pin === 'number' ? lastAssignments.get(pin.pin) : null;
+  }
+  function pinState(pin) {
+    if (pin.type !== 'gpio') return pin.type;
+    const assigned = assignmentFor(pin);
+    if (assigned && assigned.state === 'conflict') return 'conflict';
+    if (assigned && !pin.used) return 'assigned';
+    return pin.used ? 'taken' : 'free';
+  }
   function pinDetails(pin) {
     if (pin.type !== 'gpio') return pin.type === 'gnd' ? 'ground' : 'power';
-    const bits = [pin.used ? pin.consumer || 'taken' : 'free'];
+    const assigned = assignmentFor(pin);
+    const bits = [pin.used ? pin.consumer || 'taken' : assigned ? `assigned ${assigned.role}` : 'free'];
     if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
     return bits.join(' · ');
   }
@@ -89,19 +102,26 @@
     if (pin.type === '3v3') return 'pin-3v3';
     if (pin.type === '5v') return 'pin-5v';
     if (pin.type === 'gnd') return 'pin-gnd';
-    return pin.used ? 'pin-taken' : 'pin-free';
+    const state = pinState(pin);
+    return state === 'conflict' ? 'pin-conflict' : state === 'assigned' ? 'pin-assigned' : state === 'taken' ? 'pin-taken' : 'pin-free';
   }
   function pinMark(pin) {
     if (pin.type === '3v3') return '3V3';
     if (pin.type === '5v') return '5V';
     if (pin.type === 'gnd') return 'GND';
-    if (pin.type === 'gpio' && pin.used) return '●';
+    const state = pinState(pin);
+    if (state === 'conflict') return '!';
+    if (state === 'assigned') return '○';
+    if (state === 'taken') return '●';
     return '';
   }
   function pinTitle(pin) {
     const bits = [`Pin ${pin.pin}`, pinLabel(pin)];
     if (pin.type !== 'gpio') bits.push(pin.type === 'gnd' ? 'ground' : 'power');
-    else bits.push(pin.used ? `taken by ${pin.consumer || 'a function'}` : 'free');
+    else {
+      const assigned = assignmentFor(pin);
+      bits.push(pin.used ? `taken by ${pin.consumer || 'a function'}` : assigned ? `assigned to ${assigned.role}` : 'free');
+    }
     return bits.join(', ');
   }
   function pinSquare(pin) {
@@ -129,7 +149,8 @@
     return box;
   }
   function pinCard(pin) {
-    const cls = pin.type === 'gpio' ? (pin.used ? 'used' : 'free') : 'power';
+    const state = pinState(pin);
+    const cls = pin.type === 'gpio' ? (state === 'taken' ? 'used' : state) : 'power';
     const card = document.createElement('div');
     card.className = `pin ${cls} ${pinTypeClass(pin)}`;
     card.title = pinTitle(pin);
@@ -257,6 +278,11 @@
     return lines.join('\n');
   }
   function render(data) {
+    lastAssignments = new Map(
+      ((data && data.assignments) || [])
+        .filter((item) => item && typeof item.pin === 'number')
+        .map((item) => [item.pin, item]),
+    );
     renderOverlay(data && data.overlay);
     const pins = data && data.pins;
     $('pins-copy').disabled = true;
