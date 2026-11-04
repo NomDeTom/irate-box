@@ -19,6 +19,7 @@ import os
 import re
 from pathlib import Path
 
+from irate_box import validate
 from irate_box.msg import M, Refused
 from irate_box.root import safeio
 
@@ -80,10 +81,10 @@ def dropin_text(unit, paths):
     lines = [
         "# Written by irate-box (servicewrites.py): these paths in RAM for this service, lost at each restart.",
         "[Service]",
-        "RuntimeDirectory=" + " ".join(dirs),
+        validate.config_line("RuntimeDirectory", " ".join(dirs)),
         "RuntimeDirectoryPreserve=yes",
     ]
-    lines += [f"BindPaths=/run/{d}:{p}" for d, p in zip(dirs, paths, strict=True)]
+    lines += [validate.config_line("BindPaths", f"/run/{d}:{p}") for d, p in zip(dirs, paths, strict=True)]
     return "\n".join(lines) + "\n"
 
 

@@ -323,9 +323,11 @@ def nm_properties(settings, kind):
                     "on this box. To start the hotspot, clear the option that lets older WPA2 devices join.",
                 )
             )
+        if not PASSWORD_RE.match(str(settings.get("password", ""))):
+            raise Refused(BAD_PASSWORD)
         return {
             "802-11-wireless-security.key-mgmt": "sae",
-            "802-11-wireless-security.psk": settings["password"],
+            "802-11-wireless-security.psk": str(settings["password"]),
             "802-11-wireless-security.pmf": "3",
         }
     raise Refused(M("hotspot.security.unknown", "Unknown hotspot security mode {kind}.", kind=kind))
