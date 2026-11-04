@@ -47,6 +47,8 @@ run sim_hardware.py
 run sim_overlays.py
 run sim_hardware_set.py
 run sim_hardware_service.py
+run sim_pinsgpio.py
+run sim_pinhog.py
 run sim_lost_writes.py
 run sim_bootkey.py
 run sim_powerwatch.py

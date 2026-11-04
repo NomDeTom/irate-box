@@ -86,6 +86,12 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "hw-set", "choice": "<one of the Box doctor's hardware choices>"}
       One hardware setting (USB gadget, drive, LED, radios, clock, RTC, serial pins, watchdog) through
       the same gate the Box doctor uses, then the published hardware status again.
+  {"id": ..., "action": "pins-gpio", "pin": <header pin>, "mode": "in"|"out", "bias": "none"|"up"|"down", "value": 0|1|null}
+      One free header pin read once or set once through libgpiod (pinsgpio.py), then released.
+  {"id": ..., "action": "pins-hog", "pin": <header pin>, "mode": "in"|"out", "bias": "none"|"up"|"down",
+   "value": 0|1|null} | "remove": true
+      One header pin held by a gpio-hog in irate-box-pin-hogs.dtbo (pinhog.py), applied at the next
+      restart; removing the last hog removes the overlay.
   {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
@@ -8241,6 +8247,40 @@ def hardware_set(req):
         hardware.write_status()
 
 
+def pins_gpio(req):
+    """One free header pin read once or set once, through libgpiod (pinsgpio.py)."""
+    from irate_box.root import pinsgpio
+
+    pin = req.get("pin")
+    mode = req.get("mode")
+    if type(pin) is not int or mode not in ("in", "out"):
+        raise Refused(M("control.pins-gpio.bad", "Name a header pin and whether it is read or set."))
+    try:
+        return pinsgpio.set_pin(pin, mode, req.get("bias") or "none", req.get("value"))
+    finally:
+        hardware.write_status()
+
+
+def pins_hog(req):
+    """One pin held by a boot-time gpio-hog (pinhog.py), or its removal."""
+    from irate_box.root import pinhog
+
+    pin = req.get("pin")
+    if type(pin) is not int:
+        raise Refused(M("control.pins-hog.bad", "Name a header pin."))
+    try:
+        if req.get("remove") is True:
+            return pinhog.remove(pin)
+        mode = req.get("mode")
+        bias = req.get("bias") or "none"
+        value = req.get("value")
+        if mode not in ("in", "out") or bias not in ("none", "up", "down") or value not in (None, 0, 1):
+            raise Refused(M("control.pins-hog.bad-setting", "Name a pin, its mode and its pull or level."))
+        return pinhog.add(pin, mode, bias, value)
+    finally:
+        hardware.write_status()
+
+
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
     from irate_box.root import lcdtouch, pinmap
@@ -9232,6 +9272,8 @@ ACTIONS = {
     "hw-status": hardware_status,
     "hw-set": hardware_set,
     "pins": pins,
+    "pins-gpio": pins_gpio,
+    "pins-hog": pins_hog,
     "pins-overlay": pins_overlay,
     "pins-display": pins_display,
     "pins-test": pins_test,

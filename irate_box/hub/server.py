@@ -7781,8 +7781,42 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/pins":
             act = payload.get("action")
+            pin = payload.get("pin")
+            mode = payload.get("mode")
+            bias = payload.get("bias", "none")
+            value = payload.get("value")
+            level = value is None or (type(value) is int and value in (0, 1))
             if act == "pins":
                 self.send_json(202, {"id": control_request({"action": "pins"})})
+            elif (
+                act == "pins-gpio"
+                and type(pin) is int
+                and mode in ("in", "out")
+                and bias in ("none", "up", "down")
+                and level
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "pins-gpio", "pin": pin, "mode": mode, "bias": bias, "value": value}
+                        )
+                    },
+                )
+            elif (
+                act == "pins-hog"
+                and type(pin) is int
+                and (
+                    payload.get("remove") is True
+                    or (mode in ("in", "out") and bias in ("none", "up", "down") and level)
+                )
+            ):
+                body = {"action": "pins-hog", "pin": pin}
+                if payload.get("remove") is True:
+                    body["remove"] = True
+                else:
+                    body.update(mode=mode, bias=bias, value=value)
+                self.send_json(202, {"id": control_request(body)})
             elif act == "pins-overlay" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "pins-overlay", "on": payload["on"]})})
             elif act == "pins-display" and type(payload.get("on")) is bool:

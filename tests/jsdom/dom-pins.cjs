@@ -308,6 +308,71 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       && /Enable the overlay/.test(text('pins-display-state')),
     [text('pins-display-state'), d.getElementById('pins-display-toggle').disabled],
   );
+  // A free pin: read once, then keep it set as a pin hog pending a restart, then remove it.
+  const gpioMap = map(Date.now() / 1000);
+  gpioMap.header = [
+    { pin: 7, type: 'gpio', name: 'GPIO0_A2', gpio: 2, rmio: 2, role: '', consumer: '', used: false },
+    { pin: 8, type: 'gpio', name: 'GPIO0_C6', gpio: 22, rmio: 22, role: '', consumer: '', used: false },
+  ];
+  w.rkRenderPins({ pins: gpioMap, assignments: [] });
+  const pinSelect = d.getElementById('pins-gpio-pin');
+  check(
+    'read or keep a pin: the free header pins are offered',
+    pinSelect.options.length === 2 && /Pin 7/.test(pinSelect.textContent) && !d.getElementById('pins-gpio-read').disabled,
+    [pinSelect.options.length, pinSelect.textContent],
+  );
+  posted.length = 0;
+  d.getElementById('pins-gpio-read').click();
+  await wait(100);
+  check(
+    '  Read once sends pins-gpio for the chosen pin',
+    posted.length === 1 && posted[0].action === 'pins-gpio' && posted[0].pin === 7 && posted[0].mode === 'in',
+    posted,
+  );
+  state = {
+    pins: gpioMap,
+    overlay: { supported: true, on: false, enabled: false, installed: false, active: false, pending: false },
+    assignments: [],
+    pending: 0,
+    results: [{ id: 'p8', ok: true, msg: { id: 'pins-gpio.in.low', en: 'Pin 7 reads low.' } }],
+  };
+  await wait(700);
+  check('  the answer is shown', /Pin 7 reads low/.test(text('pins-gpio-note')), text('pins-gpio-note'));
+  posted.length = 0;
+  d.getElementById('pins-gpio-hog').click();
+  await wait(50);
+  check('  Keep it set asks before changing the boot files', !!d.querySelector('.aw-ask'));
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  the pin hog sent',
+    posted.length === 1 && posted[0].action === 'pins-hog' && posted[0].pin === 7 && posted[0].mode === 'in',
+    posted,
+  );
+  state = {
+    ...state,
+    assignments: [
+      { pin: 7, role: 'Pin hog', by: 'pinhog', state: 'idle', source: 'pinhog', pending: true, mode: 'input', bias: 'none', value: null },
+    ],
+    results: [{ id: 'p9', ok: true, msg: { id: 'pinhog.added.in', en: 'Pin 7 is held as an input. Restart the box to apply it.' } }],
+  };
+  await wait(700);
+  check(
+    '  the hog is listed, waiting for a restart, and the pin is no longer free',
+    /After a restart/.test(text('pins-hogs')) && ![...pinSelect.options].some((option) => option.value === '7'),
+    [text('pins-hogs'), pinSelect.textContent],
+  );
+  posted.length = 0;
+  const remove = [...d.querySelectorAll('#pins-hogs button')].find((button) => button.textContent === 'Remove');
+  remove.click();
+  await wait(50);
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  Remove sends pins-hog with remove',
+    posted.length === 1 && posted[0].action === 'pins-hog' && posted[0].remove === true && posted[0].pin === 7,
+    posted,
+  );
   check('no page errors', errors.length === 0, errors);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

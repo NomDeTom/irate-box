@@ -6908,6 +6908,19 @@ label > .aw-onoff-box ~ .chip-group,
 .pin-overlay h3 {
   margin-top: 0;
 }
+.pin-gpio-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  margin: 0.6rem 0;
+}
+.pin-gpio-form label {
+  margin: 0;
+}
+#pins-hogs {
+  margin-top: 0.6rem;
+}
 
 /* --- Pin map: the header drawing, a narrow strip with the words outward --- */
 .pinheader {

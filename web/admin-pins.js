@@ -10,6 +10,7 @@
   let lastPins = null;
   let lastOverlay = null;
   let lastAssignments = new Map();
+  const gpioSay = (text, ok) => { const n = $('pins-gpio-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const say = (text, ok) => { const n = $('pins-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const ovSay = (text, ok) => { const n = $('pins-overlay-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const dispSay = (text, ok) => { const n = $('pins-display-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
@@ -294,7 +295,108 @@
     drawHeader(pins.header || []);
     drawClaims(pins.lines || []);
     drawRoles(pins.header || []);
+    fillPinChoices(pins.header || []);
+    renderHogs((data && data.assignments) || []);
     $('pins-copy').disabled = false;
+  }
+  function fillPinChoices(header) {
+    const select = $('pins-gpio-pin');
+    if (!select) return;
+    const chosen = select.value;
+    const free = header.filter((pin) => pin.type === 'gpio' && pinState(pin) === 'free');
+    select.replaceChildren(
+      ...(free.length
+        ? free.map((pin) => {
+            const option = document.createElement('option');
+            option.value = String(pin.pin);
+            option.textContent = `Pin ${pin.pin} — ${pinLabel(pin)}`;
+            return option;
+          })
+        : [Object.assign(document.createElement('option'), { value: '', textContent: 'No free pin' })]),
+    );
+    if (free.some((pin) => String(pin.pin) === chosen)) select.value = chosen;
+    $('pins-gpio-read').disabled = !free.length;
+    $('pins-gpio-hog').disabled = !free.length;
+  }
+  function renderHogs(assignments) {
+    const host = $('pins-hogs');
+    if (!host) return;
+    const hogs = assignments.filter((item) => item && item.source === 'pinhog' && typeof item.pin === 'number');
+    host.replaceChildren();
+    if (!hogs.length) {
+      host.append(
+        Object.assign(document.createElement('p'), {
+          className: 'setting-desc',
+          textContent: 'No pin is held by a pin hog.',
+        }),
+      );
+      return;
+    }
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const title of ['Pin', 'Held as', 'Applied', '']) {
+      const th = document.createElement('th');
+      th.textContent = title;
+      headRow.append(th);
+    }
+    head.append(headRow);
+    const body = document.createElement('tbody');
+    for (const hog of hogs) {
+      const tr = document.createElement('tr');
+      const how = hog.mode === 'output' ? `Output ${hog.value ? 'high' : 'low'}` : 'Input';
+      const pull = hog.bias && hog.bias !== 'none' ? `, pull-${hog.bias}` : '';
+      for (const value of [String(hog.pin), how + pull, hog.pending ? 'After a restart' : hog.state === 'conflict' ? 'Conflict' : 'Now']) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.append(td);
+      }
+      const td = document.createElement('td');
+      const button = document.createElement('button');
+      button.className = 'action-btn';
+      button.type = 'button';
+      button.textContent = 'Remove';
+      button.addEventListener('click', async () => {
+        if (!(await AW.confirmHere(`Remove pin ${hog.pin}'s pin hog? A restart applies it.`, { anchor: button, label: 'Remove' }))) return;
+        button.disabled = true;
+        gpioSay('Removing the pin hog…', true);
+        try {
+          const reply = await post({ action: 'pins-hog', pin: hog.pin, remove: true });
+          await waitPin(reply.id, button);
+        } catch (err) {
+          gpioSay(err.message || 'The pin hog could not be removed.', false);
+          button.disabled = false;
+        }
+      });
+      td.append(button);
+      tr.append(td);
+      body.append(tr);
+    }
+    table.append(head, body);
+    host.append(table);
+  }
+  async function waitPin(id, button) {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      let data;
+      try { data = await get(); } catch (_) { continue; }
+      const done = (data.results || []).find((result) => result.id === id);
+      if (!done) continue;
+      render(data);
+      gpioSay(answerSaid(done) || (done.ok ? 'Done.' : 'The pin action failed.'), done.ok);
+      if (button) button.disabled = false;
+      return;
+    }
+    gpioSay('The pin action was not confirmed in time.', false);
+    if (button) button.disabled = false;
+  }
+  function pinChoice() {
+    const mode = $('pins-gpio-mode').value;
+    const pin = Number($('pins-gpio-pin').value);
+    const body = { pin, mode, bias: $('pins-gpio-bias').value };
+    if (mode === 'out') body.value = Number($('pins-gpio-value').value);
+    return body;
   }
   async function copyText(text) {
     try {
@@ -373,6 +475,45 @@
     renderOverlay(lastOverlay);
     dispSay('The display change was not confirmed in time.', false);
   }
+  $('pins-gpio-mode').addEventListener('change', () => {
+    $('pins-gpio-value-box').hidden = $('pins-gpio-mode').value !== 'out';
+  });
+  $('pins-gpio-read').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const body = pinChoice();
+    if (!body.pin) return;
+    button.disabled = true;
+    gpioSay('Reading the pin…', true);
+    try {
+      const reply = await post({ action: 'pins-gpio', ...body });
+      await waitPin(reply.id, button);
+    } catch (err) {
+      gpioSay(err.message || 'The pin could not be read.', false);
+      button.disabled = false;
+    }
+  });
+  $('pins-gpio-hog').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const body = pinChoice();
+    if (!body.pin) return;
+    const how = body.mode === 'out' ? `an output, ${body.value ? 'high' : 'low'}` : 'an input';
+    if (
+      !(await AW.confirmHere(`Keep pin ${body.pin} as ${how} from boot? This changes the boot files; a restart applies it.`, {
+        anchor: button,
+        label: 'Keep it set',
+      }))
+    )
+      return;
+    button.disabled = true;
+    gpioSay('Saving the pin hog…', true);
+    try {
+      const reply = await post({ action: 'pins-hog', ...body });
+      await waitPin(reply.id, button);
+    } catch (err) {
+      gpioSay(err.message || 'The pin hog could not be saved.', false);
+      button.disabled = false;
+    }
+  });
   $('pins-scan').addEventListener('click', async () => {
     $('pins-scan').disabled = true;
     say('Reading the GPIO lines…', true);

@@ -337,6 +337,22 @@
         "control/lcdtouch.json"
       ]
     },
+    "pins-gpio": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json"
+      ]
+    },
+    "pins-hog": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json"
+      ]
+    },
     "pins-overlay": {
       "https_only": true,
       "policy": false,
