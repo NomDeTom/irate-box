@@ -33,7 +33,7 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box import durable
+from irate_box import durable, validate
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -783,7 +783,9 @@ def check_basic(header, addr=""):
 def session(token):
     """The account a session cookie belongs to, or None: only while the session is current and
     the account a user (not waiting, not switched off). Renewed once a day while in use."""
-    if not isinstance(token, str) or not 20 <= len(token) <= 100:
+    try:
+        token = validate.token(token)
+    except ValueError:
         return None
     now = time.time()
     data = _load()
@@ -809,7 +811,9 @@ def session(token):
 def session_device(token):
     """The hardware address of the hotspot device a session was made on, or None (made elsewhere, or before
     sessions kept one)."""
-    if not isinstance(token, str) or not 20 <= len(token) <= 100:
+    try:
+        token = validate.token(token)
+    except ValueError:
         return None
     s = _load()["sessions"].get(_digest(token))
     return s.get("device") if isinstance(s, dict) and isinstance(s.get("device"), str) else None
@@ -822,9 +826,13 @@ def has_session(name):
 
 
 def logout(token):
+    try:
+        token = validate.token(token)
+    except ValueError:
+        return
     with _lock:
         data = _load()
-        if data["sessions"].pop(_digest(token or ""), None) is not None:
+        if data["sessions"].pop(_digest(token), None) is not None:
             _save(data)
 
 
