@@ -149,7 +149,7 @@
       body: feedBody(feed),
     });
   }
-  function addCard() {
+  function addParts() {
     const url = el("input", { type: "url", placeholder: "https://example.org/feed.xml", spellcheck: false });
     const title = el("input", { type: "text", placeholder: "Name (optional)" });
     const add = el("button", { type: "button", className: "action-btn primary", textContent: "Add feed" });
@@ -162,24 +162,28 @@
         })
         .catch((e) => say(fault(e), true));
     });
-    return AW.sourceCard({
-      id: "podcast-add",
-      title: "Add a feed",
-      source: "an RSS or Atom address",
-      state: "URL and an optional name",
-      facts: ["Schedule: shared"],
+    return {
       body: [
         el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Feed URL" }), url),
         el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Name" }), title),
         note,
         el("p", { className: "library-buttons" }, add),
       ],
+    };
+  }
+  function addCard() {
+    return AW.sourceCard({
+      id: "podcast-add",
+      title: "Add a feed",
+      source: "an RSS or Atom address",
+      state: "URL and an optional name",
+      facts: ["Schedule: shared"],
+      body: addParts().body,
       actions: [AW.enterButton()],
     });
   }
   function feedView() {
     const feeds = snap.feeds;
-    const add = addCard();
     if (feeds.length > 9) {
       const items = feeds.map((feed) => ({
         id: `feed-${feed.id}`,
@@ -190,12 +194,20 @@
         actions: [actionButton("Check now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)), { className: "small" })],
         body: feedBody(feed),
       }));
-      return [
-        AW.sourceList(items, { id: "podcast-feeds" }),
-        el("div", { className: "card-grid source-grid" }, add),
-      ];
+      const add = addParts();
+      items.push({
+        id: "podcast-add-row",
+        title: "Add a feed",
+        summary: "an RSS or Atom address",
+        badges: [],
+        actions: [actionButton("enter details", (event) => {
+          event.currentTarget.closest(".aw-row")?.querySelector(".source-row-head")?.click();
+        }, { className: "small tinted" })],
+        body: add.body,
+      });
+      return [AW.sourceList(items, { id: "podcast-feeds" })];
     }
-    return [el("div", { className: "card-grid source-grid" }, ...feeds.map(feedCard), add)];
+    return [el("div", { className: "card-grid source-grid" }, ...feeds.map(feedCard), addCard())];
   }
 
   function opml() {

@@ -4695,6 +4695,11 @@ label > .select-chips {
 .source-row.has-tick .source-row-head {
   grid-column: 2;
 }
+.action-btn.tinted {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .source-row-actions {
   grid-column: 2;
   margin: 0;
