@@ -17,9 +17,10 @@
  ],
  "consent": "These tools read and write raw storage. ddrescue and testdisk can overwrite a disk if you select the wrong destination. The overwrite cannot be undone. Read their prompts. Install the toolkit only while you need it.",
  "notes": [
-  "A box without internet cannot download these tools when the card starts to fail. Keep the toolkit in the cache (System → Toolkits). Then you can install it from the cache.",
+  "A box without internet cannot download these tools when the card starts to fail. Keep the toolkit in the cache (System \u2192 Toolkits). Then you can install it from the cache.",
   "f3write and f3read show if a storage device is fake or failing. The time depends on the size and the hardware. Name the source and the destination before you start ddrescue. ddrescue copies the data that a failing device still gives into an image. You can write the image to a new device.",
   "smartctl reads SMART data from USB disks that report it. SD cards do not report SMART data."
  ],
- "remove_after_hours": 24
+ "remove_after_hours": 24,
+ "tagline": "Storage recovery and testing"
 }

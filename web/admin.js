@@ -284,6 +284,7 @@ const lib = {
   allNote: document.getElementById("library-all-note"),
   sources: document.getElementById("library-sources"),
   add: document.getElementById("library-add"),
+  addNote: document.getElementById("library-add-note"),
   policy: document.getElementById("library-policy"),
   token: document.getElementById("library-token"),
   tokenState: document.getElementById("library-token-state"),
@@ -331,6 +332,18 @@ const onOffLine = (tag, props, ...kids) => {
   return line;
 };
 const mb = (bytes) => (bytes ? `${Math.round(bytes / 2 ** 20)} MB` : "");
+// A terse schedule value for a card: the long sentence belongs in the drawer.
+const scheduleShort = (hours) => {
+  const h = Number(hours) || 0;
+  return h === 24 ? "daily" : h === 168 ? "weekly" : h === 6 ? "every 6 h" : h ? `${h} h` : "manual";
+};
+// A terse moment for a card ("04 Nov, 03:09"); the long line is in the drawer.
+const whenShort = (value) => {
+  if (!value) return "";
+  const ms = typeof value === "number" ? value * 1000 : Date.parse(value);
+  if (Number.isNaN(ms)) return String(value).replace("T", " ").replace("Z", " UTC");
+  return new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+};
 const where = (source) =>
   source.type === "kiwix"
     ? `Kiwix's catalogue, ${source.kiwix_name}${source.flavour ? ` (${source.flavour})` : ""}`
@@ -408,107 +421,91 @@ function noteFor(key) {
   });
 }
 
-function sourceRow(src, st, busy) {
-  const cur = st.current || {};
-  const latest = st.latest || {};
-  const archive = st.archive || [];
-  const key = `book:${src.name}`;
-  const button = (label, body, opts = {}) =>
-    el("button", {
+// One book, one card or one short-list line: the same source card as the Git repositories. A book with no
+// source says so on its card.
+function bookParts(b) {
+  const st = b.status || {}, src = b.source;
+  const pol = (lastLibrary && lastLibrary.policy) || {};
+  const budget = Number(pol.books_budget_mb) || 0;
+  const checked = st.last_check ? whenShort(st.last_check) : "";
+  const newer = b.state === "newer";
+  const body = [
+    !src && b.description ? el("p", { className: "setting-desc", textContent: b.description }) : null,
+    src && st.current && st.current.version ? el("p", { className: "setting-desc", textContent: `Installed: ${st.current.label || st.current.version} (${mb(st.current.size)}, ${st.current.installed})` }) : null,
+    src && newer && st.latest && st.latest.version ? el("p", { className: "setting-desc", textContent: `Available: ${st.latest.label || st.latest.version} (${mb(st.latest.size)})` }) : null,
+    src && (st.archive || []).length ? el("p", { className: "setting-desc", textContent: `Retained versions: ${st.archive.join(", ")}` }) : null,
+    src && st.error ? el("a", { className: "setting-desc bad", href: "#updoctor", textContent: `${errorSaid(st)} See the Updates doctor.` }) : null,
+  ];
+  if (src) {
+    body.push(
+      (st.archive || []).length
+        ? el("p", { className: "library-buttons" },
+            actionButton("Roll back", () => libAct(`book:${src.name}`, { action: "rollback", name: src.name }), { className: "small" }))
+        : null,
+      el("p", { className: "library-buttons source-danger" },
+        actionButton("Stop tracking", () => libAct(`book:${src.name}`, { action: "remove", name: src.name }), { className: "small" })));
+  }
+  return {
+    title: b.title,
+    source: src ? where(src) : `${b.name}.zim · by hand or USB`,
+    pill: src ? AW.updatePill(st.last_check, newer, !!st.error) : null,
+    state: src ? (checked ? `Checked ${checked} · ${STATE_WORDS[b.state] || b.state}` : "Not checked yet") : "Managed updates: none",
+    facts: src
+      ? ["Access: Guests", `Updates: ${src.type}`, `${b.size ? size(b.size) : "0 MB"} of ${budget ? `${budget} MB` : "free"}`]
+      : ["Access: Guests", "Managed updates: none", b.size ? size(b.size) : "0 MB"],
+    actions: src ? [
+      actionButton("Check now", () => libAct(`book:${src.name}`, { action: "check", names: [src.name] }), { className: "small" }),
+      actionButton("Update", () => libAct(`book:${src.name}`, { action: "update", names: [src.name] }), { className: "small" }),
+    ] : [],
+    body,
+  };
+}
+function bookCard(b) {
+  const parts = bookParts(b);
+  return AW.sourceCard({ id: `book-${b.name}`, ...parts });
+}
+
+// The add-a-source mini-card lives in the Other sources tab: the source templates are chips at its top.
+function bookAddCard() {
+  const form = lib.add;
+  if (!form) return null;
+  const templates = [
+    ["release", "A project's releases"],
+    ["actions", "A fork's Actions builds"],
+    ["nightly-link", "Actions builds via nightly.link"],
+  ];
+  let chosen = "release";
+  const chips = el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Source template" });
+  const drawChips = () => chips.replaceChildren(...templates.map(([value, label]) => {
+    const chip = el("button", {
       type: "button",
-      className: "action-btn",
+      className: `chip${chosen === value ? " selected" : ""}`,
+      role: "radio",
+      "aria-checked": String(chosen === value),
       textContent: label,
-      disabled: busy || !!opts.off,
-      title: opts.title || "",
-      onclick: (event) => {
-        libAct(key, body, event.currentTarget);
-      },
     });
-  // Check finds a newer version; Download downloads and checks it beside the book in use;
-  // Update swaps it in (fetching first if that has not happened).
-  const newer = !!latest.version && latest.version !== cur.version;
-  const fetched =
-    st.fetched && st.fetched.version === latest.version ? st.fetched : null;
-  return el(
-    "div",
-    { className: "setting library-source" },
-    el(
-      "span",
-      {},
-      el(
-        "span",
-        { className: "setting-name" },
-        `${src.name}.zim `,
-        AW.updatePill(st.last_check, newer, !!st.error),
-      ),
-      el("span", {
-        className: "setting-desc",
-        textContent: `${src.type}: ${where(src)}`,
-      }),
-      el("span", {
-        className: "setting-desc",
-        textContent: cur.version
-          ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})`
-          : "The librarian has not installed it yet.",
-      }),
-      newer
-        ? el("span", {
-            className: "setting-desc",
-            textContent: fetched
-              ? `Downloaded: ${fetched.label} (${mb(fetched.size)}), ready to install.`
-              : `Available: ${latest.label} (${mb(latest.size)})`,
-          })
-        : null,
-      archive.length
-        ? el("span", {
-            className: "setting-desc",
-            textContent: `Retained versions: ${archive.join(", ")}`,
-          })
-        : null,
-      st.last_check
-        ? el("span", {
-            className: "setting-desc",
-            textContent: `Checked ${st.last_check}: ${st.outcome || ""}`,
-          })
-        : null,
-      st.error
-        ? el("a", {
-            className: "setting-desc bad",
-            href: "#updoctor",
-            textContent: `${errorSaid(st)} See the Updates doctor.`,
-          })
-        : null,
-      el(
-        "span",
-        { className: "library-buttons" },
-        button("Check now", { action: "check", names: [src.name] }),
-        button("Download", { action: "fetch", names: [src.name] }, {
-          off: !newer || fetched,
-          title: !newer
-            ? "Select Check now first. No newer version is known."
-            : fetched
-              ? "Already downloaded"
-              : "",
-        }),
-        button("Install", { action: "update", names: [src.name] }),
-        archive.length
-          ? button(
-              "Roll back",
-              { action: "rollback", name: src.name },
-              {
-                title: `Restores version ${archive[0]} as ${src.name}.zim. The librarian keeps the current version.`,
-              },
-            )
-          : null,
-        button(
-          "Stop tracking",
-          { action: "remove", name: src.name },
-          { title: `The book stays in the library.` },
-        ),
-      ),
-      noteFor(key),
-    ),
-  );
+    chip.addEventListener("click", () => { chosen = value; applySourcePreset(value); drawChips(); });
+    return chip;
+  }));
+  drawChips();
+  return AW.sourceCard({
+    id: "book-add",
+    add: true,
+    title: "Add a book source",
+    source: "a project's releases, Actions builds, or a URL",
+    state: "Template, name and source",
+    facts: ["Access: Guests", "Schedule: shared"],
+    body: [chips, form, lib.addNote],
+    actions: [AW.enterButton()],
+  });
+}
+function renderBookAddCard() {
+  const at = document.getElementById("book-add-card");
+  if (!at) return;
+  AW.redrawIfChanged(at, "book-add", () => {
+    const card = bookAddCard();
+    return card ? [card] : [];
+  });
 }
 
 let lastLibrary = null; // drawn again when the menu is rebuilt, for the apps' own pages
@@ -702,6 +699,7 @@ function renderApps(snap, busy) {
     );
   });
   lastLibrary = snap;
+  if (bookData) renderBooks(bookData);
   renderInventory();
 }
 
@@ -866,6 +864,12 @@ function renderLibrary(snap) {
   // own kind. A kind that is not running says nothing of another's job, and no bar.
   lib.states.forEach((n) => {
     const want = n.dataset.jobKind;
+    // Books has its own data (/admin/books): its idle line is set there, from the same checks as
+    // its cards, but a run in progress still shows on it.
+    if (want === "books") {
+      if (busy && (kind === "books" || kind === "all")) n.textContent = busyText;
+      return;
+    }
     if (want === "now") n.textContent = busy ? busyText : idleText;
     else if (want === "holders" && !busy) n.textContent = "";
     else
@@ -969,14 +973,11 @@ function showTypeFields() {
 }
 
 lib.add.elements.type.addEventListener("change", showTypeFields);
-document.querySelectorAll("[data-preset]").forEach((b) =>
-  b.addEventListener("click", () => {
-    lib.add.reset();
-    for (const [k, v] of Object.entries(PRESETS[b.dataset.preset]))
-      lib.add.elements[k].value = v;
-    showTypeFields();
-  }),
-);
+function applySourcePreset(name) {
+  lib.add.reset();
+  for (const [k, v] of Object.entries(PRESETS[name] || {})) lib.add.elements[k].value = v;
+  showTypeFields();
+}
 lib.add.addEventListener("submit", async (event) => {
   event.preventDefault();
   const fields = lib.add.elements;
@@ -1084,27 +1085,15 @@ document
 let libWasBusy = false;
 let libBusy = false;
 const bk = {
-  q: document.getElementById("books-q"),
-  language: document.getElementById("books-language"),
-  state: document.getElementById("books-state"),
-  kept: document.getElementById("books-kept"),
-  sort: document.getElementById("books-sort"),
-  body: document.querySelector("#books-table tbody"),
-  pageAll: document.getElementById("books-page-all"),
+  cards: document.getElementById("books-cards"),
   summary: document.getElementById("books-summary"),
   page: document.getElementById("books-page"),
   prev: document.getElementById("books-prev"),
   next: document.getElementById("books-next"),
-  bulk: document.getElementById("books-bulk"),
-  selected: document.getElementById("books-selected"),
-  matching: document.getElementById("books-select-matching"),
-  none: document.getElementById("books-select-none"),
 };
-const bookSel = new Set();
 let bookPage = 1;
 let bookData = null;
-let bookOpen = null;
-let bookTimer = null;
+const bookSel = new Set();
 const STATE_WORDS = {
   ok: "up to date",
   newer: "newer available",
@@ -1112,16 +1101,21 @@ const STATE_WORDS = {
   "not installed": "not installed yet",
   unreadable: "Kiwix cannot read it",
 };
+let bookSort = "title";
 const bookQuery = (extra = {}) =>
-  new URLSearchParams({
-    q: bk.q.value.trim(),
-    language: bk.language.value,
-    state: bk.state.value,
-    kept: bk.kept.value,
-    sort: bk.sort.value,
-    page: String(bookPage),
-    ...extra,
-  }).toString();
+  new URLSearchParams({ page: String(bookPage), ...extra }).toString();
+function sortBooks(books) {
+  return [...books].sort((a, b) =>
+    bookSort === "size" ? b.size - a.size : bookSort === "date" ? String(b.date).localeCompare(String(a.date)) : a.title.localeCompare(b.title));
+}
+function bookSortControl() {
+  const sel = el("select", { "aria-label": "Sort books" },
+    el("option", { value: "title", textContent: "Title", selected: bookSort === "title" }),
+    el("option", { value: "size", textContent: "Largest", selected: bookSort === "size" }),
+    el("option", { value: "date", textContent: "Newest", selected: bookSort === "date" }));
+  sel.addEventListener("change", () => { bookSort = sel.value; renderBooks(bookData); });
+  return sel;
+}
 
 async function loadBooks() {
   try {
@@ -1131,10 +1125,72 @@ async function loadBooks() {
   }
 }
 
+// More than nine: Mock controls' short list, with a tick in the line and the bulk actions for that view only.
+function bookTick(b) {
+  const input = el("input", {
+    type: "checkbox",
+    checked: bookSel.has(b.name),
+    ariaLabel: `Select ${b.title}`,
+    onchange: (event) => {
+      if (event.target.checked) bookSel.add(b.name);
+      else bookSel.delete(b.name);
+      paintBookBulk();
+    },
+  });
+  return el("label", { className: "source-tick", title: `Select ${b.title}` }, input);
+}
+function paintBookBulk() {
+  const bar = document.querySelector("#books-cards .books-bulk");
+  if (!bar) return;
+  bar.querySelector(".books-bulk-count").textContent = bookSel.size ? `${bookSel.size} selected` : "No books selected";
+  bar.querySelectorAll("[data-book-bulk]").forEach((b) => { b.hidden = !bookSel.size; });
+}
+function renderBooksList(data) {
+  const items = sortBooks(data.books).map((b) => {
+    const parts = bookParts(b);
+    return {
+      id: `book-${b.name}`,
+      title: parts.title,
+      summary: parts.source,
+      pill: parts.pill,
+      badges: [b.source ? (STATE_WORDS[b.state] || b.state) : "Managed updates: none", b.language || "no language", b.kept ? "managed" : "by hand"],
+      tick: bookTick(b),
+      actions: parts.actions,
+      body: parts.body,
+    };
+  });
+  const bar = el("div", { className: "books-bulk source-bulk" },
+    el("span", { className: "books-bulk-count" }),
+    actionButton("Check", () => libAct("all", { action: "check", names: [...bookSel] }), { className: "small", dataset: { bookBulk: "check" } }),
+    actionButton("Update", () => libAct("all", { action: "update", names: [...bookSel] }), { className: "small", dataset: { bookBulk: "update" } }),
+    actionButton("Stop tracking", async () => {
+      for (const name of [...bookSel]) {
+        try { await libPost({ action: "remove", name }); } catch (_) { /* not tracked */ }
+      }
+      bookSel.clear();
+      loadLibrary();
+      loadBooks();
+    }, { className: "small", dataset: { bookBulk: "untrack" } }));
+  AW.redrawIfChanged(bk.cards, JSON.stringify([data.books, bookSort]), () => {
+    bk.cards.className = "books-list-view";
+    return [bar, AW.sourceList(items, { id: "books-source-list", sort: bookSortControl() })];
+  });
+  paintBookBulk();
+}
+
 function renderBooks(data) {
   bookData = data;
   bookPage = data.page;
   const sm = data.summary;
+  // The Books top line reads the same checks as the cards, not the app-only snapshot.
+  const looked = data.books
+    .map((b) => Date.parse((b.status || {}).last_check))
+    .filter((n) => !Number.isNaN(n));
+  const top = document.querySelector('.library-state[data-job-kind="books"]');
+  if (top && !libBusy) {
+    const last = looked.length ? new Date(Math.max(...looked)).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    top.textContent = libBusy ? top.textContent : last ? `Idle. Last checked ${last}.` : "Idle. Not checked yet.";
+  }
   setupStep(
     "books",
     sm.kept
@@ -1153,134 +1209,23 @@ function renderBooks(data) {
       .filter((k) => st[k])
       .map((k) => ` ${st[k]} ${STATE_WORDS[k]}.`)
       .join("");
-  const langs = Object.keys(sm.languages).sort();
-  if (bk.language.dataset.langs !== langs.join(",")) {
-    const was = bk.language.value;
-    bk.language.dataset.langs = langs.join(",");
-    bk.language.replaceChildren(
-      el("option", { value: "", textContent: "any" }),
-      ...langs.map((l) =>
-        el("option", { value: l, textContent: `${l} (${sm.languages[l]})` }),
-      ),
-    );
-    bk.language.value = langs.includes(was) ? was : "";
-  }
-  const rows = [];
-  for (const b of data.books) {
-    const box = el("input", {
-      type: "checkbox",
-      checked: bookSel.has(b.name),
-      ariaLabel: `Select ${b.title}`,
-      onchange: (event) => {
-        if (event.target.checked) bookSel.add(b.name);
-        else bookSel.delete(b.name);
-        renderBookBulk();
-      },
+  renderBookAddCard();
+  if (data.matching > 9) {
+    renderBooksList(data);
+  } else {
+    const cards = sortBooks(data.books).map(bookCard);
+    AW.redrawIfChanged(bk.cards, JSON.stringify([data.books, bookSort]), () => {
+      bk.cards.className = "card-grid source-grid";
+      return cards.length
+        ? cards
+        : [el("p", { className: "setting-desc", textContent: sm.count ? "No book matches." : "No books yet." })];
     });
-    const open = bookOpen === b.name;
-    rows.push(
-      el(
-        "tr",
-        { className: `book-row state-${b.state.replace(" ", "-")}` },
-        el("td", {}, box),
-        el(
-          "td",
-          {},
-          el("button", {
-            type: "button",
-            className: "link-button",
-            textContent: b.title,
-            ariaExpanded: String(open),
-            onclick: () => {
-              bookOpen = open ? null : b.name;
-              renderBooks(bookData);
-            },
-          }),
-          b.title !== b.name
-            ? el("span", {
-                className: "setting-desc",
-                textContent: ` ${b.name}.zim`,
-              })
-            : null,
-        ),
-        el("td", { textContent: b.language || "—" }),
-        el("td", { textContent: b.size ? size(b.size) : "—" }),
-        el("td", { textContent: b.date || "—" }),
-        el("td", { textContent: b.kept ? `yes (${b.source.type})` : "no" }),
-        el("td", {
-          className: b.state === "ok" ? "" : "bad",
-          textContent: STATE_WORDS[b.state] || b.state,
-        }),
-      ),
-    );
-    if (open) {
-      rows.push(
-        el(
-          "tr",
-          { className: "book-card" },
-          el(
-            "td",
-            { colSpan: 7 },
-            b.source
-              ? sourceRow(b.source, b.status || {}, libBusy)
-              : el("p", {
-                  className: "setting-desc",
-                  textContent:
-                    `${b.name}.zim was put here by hand or from a USB drive. The librarian does not change it. ` +
-                    (b.description ? `“${b.description}”` : ""),
-                }),
-          ),
-        ),
-      );
-    }
   }
-  bk.body.replaceChildren(
-    ...(rows.length
-      ? rows
-      : [
-          el(
-            "tr",
-            {},
-            el("td", {
-              colSpan: 7,
-              className: "setting-desc",
-              textContent: sm.count ? "No book matches." : "No books yet.",
-            }),
-          ),
-        ]),
-  );
-  bk.pageAll.checked =
-    data.books.length > 0 && data.books.every((b) => bookSel.has(b.name));
   bk.page.textContent = `Page ${data.page} of ${data.pages} (${data.matching} matching)`;
   bk.prev.disabled = data.page <= 1;
   bk.next.disabled = data.page >= data.pages;
-  renderBookBulk();
 }
 
-function renderBookBulk() {
-  const n = bookSel.size;
-  bk.bulk.hidden =
-    !n && !(bookData && bookData.matching > bookData.books.length);
-  bk.selected.textContent = n ? `${n} selected:` : "";
-  bk.bulk.querySelectorAll("[data-bulk]").forEach((b) => {
-    b.hidden = !n;
-  });
-  bk.matching.textContent = bookData
-    ? `Select all ${bookData.matching} matching`
-    : "";
-  bk.matching.hidden = !bookData || bookData.matching <= n;
-  bk.none.hidden = !n;
-}
-
-const rebook = () => {
-  bookPage = 1;
-  clearTimeout(bookTimer);
-  bookTimer = setTimeout(loadBooks, 250);
-};
-bk.q.addEventListener("input", rebook);
-[bk.language, bk.state, bk.kept, bk.sort].forEach((filterEl) =>
-  filterEl.addEventListener("change", rebook),
-);
 bk.prev.addEventListener("click", () => {
   bookPage -= 1;
   loadBooks();
@@ -1289,47 +1234,6 @@ bk.next.addEventListener("click", () => {
   bookPage += 1;
   loadBooks();
 });
-bk.pageAll.addEventListener("change", () => {
-  (bookData ? bookData.books : []).forEach((b) => {
-    if (bk.pageAll.checked) bookSel.add(b.name);
-    else bookSel.delete(b.name);
-  });
-  renderBooks(bookData);
-});
-bk.matching.addEventListener("click", async () => {
-  try {
-    (await getJSON(`/admin/books?${bookQuery({ names: "1" })}`)).names.forEach(
-      (n) => bookSel.add(n),
-    );
-    renderBooks(bookData);
-  } catch (err) {
-    say(err.message, false, lib.allNote);
-  }
-});
-bk.none.addEventListener("click", () => {
-  bookSel.clear();
-  renderBooks(bookData);
-});
-document.querySelectorAll("[data-bulk]").forEach((b) =>
-  b.addEventListener("click", async () => {
-    // Every selected name, on any page: the librarian skips one with no source (put here by hand).
-    const names = [...bookSel];
-    if (b.dataset.bulk === "untrack") {
-      for (const name of names) {
-        try {
-          await libPost({ action: "remove", name });
-        } catch (_) {
-          /* not tracked: nothing to stop */
-        }
-      }
-      bookSel.clear();
-      loadLibrary();
-      loadBooks();
-      return;
-    }
-    libAct("all", { action: b.dataset.bulk, names }, event.currentTarget);
-  }),
-);
 
 // --- Kiwix's catalogue (/admin/catalogue), online only ------------------------------------------
 const cat = {
@@ -5613,12 +5517,13 @@ function drawKindState(kind, lines, busy) {
     ].filter(Boolean),
   );
   const packages = (w && w.packages) || [];
+  const wasOpen = !!card.packages.querySelector("details")?.open;
   card.packages.replaceChildren(
     ...(packages.length
       ? [
           el(
             "details",
-            { className: "field-help" },
+            { className: "field-help", open: wasOpen },
             el("summary", {
               textContent: `${packages.length} package${packages.length === 1 ? "" : "s"} waiting`,
             }),
@@ -5698,12 +5603,14 @@ function drawDebianState(lines, scan) {
       noteUnder("unattended"),
     ].filter(Boolean),
   );  // Last, as a package card's builds kept: the packages waiting.
-  document.getElementById("debian-packages").replaceChildren(
+  const debPkgs = document.getElementById("debian-packages");
+  const wasOpen = !!debPkgs.querySelector("details")?.open;
+  debPkgs.replaceChildren(
     ...(packages.length
       ? [
           el(
             "details",
-            { className: "field-help" },
+            { className: "field-help", open: wasOpen },
             el("summary", {
               textContent: `${packages.length} package${packages.length === 1 ? "" : "s"} waiting`,
             }),
@@ -11855,60 +11762,51 @@ async function addDoc(doc, button) {
     loadLibrary();
   }
 }
+const docsWanted = new Set();
 function docsLine(m) {
   const docs = docsOf(m);
   if (!docs.length) return null;
-  const line = el("p", { className: "inv-facts" });
+  const line = el("p", { className: "library-buttons docs-line" });
   for (const doc of docs) {
     const st = docState(doc);
-    const bits = [el("span", { className: "inv-fact", textContent: `Docs: ${doc.title}` })];
+    const bits = [el("span", { className: "setting-name", textContent: `Docs: ${doc.title}` })];
     if (st.onBox) {
       bits.push(
+        AW.pill("On the box", "ok"),
         el("a", {
-          className: "inv-fact",
+          className: "button-link small",
           href: `/wiki/content/${encodeURIComponent(doc.book)}/`,
           target: "_blank",
           rel: "noopener",
           textContent: "Open",
         }),
-        el("span", {
-          className: "inv-fact",
-          textContent: "Kept up to date with Kiwix → Books",
-        }),
+        el("span", { className: "setting-desc", textContent: "Kept up to date with Kiwix → Books" }),
       );
     } else if (st.fetching) {
-      bits.push(el("span", { className: "inv-fact", textContent: "Downloading" }));
+      bits.push(AW.pill("Downloading", "warn"));
     } else if (st.kiwixReady === false) {
-      bits.push(el("span", { className: "inv-fact bad", textContent: "Needs Kiwix" }));
-      const add = actionButton(
-        "Add Kiwix and the book",
-        (event) => addDoc(doc, event.currentTarget),
-        { dataset: { wait: `docs:${doc.book}` } },
+      bits.push(
+        AW.pill("Needs Kiwix", "bad"),
+        el("a", {
+          className: "button-link small",
+          href: "#app-install-wiki",
+          textContent: "Open Kiwix",
+        }),
       );
-      bits.push(add);
     } else if (st.added) {
       bits.push(
-        el("span", {
-          className: "inv-fact",
-          textContent: "Added, not downloaded yet",
+        AW.pill("Added, not downloaded yet", "info"),
+        actionButton("Download now", (event) =>
+          libAct(`docs:${doc.book}`, { action: "update", names: [doc.book] }, event.currentTarget), {
+          className: "small",
+          dataset: { wait: `docs:${doc.book}` },
         }),
-        actionButton(
-          "Download now",
-          (event) =>
-            libAct(
-              `docs:${doc.book}`,
-              { action: "update", names: [doc.book] },
-              event.currentTarget,
-            ),
-          { dataset: { wait: `docs:${doc.book}` } },
-        ),
       );
     } else {
       bits.push(
-        el("span", { className: "inv-fact", textContent: `${doc.size_mb} MB` }),
-      );
-      bits.push(
+        el("span", { className: "setting-desc", textContent: `${doc.size_mb} MB` }),
         actionButton("Add", (event) => addDoc(doc, event.currentTarget), {
+          className: "small",
           dataset: { wait: `docs:${doc.book}` },
         }),
       );
@@ -11945,6 +11843,51 @@ function fillHeadBlocks() {
           textContent: "Open",
         }),
       );
+    }
+    // Read Docs sits beside Open. No docs: greyed. On the box: open them. Missing Kiwix: reveal the
+    // "Needs Kiwix" line and its shortcut. Kiwix there: download the docs.
+    const docs = docsOf(m);
+    const doc = docs[0];
+    if (!doc) {
+      buttons.push(actionButton("Read Docs", () => {}, { disabled: true }));
+    } else {
+      const st = docState(doc);
+      if (st.onBox) {
+        buttons.push(
+          el("a", {
+            className: "action-btn",
+            href: `/wiki/content/${encodeURIComponent(doc.book)}/`,
+            target: "_blank",
+            rel: "noopener",
+            textContent: "Read Docs",
+          }),
+        );
+      } else if (st.fetching) {
+        buttons.push(actionButton("Downloading docs…", () => {}, { disabled: true }));
+      } else if (st.kiwixReady === false) {
+        buttons.push(
+          actionButton("Read Docs", () => {
+            docsWanted.add(id);
+            fillHeadBlocks();
+          }),
+        );
+      } else if (st.added) {
+        buttons.push(
+          actionButton(
+            "Download docs",
+            (event) => libAct(`docs:${doc.book}`, { action: "update", names: [doc.book] }, event.currentTarget),
+            { dataset: { wait: `docs:${doc.book}` } },
+          ),
+        );
+      } else {
+        buttons.push(
+          actionButton(
+            "Download docs",
+            (event) => addDoc(doc, event.currentTarget),
+            { dataset: { wait: `docs:${doc.book}` } },
+          ),
+        );
+      }
     }
     const addon =
       lastAddons && (lastAddons.addons || []).find((x) => x.id === id);
@@ -12022,7 +11965,7 @@ function fillHeadBlocks() {
         buttons.length
           ? el("p", { className: "library-buttons" }, ...buttons)
           : null,
-        docsLine(m),
+        docsWanted.has(id) ? docsLine(m) : null,
       ].filter(Boolean),
     );
   });
@@ -13362,9 +13305,9 @@ let usbPoll = null;
 // Which filesystems root mounts from a USB drive (root/usbstick.py LEVELS), safest first: each one more is a kernel
 // driver a hostile drive can attack. Chosen here, saved at once; the warning beside it says what a wider one adds.
 const USB_FS_LEVELS = [
-  ["common", "FAT, exFAT, NTFS and discs"],
-  ["linux", "and Linux's ext2–4"],
-  ["all", "and btrfs, XFS and F2FS"],
+  ["common", "FAT, exFAT and NTFS"],
+  ["linux", "FAT, exFAT, NTFS and Linux's ext2–4"],
+  ["all", "Every filesystem the box has a driver for"],
 ];
 const USB_FS_WARN = {
   common: "",
@@ -13376,21 +13319,21 @@ function drawUsbFilesystems(data, busy) {
   const box = document.getElementById("usb-filesystems");
   if (!box) return;
   const chosen = data.filesystems || "common";
-  tlsChoices(
-    box,
-    USB_FS_LEVELS,
-    chosen,
-    () => busy,
-    async (value) => {
-      if (value === chosen) return;
-      usbWaiting = {
-        id: (await postJSON("/admin/usb", { action: "filesystems", level: value })).id,
-        at: "scan",
-      };
-      loadUsb();
-    },
-  );
-  box.querySelectorAll("button").forEach((b) => (b.title = ""));
+  if (box.dataset.chosen !== chosen) {
+    box.dataset.chosen = chosen;
+    box.replaceChildren(...USB_FS_LEVELS.map(([value, label]) =>
+      el("option", { value, textContent: label, selected: value === chosen })));
+  }
+  box.disabled = !!busy;
+  box.onchange = async () => {
+    const value = box.value;
+    if (value === chosen) return;
+    usbWaiting = {
+      id: (await postJSON("/admin/usb", { action: "filesystems", level: value })).id,
+      at: "scan",
+    };
+    loadUsb();
+  };
   document.getElementById("usb-filesystems-warn").textContent = USB_FS_WARN[chosen] || "";
 }
 function renderUsb(data) {
@@ -13563,9 +13506,7 @@ const git = {
   form: document.getElementById("git-create"),
   createNote: noteEl("git-create-note"),
   grid: noteEl("git-grid"),
-  search: document.getElementById("git-search"),
-  chipsKind: noteEl("git-chips-kind"),
-  chipsArea: noteEl("git-chips-area"),
+  filter: document.getElementById("git-filter"),
   mirrors: noteEl("git-mirrors"),
   mirrorForm: document.getElementById("git-mirror-add"),
   mirrorNote: noteEl("git-mirror-note"),
@@ -13574,33 +13515,10 @@ const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 // The Git page as cards (Kiwix's library as the model): a filter bar, a card per
 // repository with its badges in words, and Manage, opening under its card.
 let gitData = null;
-const gitView = { kind: "all", area: "all", q: "", open: null };
-const PUSH_WORDS = {
-  everyone: "anyone pushes",
-  admin: "administrators push",
-  nobody: "read-only",
-};
+const gitView = { open: null };
+const gitChecks = {}; // a local repository has no upstream; Check now records when it was read
 const builds = (repo) => repo.can_build && repo.build && repo.has_script;
 const repoKey = (repo) => `${repo.area}/${repo.name}`;
-const STATE_ICON = {
-  passed: "✅",
-  failed: "❌",
-  "timed out": "⏱",
-  interrupted: "⏹",
-  running: "⏳",
-};
-const GIT_KINDS = [
-  ["all", "All", () => true],
-  ["mine", "Local repositories", (repo) => !repo.mirror_of],
-  ["mirrors", "Mirrors", (repo) => !!repo.mirror_of],
-  ["builds", "Builds", builds],
-];
-const GIT_AREAS = [
-  ["all", "All access", () => true],
-  ["public", "Guests", (repo) => repo.area === "public"],
-  ["private", "Administrators", (repo) => repo.area === "private"],
-];
-
 // One sentence for the card: who sees it, who pushes, whether pushes are built.
 function accessSentence(repo) {
   const see =
@@ -13642,128 +13560,57 @@ function renderGit(data) {
     (gitRemoved()
       ? `. Git is removed from this box. The repositories are kept, but nobody can browse, clone or push to them. ${GIT_ADD_BACK}`
       : `. A single push can be up to ${size(data.max_push)}.`);
-  // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
-  const shown = data.repos.filter((repo) => !repo.submodule_of);
-  const chips = (box, list, key) =>
-    box.replaceChildren(
-      ...list.map(([id, label, test]) =>
-        el("button", {
-          type: "button",
-          className: `chip${gitView[key] === id ? " on" : ""}`,
-          textContent: `${label} ${shown.filter(test).length}`,
-          onclick: () => {
-            gitView[key] = id;
-            renderGit(gitData);
-          },
-        }),
-      ),
-    );
-  chips(git.chipsKind, GIT_KINDS, "kind");
-  chips(git.chipsArea, GIT_AREAS, "area");
-  [...git.chipsKind.children, ...git.chipsArea.children].forEach((b) =>
-    b.setAttribute("aria-pressed", b.classList.contains("on")),
-  );
-  const q = gitView.q.toLowerCase();
-  const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
-  const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
-  const list = shown.filter(
-    (repo) =>
-      kindTest(repo) &&
-      areaTest(repo) &&
-      (!q ||
-        repo.name.toLowerCase().includes(q) ||
-        (repo.description || "").toLowerCase().includes(q)),
-  );
-  const cards = [];
-  for (const repo of list) {
-    cards.push(repoCard(repo, data));
-    if (gitView.open === repoKey(repo))
-      cards.push(managePanel(repo, data, "git-drawer"));
-  }
-  if (!list.length)
-    cards.push(
-      el("p", {
-        className: "setting-desc",
-        textContent: shown.length ? "Nothing matches." : "No repositories yet.",
-      }),
-    );
-  // The New card last, after the repositories, its drawer after it.
-  cards.push(newCard());
-  if (gitView.open === "new") cards.push(newPanel("git-drawer"));
-  git.grid.replaceChildren(...cards);
+  // The mirror repositories and their submodules belong to Git Mirrors, not this list.
+  const shown = data.repos.filter((repo) => !repo.submodule_of && !repo.mirror_of);
+  const items = shown.map((repo) => ({
+    id: repoKey(repo),
+    title: repo.name,
+    summary: repo.description || "",
+    badges: [
+      repo.area === "public" ? "Guests" : "Administrators",
+      ...(builds(repo) ? ["Builds"] : []),
+    ],
+  }));
+  const key = JSON.stringify([data.repos, data.mirrors, gitView.open, gitChecks]);
+  AW.redrawIfChanged(git.grid, key, () => {
+    const cards = [];
+    for (const repo of shown) {
+      const card = repoCard(repo, data);
+      card.dataset.repo = "1";
+      card.dataset.text = `${repo.name} ${repo.description || ""}`.toLowerCase();
+      card.dataset.tags = items.find((item) => item.id === repoKey(repo)).badges.join("|");
+      cards.push(card);
+    }
+    if (!shown.length)
+      cards.push(el("p", { className: "setting-desc", textContent: "No repositories yet." }));
+    // The New card last, after the repositories, its drawer after it.
+    cards.push(newCard());
+    return cards;
+  });
+  // The same filter bar as the short lists: a search box, tag chips, a count.
+  AW.redrawIfChanged(git.filter, key, () => (shown.length
+    ? [AW.filterBar(git.grid, ".source-card[data-repo]", items)]
+    : []));
 }
 
 function newCard() {
-  return withAttrs(
-    el(
-      "button",
-      {
-        type: "button",
-        className: "git-card git-new",
-        onclick: () => {
-          gitView.open = gitView.open === "new" ? null : "new";
-          renderGit(gitData);
-        },
-      },
-      el("span", {
-        className: "git-new-plus",
-        textContent: "＋",
-        ariaHidden: "true",
-      }),
-      el("strong", { textContent: "New" }),
-      el("span", {
-        className: "setting-desc",
-        textContent: "An empty repository, or a mirror of one on the internet",
-      }),
-    ),
-    { "aria-expanded": String(gitView.open === "new") },
-  );
+  return AW.sourceCard({
+    id: "git-add",
+    add: true,
+    title: "New repository",
+    source: "an empty repository, or a mirror",
+    state: "Name, access and a description",
+    facts: ["Access", "Clone URL"],
+    body: [git.form, git.createNote],
+    actions: [AW.enterButton()],
+    open: gitView.open === "new",
+    onToggle: (open) => { gitView.open = open ? "new" : null; },
+  });
 }
 const withAttrs = (node, attrs) => {
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
   return node;
 };
-
-function newPanel(cls) {
-  git.form.hidden = false;
-  return el(
-    "div",
-    { className: `git-manage ${cls}` },
-    el(
-      "div",
-      { className: "git-manage-head" },
-      el("strong", { textContent: "New" }),
-      closeButton(),
-    ),
-    el(
-      "section",
-      {},
-      el("h4", { textContent: "An empty repository" }),
-      el("p", {
-        className: "setting-desc",
-        textContent:
-          "Push to it from a computer. Guests: anyone on the network can browse and clone it. Until you change the push setting, only administrators can push. Administrators: only administrators can browse, clone or push.",
-      }),
-      git.form,
-      git.createNote,
-    ),
-    el(
-      "section",
-      {},
-      el("h4", { textContent: "A mirror of a repository on the internet" }),
-      el("p", {
-        className: "setting-desc",
-        textContent:
-          "Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed under Mirrors, below.",
-      }),
-      el("a", {
-        href: "#mirrors",
-        className: "button-link",
-        textContent: "Add a mirror",
-      }),
-    ),
-  );
-}
 
 const closeButton = () =>
   actionButton(
@@ -13794,93 +13641,64 @@ function repoCard(repo, data) {
     ? (data.mirrors || []).find((x) => x.name === repo.name && x.area === repo.area)
     : null;
   const ms = (m && m.status) || {};
-  const b = repo.last_build;
-  const badges = [
-    [repo.area === "public" ? "Guests" : "Administrators", `badge-${repo.area}`],
-    [repo.mirror_of ? "read-only" : PUSH_WORDS[repo.write], "badge-push"],
-    repo.mirror_of ? ["Mirror", "badge-mirror"] : null,
-    builds(repo)
-      ? [
-          b
-            ? `${STATE_ICON[b.state] || ""} build ${b.state}${b.started ? `, ${commitDate(b.started)}` : ""}`
-            : "builds on push",
-          `badge-build${b && b.state === "failed" ? " bad" : ""}`,
-        ]
-      : null,
-  ].filter(Boolean);
-  const facts = repo.mirror_of
-    ? [
-        `from ${repo.mirror_of.replace(/^https:\/\//, "")}`,
-        ms.updated ? `updated ${commitDate(ms.updated)}` : "not downloaded yet",
-        size(repo.size),
-      ]
-    : [
-        repo.last_commit ? `Last commit ${commitDate(repo.last_commit)}` : "Empty",
-        repo.branches
-          ? `${repo.branches} branch${repo.branches === 1 ? "" : "es"}`
-          : null,
-        size(repo.size),
-      ];
   const open = gitView.open === repoKey(repo);
-  return el(
-    "div",
-    { className: `git-card${open ? " open" : ""}` },
-    el(
-      "h4",
-      {},
-      gitRemoved()
-        ? el("span", { textContent: `${repo.name}.git` })
-        : el("a", { href: repo.url, textContent: `${repo.name}.git` }),
-    ),
-    el(
-      "p",
-      { className: "badges" },
-      ...badges.map(([text, cls]) =>
-        el("span", { className: `badge ${cls}`, textContent: text }),
+  const checked = repo.mirror_of ? ms.checked : gitChecks[repoKey(repo)];
+  const newer = repo.mirror_of ? !!(ms.missing && ms.missing.length) : false;
+  const failed = repo.mirror_of ? !!ms.error : false;
+  const when = checked ? new Date(checked * 1000).toLocaleString() : "";
+  return AW.sourceCard({
+    id: `repo-${repoKey(repo)}`,
+    title: `${repo.name}.git`,
+    source: repo.mirror_of ? repo.mirror_of.replace(/^https:\/\//, "") : "Local repository",
+    pill: AW.updatePill(checked, newer, failed),
+    state: checked ? `Checked ${when} · ${ms.outcome || "up to date"}` : "Not checked yet",
+    facts: [
+      `Access: ${repo.area === "public" ? "Guests" : "Administrators"}`,
+      repo.mirror_of ? "Schedule: shared" : "Schedule: on push",
+      `${size(repo.size)}`,
+    ],
+    actions: [
+      actionButton(
+        "Check now",
+        (event) => {
+          if (repo.mirror_of) {
+            const m2 = (gitData.mirrors || []).find((x) => x.name === repo.name && x.area === repo.area);
+            if (m2) {
+              AW.setBusy(event.currentTarget, true);
+              postJSON("/admin/git", { action: "mirror-check", name: m2.name })
+                .then((out) => {
+                  renderGit(out);
+                  say("Started. The outcome shows here when it is done.", true, git.note);
+                })
+                .catch((err) => say(err.message, false, git.note))
+                .finally(() => AW.setBusy(event.currentTarget, false));
+            }
+            return;
+          }
+          gitChecks[repoKey(repo)] = Math.floor(Date.now() / 1000);
+          renderGit(gitData);
+          say("Checked: up to date. A local repository has no upstream.", true, git.note);
+        },
+        { className: "small" },
       ),
-    ),
-    repo.description
-      ? el(
-          "p",
-          { className: "git-about" },
-          el("span", { className: "git-label", textContent: "About " }),
-          repo.description,
-        )
-      : null,
-    el("p", {
-      className: "setting-desc git-facts",
-      textContent: facts.filter(Boolean).join(" · "),
-    }),
-    el("p", {
-      className: "setting-desc git-access",
-      textContent: accessSentence(repo),
-    }),
-    el(
-      "p",
-      { className: "library-buttons" },
       copyUrl(repo),
       repo.mirror_of
-        ? el("a", {
-            href: "#mirrors",
-            className: "button-link small",
-            textContent: "Manage the mirror",
-          })
-        : withAttrs(
-            actionButton(
-              "Manage",
-              () => {
-                gitView.open = open ? null : repoKey(repo);
-                renderGit(gitData);
-              },
-              { className: "small" },
-            ),
-            { "aria-expanded": String(open) },
-          ),
-    ),
-  );
+        ? el("a", { href: "#mirrors", className: "button-link small", textContent: "Open Mirrors" })
+        : null,
+    ],
+    body: [
+      repo.description
+        ? el("p", { className: "setting-desc" }, el("span", { className: "git-label", textContent: "About " }), repo.description)
+        : null,
+      repo.mirror_of ? null : managePanel(repo, data, "source-drawer-manage"),
+    ],
+    open,
+    onToggle: (isOpen) => {
+      gitView.open = isOpen ? repoKey(repo) : null;
+    },
+  });
 }
 
-// Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(repo, data, cls) {
   // Only Delete asks, on the page (confirmText): a move can be moved back.
   const act = (body, confirmText, done) => async (event) => {
@@ -13905,44 +13723,42 @@ function managePanel(repo, data, cls) {
       return false;
     }
   };
-  const radio = (group, value, label, checked, onpick) =>
-    el(
-      "label",
-      { className: "inline" },
-      el("input", {
-        type: "radio",
-        name: `${group}-${repoKey(repo)}`,
-        value,
-        checked,
-        onchange: onpick,
-      }),
-      ` ${label}`,
-    );
+  // A choice is a chip, as every other choice on these cards: not a radio button.
+  const chip = (label, checked, onpick, title) =>
+    el("button", {
+      type: "button",
+      className: `chip${checked ? " selected" : ""}`,
+      role: "radio",
+      "aria-checked": String(checked),
+      title: title || null,
+      textContent: label,
+      onclick: onpick,
+    });
   // Who can see it: the area. Moving changes the clone URL, said under the choices.
   const see = el(
     "fieldset",
     { className: "git-q" },
     el("legend", { textContent: "Who can see it?" }),
-    radio(
-      "see",
-      "public",
-      "Everyone on the network",
-      repo.area === "public",
-      act(
-        { action: "move", area: repo.area, name: repo.name, to: "public" },
-        null,
-        `${repo.name}.git is now visible to guests.`,
+    el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Who can see it?" },
+      chip(
+        "Guests",
+        repo.area === "public",
+        act(
+          { action: "move", area: repo.area, name: repo.name, to: "public" },
+          null,
+          `${repo.name}.git is now visible to guests.`,
+        ),
+        "Everyone on the network can browse and clone it.",
       ),
-    ),
-    radio(
-      "see",
-      "private",
-      "Only administrators",
-      repo.area === "private",
-      act(
-        { action: "move", area: repo.area, name: repo.name, to: "private" },
-        null,
-        `${repo.name}.git is now visible to administrators only.`,
+      chip(
+        "Administrators",
+        repo.area === "private",
+        act(
+          { action: "move", area: repo.area, name: repo.name, to: "private" },
+          null,
+          `${repo.name}.git is now visible to administrators only.`,
+        ),
+        "Only administrators can browse and clone it.",
       ),
     ),
     el("p", {
@@ -13958,22 +13774,29 @@ function managePanel(repo, data, cls) {
     admin: "Only administrators",
     nobody: "Nobody (read-only)",
   };
+  const CHIP_WHO = {
+    everyone: "Anyone",
+    users: "Users",
+    admin: "Administrators",
+    nobody: "Nobody",
+  };
   const push = el(
     "fieldset",
     { className: "git-q" },
     el("legend", { textContent: "Who can push?" }),
+    el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Who can push?" },
     ...presets.map((preset) =>
-      radio(
-        "push",
-        preset.name,
-        WHO[preset.write],
+      chip(
+        CHIP_WHO[preset.write] || WHO[preset.write],
         preset.name === repo.preset,
         act(
           { action: "preset", area: repo.area, name: repo.name, preset: preset.name },
           null,
           `${repo.name}.git: ${preset.text}.`,
         ),
+        preset.text,
       ),
+    ),
     ),
     el("p", {
       className: "setting-desc",
@@ -14231,11 +14054,6 @@ function managePanel(repo, data, cls) {
   );
 }
 
-git.search.addEventListener("input", () => {
-  gitView.q = git.search.value.trim();
-  if (gitData) renderGit(gitData);
-});
-
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {
   // A mirror removed can be mirrored again from upstream: it acts at once.
@@ -14258,7 +14076,7 @@ function renderMirrors(data) {
     }
   };
   const list = data.mirrors || [];
-  git.mirrors.replaceChildren(
+  AW.redrawIfChanged(git.mirrors, JSON.stringify([data.mirrors, data.running]), () => [
     ...(gitRemoved()
       ? [
           el("p", {
@@ -14311,52 +14129,58 @@ function renderMirrors(data) {
               ]
                 .filter(Boolean)
                 .join(" · ");
-          return el(
-            "div",
-            { className: "admin-item" },
-            el(
-              "span",
-              {},
-              el(
-                "strong",
-                {},
-                el("a", {
-                  href: `${m.area === "public" ? "/git/" : "/git-private/"}${m.name}.git/`,
-                  textContent: `${m.name}.git`,
-                }),
+          return AW.sourceCard({
+            id: `mirror-${m.name}`,
+            title: `${m.name}.git`,
+            source: m.upstream.replace(/^https:\/\//, ""),
+            pill: AW.updatePill(st.checked, !!(st.missing && st.missing.length), !!st.error),
+            state: st.error
+              ? "Check failed"
+              : st.checked
+                ? `Checked ${commitDate(st.checked)} · ${st.outcome || "up to date"}`
+                : "Not checked yet",
+            facts: [
+              `Access: ${m.area === "public" ? "Guests" : "Administrators"}`,
+              "Schedule: shared",
+              `${st.size != null ? size(st.size) : "0 MB"} of ${m.budget_mb} MB`,
+            ],
+            actions: [
+              actionButton(
+                "Check now",
+                act({ action: "mirror-check", name: m.name }),
+                { className: "small", disabled: data.running },
               ),
-              el("span", {
+              actionButton(
+                "Update",
+                act({ action: "mirror-update", name: m.name }),
+                {
+                  className: "small",
+                  disabled: data.running,
+                  title: "Updating a mirror downloads new data from the upstream repository",
+                },
+              ),
+            ],
+            body: [
+              el("p", {
                 className: "setting-desc",
                 textContent: m.description || st.described || "",
                 hidden: !(m.description || st.described),
               }),
-              el("span", {
-                className: "setting-desc",
-                textContent: `from ${m.upstream}`,
-              }),
-              el("span", {
-                className: "setting-desc",
-                textContent: `keeps ${keeps}`,
-              }),
+              el("p", { className: "setting-desc", textContent: `keeps ${keeps}` }),
               subs.length
-                ? el("span", {
-                    className: "setting-desc",
-                    textContent: `submodules: ${subs.join(", ")}`,
-                  })
+                ? el("p", { className: "setting-desc", textContent: `submodules: ${subs.join(", ")}` })
                 : null,
               relNote
-                ? el("span", {
+                ? el("p", {
                     className: `setting-desc${st.releases_cached ? " warn" : ""}`,
                     textContent: relNote,
                   })
                 : null,
-              el("span", {
-                className: `setting-desc${st.error || st.over_budget ? " bad" : ""}`,
-                textContent: state,
-              }),
-              // Every upstream tag, held apart for checking (mirrors.py _sync_tags); one moved upstream said plainly.
+              st.error || st.over_budget
+                ? el("p", { className: "setting-desc bad", textContent: state })
+                : null,
               st.tags
-                ? el("span", {
+                ? el("p", {
                     className: `setting-desc${(st.tags.moved || []).length ? " bad" : ""}`,
                     textContent:
                       `Holds all ${st.tags.count} tags of its upstream repository (${st.tags.signed} carry a signature that the box does not verify), without their files.` +
@@ -14366,105 +14190,99 @@ function renderMirrors(data) {
                   })
                 : null,
               st.tags_error
-                ? el("span", {
-                    className: "setting-desc bad",
-                    textContent: `The tags: ${st.tags_error}`,
-                  })
+                ? el("p", { className: "setting-desc bad", textContent: `The tags: ${st.tags_error}` })
                 : null,
-            ),
-            el(
-              "span",
-              { className: "library-buttons" },
-              actionButton(
-                "Check now",
-                act({ action: "mirror-check", name: m.name }),
-                { className: "small", disabled: data.running },
-              ),
-              actionButton(
-                "Update mirror",
-                act({ action: "mirror-update", name: m.name }),
-                {
-                  className: "small",
-                  disabled: data.running,
-                  title:
-                    "Updating a mirror downloads new data from the upstream repository",
-                },
-              ),
-              el("input", {
-                type: "text",
-                maxLength: 200,
-                value: m.description || "",
-                placeholder: st.described || "From the README's first heading",
-                ariaLabel: `Description of ${m.name}.git`,
-                id: `mirror-description-${m.name}`,
-              }),
-              actionButton(
-                "Change description",
-                async () => {
-                  const text = document.getElementById(`mirror-description-${m.name}`).value.trim();
-                  try {
-                    renderGit(
-                      await postJSON("/admin/git", {
-                        action: "mirror-change",
-                        mirror: Object.assign({}, m, { status: undefined, description: text }),
-                      }),
-                    );
-                    say("Saved. It shows on cgit after the next update.", true, git.mirrorNote);
-                  } catch (err) {
-                    say(err.message, false, git.mirrorNote);
-                  }
-                },
-                { className: "small" },
-              ),
-              el("span", { className: "setting-desc", textContent: "Submodules" }),
-              AW.onOffChips("Mirror its submodules too", !!m.submodules, false, (on) =>
-                act({
-                  action: "mirror-change",
-                  mirror: Object.assign({}, m, {
-                    status: undefined,
-                    submodules: on,
-                  }),
-                })(),
-              ),
-              relGroups.length
-                ? actionButton(
-                    skipping
-                      ? "Include revoked releases"
-                      : "Exclude revoked releases",
-                    act(
-                      {
-                        action: "mirror-change",
-                        mirror: Object.assign({}, m, {
-                          status: undefined,
-                          groups: m.groups.map((g) =>
-                            g.kind === "tags"
-                              ? g
-                              : Object.assign({}, g, {
-                                  skip_revoked: !skipping,
-                                }),
-                          ),
+              el("div", { className: "library-buttons mirror-description" },
+                el("input", {
+                  type: "text",
+                  maxLength: 200,
+                  value: m.description || "",
+                  placeholder: st.described || "From the README's first heading",
+                  ariaLabel: `Description of ${m.name}.git`,
+                  id: `mirror-description-${m.name}`,
+                }),
+                actionButton(
+                  "Change description",
+                  async () => {
+                    const text = document.getElementById(`mirror-description-${m.name}`).value.trim();
+                    try {
+                      renderGit(
+                        await postJSON("/admin/git", {
+                          action: "mirror-change",
+                          mirror: Object.assign({}, m, { status: undefined, description: text }),
                         }),
-                      },
-                      skipping
-                        ? "Include releases that their project has revoked? The mirror excludes them by default. Include them only to investigate them."
-                        : null,
-                    ),
-                    { className: "small" },
-                  )
-                : null,
-              actionButton(
-                "Remove local mirror",
-                act(
-                  { action: "mirror-remove", name: m.name },
-                  `Remove the local mirror ${m.name}.git and its copy on the box? The upstream repository is not changed.`,
+                      );
+                      say("Saved. It shows on cgit after the next update.", true, git.mirrorNote);
+                    } catch (err) {
+                      say(err.message, false, git.mirrorNote);
+                    }
+                  },
+                  { className: "small" },
                 ),
-                { className: "small" },
               ),
-            ),
-          );
+              el("div", { className: "aw-field mirror-submodules" },
+                el("span", { className: "aw-label", textContent: "Submodules" }),
+                AW.onOffChips("Mirror its submodules too", !!m.submodules, false, (on) =>
+                  act({
+                    action: "mirror-change",
+                    mirror: Object.assign({}, m, { status: undefined, submodules: on }),
+                  })(),
+                ),
+              ),
+              el("p", { className: "library-buttons source-danger" },
+                relGroups.length
+                  ? actionButton(
+                      skipping ? "Include revoked releases" : "Exclude revoked releases",
+                      act(
+                        {
+                          action: "mirror-change",
+                          mirror: Object.assign({}, m, {
+                            status: undefined,
+                            groups: m.groups.map((g) =>
+                              g.kind === "tags" ? g : Object.assign({}, g, { skip_revoked: !skipping }),
+                            ),
+                          }),
+                        },
+                        skipping
+                          ? "Include releases that their project has revoked? The mirror excludes them by default. Include them only to investigate them."
+                          : null,
+                      ),
+                      { className: "small" },
+                    )
+                  : null,
+                actionButton(
+                  "Remove local mirror",
+                  act(
+                    { action: "mirror-remove", name: m.name },
+                    `Remove the local mirror ${m.name}.git and its copy on the box? The upstream repository is not changed.`,
+                  ),
+                  { className: "small" },
+                ),
+              ),
+            ],
+          });
         })
       : [el("p", { className: "setting-desc", textContent: "None yet." })]),
-  );
+    mirrorAddCard(),
+  ]);
+}
+
+// The add form is a mini-card in the same grid: the Git card's shape, Add as its footer.
+let mirrorAddOpen = false;
+function mirrorAddCard() {
+  const form = git.mirrorForm;
+  return AW.sourceCard({
+    id: "mirror-add",
+    add: true,
+    title: "Add a mirror",
+    source: "a repository on the internet",
+    state: "Upstream, access, branches and budget",
+    facts: ["Access", "Schedule", "Budget"],
+    body: [form, git.mirrorNote],
+    actions: [AW.enterButton()],
+    open: mirrorAddOpen,
+    onToggle: (open) => { mirrorAddOpen = open; },
+  });
 }
 
 git.mirrorForm.addEventListener("submit", async (event) => {
@@ -14632,13 +14450,49 @@ function renderFirmware(data) {
       ? ` Working: ${data.progress.name} (${size(data.progress.done)}${data.progress.total ? ` of ${size(data.progress.total)}` : ""}).`
       : " Working…"
     : "";
-  fw.status.textContent =
-    (st.last_check
+  fw.status.replaceChildren(
+    AW.updatePill(st.last_check, false, !!st.error),
+    " ",
+    st.last_check
       ? `Last checked ${st.last_check.replace("T", " ").replace("Z", " UTC")}: ${st.outcome || ""}.`
-      : "Not checked yet.") +
-    (st.error ? ` Error: ${errorSaid(st)}` : "") +
-    running +
-    (data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "");
+      : "Not checked yet.",
+    st.error ? ` Error: ${errorSaid(st)}` : "",
+    running,
+    data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "",
+  );
+  // The firmware is one subscription, in the same card as the Git repositories: terse here, the settings in its fold.
+  const record = document.getElementById("fw-record");
+  if (record) {
+    const move = (...ids) => ids.map((id) => document.getElementById(id)).filter(Boolean);
+    // The head already says what it is, who may open it, the check's state and the space: the old notes stay
+    // hidden rather than repeated in the drawer.
+    ["fw-source", "fw-access-note", "fw-status", "fw-space-note"].forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) node.hidden = true;
+    });
+    const body = [
+      ...move("fw-policy"),
+      ...move("fw-policy-note"),
+      ...move("fw-settings-head", "fw-form", "fw-note"),
+    ];
+    const actions = move("fw-check", "fw-update");
+    AW.redrawIfChanged(record, JSON.stringify([st, data.source, data.free_mb, data.settings, data.targets]), () => [AW.sourceCard({
+      id: "firmware-source",
+      title: "Meshtastic firmware",
+      source: data.source ? `${data.source.name}.git` : "not mirrored",
+      pill: AW.updatePill(st.last_check, false, !!st.error),
+      state: st.last_check
+        ? `Checked ${whenShort(st.last_check)} · ${st.outcome || "up to date"}`
+        : "Not checked yet",
+      facts: [
+        "Access: Administrators",
+        "Schedule: daily",
+        `${Object.keys(st.versions || {}).length} releases`,
+      ],
+      actions,
+      body,
+    })]);
+  }
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter(
     (t) => !q || t.board.includes(q) || t.platform.includes(q),
@@ -15002,75 +14856,74 @@ function asSettingsForm(holder) {
 }
 
 function asFirmware(fw) {
-  return el("div", { className: "aw-card appstore-firmware" },
-    el("div", { className: "aw-drawer" },
-      el("p", {}, el("strong", { textContent: "🧩 Meshtastic firmware" })),
-      el("p", { className: "setting-desc", textContent: `${fw.versions} version${fw.versions === 1 ? "" : "s"}, ${fw.boards} board${fw.boards === 1 ? "" : "s"}, ${size(fw.bytes)}.` }),
-      el("p", { className: "setting-desc", textContent: "Set on the Firmware page; the App store only lists it." }),
-      el("p", {}, el("a", { href: fw.href, textContent: "Firmware settings" }))));
+  return AW.sourceCard({
+    id: "firmware-holder",
+    title: "Meshtastic firmware",
+    source: "Firmware page",
+    pill: AW.pill("kept", "ok"),
+    state: "Managed on Firmware",
+    facts: ["Access: Administrators", "Schedule: shared", `${size(fw.bytes)}`],
+    actions: [el("a", { href: fw.href, className: "button-link small", textContent: "Open Firmware" })],
+    body: [
+      el("p", { className: "setting-desc", textContent: "The App store only lists it; its check and its settings are on the Firmware page." }),
+    ],
+  });
 }
 
 function asCard(holder) {
   const st = holder.status || {};
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const body = el("div", { className: "aw-drawer appstore-card", hidden: !asOpen.has(holder.id) });
   const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
   // A failed check's outcome is its error already ("error: …"): said once, with its own full stop.
   const sentence = (text) => `${String(text).trim().replace(/\.+$/, "")}.`;
-  const failed = st.error && checked;
-  body.append(
-    el("p", { className: `setting-desc${failed ? " bad" : ""}` },
-      ...(failed
-        ? [
-            `Last checked ${checked}: the check failed. ${sentence(st.error)} `,
-            el("a", { href: "#updoctor", textContent: "Open the Updates doctor for the reason and a fix." }),
-          ]
-        : [!checked ? "Not checked yet." : `Last checked ${checked}: ${sentence(st.outcome || "nothing")}`]),
-    ),
+  const failed = !!st.error;
+  const newer = !!(st.latest && st.latest.length) && !/up to date|nothing chosen/i.test(st.outcome || "");
+  const pol = (asData && asData.policy) || {};
+  const body = [
+    failed
+      ? el("p", { className: "setting-desc bad" },
+          `The check failed: ${sentence(st.error)} `,
+          el("a", { href: "#updoctor", textContent: "Open the Updates doctor." }))
+      : null,
     el("div", { className: "admin-list" },
       ...(holder.kept.length
         ? holder.kept.map((v) => el("p", { className: "setting-desc" },
             el("strong", { textContent: `${v.tag} (${v.channel})` }),
             ` ${v.files.length} file${v.files.length === 1 ? "" : "s"}, ${size(v.bytes)}.`))
         : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
-    // Each button says what it acts on; removing the project, the one that cannot be undone, set apart at the end.
-    el("p", { className: "library-buttons appstore-actions" },
-      asRun("Check for newer versions", "holder-check", holder.id, note),
-      asRun("Download newer versions", "holder-update", holder.id, note),
+    asSettingsForm(holder),
+  ];
+  const survey = el("div", {});
+  asSurveyTable(holder, survey);
+  body.push(survey, note,
+    el("p", { className: "library-buttons source-danger" },
       asRun("Delete the kept files", "remove-files", holder.id, note,
         `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download gets the files again.`),
       asRun("Remove this project", "remove-holder", holder.id, note,
         `Remove ${holder.title || holder.id} from the App store? Its settings and its kept files go too.`,
-        { className: "danger" })),
-    el("p", { className: "setting-desc" },
-      "Checking, downloading and reading the releases each ask GitHub, which answers 60 requests an hour " +
-        "without a token. For more, ",
-      el("a", { href: "#library-access", textContent: "add a GitHub token in Librarian" }),
-      "."),
-    note,
-    asSettingsForm(holder),
-  );
-  asSurveyTable(holder, body);
-  // A failed check said on the closed card too, not only inside it; opening it hides this line,
-  // since the drawer below then says the reason in full.
-  const failedNote = st.error
-    ? el("span", { className: "s bad", textContent: "The last check failed. Open for the reason." })
-    : null;
-  if (failedNote) failedNote.hidden = !body.hidden;
-  const head = el("button", { type: "button", className: "aw-card-head",
-    onclick: (event) => {
-      const open = body.hidden;
-      body.hidden = !open;
-      if (failedNote) failedNote.hidden = open;
+        { className: "danger" })));
+  return AW.sourceCard({
+    id: `holder-${holder.id}`,
+    title: holder.title || holder.id,
+    source: holder.repo,
+    pill: AW.updatePill(st.last_check, newer, failed),
+    state: !checked ? "Not checked yet" : failed ? `Checked ${whenShort(st.last_check)} · check failed` : `Checked ${whenShort(st.last_check)} · ${newer ? "update available" : "up to date"}`,
+    facts: [
+      `Access: ${holder.visibility === "members" ? "Users" : "Guests"}`,
+      `Schedule: ${scheduleShort(pol.holders_every_hours)}`,
+      `${size(holder.bytes)} of ${holder.budget_mb ? `${holder.budget_mb} MB` : "free"}`,
+    ],
+    actions: [
+      asRun("Check now", "holder-check", holder.id, note),
+      asRun("Download", "holder-update", holder.id, note),
+    ],
+    body,
+    open: asOpen.has(holder.id),
+    onToggle: (open) => {
       if (open) asOpen.add(holder.id);
       else asOpen.delete(holder.id);
-      event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
-    } },
-    el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
-    el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version${holder.kept.length === 1 ? "" : "s"}, ${size(holder.bytes)}` }),
-    ...(failedNote ? [failedNote] : []));
-  head.setAttribute("aria-expanded", body.hidden ? "false" : "true");
-  return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
+    },
+  });
 }
 
 function asRun(label, action, id, note, ask, extra = {}) {
@@ -15088,43 +14941,73 @@ function asRun(label, action, id, note, ask, extra = {}) {
 function asAddFlow(data) {
   asEl.add.replaceChildren();
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const mode = el("select", { name: "mode", "aria-label": "What to add" });
-  mode.append(
-    el("option", { value: "", textContent: "Select what to add" }),
-    ...(data.presets || []).map((p) => el("option", { value: `preset:${p.id}`, textContent: `Preset: ${p.title || p.id}` })),
-    el("option", { value: "recipe", textContent: "Paste an Obtainium recipe" }),
-    el("option", { value: "repo", textContent: "A GitHub repository" }));
+  const mode = { value: "" };
+  const modes = [
+    ["", "Select what to add"],
+    ...(data.presets || []).map((p) => [`preset:${p.id}`, `Preset: ${p.title || p.id}`]),
+    ["recipe", "Paste an Obtainium recipe"],
+    ["repo", "A GitHub repository"],
+  ];
+  const modeGroup = el("div", { className: "chip-group", role: "radiogroup", "aria-label": "What to add" });
+  const drawMode = () => modeGroup.replaceChildren(...modes.map(([value, text]) => {
+    const chip = el("button", {
+      type: "button",
+      className: `chip${mode.value === value ? " selected" : ""}`,
+      role: "radio",
+      "aria-checked": String(mode.value === value),
+      textContent: text,
+    });
+    chip.addEventListener("click", () => { mode.value = value; drawMode(); draw(); });
+    return chip;
+  }));
   const part = el("div", { className: "appstore-add-part" });
-  const addButton = (makeBody) =>
-    part.append(el("p", { className: "library-buttons" },
-      actionButton("Add", async () => {
-        try {
-          await asPost(makeBody(), "Added. Open its card and select Read the releases again.");
-        } catch (err) {
-          say(err.message, false, note);
-        }
-      }, { className: "small primary" })));
+  const add = actionButton("Add", async () => {
+    const presetId = mode.value.startsWith("preset:") ? mode.value.slice(7) : null;
+    let body = null;
+    if (presetId) body = { action: "add-holder", preset: presetId };
+    else if (mode.value === "recipe") body = { action: "add-holder", recipe: part.querySelector("textarea[name=recipe]").value };
+    else if (mode.value === "repo") {
+      body = {
+        action: "add-holder",
+        id: part.querySelector("input[name=id]").value.trim(),
+        repo: part.querySelector("input[name=repo]").value.trim(),
+      };
+    }
+    if (!body) return;
+    try {
+      await asPost(body, "Added. Open its card and select Read the releases again.");
+    } catch (err) {
+      say(err.message, false, note);
+    }
+  });
+  add.disabled = true;
   const draw = () => {
     part.replaceChildren(note);
+    add.disabled = !mode.value;
     const presetId = mode.value.startsWith("preset:") ? mode.value.slice(7) : null;
     if (presetId) {
       const preset = (data.presets || []).find((p) => p.id === presetId);
       if (preset.summary) part.append(el("p", { className: "setting-desc", textContent: preset.summary }));
-      addButton(() => ({ action: "add-holder", preset: preset.id }));
     } else if (mode.value === "recipe") {
-      const paste = el("textarea", { name: "recipe", rows: "3", placeholder: "the recipe's JSON, or an obtainium:// link" });
-      part.append(paste);
-      addButton(() => ({ action: "add-holder", recipe: paste.value }));
+      part.append(el("textarea", { name: "recipe", rows: "3", placeholder: "the recipe's JSON, or an obtainium:// link" }));
     } else if (mode.value === "repo") {
       const id = el("input", { name: "id", placeholder: "a name on the box", maxlength: "64" });
       const repo = el("input", { name: "repo", placeholder: "meshtastic/Meshtastic-Android" });
       part.append(el("label", {}, "Name", id), el("label", {}, "Repository", repo));
-      addButton(() => ({ action: "add-holder", id: id.value.trim(), repo: repo.value.trim() }));
     }
   };
-  mode.addEventListener("change", draw);
-  asEl.add.append(el("label", {}, "What to add", mode), part);
+  drawMode();
   draw();
+  asEl.add.replaceChildren(AW.sourceCard({
+    id: "appstore-add",
+    add: true,
+    title: "Add a project",
+    source: "a GitHub repository",
+    state: "A preset, a recipe, or a repository",
+    facts: ["Access: Guests", "Schedule: shared"],
+    body: [modeGroup, part, el("p", { className: "library-buttons" }, add)],
+    actions: [AW.enterButton()],
+  }));
 }
 
 function asStatus(data) {
@@ -15149,6 +15032,11 @@ function renderAppstore(data, statusOnly = false) {
       ...data.holders.map(asCard),
     );
     asAddFlow(data);
+    // The add form is a mini-card in the same grid as the projects.
+    if (asEl.add.firstElementChild) {
+      asEl.holders.append(asEl.add.firstElementChild);
+      AW.chipSelects(asEl.holders);
+    }
   }
   clearTimeout(asPoll);
   if (data.running) asPoll = setTimeout(() => loadAppstore(true), 2000);
@@ -15315,40 +15203,50 @@ function renderKits(data) {
       ),
     ),
   );
-  // A card per kit, its details in a drawer inside the card; not redrawn
-  // under an open drawer with changes not saved.
-  const open = kitsEl.grid.querySelector(".aw-card.open");
+  // A row per kit, its details in a drawer under the row; an open row opens again after a redraw.
+  const open = kitsEl.grid.querySelector(".source-row-detail:not([hidden])");
   if (!(open && open._dirty && open._dirty())) {
-    const openId = open && open.dataset.awId;
+    const openId = open && open.closest(".source-row")?.dataset.awId;
     // Its cards hold a budget form and each drawer's fields: drawn again only when what they show changes,
     // so a poll that brings nothing new leaves a selection, a field or an open drawer alone.
     const gridKey = JSON.stringify([kits, st.kits, st.installed, cfg.kits, data.flag_details || {}]);
     const drew = AW.redrawIfChanged(kitsEl.grid, gridKey, () => {
       kitsHome.append(...kitsFormNodes);
-      return AW.cards(
-        [
-          ...kits.map((k) => kitItem(k, st)),
-          {
-            id: "kit-custom",
-            title: "+ Custom toolkit",
-            summary: "Your own packages, managed by the librarian",
-            badges: [],
-          },
-        ],
-        {
-          id: "kits-cards",
-          body: (it, setDirty) =>
-            it.id === "kit-custom"
-              ? customBody()
-              : kitBody(it.kit, st, cfg, setDirty),
-          save: (it) => kitSave(it),
-        },
-      );
+      const items = kits.map((k) => {
+        const info = kitItem(k, st);
+        const c = ((st.kits || {})[k.id] || {}).cached;
+        return {
+          id: info.id,
+          title: k.title,
+          summary: info.tagline || k.summary || "",
+          pill: c ? AW.pill("cached", "ok") : AW.pill("not cached", "info"),
+          badges: info.badges,
+          body: [
+            el("p", { className: "setting-desc", textContent: k.summary || "" }),
+            ...(k.notes || []).map((note) => el("p", { className: "setting-desc", textContent: note })),
+            kitBody(k, st, cfg, () => {}),
+          ],
+        };
+      });
+      const add = AW.sourceCard({
+        id: "kit-custom",
+        add: true,
+        title: "+ Custom toolkit",
+        source: "your own packages",
+        state: "Managed by the librarian",
+        facts: [],
+        body: [customBody()],
+        actions: [AW.enterButton()],
+      });
+      kitsEl.grid.className = "";
+      return el("div", { className: "kits-list-view" },
+        AW.sourceList(items, { id: "kits-source-list" }),
+        el("div", { className: "card-grid source-grid" }, add));
     });
     const again =
       drew && openId &&
       kitsEl.grid.querySelector(
-        `.aw-card[data-aw-id="${openId}"] .aw-card-head`,
+        `.source-row[data-aw-id="${openId}"] .source-row-head`,
       );
     if (again) again.click();
   }
@@ -15376,7 +15274,8 @@ function kitItem(k, st) {
   return {
     id: "kit-" + k.id,
     title: k.title,
-    summary: k.summary || "",
+    summary: k.tagline || k.summary || "",
+    tagline: k.tagline || "",
     badges,
     kit: k,
   };
@@ -15609,9 +15508,29 @@ function kitBody(k, st, cfg, setDirty) {
         : null,
     ),
   );
-  // Save is on only while the drawer differs from what is saved: changing a setting back turns it off again.
-  const saved = JSON.stringify(draft);
-  const changed = () => setDirty(JSON.stringify(draft) !== saved);
+  // Save and Discard are the section's: compared with what is saved, and one question at Save.
+  const sec = AW.section({
+    id: `kit-${k.id}`,
+    label: k.title,
+    saved: { ...draft },
+    save: async (changes) => {
+      const ch = {};
+      if ("keep_current" in changes) ch.keep_current = changes.keep_current;
+      if ("remove_after" in changes) ch.remove_after = changes.remove_after;
+      const extraList = String(sec.get("extra") || "").trim().split(/[\s,]+/).filter(Boolean);
+      const saveButton = sec.foot.querySelector(".aw-save");
+      if (Object.keys(ch).length && !(await kitAct({ action: "settings", kits: { [k.id]: ch } }, false, saveButton))) return false;
+      if (!k.owner && extraList.join(" ") !== (k.extra || []).join(" ") &&
+        !(await kitAct({ action: "extra", kit: k.id, packages: extraList }, false, saveButton))) return false;
+      return true;
+    },
+  });
+  const changed = () => {
+    sec.set("keep_current", draft.keep_current, true);
+    sec.set("remove_after", draft.remove_after, true);
+    sec.set("extra", draft.extra, true);
+    setDirty(sec.dirty());
+  };
   // Automatic cache refresh: On and Off.
   let keepChips;
   const drawKeep = () => {
@@ -15648,6 +15567,16 @@ function kitBody(k, st, cfg, setDirty) {
       el("span", { className: "aw-label", textContent: label }),
       ...kids,
     );
+  sec.opts.onChange = () => {
+    draft.keep_current = sec.get("keep_current");
+    draft.remove_after = sec.get("remove_after");
+    draft.extra = sec.get("extra");
+    drawKeep();
+    def.value = draft.remove_after == null ? "never" : String(draft.remove_after);
+    if (extra) extra.value = draft.extra;
+    setDirty(sec.dirty());
+  };
+  changed();
   return [
     el("p", { className: "setting-desc kit-facts", textContent: kitFacts(k, st) }),
     el("p", {
@@ -15720,31 +15649,8 @@ function kitBody(k, st, cfg, setDirty) {
           textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, "")}, a mirror)`).join(", ")}.`,
         })
       : null,
+    sec.foot,
   ];
-}
-async function kitSave(it) {
-  const k = it.kit,
-    draft = kitDrafts.get(k.id),
-    mine = kitsData.settings.kits[k.id];
-  const ch = {};
-  if (draft.keep_current !== mine.keep_current) ch.keep_current = draft.keep_current;
-  if (draft.remove_after !== mine.remove_after) ch.remove_after = draft.remove_after;
-  const extra = draft.extra
-    .trim()
-    .split(/[\s,]+/)
-    .filter(Boolean);
-  if (
-    Object.keys(ch).length &&
-    !(await kitAct({ action: "settings", kits: { [k.id]: ch } }))
-  )
-    return false;
-  if (
-    !k.owner &&
-    extra.join(" ") !== (k.extra || []).join(" ") &&
-    !(await kitAct({ action: "extra", kit: k.id, packages: extra }))
-  )
-    return false;
-  return true;
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
 function customBody() {
@@ -15764,9 +15670,9 @@ function editKit(k, mine) {
   kitsEl.addCancel.hidden = false;
   kitsEl.add.querySelector("button[type=submit]").textContent = "Update toolkit";
   // In the custom card's drawer: open it if it isn't.
-  const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
-  if (card && !card.classList.contains("open"))
-    card.querySelector(".aw-card-head").click();
+  const card = kitsEl.grid.querySelector("#kit-custom");
+  if (card && card.querySelector(".source-panel")?.hidden)
+    card.querySelector(".source-head").click();
   kitsEl.add.scrollIntoView?.({ block: "center" });
 }
 function resetKitForm() {

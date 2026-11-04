@@ -14,5 +14,6 @@
   "rtl_test -t shows whether the box detects the RTL-SDR USB receiver. Pipe rtl_fm into multimon-ng to decode pagers and AFSK. Direwolf with a USB sound card and a radio is an APRS digipeater or iGate.",
   "This toolkit does not control Meshtastic radios. Use meshtasticd and the Meshtastic page of the hub."
  ],
- "remove_after_hours": 24
+ "remove_after_hours": 24,
+ "tagline": "Radio reception and decoding"
 }

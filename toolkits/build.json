@@ -32,5 +32,6 @@
   "The toolkit also has a wheelhouse. It holds a newer PlatformIO from PyPI, protobuf, grpcio-tools, nanopb and adafruit-nrfutil, as wheels where PyPI has one. Use it if the PlatformIO from Debian cannot build. It works without internet. This cache does not verify a signature for these wheels.",
   "bison, flex and m4 build a program from its grammar and lexer, as some drivers and tools need. pipx installs a Python program in an environment of its own; python3-venv is beside it."
  ],
- "remove_after_hours": null
+ "remove_after_hours": null,
+ "tagline": "Compilers and build tools"
 }

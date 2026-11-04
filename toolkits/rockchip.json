@@ -32,5 +32,6 @@
    "url": "https://meshtastic.org/docs/software/mpwrd-os/rockchip-flashing/"
   }
  ],
- "remove_after_hours": null
+ "remove_after_hours": null,
+ "tagline": "Rockchip board tools"
 }

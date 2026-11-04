@@ -858,150 +858,7 @@
           </p>
           <!-- The books, a page at a time (/admin/books); a book's card opens from its row. -->
           <p class="setting-desc" id="books-summary"></p>
-          <div class="books-tools">
-            <label data-i18n="admin.books.label-search-books"
-              >Search books
-              <input
-                type="search"
-                id="books-q"
-                placeholder="title or name"
-                aria-label="Search books"
-                data-i18n-aria-label="admin.books.aria-search-books"
-                data-i18n-placeholder="admin.books.placeholder-title-name"
-            /></label>
-            <label data-i18n="admin.books.label-language"
-              >Language
-              <select id="books-language">
-                <option value="" data-i18n="admin.books.opt-any">any</option>
-              </select></label
-            >
-            <label data-i18n="admin.books.label-state"
-              >State
-              <select id="books-state">
-                <option value="" data-i18n="admin.books.opt-any">any</option>
-                <option
-                  value="newer"
-                  data-i18n="admin.books.opt-newer-available"
-                >
-                  newer available
-                </option>
-                <option value="failed" data-i18n="admin.books.opt-check-failed">
-                  check failed
-                </option>
-                <option
-                  value="not installed"
-                  data-i18n="admin.books.opt-not-installed"
-                >
-                  not installed
-                </option>
-                <option
-                  value="unreadable"
-                  data-i18n="admin.books.opt-unreadable"
-                >
-                  unreadable
-                </option>
-                <option value="ok" data-i18n="admin.books.opt-up-date">
-                  up to date
-                </option>
-              </select></label
-            >
-            <label data-i18n="admin.books.label-managed-updates"
-              >Managed updates
-              <select id="books-kept">
-                <option value="" data-i18n="admin.books.opt-either">
-                  either
-                </option>
-                <option value="yes" data-i18n="admin.books.opt-enabled">
-                  enabled
-                </option>
-                <option
-                  value="no"
-                  data-i18n="admin.books.opt-disabled-added-hand-usb"
-                >
-                  disabled (added by hand, or by USB)
-                </option>
-              </select></label
-            >
-            <label data-i18n="admin.books.label-sort"
-              >Sort
-              <select id="books-sort">
-                <option value="title" data-i18n="admin.books.opt-title">
-                  by title
-                </option>
-                <option value="size" data-i18n="admin.books.opt-largest-first">
-                  largest first
-                </option>
-                <option value="date" data-i18n="admin.books.opt-newest-first">
-                  newest first
-                </option>
-              </select></label
-            >
-          </div>
-          <div class="books-bulk" id="books-bulk" hidden>
-            <span id="books-selected"></span>
-            <button
-              class="action-btn"
-              type="button"
-              data-bulk="check"
-              data-i18n="admin.books.btn-check"
-            >
-              Check
-            </button>
-            <button
-              class="action-btn"
-              type="button"
-              data-bulk="update"
-              data-i18n="admin.books.btn-update"
-            >
-              Update
-            </button>
-            <button
-              class="action-btn"
-              type="button"
-              data-bulk="untrack"
-              data-i18n="admin.books.btn-stop-tracking"
-            >
-              Stop tracking
-            </button>
-            <button
-              type="button"
-              id="books-select-matching"
-              class="link-button"
-            ></button>
-            <button
-              type="button"
-              id="books-select-none"
-              class="link-button"
-              data-i18n="admin.books.select-none"
-            >
-              Clear the selection
-            </button>
-          </div>
-          <div class="scroll-x">
-            <table class="admin-table books-table" id="books-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      id="books-page-all"
-                      aria-label="Select this page"
-                      data-i18n-aria-label="admin.books.aria-select-page"
-                    />
-                  </th>
-                  <th data-i18n="admin.books.col-book">Book</th>
-                  <th data-i18n="admin.books.col-language">Language</th>
-                  <th data-i18n="admin.books.col-size">Size</th>
-                  <th data-i18n="admin.books.col-date">Date</th>
-                  <th data-i18n="admin.books.col-managed-updates">
-                    Managed updates
-                  </th>
-                  <th data-i18n="admin.books.col-state">State</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+          <div id="books-cards" class="card-grid source-grid"></div>
           <p class="books-pager">
             <button
               class="action-btn"
@@ -1021,7 +878,6 @@
               Next
             </button>
           </p>
-          <div id="library-sources" hidden></div>
           <div class="library-actions">
             <button
               class="action-btn"
@@ -1034,18 +890,10 @@
             <button
               class="action-btn"
               type="button"
-              data-all="fetch"
-              data-i18n="admin.books.btn-download-all"
-            >
-              Download all
-            </button>
-            <button
-              class="action-btn"
-              type="button"
               data-all="update"
-              data-i18n="admin.books.btn-install-all"
+              data-i18n="admin.books.btn-update-all"
             >
-              Install all
+              Update all
             </button>
           </div>
           <p
@@ -1179,35 +1027,7 @@
               aria-labelledby="tab-books-other"
               hidden
             >
-              <p class="setting-desc" data-i18n="admin.books.source-templates">
-                Source templates:
-                <button
-                  type="button"
-                  class="link-button"
-                  data-preset="release"
-                  data-i18n="admin.books.btn-project-releases"
-                >
-                  a project's releases
-                </button>
-                ·
-                <button
-                  type="button"
-                  class="link-button"
-                  data-preset="actions"
-                  data-i18n="admin.books.btn-fork-actions-builds"
-                >
-                  a fork's Actions builds
-                </button>
-                ·
-                <button
-                  type="button"
-                  class="link-button"
-                  data-preset="nightly-link"
-                  data-i18n="admin.books.btn-actions-builds-via-nightly"
-                >
-                  Actions builds via nightly.link
-                </button>
-              </p>
+              <div id="book-add-card"></div>
               <form id="library-add" class="library-form">
                 <label data-i18n="admin.books.label-book-name"
                   >Book name
@@ -1331,12 +1151,10 @@
                   data-i18n="admin.books.usb-filesystems"
                   >Filesystems the box mounts</span
                 >
-                <div
-                  class="chip-group"
+                <select
                   id="usb-filesystems"
-                  role="radiogroup"
                   aria-labelledby="usb-filesystems-label"
-                ></div>
+                ></select>
               </div>
               <p
                 class="setting-desc aw-warn aw-warn-beside"
@@ -1420,8 +1238,52 @@
             firmware for boards that a release does not cover, or from a fork,
             use the <a href="#factory">Firmware Factory</a>.
           </p>
+          <div id="fw-record" class="card-grid source-grid"></div>
           <p class="setting-desc" id="fw-source"></p>
+          <p class="setting-desc" id="fw-access-note" data-i18n="admin.firmware.access-note">Access: Administrators. This page and the release files it keeps are behind the administrator sign-in.</p>
           <p class="setting-desc" id="fw-status"></p>
+          <form id="fw-policy" class="library-form surface-policy">
+            <div
+              data-update-pattern
+              data-often="firmware_every_hours"
+              data-act="firmware_auto"
+              data-acts="0,1"
+              data-says-1="The box downloads the release files for the web flasher."
+              data-why="Downloading the release files is their update. The box installs nothing."
+              data-i18n-why="admin.firmware.fw-policy-why"
+              data-i18n-says-1="admin.firmware.fw-policy-says-1"
+            ></div>
+            <button
+              class="action-btn primary"
+              type="submit"
+              data-i18n="admin.firmware.btn-save"
+            >
+              Save
+            </button>
+          </form>
+          <p class="setting-desc action-note" id="fw-policy-note" role="status" hidden></p>
+          <p class="library-buttons update-buttons">
+            <button
+              class="action-btn"
+              type="button"
+              id="fw-check"
+              data-update="check"
+              data-i18n="admin.firmware.fw-check"
+            >
+              Check now
+            </button>
+            <button
+              class="action-btn"
+              type="button"
+              id="fw-update"
+              data-update="fetch"
+              data-i18n="admin.firmware.fw-update"
+            >
+              Download
+            </button>
+          </p>
+          <p class="setting-desc" id="fw-space-note" data-i18n="admin.firmware.space-note">Space: no limit of its own. The card's free space shows above. The build cache has its own limit on Toolkits.</p>
+          <h3 id="fw-settings-head" data-i18n="admin.firmware.settings-head">Settings</h3>
           <form id="fw-form" class="library-form">
             <label
               class="inline"
@@ -1533,46 +1395,6 @@
             role="status"
             hidden
           ></p>
-          <form id="fw-policy" class="library-form surface-policy">
-            <div
-              data-update-pattern
-              data-often="firmware_every_hours"
-              data-act="firmware_auto"
-              data-acts="0,1"
-              data-says-1="The box downloads the release files for the web flasher."
-              data-why="Downloading the release files is their update. The box installs nothing."
-              data-i18n-why="admin.firmware.fw-policy-why"
-              data-i18n-says-1="admin.firmware.fw-policy-says-1"
-            ></div>
-            <button
-              class="action-btn primary"
-              type="submit"
-              data-i18n="admin.firmware.btn-save"
-            >
-              Save
-            </button>
-          </form>
-          <p class="setting-desc action-note" role="status" hidden></p>
-          <p class="library-buttons update-buttons">
-            <button
-              class="action-btn"
-              type="button"
-              id="fw-check"
-              data-update="check"
-              data-i18n="admin.firmware.fw-check"
-            >
-              Check now
-            </button>
-            <button
-              class="action-btn"
-              type="button"
-              id="fw-update"
-              data-update="fetch"
-              data-i18n="admin.firmware.fw-update"
-            >
-              Download
-            </button>
-          </p>
           <h3 data-i18n="admin.firmware.h-stored-releases">Stored releases</h3>
           <div id="fw-kept" class="admin-list"></div>
         </section>
@@ -1623,7 +1445,7 @@
             </button>
           </form>
           <p class="setting-desc action-note" role="status" hidden></p>
-          <div id="appstore-holders" class="admin-list"></div>
+          <div id="appstore-holders" class="card-grid source-grid"></div>
           <p class="library-buttons update-buttons appstore-all">
             <span class="setting-desc" data-i18n="admin.appstore.all-projects">Every project:</span>
             <button
@@ -1643,7 +1465,6 @@
               Download what is newer
             </button>
           </p>
-          <h3 data-i18n="admin.appstore.h-add">Add a project</h3>
           <div id="appstore-add" class="library-form"></div>
         </section>
 
@@ -1652,7 +1473,7 @@
           id="mirrors"
           aria-labelledby="mirrors-title"
         >
-          <h2 id="mirrors-title" data-i18n="admin.mirrors.title">Mirrors</h2>
+          <h2 id="mirrors-title" translate="no">Git Mirrors</h2>
           <p
             class="setting-desc"
             data-i18n="admin.mirrors.box-keeps-repositories-upstream"
@@ -1707,8 +1528,7 @@
               Update all mirrors
             </button>
           </p>
-          <div id="git-mirrors" class="admin-list"></div>
-          <h3 data-i18n="admin.mirrors.h-add-mirror">Add a mirror</h3>
+          <div id="git-mirrors" class="card-grid source-grid"></div>
           <form id="git-mirror-add" class="library-form">
             <label data-i18n="admin.mirrors.label-upstream"
               >Upstream
@@ -2113,11 +1933,11 @@
                 version when the new version is in use.</span
               >
             </label>
-            <label data-i18n="admin.sources.label-minimum-free-storage-mb"
+            <label class="compact-field" data-i18n="admin.sources.label-minimum-free-storage-mb"
               >Minimum free storage (MB)
               <input name="min_free_mb" type="number" min="0" step="64"
             /></label>
-            <label data-i18n="admin.sources.label-book-storage-limit-mb"
+            <label class="compact-field" data-i18n="admin.sources.label-book-storage-limit-mb"
               >Book storage limit (MB, 0 = no limit)
               <input name="books_budget_mb" type="number" min="0" step="256" />
               <span class="setting-desc"
@@ -2697,7 +2517,7 @@
         </section>
 
         <section class="admin-pane" id="git" aria-labelledby="git-title">
-          <h2 id="git-title" translate="no">Git</h2>
+          <h2 id="git-title" translate="no">Git Repositories</h2>
           <p
             class="setting-desc"
             data-i18n="admin.git.box-keeps-repositories-one"
@@ -2751,25 +2571,9 @@
             role="status"
             hidden
           ></p>
-          <div
-            class="git-filter"
-            role="group"
-            aria-label="Filter repositories"
-            data-i18n-aria-label="admin.git.aria-filter-repositories"
-          >
-            <input
-              id="git-search"
-              type="search"
-              placeholder="Search names and descriptions"
-              aria-label="Search"
-              data-i18n-aria-label="admin.git.aria-search"
-              data-i18n-placeholder="admin.git.placeholder-search-names-descriptions"
-            />
-            <span class="chips" id="git-chips-kind"></span>
-            <span class="chips" id="git-chips-area"></span>
-          </div>
+          <div id="git-filter"></div>
           <div class="git-layout" id="git-layout">
-            <div class="card-grid git-grid" id="git-grid"></div>
+            <div class="card-grid source-grid" id="git-grid"></div>
           </div>
           <div hidden id="git-forms">
             <form id="git-create" class="library-form git-create">

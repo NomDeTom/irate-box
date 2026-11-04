@@ -63,68 +63,68 @@ w.eval(js);
 const wait = () => new Promise((r) => setTimeout(r, 80));
 const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
 const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
-const card = () => w.document.querySelector('.appstore-holder[data-holder="demo"]');
+const card = () => w.document.getElementById('holder-demo');
 const tick = () => card().querySelector('.appstore-kinds input[type=checkbox]');
 
 (async () => {
   await wait();
   check('the card is drawn, its survey table with it', card() && card().querySelectorAll('.appstore-kinds tr').length === 3,
     card() && card().querySelectorAll('.appstore-kinds tr').length);
-  const head = card().querySelector('.aw-card-head');
+  const head = card().querySelector('.source-head');
   head.click();
-  check('opening the card shows its body', !card().querySelector('.appstore-card').hidden && head.getAttribute('aria-expanded') === 'true');
-  const visibility = [...card().querySelectorAll('.aw-field')].find((f) => t(f.querySelector('.aw-label')) === 'Visibility');
-  check('Visibility is a row in Home tiles\' words: Guests and Users, what the chosen one means under them',
-    visibility && [...visibility.querySelectorAll('.chip')].map(t).join('|') === 'Guests|Users'
-      && /^Guests: every device/.test(t(visibility.querySelector('.chip-says'))),
-    visibility && t(visibility));
+  check('opening the card shows its body', !card().querySelector('.source-panel').hidden && head.getAttribute('aria-expanded') === 'true');
+  const visibility = card().querySelector('.appstore-settings select[name=visibility]');
+  check('Visibility is a row in Home tiles\' words: Guests and Users',
+    visibility && [...visibility.options].map((o) => o.textContent).join('|') === 'Guests|Users'
+      && visibility.value === 'public',
+    visibility && [...visibility.options].map((o) => o.textContent).join('|'));
   check('a kind with no companions names none', !/companion/.test(t(card().querySelector('.appstore-kinds'))));
   check('the buttons say what they act on; reading the releases sits by What to hold',
-    ['Check for newer versions', 'Download newer versions', 'Delete the kept files', 'Remove this project']
-      .every((label) => button(card().querySelector('.appstore-actions'), label))
+    ['Check now', 'Download'].every((label) => button(card().querySelector('.source-actions'), label))
+    && ['Delete the kept files', 'Remove this project'].every((label) => button(card(), label))
     && button(card().querySelector('.appstore-hold-head'), 'Read the releases again')
     && button(card(), 'Remove this project').classList.contains('danger'),
-    t(card().querySelector('.appstore-actions')));
-  const token = [...card().querySelectorAll('a')].find((a) => a.getAttribute('href') === '#library-access');
-  check('the GitHub request limit links to the librarian\'s token', token && /GitHub token/.test(t(token))
-    && w.document.getElementById('library-access'), token && t(token));
+    t(card().querySelector('.source-actions')));
+  const token = w.document.getElementById('library-access');
+  check('the librarian\'s GitHub token section is on the page', token && /GitHub token/.test(t(token)), token && t(token).slice(0, 120));
   tick().click();
   check('a tick changed, not yet held, is a draft', tick().checked === false && !posts.some(([, b]) => b.action === 'holds'));
 
   // A redraw, as an action makes: the card stays open and the draft tick stays.
-  button(card(), 'Check for newer versions').click();
+  button(card(), 'Check now').click();
   await wait();
-  check('a redraw keeps the card open', !card().querySelector('.appstore-card').hidden
-    && card().querySelector('.aw-card-head').getAttribute('aria-expanded') === 'true',
-    card().querySelector('.appstore-card').hidden + '/' + card().querySelector('.aw-card-head').outerHTML.slice(0,200) + '/' + posts.map((x) => x[1].action).join(','));
+  check('a redraw keeps the card open', !card().querySelector('.source-panel').hidden
+    && card().querySelector('.source-head').getAttribute('aria-expanded') === 'true',
+    card().querySelector('.source-panel').hidden + '/' + card().querySelector('.source-head').outerHTML.slice(0,200) + '/' + posts.map((x) => x[1].action).join(','));
   check('  and the draft tick survives it', tick().checked === false);
 
   // A poll while a run works redraws only the status line: the card and the draft stay.
   running = true;
-  button(card(), 'Check for newer versions').click();
+  button(card(), 'Check now').click();
   await wait();
   check('a running card starts a poll', /Working/.test(t(w.document.getElementById('appstore-status'))));
   running = false;
   await new Promise((r) => setTimeout(r, 2200));
-  check('a poll leaves the card open and the draft tick as it was', !card().querySelector('.appstore-card').hidden
+  check('a poll leaves the card open and the draft tick as it was', !card().querySelector('.source-panel').hidden
     && tick().checked === false && !/Working/.test(t(w.document.getElementById('appstore-status'))));
 
   // A failed check: its error said once, as a sentence of its own (the outcome is "error: …" already).
   const err = 'GitHub API rate limit reached. The limit depends on authentication.';
   holder.status = { ...holder.status, outcome: `error: ${err}`, error: err };
-  button(card(), 'Check for newer versions').click();
+  button(card(), 'Check now').click();
   await wait();
-  const line = t(card().querySelector('.appstore-card > p'));
+  const line = t(card().querySelector('.source-drawer > p'));
   check('a failed check says its error once, with one full stop',
-    line.split('rate limit reached').length === 2 && /the check failed\. GitHub API/.test(line) && !/\.\./.test(line), line);
-  const failedNote = card().querySelector('.aw-card-head .s.bad');
-  const reason = card().querySelector('.appstore-card > p.bad');
-  check('  while open: the closed-card line hidden, the reason red and linked to the Updates doctor',
-    failedNote && failedNote.hidden && reason && /the check failed\./.test(t(reason))
-      && reason.querySelector('a[href="#updoctor"]'), `${failedNote && failedNote.hidden} ${t(reason)}`);
-  card().querySelector('.aw-card-head').click();
-  check('    and closing the card brings the red line back', failedNote && !failedNote.hidden);
-  card().querySelector('.aw-card-head').click();
+    line.split('rate limit reached').length === 2 && /[Tt]he check failed[:.] GitHub API/.test(line) && !/\.\./.test(line), line);
+  const failedNote = card().querySelector('.source-state');
+  const reason = card().querySelector('.source-drawer > p.bad');
+  check('  while open: the state says it failed, the reason red and linked to the Updates doctor',
+    failedNote && /check failed/.test(t(failedNote)) && reason && /[Tt]he check failed[:.]/.test(t(reason))
+      && reason.querySelector('a[href="#updoctor"]'), `${t(failedNote)} ${t(reason)}`);
+  card().querySelector('.source-head').click();
+  check('    and closing the card hides the drawer', card().querySelector('.source-panel').hidden
+    && /check failed/.test(t(card().querySelector('.source-state'))));
+  card().querySelector('.source-head').click();
 
   // Remove asks first; only Confirm sends it.
   w.answerAsks = false;

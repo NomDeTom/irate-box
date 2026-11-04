@@ -209,7 +209,7 @@ h2 {
 .admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting, .settings, .admin-list) {
   margin-top: 1rem;
 }
-.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block) {
+.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block, .source-grid) {
   margin-top: 1rem;
 }
 .admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .quick-chips, .admin-meter) {
@@ -364,7 +364,7 @@ summary + .view-switch {
 }
 /* The OPML block under the feeds: its own heading is the space below it. */
 .opml {
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 }
 .opml > h3:first-child {
   margin-top: 0;
@@ -1524,7 +1524,6 @@ body.app-frame iframe {
 }
 
 /* Library (admin): sources, the add form and the policy. */
-#library-sources,
 #apps-list,
 #builtin-list,
 #addons-list {
@@ -3521,6 +3520,212 @@ body.drop > section + section {
 .git-card p {
   margin: 0;
 }
+/* One source card, the Git repository's shape, on every page: terse on the card, the long words in the fold. */
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.75rem;
+}
+.source-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 11rem;
+  position: relative;
+  padding: 0;
+  gap: 0;
+}
+.source-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  margin-bottom: 0.35rem;
+}
+.source-head::after {
+  content: "▸";
+  position: absolute;
+  top: 0.75rem;
+  right: 0.9rem;
+  color: var(--muted);
+}
+.source-card.open .source-head::after {
+  content: "▾";
+}
+.source-title-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  padding-right: 1.5rem;
+}
+.source-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.source-pill {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.source-sub,
+.source-state {
+  font-size: 0.82rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-head .source-facts {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  margin-top: 0.1rem;
+}
+.source-facts .badge {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-panel {
+  grid-column: 1 / -1;
+}
+.source-panel[hidden],
+.source-panel.source-expanded[hidden] {
+  display: none;
+}
+/* An open source card: the small card keeps its space, and the larger card takes the next row under it. */
+.source-panel.source-expanded {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  min-width: 0;
+}
+.source-expanded > .source-head {
+  margin-bottom: 0;
+}
+.source-expanded > .source-actions {
+  margin-top: auto;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+/* An add mini-card's fields: two or three to a line, the wider parts across the row. */
+.source-panel > .source-drawer > .library-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.45rem 0.9rem;
+  align-items: start;
+  max-width: none;
+}
+.source-panel > .source-drawer > .library-form > label {
+  margin: 0;
+}
+.source-panel > .source-drawer > .library-form > :is(.setting-desc, .library-buttons, .action-btn) {
+  grid-column: 1 / -1;
+}
+.source-panel.source-expanded > .source-drawer {
+  margin-top: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+}
+.source-panel.open .source-head::after {
+  content: "▾";
+}
+/* A "new …" card's head fills the card's height, so its enter details button sits at the foot. */
+.source-add-card .source-head {
+  min-height: 8rem;
+}
+.source-panel > .source-drawer {
+  margin-top: -0.35rem;
+  padding: 0.75rem 1rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: var(--bg);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0.55rem 0.9rem;
+  align-items: start;
+}
+.source-panel > .source-drawer > :is(p, div, form, section, .admin-list, h3, h4, .library-buttons, .settings) {
+  grid-column: 1 / -1;
+}
+.source-panel .mirror-description {
+  grid-column: 1 / -1;
+  flex-wrap: nowrap;
+}
+.source-panel .mirror-description input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.source-panel .mirror-submodules {
+  border-top: 0;
+  padding: 0;
+  flex-wrap: nowrap;
+}
+.source-panel .appstore-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0.5rem 0.9rem;
+}
+.source-panel .appstore-settings .aw-field {
+  border-top: 0;
+  padding: 0;
+}
+.source-panel .appstore-settings .aw-foot {
+  grid-column: 1 / -1;
+}
+.source-panel .source-danger {
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.source-panel input[type="number"] {
+  width: 6.5rem;
+}
+@keyframes source-open {
+  from { opacity: 0; transform: translateY(-0.2rem); }
+  to { opacity: 1; transform: none; }
+}
+.source-panel .source-drawer {
+  animation: source-open 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-panel .source-drawer { animation: none; }
+}
+.source-drawer > p {
+  margin: 0;
+}
+.source-actions .source-enter {
+  margin-left: auto;
+}
+.source-panel > .source-drawer > .library-form > .action-btn {
+  justify-self: start;
+}
+.source-card .source-actions {
+  margin-top: auto;
+  padding: 0.6rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
 .git-new {
   font: inherit;
   cursor: pointer;
@@ -3580,6 +3785,10 @@ body.drop > section + section {
 .git-card .library-buttons {
   margin-top: auto;
   padding-top: 0.3rem;
+}
+/* A source card's actions sit under its fold, apart from it (the card already spaces its own parts). */
+.git-card.source-card .source-actions {
+  margin-top: auto;
 }
 .button-link {
   display: inline-block;
@@ -3835,6 +4044,14 @@ button.danger {
   display: flex;
   gap: 0.35rem;
   align-items: center;
+}
+.aw-filter-sort {
+  margin-left: auto;
+}
+.aw-filter-sort select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
 }
 .books-bulk {
   display: flex;
@@ -4302,6 +4519,21 @@ label > .select-chips {
   cursor: pointer;
   color: var(--text);
 }
+/* A package list in an update card: inside the card's padding, its bullets and names inside the box. */
+#os-packages .field-help,
+#board-packages .field-help,
+#debian-packages .field-help,
+.update-card .field-help {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin-top: 0.35rem;
+  margin-left: 0;
+  margin-right: 0;
+}
+.field-help ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
 .output-value {
   display: inline-block;
   padding: 0.3rem 0.6rem;
@@ -4403,6 +4635,144 @@ label > .select-chips {
 .aw-row-detail {
   padding: 0.2rem 0.9rem 0.7rem 1.9rem;
   font-size: 0.85rem;
+}
+/* A list of many books: the bulk bar of that view, then Mock controls' short list. */
+.books-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.kits-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.books-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.source-tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+/* The podcast settings: one compact row per setting, the caption and its control on one line, left-aligned. */
+#podcasts-panel .settings {
+  gap: 0.35rem;
+}
+#podcasts-panel .settings .aw-field {
+  border-top: 0;
+  padding: 0.15rem 0;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem 0.7rem;
+}
+#podcasts-panel .settings .aw-field .aw-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+#podcasts-panel .settings .aw-field input[type="number"] {
+  flex: 0 0 auto;
+  width: 6.5rem;
+}
+#podcasts-panel .settings .podcast-toggle {
+  flex-wrap: nowrap;
+}
+#podcasts-panel .settings .podcast-toggle input[type="checkbox"] {
+  order: -1;
+  margin: 0;
+}
+#podcasts-panel .settings .podcast-toggle .aw-label {
+  flex: 1 1 auto;
+}
+#podcasts-panel .settings .aw-field .chip-group {
+  flex: 0 1 auto;
+}
+/* The librarian's storage limits: the caption and its entry on one line, the controls left. */
+.library-form label.compact-field {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+.library-form label.compact-field input[type="number"] {
+  width: 6.5rem;
+}
+.library-form label.compact-field .setting-desc {
+  margin-top: 0;
+}
+/* The short-list view of a source: the line's actions beside its head, the same drawer under it, full width. */
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.source-row.has-tick {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.source-row .source-row-head {
+  grid-column: 1;
+}
+.source-row.has-tick .source-row-head {
+  grid-column: 2;
+}
+.action-btn.tinted {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.source-row-actions {
+  grid-column: 2;
+  margin: 0;
+  padding: 0.2rem 0.6rem;
+  flex-wrap: nowrap;
+}
+.source-row.has-tick .source-row-actions {
+  grid-column: 3;
+}
+.source-tick {
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 0 0 0.6rem;
+}
+.source-row-detail {
+  grid-column: 1 / -1;
+  padding-left: 1.9rem;
+}
+@media (max-width: 40rem) {
+  .source-row,
+  .source-row.has-tick {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .source-row.has-tick .source-tick {
+    grid-column: 1;
+    grid-row: 1;
+    padding-left: 0.7rem;
+  }
+  .source-row .source-row-head,
+  .source-row.has-tick .source-row-head {
+    grid-column: 2;
+  }
+  .source-row-actions,
+  .source-row.has-tick .source-row-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding: 0 0.7rem 0.45rem 1.9rem;
+    flex-wrap: wrap;
+  }
+  .source-row-detail {
+    grid-row: 3;
+  }
 }
 .aw-dl {
   display: grid;
@@ -4581,6 +4951,15 @@ label > .select-chips {
 .aw-label {
   min-width: 10rem;
   color: var(--muted);
+}
+.aw-field select {
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+  font-size: 0.88rem;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
 }
 .aw-field input[type="text"] {
   padding: 0.35rem 0.5rem;

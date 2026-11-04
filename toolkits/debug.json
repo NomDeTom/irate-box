@@ -31,5 +31,6 @@
   "bpftrace",
   "bpfcc-tools",
   "bpftool"
- ]
+ ],
+ "tagline": "Program debugging and tracing"
 }

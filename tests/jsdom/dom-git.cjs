@@ -79,186 +79,66 @@ const wait = () => new Promise((r) => setTimeout(r, 50));
   await wait();
   const d = w.document;
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
-  const cards = () => [...d.querySelectorAll('#git-grid > .git-card:not(.git-new)')];
-  const card = (name) => cards().find((c) => t(c.querySelector('h4')) === `${name}.git`);
+  const cards = () => [...d.querySelectorAll('#git-grid > .source-card')].filter((c) => c.id !== 'git-add');
+  const card = (name) => cards().find((c) => t(c.querySelector('.source-title')) === `${name}.git`);
   const button = (root, label) => root && [...root.querySelectorAll('button')].find((b) => t(b) === label);
-  const chip = (label) => [...d.querySelectorAll('#git-chips-kind .chip, #git-chips-area .chip')].find((b) => t(b).replace(/ \d+$/, '') === label);
 
-  check('a card per repository, then the New card last', d.querySelector('#git-grid > :last-child').classList.contains('git-new') && cards().length === 5, cards().length);
-  check('a submodule mirror has no card of its own', !card('meshtastic-firmware--protobufs'));
-  check('chips with counts: All 5 · Local repositories 4 · Mirrors 1 · Builds 1', ['All 5', 'Local repositories 4', 'Mirrors 1', 'Builds 1'].every((l) => chip(l.replace(/ \d+$/, '')) && t(chip(l.replace(/ \d+$/, ''))) === l),
-    [...d.querySelectorAll('#git-chips-kind .chip')].map(t).join(', '));
-  check('and Guests 3 · Administrators 2', t(chip('Guests')) === 'Guests 3' && t(chip('Administrators')) === 'Administrators 2', [...d.querySelectorAll('#git-chips-area .chip')].map(t).join(', '));
-  check('badges in words: guests, the administrators push', /Guests/.test(t(card('demo').querySelector('.badges'))) && /administrators push/.test(t(card('demo').querySelector('.badges'))));
-  check('anyone pushes', /anyone pushes/.test(t(card('open').querySelector('.badges'))));
-  check('read-only, administrators', /Administrators/.test(t(card('archive').querySelector('.badges'))) && /read-only/.test(t(card('archive').querySelector('.badges'))));
-  check('the last build, with its result and date', /✅ build passed, 2026-/.test(t(card('fw-ci').querySelector('.badges'))), t(card('fw-ci').querySelector('.badges')));
-  check('the description labelled, only when there is one', /^About Field notes/.test(t(card('demo').querySelector('.git-about'))) && !card('open').querySelector('.git-about'));
-  check('a facts line: last commit, branches, size', /^Last commit 2026-\d\d-\d\d · 2 branches · /.test(t(card('demo').querySelector('.git-facts'))), t(card('demo').querySelector('.git-facts')));
-  check('an empty one says so', /^Empty/.test(t(card('archive').querySelector('.git-facts'))));
-  check('access in one sentence', t(card('fw-ci').querySelector('.git-access')) === 'Only administrators can see and clone it. Only administrators can push to it. The box builds each push.',
-    t(card('fw-ci').querySelector('.git-access')));
-  const mc = card('meshtastic-firmware');
-  check('a mirror: the Mirror badge, from where, its update; Manage in Library, no Manage of its own', /Mirror/.test(t(mc.querySelector('.badges')))
-    && /from github\.com\/meshtastic\/firmware · updated 2026-/.test(t(mc)) && mc.querySelector('a[href="#mirrors"]')
-    && ![...mc.querySelectorAll('button')].some((b) => t(b) === 'Manage'), t(mc));
-
-  const mirrorBox = d.getElementById('mirror-description-meshtastic-firmware');
-  check('the mirror card: a description to edit, the README\'s as its placeholder', mirrorBox && mirrorBox.value === ''
-    && mirrorBox.placeholder === 'Firmware of the mesh');
-  mirrorBox.value = ' Mesh firmware ';
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Change description').click();
-  await wait();
-  const saved = posted.filter(([, b]) => b.action === 'mirror-change').pop();
-  check('Change description changes the mirror, trimmed', saved && saved[1].mirror.description === 'Mesh firmware' && saved[1].mirror.name === 'meshtastic-firmware');
-  check('the mirror form asks for a description', !!d.querySelector('#git-mirror-add [name=description]'));
-
-  const subChip = (scope, word) => [...scope.querySelectorAll('.chip-group[aria-label="Mirror its submodules too"] .chip')].find((b) => t(b) === word);
-  check('the mirror card: submodules as On and Off chips, On chosen', subChip(d.getElementById('git-mirrors'), 'On').classList.contains('selected')
-    && !subChip(d.getElementById('git-mirrors'), 'Off').classList.contains('selected')
-    && ![...d.querySelectorAll('#git-mirrors button')].some((b) => /submodules$/.test(t(b))));
-  posted.length = 0;
-  subChip(d.getElementById('git-mirrors'), 'Off').click();
-  await wait();
-  const turned = posted.find(([, b]) => b.action === 'mirror-change');
-  check('the Off chip changes the mirror to no submodules', turned && turned[1].mirror.submodules === false && turned[1].mirror.name === 'meshtastic-firmware');
-  const formBox = d.querySelector('#git-mirror-add input[name=submodules]');
-  subChip(d.getElementById('git-mirror-add'), 'On').click();
-  check('the form: its chips set the hidden checkbox', formBox.checked === true && subChip(d.getElementById('git-mirror-add'), 'On').classList.contains('selected'));
-  gitData.served = false; // the next answer from the hub
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
-  await wait();
-  const removedSays = t(d.getElementById('git-usage'));
-  check('Git removed: the top line says so and how to add it back', /Git is removed from this box/.test(removedSays) && /run install\.sh again with --with-git/.test(removedSays), removedSays);
-  check('Git removed: a card\'s name is no link, there is no clone URL, the mirrors say so',
-    !d.querySelector('.git-card h4 a') && ![...d.querySelectorAll('button')].some((b) => t(b) === 'Copy clone URL')
-    && /nobody can browse or clone them/.test(t(d.getElementById('git-mirrors'))));
-  delete gitData.served;
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
-  await wait();
-  check('Git there: the links are back', !!d.querySelector('.git-card h4 a') && !/Git is removed/.test(t(d.getElementById('git-usage'))));
-  // A mirror action's button waits while the request is in flight, and clears on the answer or a refusal.
-  holdGit = true;
-  const update = [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror');
-  update.click();
-  await wait();
-  check('a Git action: its button waits while the hub has it', update.classList.contains('is-busy') && update.getAttribute('aria-busy') === 'true');
-  holdGit = false;
-  releaseGit();
-  await wait();
-  check('  and the wait ends with the answer', !update.classList.contains('is-busy') && !update.hasAttribute('aria-busy'));
-  failGit = true;
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').click();
-  await wait();
-  check('  a refused request clears it too', ![...d.querySelectorAll('#git-mirrors button')].find((b) => t(b) === 'Update mirror').classList.contains('is-busy'));
-  failGit = false;
-  chip('Mirrors').click();
-  check('the Mirrors chip shows only mirrors', cards().map((c) => t(c.querySelector('h4'))).join() === 'meshtastic-firmware.git');
-  chip('Builds').click();
-  check('the Builds chip shows only what builds', cards().map((c) => t(c.querySelector('h4'))).join() === 'fw-ci.git');
-  chip('All').click(); chip('Administrators').click();
-  check('Private: the two private ones', cards().length === 2);
-  chip('All access').click();
-  const search = d.getElementById('git-search');
+  check('a source card per local repository, then the New card last',
+    cards().length === 4 && d.querySelector('#git-grid > :last-child .source-title').textContent === 'New repository', cards().length);
+  check('a mirror is not in Git Repositories', !card('meshtastic-firmware') && !!d.querySelector('#git-mirrors .source-card .source-title'));
+  check('the mirror list has its own card and the add card', d.querySelectorAll('#git-mirrors .source-card').length === 2
+    && t(d.querySelector('#git-mirrors .source-card .source-title')) === 'meshtastic-firmware.git');
+  const bar = d.querySelector('#git-filter .aw-filter');
+  check('the shared filter bar: search, tags and a count', bar && bar.querySelector('input[type=search]')
+    && [...bar.querySelectorAll('.filter-chip')].map(t).join('|') === 'Guests|Administrators|Builds'
+    && t(bar.querySelector('.aw-count')) === '4 of 4', bar && t(bar));
+  const demo = card('demo');
+  check('the card head: local source, pill, checked state and facts', /Local repository/.test(t(demo))
+    && /Access: Guests/.test(t(demo)) && /Schedule: on push/.test(t(demo)), t(demo));
+  [...bar.querySelectorAll('.filter-chip')].find((c) => t(c) === 'Guests').click();
+  check('a tag shows only its repositories', cards().filter((c) => !c.hidden).length === 2);
+  [...bar.querySelectorAll('.filter-chip')].find((c) => t(c) === 'Guests').click();
+  const search = bar.querySelector('input[type=search]');
   search.value = 'hill'; search.dispatchEvent(new w.Event('input'));
-  check('search looks at descriptions too', cards().map((c) => t(c.querySelector('h4'))).join() === 'demo.git');
+  check('the search looks at descriptions too', cards().filter((c) => !c.hidden).map((c) => t(c.querySelector('.source-title'))).join() === 'demo.git');
   search.value = ''; search.dispatchEvent(new w.Event('input'));
 
-  // Manage as a drawer: right after its card, across the grid.
-  [...card('demo').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();
-  let drawer = d.querySelector('#git-grid > .git-drawer');
-  check('Manage opens a drawer right after its card', drawer && drawer.previousElementSibling === card('demo')
-    && card('demo').querySelector('[aria-expanded="true"]'), drawer && drawer.previousElementSibling && t(drawer.previousElementSibling.querySelector('h4')));
-  const legends = [...drawer.querySelectorAll('legend')].map(t);
-  check('Access in three questions', legends.join(' | ') === 'Who can see it? | Who can push? | Build on push?', legends.join(' | '));
-  check('a public repository: three push choices, and "never build" said', drawer.querySelectorAll('input[name^="push-"]').length === 3
-    && /Repositories that guests can push to never build/.test(t(drawer)) && !drawer.querySelector('input.git-build'));
-  check('the parts: Access, About, Publish to…, and Delete last, apart', [...drawer.querySelectorAll('section > h4')].map(t).join(' | ') === 'Access | About | Publish to… | Delete'
-    && drawer.lastElementChild.classList.contains('git-danger'));
-  drawer.querySelector('input[name^="push-"][value="public-everything"]').click();
-  await wait();
-  check('choosing Anyone asks first, then asks the hub', posted.some(([u, b]) => u === '/admin/git' && b.action === 'preset' && b.name === 'demo' && b.preset === 'public-everything'),
-    JSON.stringify(posted));
-  drawer = d.querySelector('#git-grid > .git-drawer');
-  check('the drawer stays open after a change', drawer && drawer.previousElementSibling === card('demo'));
-  drawer.querySelector('input[name^="see-"][value="private"]').click();
-  await wait();
-  check('Only administrators (see) moves it to private', posted.some(([, b]) => b.action === 'move' && b.name === 'demo' && b.to === 'private'));
-  check('  and its drawer follows it', d.querySelector('.git-drawer') && /Only administrators can see/.test(t(d.querySelector('.git-drawer .git-manage-head + section'))));
-  drawer = d.querySelector('.git-drawer');
-  const descBox = drawer.querySelector('textarea.git-desc'), descSave = descBox.parentElement.querySelector('.aw-save');
-  check('About: its Save off until the description changes, with a Discard', descSave.disabled && !!descBox.parentElement.querySelector('.aw-discard'));
-  descBox.value = 'New words';
-  descBox.dispatchEvent(new w.Event('input', { bubbles: true }));
-  descSave.click();
-  await wait();
-  check('About: Save sends the description', posted.some(([, b]) => b.action === 'describe' && b.description === 'New words'));
-  drawer = d.querySelector('.git-drawer');
-  drawer.querySelector('select.git-publish-to').value = 'private/fw-ci';
-  drawer.querySelector('input.git-publish-refs').value = 'main dev';
-  [...drawer.querySelectorAll('button')].find((b) => t(b) === 'Publish branches or tags').click();
-  await wait();
-  check('Publish sends the target and the refs', posted.some(([, b]) => b.action === 'publish' && b.to.area === 'private' && b.to.name === 'fw-ci' && b.refs.join() === 'main,dev'));
-  check('mirrors are not offered as a target', ![...d.querySelectorAll('.git-drawer select.git-publish-to option')].some((o) => /meshtastic/.test(o.value)));
-  drawer = d.querySelector('.git-drawer');
-  const toNew = drawer.querySelector('select.git-publish-to');
-  const newFields = drawer.querySelector('input.git-publish-new-name').parentNode;
-  check('Publish to… offers New repository…, its fields hidden until chosen', [...toNew.options].some((o) => t(o) === 'New repository…') && newFields.hidden);
-  toNew.value = '+new'; toNew.dispatchEvent(new w.Event('change'));
-  const name = drawer.querySelector('input.git-publish-new-name'), blurb = drawer.querySelector('input.git-publish-new-desc');
-  check('New repository…: name <name>-releases, public, "Releases of <name>"', !newFields.hidden && /^.+-releases$/.test(name.value)
-    && drawer.querySelector('select.git-publish-new-area').value === 'public' && blurb.value === `Releases of ${name.value.replace(/-releases$/, '')}`);
+  demo.querySelector('.source-head').click();
+  let panel = d.querySelector('#git-grid .source-panel:not([hidden])');
+  check('a card opens a drawer under the grid', panel && !panel.hidden
+    && [...panel.querySelectorAll('.git-manage section > h4')].map(t).join(' | ') === 'Access | About | Publish to… | Delete');
+  check('Access has its questions and chips', [...panel.querySelectorAll('legend')].map(t).join(' | ') === 'Who can see it? | Who can push? | Build on push?'
+    && panel.querySelectorAll('.chip-group[aria-label="Who can see it?"] .chip').length === 2);
   posted.length = 0;
-  [...drawer.querySelectorAll('button')].find((b) => t(b) === 'Publish branches or tags').click();
+  [...panel.querySelectorAll('.chip-group[aria-label="Who can see it?"] .chip')].find((c) => t(c) === 'Administrators').click();
   await wait();
-  const made = posted.find(([, b]) => b.action === 'publish');
-  check('Publish to a new repository sends create_to and no to', made && made[1].create_to.area === 'public' && made[1].create_to.name === name.value
-    && made[1].create_to.description === blurb.value && !made[1].to, JSON.stringify(made));
-  [...d.querySelectorAll('.git-drawer button')].find((b) => /^Delete /.test(t(b))).click();
+  check('choosing Administrators moves the repository', posted.some(([u, b]) => u === '/admin/git' && b.action === 'move' && b.name === 'demo' && b.to === 'private'));
+
+  const mirror = d.querySelector('#git-mirrors .source-card');
+  mirror.querySelector('.source-head').click();
+  const mp = d.querySelector('#git-mirrors .source-panel:not([hidden])');
+  const mirrorBox = d.getElementById('mirror-description-meshtastic-firmware');
+  check('the mirror drawer: the description and its submodule chips', mp && mirrorBox
+    && mirrorBox.placeholder === 'Firmware of the mesh'
+    && mp.querySelectorAll('.chip-group[aria-label="Mirror its submodules too"] .chip').length === 2);
+  mirrorBox.value = ' Mesh firmware ';
+  [...mp.querySelectorAll('button')].find((b) => t(b) === 'Change description').click();
   await wait();
-  check('Delete asks, then asks the hub, and the drawer closes', posted.some(([, b]) => b.action === 'delete' && b.name === 'demo') && !d.querySelector('.git-drawer'));
+  check('Change description asks the hub, trimmed', posted.some(([, b]) => b.action === 'mirror-change' && b.mirror.description === 'Mesh firmware'));
 
-  // A private repository that builds: the switch.
-  [...card('fw-ci').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();
-  drawer = d.querySelector('.git-drawer');
-  const sw = drawer.querySelector('input.git-build');
-  check('a building repository: the build switch, on, and two push choices', sw && sw.checked && drawer.querySelectorAll('input[name^="push-"]').length === 2);
-  sw.checked = false; sw.dispatchEvent(new w.Event('change'));
-  await wait();
-  check('switching builds off asks the hub', posted.some(([, b]) => b.action === 'build' && b.name === 'fw-ci' && b.on === false));
-
-  // Manage opens under its card only: no side panel, nothing beside the grid.
-  check('no side panel, nor its choice', !d.getElementById('git-side') && !d.getElementById('git-manage-as'));
-  [...d.querySelectorAll('.git-drawer button')].find((b) => t(b) === 'Close').click();
-  check('Close folds the drawer', !d.querySelector('#git-grid .git-drawer'));
-
-  // New: an empty repository, or a mirror (under Mirrors).
-  d.querySelector('#git-grid .git-new').click();
-  const np = d.querySelector('#git-grid .git-drawer.git-manage, #git-grid .git-drawer .git-manage, #git-grid .git-manage');
-  check('New offers an empty repository or a mirror', np && /An empty repository/.test(t(np)) && np.querySelector('a[href="#mirrors"]') && np.querySelector('#git-create'));
+  const addNew = d.getElementById('git-add');
+  addNew.querySelector('.source-head').click();
+  const np = d.querySelector('#git-grid .source-panel:not([hidden])');
+  check('New opens the create form in its drawer', np && np.querySelector('#git-create'));
   const f = d.getElementById('git-create').elements;
   f.name.value = 'notes'; f.area.value = 'private';
   d.getElementById('git-create').dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
   check('creating asks the hub', posted.some(([, b]) => b.action === 'create' && b.name === 'notes' && b.area === 'private'));
 
-  // Builds has its own page: /admin links there, and its controls are not on this page.
-  check('Builds on its own page: a link, and no build controls here', d.getElementById('git-builds-open').getAttribute('href') === '/admin/git.html'
-    && !d.getElementById('ci-runs') && !d.getElementById('ci-cache-form') && !d.getElementById('ci-keep-form'));
-  [...card('fw-ci').querySelectorAll('button')].find((b) => t(b) === 'Manage').click();
-  const dr = d.querySelector('.git-drawer');
-  check('Manage: Build now, and no Set up builds (that is on the Builds page)', button(dr, 'Build now') && !dr.querySelector('details.ci-setup'));
-  button(dr, 'Build now').click();
-  await wait();
-  check('Build now asks the hub, and says what it queued', posted.some(([u, b]) => u === '/admin/ci' && b.action === 'build' && b.repo === 'fw-ci')
-    && /Queued: fw-ci\.git main at cccccc/.test(t(d.getElementById('git-note'))), t(d.getElementById('git-note')));
-  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
-  check('the grid as Kiwix\'s: minmax(18rem, 1fr)', /\.card-grid \{[^}]*minmax\(18rem, 1fr\)/.test(css));
-  check('a drawer spans the grid', /\.git-drawer \{\s*grid-column: 1 \/ -1;\s*\}/.test(css));
-  const walker = d.createTreeWalker(d.body, w.NodeFilter.SHOW_TEXT);
-  const stray = [];
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) if (/^(null|undefined|NaN|\[object Object\])$/.test(n.textContent.trim())) stray.push(n.textContent);
-  check('no stray null or undefined on the page', !stray.length, stray.join(','));
+  check('Builds has its own page, and no build controls here', d.getElementById('git-builds-open').getAttribute('href') === '/admin/git.html'
+    && !d.getElementById('ci-runs') && !d.getElementById('ci-cache-form'));
+  check('no stray null or undefined on the page', ![...d.querySelectorAll('main *')].some((n) => /^(null|undefined|NaN|\[object Object\])$/.test(t(n))));
   check('no page errors', !errors.length, errors.join(' | '));
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

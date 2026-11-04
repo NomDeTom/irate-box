@@ -44,6 +44,9 @@ w.fetch = async (u, opts = {}) => {
   if (opts.method === 'POST' && u === '/admin/kits') {
     const body = JSON.parse(opts.body);
     posted.push(body);
+    if (body.action === 'settings')
+      for (const [id, changes] of Object.entries(body.kits || {})) Object.assign(kitsData.settings.kits[id], changes);
+    if (body.action === 'extra') kitsData.kits[body.kit].extra = body.packages;
     return new Response(JSON.stringify(Object.assign({}, kitsData, body.action === 'settings' ? {} : { id: `id-${posted.length}` })),
       { status: body.action === 'settings' ? 200 : 202 });
   }
@@ -66,21 +69,24 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   const d = w.document;
   const t = (n) => (n ? n.textContent.replace(/\s+/g, ' ').trim() : '');
   // A card per kit, its details in a drawer inside the card (AW.cards); open one to see them.
-  const head = (title) => [...d.querySelectorAll('#kits-grid .aw-card')].find((c) => t(c.querySelector('.aw-card-head .t')) === title);
-  const card = (title) => { const c = head(title); if (c && !c.classList.contains('open')) c.querySelector('.aw-card-head').click(); return head(title); };
-  const pills = (title) => t(head(title).querySelector('.aw-card-head .p'));
+  const head = (title) => [...d.querySelectorAll('#kits-source-list .source-row')].find((c) => t(c.querySelector('.source-row-head .t')) === title);
+  const card = (title) => { const c = head(title); const detail = c && c.querySelector('.source-row-detail'); if (detail && detail.hidden) c.querySelector('.source-row-head').click(); return head(title); };
+  const pills = (title) => head(title).dataset.tags;
+  const custom = () => d.getElementById('kit-custom');
+  const openCustom = () => { const c = custom(); if (c && c.querySelector('.source-panel').hidden) c.querySelector('.source-head').click(); return c; };
   const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
-  const save = (title) => button(card(title).querySelector('.aw-drawer'), 'Save');
+  const save = (title) => button(card(title).querySelector('.source-row-detail'), 'Save');
   check('Toolkits has its page under Content, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
     return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('Librarian') && links.indexOf('Toolkits') < links.indexOf('Moderation'); })());
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB\. Newest download: \d{4}-\d\d-\d\d\. Cached toolkits install without internet access\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));
-  check('a card per kit, and the custom one last', d.querySelectorAll('#kits-grid .aw-card').length === 6 && /\+ Custom toolkit/.test(t([...d.querySelectorAll('#kits-grid .aw-card')].pop())));
+  check('a row per kit, and the custom card last', d.querySelectorAll('#kits-source-list .source-row').length === 5
+    && /\+ Custom toolkit/.test(t(custom())) && d.querySelector('#kits-grid .source-grid').lastElementChild === custom());
   // A poll with the same data leaves the grid alone: text selected in a card stays selected, and a field typed
   // into keeps its value. A changed status draws the cards again.
   const sel = w.getSelection();
-  const titleNode = head('Debugging').querySelector('.aw-card-head .t').firstChild;
+  const titleNode = head('Debugging').querySelector('.source-row-head .t').firstChild;
   const pick = d.createRange();
   pick.selectNodeContents(titleNode);
   sel.removeAllRanges();
@@ -95,8 +101,8 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   const keyAfter = d.getElementById('kits-grid').dataset.key;
   check('  changed data draws the cards again', !titleNode.isConnected && keyBefore !== keyAfter);
   sel.removeAllRanges();
-  check('closed, a card is only its name, what it is for and its state', !head('Debugging').querySelector('.aw-drawer') && /Installed/.test(pills('Debugging')) && /Removal due/.test(pills('Debugging')), pills('Debugging'));
-  check('  its badges are states only, the same words on every card: no date, size or hours in them (each is a filter)', [...d.querySelectorAll('#kits-grid .aw-card .p')].every((p) => !/\d/.test(t(p).replace(/\+1 set/, ''))), [...d.querySelectorAll('#kits-grid .aw-card .p')].map((p) => t(p)));
+  check('closed, a row keeps its details hidden: its state is in its tags', head('Debugging').querySelector('.source-row-detail').hidden && /Installed/.test(pills('Debugging')) && /Removal due/.test(pills('Debugging')), pills('Debugging'));
+  check('  its badges are states only, the same words on every row: no date, size or hours in them (each is a filter)', [...d.querySelectorAll('#kits-source-list .source-row')].every((r) => !/\d/.test(r.dataset.tags.replace(/\+1 set/, ''))), [...d.querySelectorAll('#kits-source-list .source-row')].map((r) => r.dataset.tags));
   const debugFacts = t(card('Debugging').querySelector('.kit-facts'));
   const checkedLine = t([...card('Debugging').querySelectorAll('p')].find((p) => /^Checked /.test(t(p))));
   const cachedAt = (debugFacts.match(/^Cached (.*?), [\d.]+ MB\./) || [])[1];
@@ -105,7 +111,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
     /^Cached .+, [\d.]+ MB\. Installed: removed in [45] h\./.test(debugFacts) && !!cachedAt && cachedAt === checkedAt && /: up to date\.$/.test(checkedLine),
     `${debugFacts} || ${checkedLine}`);
   check('installed: what installing it upgraded, in its drawer', /also upgraded these packages\. They remain upgraded after removal: .*libc6/.test(t(card('Debugging'))), t(card('Debugging')));
-  check('one open at a time, with a ✕', d.querySelectorAll('#kits-grid .aw-card.open').length === 1 && !!card('Debugging').querySelector('.aw-close'));
+  check('one open at a time', d.querySelectorAll('#kits-source-list .source-row-detail:not([hidden])').length === 1);
   check('not cached: Install is off, and says why', button(card('Building'), 'Install toolkit…').disabled && /Refresh the cache while the box has internet access/.test(t(card('Building'))));
   check('an older set kept: the pill with its size, and Roll back with its date', /\+1 set for rollback/.test(pills('Security')) && /A set for rollback kept, 1(\.0)? MB more\./.test(t(card('Security').querySelector('.kit-facts')))
     && [...card('Security').querySelectorAll('button')].some((b) => /^Roll back to .+/.test(t(b))), pills('Security'));
@@ -120,13 +126,13 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   check('what a 32-bit board leaves out is said', /Omitted on this armhf board because they need a 64-bit board: bpftrace, bpfcc-tools, bpftool\./.test(t(card('Debugging'))));
   check('keep current shown as set, On or Off selected', onOffChip(card('Capture'), 'Automatic cache refresh', 'Off').classList.contains('selected')
     && onOffChip(card('Debugging'), 'Automatic cache refresh', 'On').classList.contains('selected'));
-  d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape' }));
-  check('Esc closes it', !d.querySelector('#kits-grid .aw-card.open'));
+  head('Debugging').querySelector('.source-row-head').click();
+  check('its head closes it', head('Debugging').querySelector('.source-row-detail').hidden);
 
   button(card('Debugging'), 'Remove toolkit').click();
   await wait();
   check('Remove asks the hub', posted[0] && posted[0].action === 'remove' && posted[0].kit === 'debug', JSON.stringify(posted));
-  check('  and the page says it is working on it, the card still open', /Working…/.test(t(d.getElementById('kits-summary'))) && head('Debugging').classList.contains('open'));
+  check('  and the page says it is working on it, the row still open', /Working…/.test(t(d.getElementById('kits-summary'))) && !head('Debugging').querySelector('.source-row-detail').hidden);
   answered = true;
   await wait(3300);
   check('the root helper\'s answer is shown when it comes', /removed 1 packages/.test(t(d.getElementById('kits-note'))) && !/Working…/.test(t(d.getElementById('kits-summary'))),
@@ -144,7 +150,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   button(consent, 'Install toolkit').click();
   await wait();
   check('Install sends the kit and the time chosen', JSON.stringify(posted[1]) === JSON.stringify({ action: 'install', kit: 'capture', hours: 168 }), JSON.stringify(posted[1]));
-  const keep = card('Debugging').querySelector('.kit-jobs select.kit-hours');
+  const keep = card('Debugging').querySelector('.source-row-detail .kit-jobs select.kit-hours');
   keep.value = 'never';
   button(card('Debugging'), 'Extend installation period').click();
   await wait();
@@ -190,7 +196,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
     JSON.stringify(posted[posted.length - 1]));
   button(card('Radio tools'), 'Edit').click();
   const af = d.getElementById('kits-add').elements;
-  check('Edit opens the custom card with the form filled, and says it is a change', head('+ Custom toolkit').contains(d.getElementById('kits-add'))
+  check('Edit opens the custom card with the form filled, and says it is a change', openCustom().contains(d.getElementById('kits-add'))
     && af.id.value === 'radio' && af.packages.value === 'rtl-sdr sox' && af.hours.value === '4' && /Change Radio tools/.test(t(d.getElementById('kits-form-title'))));
   af.packages.value = 'rtl-sdr sox gqrx-sdr';
   d.getElementById('kits-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
@@ -202,9 +208,10 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   d.getElementById('kits-add').dispatchEvent(new w.Event('submit', { cancelable: true }));
   await wait();
   check('adding one: no id (the hub makes it), never removed', JSON.stringify(posted[posted.length - 1].kit) === JSON.stringify({ title: 'Mesh', summary: '', packages: ['mosquitto-clients'], remove_after_hours: null }));
-  button(head('+ Custom toolkit').querySelector('.aw-drawer'), '✕').click();
+  if (!custom().querySelector('.source-panel').hidden) custom().querySelector('.source-head').click();
   await wait();
-  check('the custom card closed: its form waits on the page, out of sight', !!d.getElementById('kits-add') && d.getElementById('kits-custom').contains(d.getElementById('kits-add')));
+  check('the custom card closed: its form waits on the page, out of sight', custom().querySelector('.source-panel').hidden
+    && !!d.getElementById('kits-add') && d.getElementById('kit-custom').contains(d.getElementById('kits-add')));
   button(card('Radio tools'), 'Delete toolkit').click();
   await wait();
   check('Delete asks, then asks the hub', JSON.stringify(posted[posted.length - 1]) === JSON.stringify({ action: 'undefine', kit: 'radio' }));
@@ -219,14 +226,15 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
     const c = card('Capture');
     const save = () => [...c.querySelectorAll('.aw-foot button')].find((b) => t(b) === 'Save');
     check('a toolkit opened: Save off, nothing changed', save() && save().disabled, save() && save().outerHTML);
-    onOffChip(c, 'Automatic cache refresh', 'On').click(); await wait();
+    const wasOn = onOffChip(c, 'Automatic cache refresh', 'On').classList.contains('selected');
+    onOffChip(c, 'Automatic cache refresh', wasOn ? 'Off' : 'On').click(); await wait();
     check('  a setting changed: Save on', !save().disabled);
-    onOffChip(c, 'Automatic cache refresh', 'Off').click(); await wait();
+    onOffChip(c, 'Automatic cache refresh', wasOn ? 'On' : 'Off').click(); await wait();
     check('  changed back: Save off again', save().disabled);
   }
   {
     // Last, as it is the latest request: Remove older set on the Security card.
-    card('Security').querySelector('.aw-card-head').click(); await wait();
+    card('Security'); await wait();
     const drop = [...card('Security').querySelectorAll('button')].find((b) => /^Remove older set \(frees 1(\.0)? MB\)$/.test(t(b)));
     check('  Remove older set, with what it frees', !!drop, [...card('Security').querySelectorAll('button')].map(t).join(' | '));
     if (drop) {
@@ -242,7 +250,7 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   check('every list a kit card draws is styled (its class in style.css)', kitLists.length >= 2 && kitLists.every((c) => new RegExp(`\\.${c}\\b`).test(sheet)), kitLists);
   // A toolkit action keeps its wait across the poll that redraws the card.
   const kc = card('Debugging');
-  const kbtn = button(kc.querySelector('.aw-drawer'), 'Check for updates');
+  const kbtn = button(kc.querySelector('.source-row-detail'), 'Check for updates');
   const kkey = kbtn && kbtn.dataset.wait;
   kbtn.click();
   await wait(100);

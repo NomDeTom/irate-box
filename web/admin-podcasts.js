@@ -9,6 +9,7 @@
   let snap = null;
 
   const el = AW.el;
+  const actionButton = (label, onclick, extra = {}) => AW.btn(label, { ...extra, onclick });
   const size = (n) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`);
   const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "never");
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
@@ -16,7 +17,7 @@
   // A fault in this page's own script is not the box talking: say so plainly, and keep the box's own words.
   const fault = (e) => {
     const text = e && e.message ? String(e.message) : String(e);
-    return /^the box answered/i.test(text)
+    return (e && e.box) || /^the box answered/i.test(text)
       ? text
       : "This part of the page could not be drawn: a fault in the page, not the box. Reload; if it stays, it is a bug.";
   };
@@ -33,7 +34,11 @@
       body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `the box answered ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(data.error || `the box answered ${response.status}`);
+      error.box = true;
+      throw error;
+    }
     snap = data.settings ? data : await get();
     draw();
     return data;
@@ -41,55 +46,144 @@
 
   async function get() {
     const response = await fetch("/admin/podcasts");
-    if (!response.ok) throw new Error(`the box answered ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(`the box answered ${response.status}`);
+      error.box = true;
+      throw error;
+    }
     return response.json();
   }
 
-  const field = (label, input) => el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: label }), input);
-
-  function number(key, label, min, max, value) {
-    const input = el("input", { type: "number", min, max, value, dataset: { key } });
-    return field(label, input);
-  }
-
-  function check(key, label, value) {
-    const input = el("input", { type: "checkbox", checked: !!value, dataset: { key } });
-    input.addEventListener("change", () => post({ action: "settings", [key]: input.checked }).catch((e) => say(fault(e), true)));
-    return el("label", { className: "aw-field" }, input, el("span", { className: "aw-label", textContent: label }));
-  }
-
   function settingsForm() {
-    const settings = snap.settings;
+    const form = el("form", { className: "library-form" });
     const box = el("div", { className: "settings" });
-    box.append(check("enabled", "Follow podcasts", settings.enabled));
-    box.append(
-      number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours),
-      number("back_catalogue", "New feed: episodes to download (-1 all)", -1, 1000, settings.back_catalogue),
-      number("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count),
-      number("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days),
-      number("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, settings.keep_mb),
-      number("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, settings.cap_mb),
-      number("leave_free_mb", "Leave free on the card in MB", 0, 10000000, settings.leave_free_mb),
-      number("max_episode_mb", "Largest single episode in MB", 1, 4096, settings.max_episode_mb),
-    );
-    box.append(check("keep_played", "Keep played episodes", settings.keep_played), check("video", "Allow video enclosures", settings.video));
-    const save = el("button", { type: "button", className: "action-btn primary", textContent: "Save settings" });
-    save.addEventListener("click", () => {
-      const changes = { action: "settings" };
-      for (const input of box.querySelectorAll("input[data-key]")) {
-        changes[input.dataset.key] = input.type === "checkbox" ? input.checked : Number(input.value);
-      }
-      post(changes).then(() => say("Saved.")).catch((e) => say(fault(e), true));
+    form.append(box);
+    const numberRow = (name, label, min, max, value) => {
+      const input = el("input", { name, type: "number", min, max, value: String(value) });
+      box.append(el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: label }), input));
+    };
+    const toggleRow = (name, label, value) => {
+      const input = el("input", { name, type: "checkbox", checked: !!value });
+      box.append(el("label", { className: "aw-field podcast-toggle" }, input, el("span", { className: "aw-label", textContent: label })));
+    };
+    const yesNoRow = (name, label, value) => {
+      const input = el("input", { name, type: "checkbox", checked: !!value, hidden: true });
+      const group = el("div", { className: "chip-group", role: "radiogroup", "aria-label": label });
+      const draw = () => group.replaceChildren(...[[true, "Yes"], [false, "No"]].map(([v, text]) => {
+        const chip = el("button", {
+          type: "button",
+          className: `chip${input.checked === v ? " selected" : ""}`,
+          role: "radio",
+          "aria-checked": String(input.checked === v),
+          textContent: text,
+        });
+        chip.addEventListener("click", () => {
+          if (input.checked === v) return;
+          input.checked = v;
+          draw();
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        return chip;
+      }));
+      draw();
+      box.append(el("div", { className: "aw-field podcast-toggle" },
+        el("span", { className: "aw-label", textContent: label }), input, group));
+    };
+    const settings = snap.settings;
+    toggleRow("enabled", "Follow podcasts", settings.enabled);
+    const often = el("input", { type: "hidden", name: "check_every_hours", value: String(settings.check_every_hours) });
+    const intervals = [["0", "Manual"], ["6", "6 hours"], ["24", "24 hours"], ["168", "Weekly"]];
+    const intervalChips = el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Check interval" });
+    const drawInterval = () => intervalChips.replaceChildren(...intervals.map(([value, text]) => {
+      const chip = el("button", {
+        type: "button",
+        className: `chip${often.value === value ? " selected" : ""}`,
+        role: "radio",
+        "aria-checked": String(often.value === value),
+        textContent: text,
+      });
+      chip.addEventListener("click", () => {
+        often.value = value;
+        drawInterval();
+        often.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      return chip;
+    }));
+    drawInterval();
+    box.append(el("div", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Check interval" }), often, intervalChips));
+    numberRow("back_catalogue", "New feed: episodes to download (-1 all)", -1, 1000, settings.back_catalogue);
+    numberRow("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count);
+    numberRow("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days);
+    numberRow("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, settings.keep_mb);
+    numberRow("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, settings.cap_mb);
+    numberRow("leave_free_mb", "Leave free on the card in MB", 0, 10000000, settings.leave_free_mb);
+    numberRow("max_episode_mb", "Largest single episode in MB", 1, 4096, settings.max_episode_mb);
+    yesNoRow("keep_played", "Keep played episodes", settings.keep_played);
+    yesNoRow("video", "Allow video enclosures", settings.video);
+    const sec = AW.form(form, {
+      label: "Podcast settings",
+      save: async (changes) => {
+        const body = { action: "settings" };
+        for (const [key, value] of Object.entries(changes)) body[key] = typeof value === "boolean" ? value : Number(value);
+        await post(body);
+        return "Saved.";
+      },
     });
-    const checkNow = el("button", { type: "button", className: "action-btn", textContent: "Check now" });
-    checkNow.addEventListener("click", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(fault(e), true)));
-    box.append(el("div", { className: "library-buttons" }, save, checkNow));
-    return box;
+    sec.fill({
+      enabled: settings.enabled,
+      check_every_hours: settings.check_every_hours,
+      back_catalogue: settings.back_catalogue,
+      keep_count: settings.keep_count,
+      keep_days: settings.keep_days,
+      keep_mb: settings.keep_mb,
+      cap_mb: settings.cap_mb,
+      leave_free_mb: settings.leave_free_mb,
+      max_episode_mb: settings.max_episode_mb,
+      keep_played: settings.keep_played,
+      video: settings.video,
+    });
+    return form;
   }
 
-  function addForm() {
-    const url = el("input", { type: "url", placeholder: "https://example.org/feed.xml", size: 40, spellcheck: false });
-    const title = el("input", { type: "text", placeholder: "Name (optional)", size: 24 });
+  // Each feed is the same source card as the other subscriptions: a card, or a short line from ten feeds.
+  function feedPill(feed) {
+    if (feed.last_error) return AW.pill("check failed", "bad");
+    if (!feed.last_check) return AW.pill("not checked yet", "info");
+    return AW.pill("checked", "ok");
+  }
+  function feedBody(feed) {
+    const remove = el("button", { type: "button", className: "small", textContent: "Remove feed" });
+    remove.addEventListener("click", async () => {
+      if (!(await AW.confirmHere(`Remove ${feed.title}?`, { anchor: remove, label: "Remove" }))) return;
+      const deleteFiles = await AW.confirmHere(
+        "Delete its episodes from the box too? Choose Cancel to keep them on the box.",
+        { anchor: remove, label: "Delete episodes" },
+      );
+      post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(e.message, true));
+    });
+    return [
+      el("p", { className: "setting-desc", textContent: feed.url }),
+      el("p", { className: "setting-desc", textContent: `${feed.episodes} kept of ${feed.listed} episodes; ${size(feed.size)}.` }),
+      feed.last_check ? el("p", { className: "setting-desc", textContent: `Last checked ${when(feed.last_check)}.` }) : null,
+      feed.last_error ? el("p", { className: "setting-desc bad", textContent: feed.last_error }) : null,
+      el("p", { className: "library-buttons source-danger" }, remove),
+    ];
+  }
+  function feedCard(feed) {
+    return AW.sourceCard({
+      id: `feed-${feed.id}`,
+      title: feed.title,
+      source: feed.url,
+      pill: feedPill(feed),
+      state: feed.last_check ? `Checked ${when(feed.last_check)} · ${feed.episodes} of ${feed.listed} kept` : "Not checked yet",
+      facts: [`${feed.episodes} of ${feed.listed} episodes`, size(feed.size), feed.last_error ? "check failed" : "up to date"],
+      actions: [actionButton("Check now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)), { className: "small" })],
+      body: feedBody(feed),
+    });
+  }
+  function addParts() {
+    const url = el("input", { type: "url", placeholder: "https://example.org/feed.xml", spellcheck: false });
+    const title = el("input", { type: "text", placeholder: "Name (optional)" });
     const add = el("button", { type: "button", className: "action-btn primary", textContent: "Add feed" });
     add.addEventListener("click", () => {
       post({ action: "add", url: url.value.trim(), title: title.value.trim() })
@@ -100,50 +194,66 @@
         })
         .catch((e) => say(fault(e), true));
     });
-    return el("div", { className: "library-buttons" }, url, title, add);
+    return {
+      body: [
+        el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Feed URL" }), url),
+        el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Name" }), title),
+        note,
+        el("p", { className: "library-buttons" }, add),
+      ],
+    };
   }
-
-  function feedList() {
-    if (!snap.feeds.length) return el("p", { className: "setting-desc", textContent: "No feeds yet." });
-    const table = el("table", { className: "admin-table" });
-    table.append(
-      el(
-        "tr",
-        {},
-        el("th", { textContent: "Feed" }),
-        el("th", { textContent: "Episodes" }),
-        el("th", { textContent: "Size" }),
-        el("th", { textContent: "Last check" }),
-        el("th", { textContent: "" }),
-      ),
-    );
-    for (const feed of snap.feeds) {
-      const remove = el("button", { type: "button", className: "small", textContent: "Remove" });
-      remove.addEventListener("click", async () => {
-        if (!(await AW.confirmHere(`Remove ${feed.title}?`, { anchor: remove, label: "Remove" }))) return;
-        const deleteFiles = await AW.confirmHere(
-          "Delete its episodes from the box too? Choose Cancel to keep them on the box.",
-          { anchor: remove, label: "Delete episodes" },
-        );
-        post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(fault(e), true));
+  function addCard() {
+    return AW.sourceCard({
+      id: "podcast-add",
+      add: true,
+      title: "Add a feed",
+      source: "an RSS or Atom address",
+      state: "URL and an optional name",
+      facts: ["Schedule: shared"],
+      body: addParts().body,
+      actions: [AW.enterButton()],
+    });
+  }
+  function feedView() {
+    const feeds = snap.feeds;
+    if (feeds.length > 9) {
+      const items = feeds.map((feed) => ({
+        id: `feed-${feed.id}`,
+        title: feed.title,
+        summary: feed.url,
+        pill: feedPill(feed),
+        badges: [feed.last_error ? "check failed" : "up to date"],
+        actions: [actionButton("Check now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)), { className: "small" })],
+        body: feedBody(feed),
+      }));
+      const add = addParts();
+      items.push({
+        id: "podcast-add-row",
+        title: "Add a feed",
+        summary: "an RSS or Atom address",
+        badges: [],
+        actions: [actionButton("enter details", (event) => {
+          event.currentTarget.closest(".aw-row")?.querySelector(".source-row-head")?.click();
+        }, { className: "small tinted" })],
+        body: add.body,
       });
-      table.append(
-        el(
-          "tr",
-          {},
-          el("td", {}, el("span", { className: "setting-name", textContent: feed.title }), el("br"), el("span", { className: "setting-desc", textContent: feed.url })),
-          el("td", { textContent: `${feed.episodes} kept of ${feed.listed}` }),
-          el("td", { textContent: size(feed.size) }),
-          el("td", {}, el("span", { textContent: when(feed.last_check) }), feed.last_error ? el("span", { className: "setting-desc bad", textContent: ` ${feed.last_error}` }) : null),
-          el("td", {}, remove),
-        ),
-      );
+      return [AW.sourceList(items, { id: "podcast-feeds" })];
     }
-    return table;
+    return [el("div", { className: "card-grid source-grid" }, ...feeds.map(feedCard), addCard())];
   }
 
   function opml() {
     const text = el("textarea", { rows: 4, placeholder: "Paste an OPML file here", spellcheck: false });
+    const doPaste = el("button", { type: "button", className: "action-btn", textContent: "Paste clipboard" });
+    doPaste.addEventListener("click", async () => {
+      try {
+        text.value = await navigator.clipboard.readText();
+        say("Pasted from the clipboard.");
+      } catch (e) {
+        say("The browser would not read the clipboard. Paste into the box instead.", true);
+      }
+    });
     const doImport = el("button", { type: "button", className: "action-btn", textContent: "Import OPML" });
     doImport.addEventListener("click", () => {
       post({ action: "import", opml: text.value }).then((data) => say(`Imported. ${data.feeds.length} feeds now.`)).catch((e) => say(fault(e), true));
@@ -158,23 +268,24 @@
         say(fault(e), true);
       }
     });
-    return el("div", { className: "opml" }, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doImport, doExport));
+    return el("div", { className: "opml" }, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doPaste, doImport, doExport));
   }
 
   function draw() {
     if (!snap) return;
     const was = panel.querySelector("input:focus, textarea:focus");
     if (was) return; // do not redraw under a field being typed in: the next poll does
-    panel.replaceChildren(
+    note.hidden = true;
+    panel.replaceChildren(...[
       el("p", { className: "setting-desc", textContent: `Using ${size(snap.used)} on the box; ${snap.free_mb} MB free.` }),
-      note,
       settingsForm(),
       el("h3", { textContent: "Feeds" }),
-      addForm(),
-      feedList(),
+      ...feedView(),
+      el("p", { className: "library-actions" },
+        actionButton("Check all now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(fault(e), true)))),
       opml(),
       snap.running ? el("p", { className: "setting-desc", textContent: "The librarian is working…" }) : null,
-    );
+    ].filter((node) => node !== null && node !== undefined));
   }
 
   function poll() {

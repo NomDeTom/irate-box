@@ -17,5 +17,6 @@
  "remove_after_hours": null,
  "services": [
   "gpsd.socket"
- ]
+ ],
+ "tagline": "GPS time synchronisation"
 }

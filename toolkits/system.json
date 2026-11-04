@@ -66,5 +66,6 @@
   "wtmpdb-update-boot.service",
   "wtmpdb-rotate.timer",
   "apparmor.service"
- ]
+ ],
+ "tagline": "Minimum system tools"
 }
