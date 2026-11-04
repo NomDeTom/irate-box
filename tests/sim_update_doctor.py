@@ -577,6 +577,36 @@ check(
     and "update.security.approved-note" in msg_ids(lc),
     lc,
 )
+# A state left behind by an install: the box runs a different commit than the state names.
+H.UPDATE_STATE.write_text(
+    json.dumps(
+        {
+            "installed": "old",
+            "checked_sha": "a" * 40,
+            "security_approved_sha": "a" * 40,
+            "checks": [security_check],
+            "security": security_hold,
+        }
+    )
+)
+with mock.patch.object(H, "_installed_commit", lambda: "new"):
+    lc = doctor(head_sha="a" * 40)["last-check"]
+    stale_actions = H._approve_actions(
+        {
+            "installed": "old",
+            "checked_sha": "a" * 40,
+            "security": security_hold,
+            "checks": [security_check],
+        }
+    )
+check(
+    "a state from before an install is named stale, with the sync button and no install buttons",
+    lc["status"] == "warn"
+    and msg_ids({"summary": lc["summary"]}) == {"update.last-check.stale"}
+    and [a["choice"] for a in lc["actions"]] == ["state-sync"],
+    lc,
+)
+check("  and no approve action is offered for it", stale_actions == [], stale_actions)
 (T / "cache" / "src" / "install.sh").unlink()
 
 # The certificate refused; GitHub's rate used up; the branch gone; the clock two hours fast.

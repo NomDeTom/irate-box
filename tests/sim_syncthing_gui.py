@@ -79,5 +79,25 @@ check(
     H.syncthing_gui_password("x", tries=3, sleep=later) is False and len(waits) == 2,
     waits,
 )
+waits.clear()
+got.clear()
+
+
+def later_late(seconds):
+    global srv
+    if len(waits) == 15:  # the GUI comes back after fifteen waits: past the old fifteen-try window
+        srv = HTTPServer(("127.0.0.1", port), Syncthing)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+    waits.append(seconds)
+
+
+ok = H.syncthing_gui_password("pw-late", tries=20, sleep=later_late)
+check(
+    "a GUI that comes back after fifteen seconds is still met",
+    ok is True and len(waits) == 16 and got == [("/rest/config/gui", "KEY123", {"password": "pw-late"})],
+    (ok, waits, got),
+)
+srv.shutdown()
+srv.server_close()
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

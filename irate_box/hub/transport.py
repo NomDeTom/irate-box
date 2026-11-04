@@ -30,6 +30,7 @@ HTTPS_ONLY = frozenset(
         "update-set-source",
         "update-approve-security",
         "update-install",
+        "update-state-sync",
         "tls-make",
         "tls-switch",
         "tls-import",

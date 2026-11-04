@@ -3502,6 +3502,7 @@ UPDATE_ACTIONS = {
     "set-source": "update-set-source",
     "approve-security": "update-approve-security",
     "approve-install": "update-approve-security",
+    "state-sync": "update-state-sync",
     "security-record-read": "security-record-read",
     # The OS's other updates and the board's own packages: the helper's security-fix choices, so a doctor button
     # and the Updates cards reach the same code.

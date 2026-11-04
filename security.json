@@ -612,6 +612,12 @@
       "reads": [],
       "writes": []
     },
+    "update-state-sync": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": []
+    },
     "uplink-do": {
       "https_only": false,
       "policy": false,
