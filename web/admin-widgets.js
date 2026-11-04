@@ -373,7 +373,8 @@ const AW = (() => {
     const actionsNode = opts.actions && opts.actions.length
       ? h('p', { class: 'library-buttons source-actions' }, ...opts.actions.filter(Boolean))
       : null;
-    const panel = h('div', { class: 'source-panel source-expanded' });
+    const panel = h('div', { class: 'source-panel source-expanded' }, body);
+    panel.hidden = true;
     let onResize = null;
     const place = () => {
       if (!panel.isConnected) {
@@ -397,6 +398,7 @@ const AW = (() => {
         const height = card.getBoundingClientRect().height;
         card.style.minHeight = `${height}px`;
         card.style.visibility = 'hidden';
+        panel.hidden = false;
         panel.classList.add('open');
         if (actionsNode) actionsNode.hidden = actionsNode.children.length === 1 && actionsNode.firstElementChild.classList.contains('source-enter');
         panel.replaceChildren(head, body, actionsNode || '');
@@ -405,7 +407,9 @@ const AW = (() => {
         window.addEventListener('resize', onResize);
       } else {
         panel.classList.remove('open');
-        panel.remove();
+        panel.replaceChildren(body);
+        panel.hidden = true;
+        card.append(panel);
         card.append(head);
         if (actionsNode) { actionsNode.hidden = false; card.append(actionsNode); }
         card.style.minHeight = '';
@@ -417,6 +421,7 @@ const AW = (() => {
     };
     panel._closeSource = () => setOpen(false);
     head.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
+    card.append(panel);
     card.append(head);
     if (actionsNode) card.append(actionsNode);
     if (opts.open) setTimeout(() => setOpen(true), 0);
