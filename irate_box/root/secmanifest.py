@@ -54,6 +54,7 @@ OUTBOUND_REASONS = {
     "github.com": "the update source, the add-ons catalogue and their repositories",
     "registry.npmjs.org": "the add-ons' npm packages",
     "pkgs.tailscale.com": "Tailscale's signed package repository",
+    "raw.githubusercontent.com": "the pinned vendor kernel sources for the USB gadget modules",
 }
 _SECRETS = {
     "/etc/hub/admin-password": {"owner": "root", "group": "root", "mode": "600", "readers": ["root"]},

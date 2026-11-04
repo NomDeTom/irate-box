@@ -44,6 +44,7 @@ ROOT = {
     "irate-box-uplink.service": "the network watchdog: reconnects, restarts the network, resets the radio",
     "irate-box-led.service": "the status light: writes an LED's trigger and brightness under /sys/class/leds, which are root's",
     "irate-box-rfkill.service": "the radios at every start: writes the rfkill switches under /sys/class/rfkill, which are root's",
+    "irate-box-usb-gadget.service": "USB networking: writes the gadget and its UDC under /sys, loads the function modules (modprobe), and runs dnsmasq and a getty on the ACM port",
     "irate-box-crashwatch.service": "crash watch: reads /dev/kmsg, resets a failing radio (USB unbind), restarts the box, sets the hang settings",
     "irate-box-memory-guard.service": "the memory guard: reads /proc and writes build.slice's cgroup.kill and /proc/sysrq-trigger",
     "irate-box-tailscale.service": "applies Tailscale's settings (tailscale up/down)",

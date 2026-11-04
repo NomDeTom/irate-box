@@ -39,6 +39,8 @@
 #                             while the box is well, as chosen on /admin (Recovery and monitoring)
 #   irate-box-rfkill.service  the radios (rfkill.py, root): WiFi and Bluetooth switched on at every
 #                             start, or as chosen on /admin (Recovery and monitoring)
+#   irate-box-usb-gadget.service  USB networking (usbgadget.py, root): a network link and a serial
+#                             console over the USB port, as chosen on /admin (Recovery and monitoring)
 #   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
 #                             hashed with daily and weekly salts held in memory, only the counts
 #                             written; runs only while counting is on (irate-box-visitors-switch.path)
@@ -3145,6 +3147,33 @@ RestrictAddressFamilies=AF_UNIX
 WantedBy=multi-user.target
 EOF
 
+# USB networking (usbgadget.py): NCM and ACM over the board's USB device port, as chosen on Recovery
+# and monitoring; on by default on a Lyra. The function modules are fetched from the pinned vendor
+# sources, built with DKMS and loaded here; the gadget is composed through configfs.
+cat >/etc/systemd/system/irate-box-usb-gadget.service <<EOF
+[Unit]
+Description=Irate-Box USB networking: a network link and a serial console over the USB port (usbgadget.py; /admin, Recovery and monitoring)
+After=local-fs.target systemd-modules-load.service
+
+[Service]
+Type=simple
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStart=$CODE/irate-box usbgadget run
+Restart=on-failure
+RestartSec=10
+Nice=5
+RuntimeDirectory=irate-box-usb-gadget
+RuntimeDirectoryMode=0755
+$ROOT_SANDBOX
+ReadWritePaths=$ETC /usr/src /var/lib/dkms /lib/modules /var/cache/irate-box/kits
+# /sys/kernel/config and /sys/class/udc are written (configfs and the UDC), and modprobe loads the
+# function modules: not ProtectKernelTunables or ProtectKernelModules. /dev/ttyGS0 is the console.
+PrivateDevices=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # The status light (led.py): one of the board's LEDs blinking while the box is well, as chosen on
 # Recovery and monitoring. Always running and small; on a board with no LED to use, it only looks.
 cat >/etc/systemd/system/irate-box-led.service <<EOF
@@ -3531,7 +3560,7 @@ fi
 systemctl stop irate-box-crashwatch.service 2>/dev/null || true
 HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" crashwatch migrate | sed 's/^/    /' ||
 	problem "crash watch's history was not moved from $STATE/crashwatch"
-for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service irate-box-usb-gadget.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.

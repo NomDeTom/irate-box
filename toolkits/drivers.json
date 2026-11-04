@@ -19,6 +19,24 @@
    "note": "The one irate-box uses: the community driver with recovery from a firmware that stops answering. Tested on the Luckfox Lyra Zero W (AIC8800DC) and a Raspberry Pi 3B+ (AIC8800D80). Build it with DKMS from its folder, and copy its fw/ folders to /lib/firmware."},
   {"title": "AIC8800 driver, Radxa's package (NomDeTom/aic8800, irate/box)", "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
    "version": "9e9f00f", "licence": "GPL-2.0",
-   "note": "Radxa's aic8800-usb-dkms with the same fixes as patches, including the 1 November port-reboot fix, the D80's 368b:8d81 and an eject rule: for a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."}
+   "note": "Radxa's aic8800-usb-dkms with the same fixes as patches, including the 1 November port-reboot fix, the D80's 368b:8d81 and an eject rule: for a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."},
+  {"title": "USB gadget functions (Armbian linux-rockchip v6.1.115)", "url": "https://github.com/armbian/linux-rockchip/tree/v6.1.115",
+   "version": "7c15117", "licence": "GPL-2.0",
+   "note": "NCM and ACM, built out of tree by the box's USB networking service for the Lyra's vendor kernel. The toolkit pins each source file's sha256; the service fetches and checks them before DKMS builds them."}
  ],
+ "gadget": {"repo": "https://github.com/armbian/linux-rockchip",
+            "tag": "v6.1.115",
+            "tag_object": "8f84d3b6f69e7527efacf0c1bd7c0f2d1c4b44d3",
+            "commit": "7c15117f9468c7395ce3fd0892a6f909b91d9005",
+            "files": {
+              "drivers/usb/gadget/function/f_ncm.c": "916acc2712a474e7c3f5530b0358435b590692a3d4e65aa062b7ce74772f4bdb",
+              "drivers/usb/gadget/function/f_acm.c": "2800b3763d6f35021e52c6e5eb2028c3dd86c060f478b33cbea7289239cd3b6c",
+              "drivers/usb/gadget/function/u_ether.c": "4b24e7ee9c30fe5632d6122caace4a835d64bad01ee740e67f24ad4142391810",
+              "drivers/usb/gadget/function/u_serial.c": "7801d91b06e9d8a1395344c33cdf5b0c6ac3b14e17a6dba2d1852ec71d1a8408",
+              "drivers/usb/gadget/function/u_ether.h": "be629f6e64de23f1ab0a0e7208280122ceaba67b8e6c7d288e6a16cf20d49ffe",
+              "drivers/usb/gadget/function/u_ether_configfs.h": "bbd1a651edf2147f006a3acf5c5931c9ee71a974b70ba419c93ef1fedb62f24c",
+              "drivers/usb/gadget/function/u_ncm.h": "937fb2b87325b2e8b0ddbdc32ffc5e691c029512b2d06441fcd2eafb8058b4fe",
+              "drivers/usb/gadget/function/u_serial.h": "7b9789de69b7030151e9158251a1ba31e0e6acf675ef2e6d7e01d18c60b0b08e",
+              "drivers/usb/gadget/configfs.h": "a680515bf7a3f2a897283ffd104d8b8482eed6ecbdaf694f3fdef71b5abecb52"
+            }},
  "remove_after_hours": 24}
