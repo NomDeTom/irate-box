@@ -18,6 +18,11 @@ PI = (Path(__file__).parent / "fixtures/gpioinfo-pi.txt").read_text()
 LYRA = (Path(__file__).parent / "fixtures/gpioinfo-lyra.txt").read_text()
 BPI = (Path(__file__).parent / "fixtures/gpioinfo-bpi.txt").read_text()
 PINMUX = (Path(__file__).parent / "fixtures/pinmux-pins-lyra.txt").read_text()
+PI_PINMUX = (Path(__file__).parent / "fixtures/pinmux-pins-pi.txt").read_text()
+BPI_PINMUX = (Path(__file__).parent / "fixtures/pinmux-pins-bpi0.txt").read_text()
+LYRA_ALIASES = pinmap.parse_aliases((Path(__file__).parent / "fixtures/aliases-lyra-181.txt").read_text())
+PI_ALIASES = pinmap.parse_aliases((Path(__file__).parent / "fixtures/aliases-pi.txt").read_text())
+BPI_ALIASES = pinmap.parse_aliases((Path(__file__).parent / "fixtures/aliases-bpi0.txt").read_text())
 fails = 0
 
 
@@ -79,10 +84,12 @@ check(
 claims = pinmap.parse_pinmux(PINMUX)
 check(
     "the Lyra's pinmux-pins: the SPI, I2C and SD card pins a function holds, and only those",
-    claims.get(("gpiochip0", 6)) == "ff120000.spi"
-    and claims.get(("gpiochip0", 1)) == "ff060000.i2c"
-    and claims.get(("gpiochip3", 0)) == "ff480000.mmc"
-    and claims.get(("gpiochip1", 20)) == "vcc3v3-lcd"
+    claims.get(("gpiochip0", 6), {}).get("owner") == "ff120000.spi"
+    and claims.get(("gpiochip0", 6), {}).get("function") == "rm_io6"
+    and claims.get(("gpiochip0", 6), {}).get("group") == "rm-io6-spi0-mosi"
+    and claims.get(("gpiochip0", 1), {}).get("owner") == "ff060000.i2c"
+    and claims.get(("gpiochip3", 0), {}).get("owner") == "ff480000.mmc"
+    and claims.get(("gpiochip1", 20), {}).get("owner") == "vcc3v3-lcd"
     and ("gpiochip0", 2) not in claims,
     claims,
 )
@@ -93,6 +100,44 @@ check(
     and next(x for x in lyra if x["chip"] == "gpiochip0" and x["line"] == 6)["consumer"] == "ff120000.spi"
     and next(x for x in lyra if x["chip"] == "gpiochip3" and x["line"] == 0)["used"],
     lyra[6],
+)
+check(
+    "  the group names a claimed pin: SPI0 MOSI, SPI0 CS0, I2C2 SDA",
+    pinmap.name_for({"owner": "ff120000.spi", "group": "rm-io6-spi0-mosi"}, LYRA_ALIASES) == "SPI0 MOSI"
+    and pinmap.name_for({"owner": "ff120000.spi", "group": "rm-io10-spi0-csn0"}, LYRA_ALIASES) == "SPI0 CS0"
+    and pinmap.name_for({"owner": "ff060000.i2c", "group": "rm-io0-i2c2-sda"}, LYRA_ALIASES) == "I2C2 SDA",
+)
+real_occupant = pinmap.bus_occupant
+pinmap.bus_occupant = lambda bus: "spidev"
+check(
+    "  what sits on the bus is added: SPI0 CS0 (spidev)",
+    pinmap.name_for({"owner": "ff120000.spi", "group": "rm-io10-spi0-csn0"}, LYRA_ALIASES) == "SPI0 CS0 (spidev)",
+)
+pinmap.bus_occupant = real_occupant
+check(
+    "  the alias names an owner with no group, through its of_node where the addresses differ",
+    pinmap.alias_for("3f201000.serial", PI_ALIASES, of_node="serial@7e201000") == "serial1"
+    and pinmap.name_for({"owner": "3f201000.serial", "group": "gpio30"}, PI_ALIASES, of_node="serial@7e201000")
+    == "SERIAL1"
+    and pinmap.alias_for("1c0f000.mmc", BPI_ALIASES) == "mmc0",
+)
+pi_claims = pinmap.parse_pinmux(PI_PINMUX)
+pi_lines = pinmap.parse(PI)
+pinmap.apply_pinmux(pi_lines, pi_claims)
+check(
+    "the Pi's pinmux-pins shape: device, function and group; its serial pins are taken",
+    pi_claims.get(("gpio", 30), {}).get("owner") == "3f201000.serial"
+    and pi_claims.get(("gpio", 30), {}).get("function") == "alt3"
+    and pi_claims.get(("gpio", 30), {}).get("group") == "gpio30"
+    and next(row for row in pi_lines if row["line"] == 30)["used"],
+)
+bpi_claims = pinmap.parse_pinmux(BPI_PINMUX)
+bpi_lines = pinmap.parse(BPI)
+pinmap.apply_pinmux(bpi_lines, bpi_claims)
+check(
+    "the BPI's sunxi pinmux-pins shape: a port name claims its line",
+    bpi_claims.get(("port", "PA12"), {}).get("owner") == "1c20800.pinctrl"
+    and next(row for row in bpi_lines if pinmap._port_key(row["name"]) == "PA12")["used"],
 )
 lyra_header = pinmap.board_lines("lyra", lyra, "Luckfox Lyra Zero W")
 check(
@@ -180,23 +225,39 @@ check(
 )
 
 
-def snapshot_with(text, claims=None, has_debugfs=True):
+def snapshot_with(text, claims=None, has_debugfs=True, table=None):
     """snapshot() against a stand-in gpioinfo and pinmux-pins."""
-    real_run, real_pinmux = pinmap.run, pinmap.pinmux_claims
+    real_run, real_pinmux, real_aliases, real_occupant, real_model = (
+        pinmap.run,
+        pinmap.pinmux_claims,
+        pinmap.aliases,
+        pinmap.bus_occupant,
+        pinmap.model,
+    )
     pinmap.run = lambda *a, **k: __import__("subprocess").CompletedProcess(a, 0, text, "")
     pinmap.pinmux_claims = lambda: (claims or {}, has_debugfs)
+    pinmap.aliases = lambda: table or {}
+    pinmap.bus_occupant = lambda bus: ""
+    pinmap.model = lambda: "Luckfox Lyra Zero W"
     try:
         return pinmap.snapshot("lyra")
     finally:
-        pinmap.run, pinmap.pinmux_claims = real_run, real_pinmux
+        pinmap.run, pinmap.pinmux_claims, pinmap.aliases, pinmap.bus_occupant, pinmap.model = (
+            real_run,
+            real_pinmux,
+            real_aliases,
+            real_occupant,
+            real_model,
+        )
 
 
-whole = snapshot_with(LYRA, claims)
+whole = snapshot_with(LYRA, claims, table=LYRA_ALIASES)
 check(
     "the snapshot: the whole map, the pin-mux claims, and no note when nothing is missing",
     len(whole["lines"]) == 160
     and whole["note"] == ""
-    and next(row for row in whole["lines"] if row["chip"] == "gpiochip0" and row["line"] == 6)["used"],
+    and next(row for row in whole["lines"] if row["chip"] == "gpiochip0" and row["line"] == 6)["used"]
+    and next(row for row in whole["header"] if row["pin"] == 19)["label"] == "SPI0 MOSI",
     whole["note"],
 )
 without = snapshot_with(LYRA, {}, has_debugfs=False)

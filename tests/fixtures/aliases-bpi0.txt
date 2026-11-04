@@ -1,0 +1,5 @@
+mmc0=/soc/mmc@1c0f000
+mmc1=/soc/mmc@1c10000
+mmc2=/soc/mmc@1c11000
+serial0=/soc/serial@1c28000
+serial1=/soc/serial@1c28400

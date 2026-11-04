@@ -96,3 +96,96 @@ html:root[data-palette="contrast"][data-theme="light"] {
   --ok: #14532d; --warn: #7c2d12; --bad: #991b1b; --info: #1e3a8a;
   }
 }
+
+/* The pin map's colours, the Pi header's scheme: 3.3 V yellow, 5 V red, ground black or dark grey, a free GPIO
+   green, a taken one blue. Each colour has its own ink for the number and mark, so the square stays readable. */
+:root {
+  --pin-3v3: #fbbf24;
+  --pin-3v3-ink: #1b1d27;
+  --pin-5v: #f87171;
+  --pin-5v-ink: #1b1d27;
+  --pin-gnd: #8a8fa8;
+  --pin-gnd-ink: #0f1117;
+  --pin-free: #4ade80;
+  --pin-free-ink: #0f1117;
+  --pin-taken: #60a5fa;
+  --pin-taken-ink: #0f1117;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --pin-3v3: #f5c400;
+    --pin-3v3-ink: #1b1d27;
+    --pin-5v: #c62828;
+    --pin-5v-ink: #fff;
+    --pin-gnd: #333;
+    --pin-gnd-ink: #fff;
+    --pin-free: #15803d;
+    --pin-free-ink: #fff;
+    --pin-taken: #1d4ed8;
+    --pin-taken-ink: #fff;
+  }
+}
+:root[data-theme="light"] {
+  --pin-3v3: #f5c400;
+  --pin-3v3-ink: #1b1d27;
+  --pin-5v: #c62828;
+  --pin-5v-ink: #fff;
+  --pin-gnd: #333;
+  --pin-gnd-ink: #fff;
+  --pin-free: #15803d;
+  --pin-free-ink: #fff;
+  --pin-taken: #1d4ed8;
+  --pin-taken-ink: #fff;
+}
+html:root[data-palette="contrast"][data-theme="dark"] {
+  --pin-3v3: #fde047;
+  --pin-3v3-ink: #0b0d12;
+  --pin-5v: #fca5a5;
+  --pin-5v-ink: #0b0d12;
+  --pin-gnd: #d1d5db;
+  --pin-gnd-ink: #0b0d12;
+  --pin-free: #86efac;
+  --pin-free-ink: #0b0d12;
+  --pin-taken: #93c5fd;
+  --pin-taken-ink: #0b0d12;
+}
+html:root[data-palette="contrast"][data-theme="light"] {
+  --pin-3v3: #a16207;
+  --pin-3v3-ink: #fff;
+  --pin-5v: #991b1b;
+  --pin-5v-ink: #fff;
+  --pin-gnd: #000;
+  --pin-gnd-ink: #fff;
+  --pin-free: #14532d;
+  --pin-free-ink: #fff;
+  --pin-taken: #1e3a8a;
+  --pin-taken-ink: #fff;
+}
+@media not all and (prefers-color-scheme: light) {
+  html:root[data-palette="contrast"]:not([data-theme]) {
+    --pin-3v3: #fde047;
+    --pin-3v3-ink: #0b0d12;
+    --pin-5v: #fca5a5;
+    --pin-5v-ink: #0b0d12;
+    --pin-gnd: #d1d5db;
+    --pin-gnd-ink: #0b0d12;
+    --pin-free: #86efac;
+    --pin-free-ink: #0b0d12;
+    --pin-taken: #93c5fd;
+    --pin-taken-ink: #0b0d12;
+  }
+}
+@media (prefers-color-scheme: light) {
+  html:root[data-palette="contrast"]:not([data-theme]) {
+    --pin-3v3: #a16207;
+    --pin-3v3-ink: #fff;
+    --pin-5v: #991b1b;
+    --pin-5v-ink: #fff;
+    --pin-gnd: #000;
+    --pin-gnd-ink: #fff;
+    --pin-free: #14532d;
+    --pin-free-ink: #fff;
+    --pin-taken: #1e3a8a;
+    --pin-taken-ink: #fff;
+  }
+}

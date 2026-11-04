@@ -86,12 +86,36 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   ];
   state = { pins: lyra, pending: 0, results: [] };
   w.rkRenderPins(state);
+  const rows = [...d.querySelectorAll('#pins-map .pinrow')];
+  const squares = [...d.querySelectorAll('#pins-map .pin-square')];
   check(
-    'a known header: two pins a row, the used one red and the free/power ones said',
-    d.querySelectorAll('#pins-map .pinrow').length === 2
-      && d.querySelectorAll('#pins-map .pin.used').length === 1
-      && /GPIO0_A0/.test(text('pins-map')) && /ff060000\.i2c · RM_IO0/.test(text('pins-map')),
+    'a known header: two pins a row, a narrow strip of squares down the middle',
+    rows.length === 2 && squares.length === 4 && /GPIO0_A0/.test(text('pins-map')) && /ff060000\.i2c · RM_IO0/.test(text('pins-map')),
     text('pins-map'),
+  );
+  check(
+    '  each square says its type: 3V3, 5V, taken and free, with a mark for e-paper',
+    squares[0].classList.contains('pin-3v3') && /3V3/.test(squares[0].textContent)
+      && squares[1].classList.contains('pin-5v') && /5V/.test(squares[1].textContent)
+      && squares[2].classList.contains('pin-taken') && /●/.test(squares[2].textContent)
+      && squares[3].classList.contains('pin-5v'),
+    squares.map((square) => [square.className, square.textContent]),
+  );
+  const sides = [...d.querySelectorAll('#pins-map .pin-side')];
+  check(
+    '  the words outward: the left side right-aligned, the right side left-aligned',
+    sides.length === 4 && sides[0].classList.contains('left') && sides[1].classList.contains('right')
+      && sides[2].classList.contains('left') && sides[3].classList.contains('right'),
+    sides.map((side) => side.className),
+  );
+  const css = fs.readFileSync(`${WEB}/style.css`, 'utf8');
+  check(
+    '  the strip has four columns and shrinks at 390',
+    /\.pinrow\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 2\.15rem 2\.15rem minmax\(0, 1fr\)/.test(css),
+  );
+  check(
+    '  the legend uses the same five squares',
+    ['pin-3v3', 'pin-5v', 'pin-gnd', 'pin-free', 'pin-taken'].every((name) => d.querySelector(`#pins .pin-key.${name}`)),
   );
   check(
     '  the header does not mix in the board role; the roles table has it separately',
