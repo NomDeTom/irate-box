@@ -45,6 +45,22 @@ jobs:
           node-version: "22"
       - name: Page tests (tests/jsdom/run.sh; jsdom.sh installs the pinned jsdom, outside the repository)
         run: JSDOM_CACHE="$RUNNER_TEMP/jsdom" tests/jsdom/run.sh
+  spacing:
+    # The vertical-spacing audit over every admin pane, in headless Chromium (tests/browser/spacing-audit.sh): about
+    # two minutes once Chromium is installed, so it is a job of its own. No accepted findings: the sweep's eight were
+    # fixed; add one only for a false positive, with why, and keep the list short.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Playwright's Chromium
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Spacing audit (tests/browser/spacing-audit.sh)
+        run: PLAYWRIGHT="$PWD/node_modules/playwright" tests/browser/spacing-audit.sh
   deb:
     needs: checks
     runs-on: ubuntu-latest

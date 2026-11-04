@@ -189,9 +189,6 @@ h2 {
 }
 /* A card, a list of cards or a form straight after a pane's words (shown or hidden): apart from them, not on them,
    on every page. */
-.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block, .library-form) {
-  margin-top: 1rem;
-}
 /* A page's own container (a div the page fills) stands apart from what comes before it, as a card does: the words
    above it, another container, a hidden result in between (Rockchip boards' New boards, Mock controls). The first
    in a pane needs no room above it. */
@@ -205,42 +202,147 @@ h2 {
 .admin-pane > div:not([class]) > p + .aw-block {
   margin-top: 1rem;
 }
-/* The page's flow keeps one rhythm: a form, a list or a field group stands apart from the block above it, whichever
-   kind it is (a list then a form, a form then a form, a card's fields then the next). */
-.admin-pane > :is(.admin-list, .library-form) + .library-form,
-.admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .quick-chips, .admin-meter),
-.admin-pane > .quick-chips + .setting,
-.admin-pane > :is(.setting, .settings, .net-card, .aw-block, .git-card, .lib-card, .attention) + p {
+/* --- The admin's vertical rhythm (tests/browser/spacing-rules.js) ------------------------------------------------
+   One set of bands for every pane. A card, a list or a form stands apart from the words or buttons above it; a
+   form's own parts sit inside its gap; a card's fields keep a line between their boxes. The component rules that
+   follow own the few gaps a component sets itself. */
+.admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting, .settings, .admin-list) {
   margin-top: 1rem;
 }
-.admin-pane > .library-form + .library-form,
-.admin-pane > .seen-block + .library-form,
-.admin-pane p.setting-desc + .library-form,
-.admin-pane p.setting-desc + .aw-field,
-.admin-pane textarea + .setting {
+.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block) {
+  margin-top: 1rem;
+}
+.admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .quick-chips, .admin-meter) {
+  margin-top: 1rem;
+}
+.admin-pane > :is(.setting, .settings, .net-card, .aw-block, .git-card, .lib-card, .attention) + p.setting-desc {
   margin-top: 0.7rem;
 }
-/* A fold's heading stands off the words or buttons above it, as any other heading does. */
-.admin-pane p.setting-desc + :is(.sec-fold, .git-glossary),
-.admin-pane > :is(.library-buttons, .action-note) + :is(.sec-fold, .git-glossary) {
-  margin-top: 1.2rem;
+/* A form after the block above it: words, a list, another form, a fold's summary. */
+.admin-pane p.setting-desc + .library-form,
+.admin-pane .admin-list + .library-form,
+.admin-pane .library-form + .library-form,
+.admin-pane .seen-block + .library-form,
+.admin-pane summary + .library-form {
+  margin-top: 0.7rem;
 }
-/* Fields in a card keep a line's space between their boxes, above each field's own rule. */
+/* A form's own parts sit inside the form's gap. */
+.library-form > .aw-foot,
+.library-form > .update-pattern,
+.library-form > .admin-table {
+  margin-top: 0;
+}
+.library-form > .update-pattern,
+.library-form > .admin-table {
+  margin-bottom: 0;
+}
+/* The footer's own row, then a row after it (the token's Remove): the form's gap is the space, not a margin. */
+.library-form > .aw-foot ~ .library-buttons {
+  margin-top: 0 !important;
+}
+/* Fields in a card, and the words inside a settings group. */
 .aw-field + .aw-field {
   margin-top: 0.25rem;
 }
-/* The quick installer's chips and the words under them keep the page's bands. */
+.settings .setting-desc,
+.aw-field .setting-desc,
+.kind-tag + .setting-desc {
+  margin-top: 0;
+}
+/* A row of buttons after a pane's words, and an app's facts after its buttons. */
+.admin-pane p.setting-desc + .library-buttons,
+.chip-group + .library-buttons {
+  margin-top: 0.4rem;
+}
+.library-buttons + .inv-facts {
+  margin-top: 1rem;
+}
+/* A fold's heading stands off the words or buttons above it; a form under a fold's summary does too. */
+.admin-pane p.setting-desc + :is(.sec-fold, .git-glossary),
+.admin-pane :is(.library-buttons, .action-note) + :is(.sec-fold, .git-glossary) {
+  margin-top: 1.2rem;
+}
+.sec-fold + .sec-fold {
+  margin-top: 1.2rem;
+}
+.library-buttons + details {
+  margin-top: 1rem;
+}
+.library-form + h4 {
+  margin-top: 1rem;
+}
+body.admin .admin-pane summary + h3 {
+  margin-top: 1rem;
+}
+.admin-pane > h3 + p.setting-desc {
+  margin-top: 0;
+}
+/* The quick installer's chips and the setting under them. */
 .quick-chips {
   margin-top: 1rem;
 }
 .quick-chips + .setting {
   margin-top: 1rem;
 }
-#quick-installer {
+/* An app's maintenance cards keep the card gap. */
+.app-updates + .app-install {
   margin-top: 0.7rem;
 }
-#quick-installer > :first-child {
-  margin-top: 0;
+/* A summary's view switch, and the security findings under the scan's row. */
+summary + .view-switch {
+  margin-top: 0.4rem;
+}
+.sec-head + #security-findings {
+  margin-top: 0.4rem;
+}
+/* The few parts whose own component sets a gap the bands cannot see: a choice's line, a table under its words,
+   and the backup form's parts. */
+.choice-tiles + .setting-desc,
+.choice-tiles + .choice-says,
+.chip-group + .setting-desc,
+.library-form + .setting-desc {
+  margin-top: 0.3rem;
+}
+#mock-controls-body {
+  margin-top: 1.2rem;
+}
+.input-row {
+  margin-top: 0.7rem;
+}
+/* Backup's kit form and its state lines. */
+.kit-offer ~ .setting-desc {
+  margin-top: 0.2rem !important;
+}
+/* Network recovery's own groups. */
+.up-steps + .up-box-only {
+  margin-top: 0.4rem;
+}
+.up-foot + .library-buttons {
+  margin-top: 0.4rem;
+}
+.net-settings .chip-group {
+  margin-bottom: 0;
+}
+.net-settings .chip-group + .library-buttons {
+  margin-top: 0.2rem;
+}
+/* Security's settings group's footer. */
+.sec-choice .settings {
+  margin-bottom: 0;
+}
+.sec-choice .settings + .aw-foot {
+  margin-top: 0.4rem;
+}
+/* Updates' security-changes form: the table inside the form's gap. */
+.library-form .choice-tiles {
+  margin-bottom: 0;
+}
+.library-form .choice-tiles + .setting-desc {
+  margin-top: 0.4rem;
+}
+/* The Rockchip setup pane's first field. */
+.admin-pane p.setting-desc + label.aw-field {
+  margin-top: 0.7rem;
 }
 /* A card's own words after it stand off its edge. */
 .setting + p.setting-desc,
@@ -248,192 +350,91 @@ h2 {
 .net-card + p.setting-desc {
   margin-top: 0.7rem;
 }
-/* A tag and the line explaining it stay together, within a card's tighter band. */
-.kind-tag + .setting-desc,
-.aw-field .setting-desc {
-  margin-top: 0;
-}
-/* A description inside a settings group keeps the group's own gap, not a margin of its own. */
-.settings .setting-desc {
-  margin-top: 0;
-}
-/* A row of buttons after a pane's words, and a card or a page's own box after them, keep the bands. */
-.admin-pane p.setting-desc + .library-buttons {
+/* A settings group's footer. */
+.settings + .aw-foot {
   margin-top: 0.6rem;
 }
-.admin-pane p.setting-desc + :is(.setting, .sec-choice),
-.admin-pane p.setting-desc + div[id$="-box"] {
+/* The parts whose own component sets a gap the bands cannot see, by their classes. */
+.quick-installer {
   margin-top: 0.7rem;
 }
-/* A form under a fold's heading stands off the heading. */
-.admin-pane summary + .library-form {
-  margin-top: 0.7rem;
-}
-/* A heading's own line, then its words, within the heading band. */
-.admin-pane > h3 + p.setting-desc {
+.quick-installer > :first-child,
+.appearance-box > :first-child {
   margin-top: 0;
 }
-/* An app's maintenance cards keep the card gap, and its facts stand off the buttons above them. */
-.app-updates + .app-install {
+.appearance-box {
   margin-top: 0.7rem;
 }
-.library-buttons + .inv-facts {
-  margin-top: 1rem;
-}
-/* The remaining admin parts keep the same bands: a row after words, a table after them, a fold after a row, and a
-   settings group's own footer. */
-.admin-pane p.setting-desc + p.library-buttons,
-.admin-pane p.setting-desc + div.library-buttons,
-.chip-group + .library-buttons,
-#up-foot + .library-buttons {
-  margin-top: 0.4rem;
-}
-.admin-pane div + .library-form,
-.net-card + .library-form,
-.settings + .aw-foot {
-  margin-top: 0.7rem;
-}
-.admin-pane div + details,
-.library-buttons + details,
-.library-form + h4,
-.admin-pane summary + h3 {
-  margin-top: 1rem;
-}
-.admin-pane summary + .library-form,
+.admin-pane p.setting-desc + .aw-field,
 .admin-pane p.setting-desc + .net-settings,
+.admin-pane p.setting-desc + .guest-net-box,
+.admin-pane p.setting-desc + .signin-identity-box {
+  margin-top: 0.7rem;
+}
+.admin-pane textarea + .setting {
+  margin-top: 0.7rem;
+}
+.report-settings + p.setting-desc {
+  margin-top: 0.7rem;
+}
+.admin-pane > div + details,
+.admin-pane > div + .library-form {
+  margin-top: 0.7rem;
+}
+.up-steps ~ .up-box-only {
+  margin-top: 0.4rem;
+}
+.choice-tiles + .choice-says {
+  margin-top: 0;
+}
+.library-buttons ~ .net-glossary {
+  margin-top: 1.2rem;
+}
+.net-settings .library-buttons {
+  margin-top: 0.2rem;
+}
+.card-sys-fold {
+  margin-top: 0.7rem;
+}
 .admin-pane p.setting-desc + label.aw-field {
-  margin-top: 0.7rem;
-}
-.sec-head + #security-findings {
   margin-top: 0.4rem;
 }
-summary + .view-switch {
+.sec-head ~ .security-findings {
   margin-top: 0.4rem;
 }
-table + .aw-foot,
-p.setting-desc + .admin-table {
-  margin-top: 0.6rem;
+.setting p.setting-desc + .library-form {
+  margin-top: 0.4rem;
 }
-.choice-tiles + p.setting-desc,
-.chip-group + p.setting-desc,
-.library-form + p.setting-desc {
-  margin-top: 0.3rem;
+.setting-desc + .input-row {
+  margin-top: 0.4rem;
 }
-.sec-fold + .sec-fold,
-#mock-controls-body {
-  margin-top: 1.2rem;
-}
-.input-row,
-#backup-keys-label {
-  margin-top: 0.7rem;
-}
-#backup-left-out,
-#kit-total {
-  margin-top: 0.3rem;
-}
-#appearance-box {
-  margin-top: 0.7rem;
-}
-#appearance-box > :first-child {
+.backup-keys + .setting-desc {
   margin-top: 0;
 }
-#report-settings + p.setting-desc,
-#card-sys-fold {
+/* The last few pairs, by the class the part owns. */
+.backup-level.choice-tiles {
+  margin-bottom: 0;
+}
+.net-saved + details,
+.net-visible + .library-form {
   margin-top: 0.7rem;
 }
-.housecall-form + details,
-#password-form {
+.up-custom {
   margin-top: 0.4rem;
 }
-/* The last bands: a fold under a row, a choice's own line, a table under its words, and the backup form's parts. */
-.choice-tiles + .choice-says,
-.choice-tiles + p.setting-desc,
-#debian-buttons + details,
-.housecall-form + details {
-  margin-top: 0;
-}
-#net-glossary {
-  margin-top: 1.2rem;
-}
-#up-custom,
-#kit-state,
-#kit-again,
-#kit-total,
-#backup-keys-label,
-#backup-left-out,
-#security-findings,
-#security-changes-table {
-  margin-top: 0.3rem;
-}
-#card-sys-fold,
-#up-foot + .library-buttons,
-.chip-group + .library-buttons {
-  margin-top: 0.4rem;
-}
-.admin-pane div + details {
-  margin-top: 0.7rem;
-}
-.settings + .aw-foot {
-  margin-top: 0.6rem;
+.card-sys-fold {
+  margin-top: 0.4rem !important;
 }
 .setting p.setting-desc + .aw-field {
   margin-top: 0.4rem;
 }
-form#library-token + h4 {
+.library-form ~ h4 {
   margin-top: 1rem;
 }
-.admin-table + .aw-foot {
-  margin-top: 0.6rem;
+/* A card's heading after a form, and a form's update pattern under its heading. */
+.net-card .library-form ~ h4 {
+  margin-top: 1rem;
 }
-.kit-offer {
-  margin-top: 0.4rem;
-}
-/* The final bands, by the part that owns them. */
-#kit-form + #kit-state,
-p.setting-desc + #kit-form,
-#backup-keys-label + #backup-left-out,
-#up-steps + #up-custom,
-#rk-setup-pane p.setting-desc + label.aw-field,
-#security-changes-table + .aw-foot,
-p.setting-desc + #security-changes-table,
-.choice-tiles + #update-signers-kept {
-  margin-top: 0.4rem;
-}
-#kit-total {
-  margin-top: 0;
-}
-.chip-group + .library-buttons {
-  margin-top: 0.2rem;
-}
-.admin-pane h3 + .update-pattern {
-  margin-top: 0.4rem;
-}
-/* The last few parts, by their own ids: the margins that collapsed into a child or doubled on the pair. */
-#kit-form { margin-bottom: 0; }
-#kit-form + #kit-state { margin-top: 0.4rem; }
-#backup-keys-label { margin-bottom: 0; }
-#backup-keys-label + #backup-left-out { margin-top: 0.4rem; }
-#up-steps { margin-bottom: 0; }
-#up-steps + #up-custom { margin-top: 0.4rem; }
-#ap-form .chip-group { margin-bottom: 0; }
-#ap-form .chip-group + .library-buttons { margin-top: 0.4rem; }
-.sec-choice .settings { margin-bottom: 0; }
-.sec-choice .settings + .aw-foot { margin-top: 0.4rem; }
-#sources h3 { margin-bottom: 0; }
-#sources h3 + .update-pattern { margin-top: 0.4rem; }
-#security-changes-table { margin-bottom: 0; }
-#security-changes-form #security-changes-table + .aw-foot { margin-top: 0.4rem; }
-#security-changes-form p.setting-desc { margin-bottom: 0; }
-#security-changes-form p.setting-desc + #security-changes-table { margin-top: 0.4rem; }
-#update-signing-form .choice-tiles { margin-bottom: 0; }
-#update-signing-form .choice-tiles + #update-signers-kept { margin-top: 0.4rem; }
-/* The last four pairs: a child's margin collapses out of its box, or the component sets one; the band wins. */
-#kit-form { padding-bottom: 0.01rem; }
-#kit-form + #kit-state { margin-top: 0.4rem !important; }
-#ap-form .chip-group + .library-buttons { margin-top: 0.2rem !important; }
-#security-changes-table { margin-bottom: 0 !important; margin-top: 0.4rem !important; }
-#security-changes-form .aw-foot { margin-top: 0.4rem !important; }
-#security-changes-form p.setting-desc { margin-bottom: 0 !important; }
 /* Two panes on one page (Rockchip boards: Board, then Boards to set up): the second's heading well clear of the
    first's last card. /admin shows one pane at a time, so this is for the pages that show several. */
 .admin-main > .admin-pane:not([hidden]) + .admin-pane:not([hidden]) {
@@ -2146,12 +2147,6 @@ body.admin h3 {
   font-size: 1rem;
 }
 /* A fold's summary over a heading inside it: the fold's own room is the gap, not the heading's 1.75rem. */
-body.admin .admin-pane summary + h3 {
-  margin-top: 1rem;
-}
-body.admin .admin-pane h3 + .update-pattern {
-  margin-top: 0.4rem;
-}
 /* A link in the admin's words (one with no class of its own: buttons and tabs style theirs) in the accent, not the
    browser's own blue and purple. */
 body.admin a:not([class]),
@@ -2544,7 +2539,7 @@ details.admin-item summary {
 }
 .backup-keys {
   display: block;
-  margin: 0.9rem 0 0.4rem;
+  margin: 0.2rem 0 0.4rem;
   border-left: 3px solid #e5a000;
   padding-left: 0.6rem;
   font-size: 0.9rem;
@@ -5606,11 +5601,7 @@ a.action-btn.go-btn {
 .update-pattern {
   display: grid;
   gap: 0.6rem;
-  margin: 0.8rem 0;
-}
-/* In a form the form's gap parts the pattern from the footer below it; its bottom margin would double it. */
-.library-form > .update-pattern {
-  margin-bottom: 0;
+  margin: 0.2rem 0;
 }
 /* Each choice: its name above its chips, as a package card's settings, and what the chosen one does under them. */
 .update-pattern .update-choice {
@@ -5619,10 +5610,6 @@ a.action-btn.go-btn {
 }
 .update-pattern .chip-says {
   margin: 0;
-}
-/* In a form the form's gap parts the pattern from the footer below it; its bottom margin would double it. */
-.library-form > .update-pattern {
-  margin-bottom: 0;
 }
 .update-actions {
   margin: 0.5rem 0;
@@ -5929,7 +5916,7 @@ a.action-btn.go-btn {
 .up-steps {
   display: grid;
   gap: 0.6rem;
-  margin: 0.3rem 0 0.8rem;
+  margin: 0.3rem 0 0.2rem;
 }
 .up-steps-row {
   display: grid;
