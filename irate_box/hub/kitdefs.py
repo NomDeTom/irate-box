@@ -62,18 +62,28 @@ WHY = {
 }
 
 
-def why_left_out(kit, left):
-    """The left-out packages grouped by why, as one phrase: "gdb (64-bit only); pciutils (no PCI)"."""
+def why_left_out(kit, left, no_candidate=()):
+    """The left-out packages grouped by why, as one phrase: "gdb (64-bit only); pciutils (no PCI)".
+    no_candidate: packages this box's package sources have no candidate for (kits.py asks apt first); the
+    ones with a Python package in the kit's wheelhouse say where they come from instead."""
+    no_candidate = set(no_candidate)
     by = {}
     for p in left:
         cond = kit.get("only_where", {}).get(p)
-        why = (
-            WHY[cond]
-            if cond
-            else "no headers for this kernel in the package lists"
-            if p.startswith("linux-headers-")
-            else "64-bit only"
-        )
+        if p in no_candidate:
+            pip = next((x for x in kit.get("pip", []) if x.lower() == p.lower()), None)
+            why = "not in this box's package sources"
+            if pip:
+                name = "PlatformIO" if pip.lower() == "platformio" else pip
+                why += f"; the toolkit's wheelhouse holds {name} from PyPI"
+        else:
+            why = (
+                WHY[cond]
+                if cond
+                else "no headers for this kernel in the package lists"
+                if p.startswith("linux-headers-")
+                else "64-bit only"
+            )
         by.setdefault(why, []).append(p)
     return "; ".join(f"{', '.join(ps)} ({why})" for why, ps in by.items())
 

@@ -15632,7 +15632,9 @@ function kitBody(k, st, cfg, setDirty) {
     c && c.left_out && c.left_out.length
       ? el("p", {
           className: "setting-desc",
-          textContent: `Omitted on this ${c.arch || ""} board because they need a 64-bit board: ${c.left_out.join(", ")}.`,
+          textContent: c.left_out_why
+            ? `Omitted on this ${c.arch || ""} board: ${c.left_out_why}.`
+            : `Omitted on this ${c.arch || ""} board because they need a 64-bit board: ${c.left_out.join(", ")}.`,
         })
       : null,
     (k.git || []).length

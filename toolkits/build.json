@@ -27,7 +27,7 @@
  "consent": "A compiler on the box lets any user who has a shell build and run programs here. The builds on push need it.",
  "notes": [
   "The box keeps this toolkit until you remove it. The builds on push need it.",
-  "PlatformIO, protobuf and protoc (for the nanopb of Meshtastic) come from Debian. The box checks them like every package.",
+  "PlatformIO comes from the Meshtastic repository where the box has it; otherwise the toolkit's wheelhouse holds PlatformIO from PyPI. protobuf and protoc (for the nanopb of Meshtastic) come from Debian. The box checks each against this box's package sources and leaves out one they do not carry.",
   "libffi-dev: the ESP32 platform of Meshtastic makes its own Python environment. On armv7, PyPI has no wheel for cffi, and cryptography needs cffi. The box compiles cffi. The compiler needs the libffi headers.",
   "The toolkit also has a wheelhouse. It holds a newer PlatformIO from PyPI, protobuf, grpcio-tools, nanopb and adafruit-nrfutil, as wheels where PyPI has one. Use it if the PlatformIO from Debian cannot build. It works without internet. This cache does not verify a signature for these wheels.",
   "bison, flex and m4 build a program from its grammar and lexer, as some drivers and tools need. pipx installs a Python program in an environment of its own; python3-venv is beside it."
