@@ -243,6 +243,15 @@
 
   function opml() {
     const text = el("textarea", { rows: 4, placeholder: "Paste an OPML file here", spellcheck: false });
+    const doPaste = el("button", { type: "button", className: "action-btn", textContent: "Paste clipboard" });
+    doPaste.addEventListener("click", async () => {
+      try {
+        text.value = await navigator.clipboard.readText();
+        say("Pasted from the clipboard.");
+      } catch (e) {
+        say("The browser would not read the clipboard. Paste into the box instead.", true);
+      }
+    });
     const doImport = el("button", { type: "button", className: "action-btn", textContent: "Import OPML" });
     doImport.addEventListener("click", () => {
       post({ action: "import", opml: text.value }).then((data) => say(`Imported. ${data.feeds.length} feeds now.`)).catch((e) => say(fault(e), true));
@@ -257,7 +266,7 @@
         say(fault(e), true);
       }
     });
-    return el("div", { className: "opml" }, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doImport, doExport));
+    return el("div", { className: "opml" }, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doPaste, doImport, doExport));
   }
 
   function draw() {
