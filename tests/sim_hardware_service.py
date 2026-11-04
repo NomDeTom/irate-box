@@ -30,8 +30,11 @@ def check(name, cond, info=""):
 class FakePanel:
     made = 0
     closed = 0
+    fail_open = False
 
     def __init__(self):
+        if FakePanel.fail_open:
+            raise OSError("spidev busy")
         FakePanel.made += 1
         self.calls = []
 
@@ -46,6 +49,7 @@ class FakePanel:
 
     def run(self, seconds):
         self.calls.append(("run", seconds))
+        time.sleep(seconds)
 
     def close(self):
         FakePanel.closed += 1
@@ -74,8 +78,14 @@ answer = hardware_service.request("off")
 check("off: the panel blanked", answer and answer["ok"] and answer["on"] is False and published[-1] is False)
 answer = hardware_service.request("draw")
 check("draw: the test card again", answer and answer["ok"] and answer["on"] is True)
-answer = hardware_service.request("test", seconds=1)
-check("test: run for its time, then off", answer and answer["ok"] and answer["on"] is False)
+before = time.monotonic()
+answer = hardware_service.request("test", seconds=3)
+elapsed = time.monotonic() - before
+check(
+    "test: a run longer than the old two-second wait still answers",
+    answer and answer["ok"] and answer["on"] is False and elapsed >= 3,
+    (answer, elapsed),
+)
 check("  one panel for the whole lifetime: no second spidev open", FakePanel.made == 1, FakePanel.made)
 answer = hardware_service.request("nonsense")
 check("an unknown operation is refused, and the service stays", answer and answer["ok"] is False)
@@ -97,14 +107,37 @@ for _ in range(50):
         break
     time.sleep(0.02)
 answer = hardware_service.request("status")
+check("start again: the socket is back and answers", answer and answer["ok"], answer)
+answer = hardware_service.request("card")
 check(
-    "start again: the socket is back and answers",
+    "  its first operation opens a fresh panel",
     answer and answer["ok"] and FakePanel.made == 2,
     (answer, FakePanel.made),
 )
 done.set()
 thread2.join(timeout=5)
 check("  and stops cleanly", not hardware_service.SOCKET.exists() and FakePanel.closed == 2)
+
+# A panel that cannot open answers the request and leaves the service alive.
+FakePanel.fail_open = True
+stop_bad = threading.Event()
+thread_bad = threading.Thread(target=hardware_service.serve, kwargs={"stop": stop_bad}, daemon=True)
+thread_bad.start()
+for _ in range(50):
+    if hardware_service.SOCKET.exists():
+        break
+    time.sleep(0.02)
+answer = hardware_service.request("card")
+check(
+    "a panel that cannot open: refused, and the service still answers status",
+    answer and answer["ok"] is False and "spidev busy" in answer["message"] and hardware_service.request("status"),
+    answer,
+)
+FakePanel.fail_open = False
+answer = hardware_service.request("card")
+check("  the next request opens it, and works", answer and answer["ok"] is True, answer)
+stop_bad.set()
+thread_bad.join(timeout=5)
 
 # A request that is not JSON gets an answer, not a crash.
 stop3 = threading.Event()
@@ -139,6 +172,20 @@ check(
     "lcdpanel goes through the service when it is running, and opens nothing itself",
     FakePanel.made == opened and asked == [("card", {}), ("off", {}), ("test", {"seconds": 2})],
     (FakePanel.made, opened, asked),
+)
+hardware_service.request = lambda op, **fields: (_ for _ in ()).throw(
+    hardware_service.ServiceTimeout("The display service did not answer in time.")
+)
+opened = FakePanel.made
+try:
+    lcdpanel.run_test(1)
+    failed = None
+except RuntimeError as exc:
+    failed = str(exc)
+check(
+    "a service that does not answer: refused, and the device is not opened behind it",
+    failed == "The display service did not answer in time." and FakePanel.made == opened,
+    (failed, FakePanel.made, opened),
 )
 hardware_service.request = real_request
 
