@@ -319,7 +319,9 @@ const AW = (() => {
     const details = h('details', { class: 'source-fold' });
     if (opts.open) details.open = true;
     const summary = h('summary', { class: 'source-head' },
-      h('span', { class: 'source-title' }, opts.title, opts.pill ? ' ' : null, opts.pill || null),
+      h('span', { class: 'source-title-line' },
+        h('span', { class: 'source-title', title: opts.title, text: opts.title }),
+        opts.pill ? h('span', { class: 'source-pill' }, opts.pill) : null),
       opts.source ? h('span', { class: 'source-sub', text: opts.source }) : null,
       opts.state ? h('span', { class: 'source-state', text: opts.state }) : null,
       opts.facts && opts.facts.length

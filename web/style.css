@@ -3527,8 +3527,15 @@ body.drop > section + section {
   gap: 0.75rem;
 }
 .source-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
   padding: 0;
   gap: 0;
+}
+.source-fold {
+  margin-bottom: 0.6rem;
 }
 .source-fold > .source-head {
   display: flex;
@@ -3551,18 +3558,39 @@ body.drop > section + section {
 .source-fold[open] > .source-head::after {
   content: "▾";
 }
-.source-title {
-  font-weight: 600;
-  overflow-wrap: anywhere;
+.source-title-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
   padding-right: 1.1rem;
+}
+.source-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.source-pill {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .source-sub,
 .source-state {
   font-size: 0.82rem;
   color: var(--muted);
 }
-.source-facts {
+.source-head .source-facts {
+  flex-wrap: nowrap;
+  overflow: hidden;
   margin-top: 0.1rem;
+}
+.source-facts .badge {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .source-drawer {
   margin-top: 0.3rem;
@@ -3586,7 +3614,7 @@ body.drop > section + section {
   margin: 0;
 }
 .source-card .source-actions {
-  margin: 0.6rem 0 0;
+  margin-top: auto;
   padding: 0.6rem 0.9rem 0.7rem;
   border-top: 1px solid var(--border);
 }
@@ -3652,7 +3680,7 @@ body.drop > section + section {
 }
 /* A source card's actions sit under its fold, apart from it (the card already spaces its own parts). */
 .git-card.source-card .source-actions {
-  margin-top: 0.6rem;
+  margin-top: auto;
 }
 .button-link {
   display: inline-block;

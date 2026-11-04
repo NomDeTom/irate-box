@@ -565,7 +565,7 @@ function renderBookSources(data) {
             facts: [
               "Access: Guests",
               `Schedule: ${scheduleShort(pol.check_every_hours)}`,
-              `${cur.size ? mb(cur.size) : "0 MB"}`,
+              `${cur.size ? mb(cur.size) : "0 MB"} of ${budget ? `${budget} MB` : "free"}`,
             ],
             actions: [
               actionButton("Check now", () => libAct(key, { action: "check", names: [src.name] })),
@@ -14421,8 +14421,8 @@ function renderMirrors(data) {
                 : "Not checked yet",
             facts: [
               `Access: ${m.area === "public" ? "Guests" : "Administrators"}`,
-              `Space: ${m.budget_mb} MB`,
-              st.size != null ? size(st.size) : null,
+              "Schedule: shared",
+              `${st.size != null ? size(st.size) : "0 MB"} of ${m.budget_mb} MB`,
             ],
             actions: [
               actionButton(
@@ -15201,7 +15201,7 @@ function asCard(holder) {
     facts: [
       `Access: ${holder.visibility === "members" ? "Users" : "Guests"}`,
       `Schedule: ${scheduleShort(pol.holders_every_hours)}`,
-      `${holder.kept.length} v · ${size(holder.bytes)}`,
+      `${size(holder.bytes)} of ${holder.budget_mb ? `${holder.budget_mb} MB` : "free"}`,
     ],
     actions: [
       asRun("Check now", "holder-check", holder.id, note),

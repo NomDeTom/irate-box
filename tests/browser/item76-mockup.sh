@@ -24,7 +24,7 @@ now = time.time()
 iso = lambda s: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(s))
 
 # Git repositories: three local repositories, so the Git page has cards.
-for name, desc in [("firmware-notes", "Notes on the firmware"), ("docs", "Documentation drafts"), ("tools", "Small tools for the box")]:
+for name, desc in [("meshtastic-firmware-notes", "Notes on the firmware"), ("docs", "Documentation drafts"), ("tools", "Small tools for the box")]:
     path = state / "git" / "public" / f"{name}.git"
     subprocess.run(["git", "init", "--quiet", "--bare", f"--initial-branch=main", str(path)], check=True)
     (path / "description").write_text(f"{desc}\n")
