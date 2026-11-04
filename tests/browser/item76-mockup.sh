@@ -14,7 +14,7 @@ repo="$(cd "$here/../.." && pwd)"
 port="${PORT:-8765}"
 run_tmp="$(mktemp -d "${TMPDIR:-/tmp}/irate-box-item76.XXXXXX")"
 state="$run_tmp/state"
-mkdir -p "$state/library" "$state/git/public" "$state/git/private" "$state/holds" "$state/firmware" "$state/rk-images" "$state/zim"
+mkdir -p "$state/library" "$state/git/public" "$state/git/private" "$state/holds" "$state/firmware" "$state/rk-images" "$state/zim" "$state/podcasts"
 
 python3 - "$state" "$repo" <<'PY'
 import hashlib, json, os, subprocess, sys, time
@@ -97,6 +97,25 @@ sources = {"policy": {"keep_old": 1, "check_every_hours": 24, "min_free_mb": 512
 ) + "</library>")
 for name in ["wikipedia_en_top_mini", "meshtastic-docs", "mermaid-docs", "handbook"] + [f"extra-book-{i}" for i in range(1, 12)]:
     (state / "zim" / f"{name}.zim").write_bytes(b"ZIM sample")
+# Podcasts: ten feeds, so the page shows its short-list view.
+podcasts = {"enabled": True, "check_every_hours": 12, "back_catalogue": 3, "keep_count": 10, "keep_days": 90,
+            "keep_mb": 0, "cap_mb": 2048, "leave_free_mb": 0, "keep_played": False, "max_episode_mb": 500,
+            "video": False, "feeds": [
+    {"id": f"feed-{i}", "url": f"https://example.org/show-{i}/feed.xml", "title": f"Example show {i}"}
+    for i in range(1, 11)
+]}
+(state / "library" / "podcasts.json").write_text(json.dumps(podcasts, indent=2))
+for i in range(1, 11):
+    folder = state / "podcasts" / f"feed-{i}"
+    folder.mkdir(parents=True, exist_ok=True)
+    ep = folder / f"episode-{i}.mp3"
+    ep.write_bytes(b"podcast" * (20_000 * i))
+    index = {"title": f"Example show {i}", "last_check": now - i * 600,
+             "episodes": [{"file": str(ep), "title": f"Episode {i}", "guid": f"ep-{i}"}]}
+    if i == 4:
+        index["last_error"] = "HTTP 404: the feed was not found"
+    (folder / "index.json").write_text(json.dumps(index, indent=2))
+
 (state / "library" / "firmware.json").write_text(json.dumps({
     "enabled": True, "boards": "all", "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True,
     "proving": False, "proving_releases": "stable", "proving_families": "chosen", "proving_when": "idle",

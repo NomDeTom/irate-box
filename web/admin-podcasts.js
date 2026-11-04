@@ -87,9 +87,45 @@
     return box;
   }
 
-  function addForm() {
-    const url = el("input", { type: "url", placeholder: "https://example.org/feed.xml", size: 40, spellcheck: false });
-    const title = el("input", { type: "text", placeholder: "Name (optional)", size: 24 });
+  // Each feed is the same source card as the other subscriptions: a card, or a short line from ten feeds.
+  function feedPill(feed) {
+    if (feed.last_error) return AW.pill("check failed", "bad");
+    if (!feed.last_check) return AW.pill("not checked yet", "info");
+    return AW.pill("checked", "ok");
+  }
+  function feedBody(feed) {
+    const remove = el("button", { type: "button", className: "small", textContent: "Remove feed" });
+    remove.addEventListener("click", async () => {
+      if (!(await AW.confirmHere(`Remove ${feed.title}?`, { anchor: remove, label: "Remove" }))) return;
+      const deleteFiles = await AW.confirmHere(
+        "Delete its episodes from the box too? Choose Cancel to keep them on the box.",
+        { anchor: remove, label: "Delete episodes" },
+      );
+      post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(e.message, true));
+    });
+    return [
+      el("p", { className: "setting-desc", textContent: feed.url }),
+      el("p", { className: "setting-desc", textContent: `${feed.episodes} kept of ${feed.listed} episodes; ${size(feed.size)}.` }),
+      feed.last_check ? el("p", { className: "setting-desc", textContent: `Last checked ${when(feed.last_check)}.` }) : null,
+      feed.last_error ? el("p", { className: "setting-desc bad", textContent: feed.last_error }) : null,
+      el("p", { className: "library-buttons source-danger" }, remove),
+    ];
+  }
+  function feedCard(feed) {
+    return AW.sourceCard({
+      id: `feed-${feed.id}`,
+      title: feed.title,
+      source: feed.url,
+      pill: feedPill(feed),
+      state: feed.last_check ? `Checked ${when(feed.last_check)} · ${feed.episodes} of ${feed.listed} kept` : "Not checked yet",
+      facts: [`${feed.episodes} of ${feed.listed} episodes`, size(feed.size), feed.last_error ? "check failed" : "up to date"],
+      actions: [actionButton("Check now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)), { className: "small" })],
+      body: feedBody(feed),
+    });
+  }
+  function addCard() {
+    const url = el("input", { type: "url", placeholder: "https://example.org/feed.xml", spellcheck: false });
+    const title = el("input", { type: "text", placeholder: "Name (optional)" });
     const add = el("button", { type: "button", className: "action-btn primary", textContent: "Add feed" });
     add.addEventListener("click", () => {
       post({ action: "add", url: url.value.trim(), title: title.value.trim() })
@@ -100,46 +136,39 @@
         })
         .catch((e) => say(fault(e), true));
     });
-    return el("div", { className: "library-buttons" }, url, title, add);
+    return AW.sourceCard({
+      id: "podcast-add",
+      title: "Add a feed",
+      source: "an RSS or Atom address",
+      state: "URL and an optional name",
+      facts: ["Schedule: shared"],
+      body: [
+        el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Feed URL" }), url),
+        el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Name" }), title),
+        note,
+      ],
+      actions: [add],
+    });
   }
-
-  function feedList() {
-    if (!snap.feeds.length) return el("p", { className: "setting-desc", textContent: "No feeds yet." });
-    const table = el("table", { className: "admin-table" });
-    table.append(
-      el(
-        "tr",
-        {},
-        el("th", { textContent: "Feed" }),
-        el("th", { textContent: "Episodes" }),
-        el("th", { textContent: "Size" }),
-        el("th", { textContent: "Last check" }),
-        el("th", { textContent: "" }),
-      ),
-    );
-    for (const feed of snap.feeds) {
-      const remove = el("button", { type: "button", className: "small", textContent: "Remove" });
-      remove.addEventListener("click", async () => {
-        if (!(await AW.confirmHere(`Remove ${feed.title}?`, { anchor: remove, label: "Remove" }))) return;
-        const deleteFiles = await AW.confirmHere(
-          "Delete its episodes from the box too? Choose Cancel to keep them on the box.",
-          { anchor: remove, label: "Delete episodes" },
-        );
-        post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(fault(e), true));
-      });
-      table.append(
-        el(
-          "tr",
-          {},
-          el("td", {}, el("span", { className: "setting-name", textContent: feed.title }), el("br"), el("span", { className: "setting-desc", textContent: feed.url })),
-          el("td", { textContent: `${feed.episodes} kept of ${feed.listed}` }),
-          el("td", { textContent: size(feed.size) }),
-          el("td", {}, el("span", { textContent: when(feed.last_check) }), feed.last_error ? el("span", { className: "setting-desc bad", textContent: ` ${feed.last_error}` }) : null),
-          el("td", {}, remove),
-        ),
-      );
+  function feedView() {
+    const feeds = snap.feeds;
+    const add = addCard();
+    if (feeds.length > 9) {
+      const items = feeds.map((feed) => ({
+        id: `feed-${feed.id}`,
+        title: feed.title,
+        summary: feed.url,
+        pill: feedPill(feed),
+        badges: [feed.last_error ? "check failed" : "up to date"],
+        actions: [actionButton("Check now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)), { className: "small" })],
+        body: feedBody(feed),
+      }));
+      return [
+        AW.sourceList(items, { id: "podcast-feeds" }),
+        el("div", { className: "card-grid source-grid" }, add),
+      ];
     }
-    return table;
+    return [el("div", { className: "card-grid source-grid" }, ...feeds.map(feedCard), add)];
   }
 
   function opml() {
@@ -165,13 +194,12 @@
     if (!snap) return;
     const was = panel.querySelector("input:focus, textarea:focus");
     if (was) return; // do not redraw under a field being typed in: the next poll does
+    note.hidden = true;
     panel.replaceChildren(
       el("p", { className: "setting-desc", textContent: `Using ${size(snap.used)} on the box; ${snap.free_mb} MB free.` }),
-      note,
       settingsForm(),
       el("h3", { textContent: "Feeds" }),
-      addForm(),
-      feedList(),
+      ...feedView(),
       opml(),
       snap.running ? el("p", { className: "setting-desc", textContent: "The librarian is working…" }) : null,
     );
