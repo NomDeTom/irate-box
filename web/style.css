@@ -3614,6 +3614,22 @@ body.drop > section + section {
 }
 .source-expanded > .source-actions {
   margin-top: auto;
+  padding: 0.6rem 0.9rem 0.7rem;
+  border-top: 1px solid var(--border);
+}
+/* An add mini-card's fields: two or three to a line, the wider parts across the row. */
+.source-panel > .source-drawer > .library-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.45rem 0.9rem;
+  align-items: start;
+  max-width: none;
+}
+.source-panel > .source-drawer > .library-form > label {
+  margin: 0;
+}
+.source-panel > .source-drawer > .library-form > :is(.setting-desc, .library-buttons, .action-btn) {
+  grid-column: 1 / -1;
 }
 .source-panel.source-expanded > .source-drawer {
   margin-top: 0;
