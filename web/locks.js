@@ -27,11 +27,7 @@
     note.classList.toggle('bad', !ok);
   }
 
-  function el(tag, props = {}, ...kids) {
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  }
+  const el = AW.el;
 
   function qr(text) {
     const q = qrcode(0, 'M');

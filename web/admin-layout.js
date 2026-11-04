@@ -3,7 +3,7 @@
 // /admin's menu, built from one table. admin.html keeps every section as it was, each a <section class="admin-pane">
 // with its own id, so admin.js binds to them unchanged; this file gathers them into pages:
 //   Overview · Apps (a page per app, from /admin/apps: what each app's manifest says it owns)
-//   · Hub layout (what visitors see: tiles, folders, status widgets, appearance) · Moderation · System
+//   · Hub layout (what visitors see: tiles, folders, status widgets, appearance) · Content · System
 //   · Doctors · Mock controls (every control the pages use, last).
 // The address names a section (#books, #backup): the page holding it opens, scrolled to it, so
 // every old link and bookmark still lands. A section no page claims goes to "More" at the end
@@ -26,15 +26,15 @@ const AL = (() => {
       { title: 'Folders', sections: ['folder-index'] },
       { title: 'Status widgets', sections: ['status-tiles'], art: 'controller' },
       { title: 'Appearance', sections: ['appearance'], art: 'controller' }] },
-    { name: 'Moderation', art: 'librarian', pages: [
+    { name: 'Content', art: 'librarian', pages: [
+      { title: 'Librarian', sections: ['sources', 'podcasts', 'library-drive'] },
+      { title: 'Toolkits', sections: ['toolkits'], art: 'workbench' },
       { title: 'Moderation', sections: ['moderation'] },
       { title: 'User data', sections: ['made'] }] },
     { name: 'System', art: 'controller', pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },
-      { title: 'The librarian', sections: ['sources', 'podcasts', 'library-drive'] },
-      { title: 'Toolkits', sections: ['toolkits'], art: 'workbench' },
       { title: 'Clock', sections: ['clock'] },
       { title: 'Recovery and monitoring', sections: ['recovery'] },
       { title: 'Updates', sections: ['updates'] },

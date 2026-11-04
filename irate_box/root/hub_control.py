@@ -4218,8 +4218,8 @@ GO_NETWORK, GO_CLOCK, GO_BOOKS, GO_UPDATES = (
     health.GO_BOOKS,
     health.GO_UPDATES,
 )
-GO_LIBRARIAN = _go("sources", M("go.librarian", "The librarian"))
-GO_TOKEN = _go("sources", M("go.source-access", "The librarian → Source access"), "library-token")
+GO_LIBRARIAN = _go("sources", M("go.librarian", "Librarian"))
+GO_TOKEN = _go("sources", M("go.source-access", "Librarian → Source access"), "library-token")
 # The Update source form's two fields: the link opens the fold, scrolls to the field and marks it.
 GO_SOURCE_REPO = _go("updoctor", M("go.update-source", "Update source"), "update-source-repo")
 GO_SOURCE_BRANCH = _go("updoctor", M("go.update-source", "Update source"), "update-source-branch")

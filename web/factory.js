@@ -8,13 +8,7 @@
   const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' };
   const noteEl = (id) => document.getElementById(id);
   function say(text, ok, at) { at.textContent = text; at.classList.toggle('bad', !ok); at.hidden = !text; }
-  const el = (tag, props = {}, ...kids) => {
-    // A button with no class of its own is an action button (the control vocabulary).
-  if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
-  const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  };
+  const el = AW.el;
   const ago = (secs) => {
     if (secs < 90) return 'just now';
     const m = Math.round(secs / 60);

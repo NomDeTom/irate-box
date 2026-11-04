@@ -8,15 +8,18 @@
   const POLL = 3000;
   let snap = null;
 
-  const el = (tag, props = {}, ...kids) => {
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  };
+  const el = AW.el;
   const size = (n) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`);
   const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "never");
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
 
+  // A fault in this page's own script is not the box talking: say so plainly, and keep the box's own words.
+  const fault = (e) => {
+    const text = e && e.message ? String(e.message) : String(e);
+    return /^the box answered/i.test(text)
+      ? text
+      : "This part of the page could not be drawn: a fault in the page, not the box. Reload; if it stays, it is a bug.";
+  };
   function say(text, bad = false) {
     note.hidden = !text;
     note.textContent = text;
@@ -42,7 +45,7 @@
     return response.json();
   }
 
-  const field = (label, input) => el("label", { className: "setting" }, el("span", { className: "setting-name", textContent: label }), input);
+  const field = (label, input) => el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: label }), input);
 
   function number(key, label, min, max, value) {
     const input = el("input", { type: "number", min, max, value, dataset: { key } });
@@ -51,13 +54,13 @@
 
   function check(key, label, value) {
     const input = el("input", { type: "checkbox", checked: !!value, dataset: { key } });
-    input.addEventListener("change", () => post({ action: "settings", [key]: input.checked }).catch((e) => say(e.message, true)));
-    return el("label", { className: "setting" }, input, el("span", { className: "setting-name", textContent: ` ${label}` }));
+    input.addEventListener("change", () => post({ action: "settings", [key]: input.checked }).catch((e) => say(fault(e), true)));
+    return el("label", { className: "aw-field" }, input, el("span", { className: "aw-label", textContent: label }));
   }
 
   function settingsForm() {
     const settings = snap.settings;
-    const box = el("div", { className: "settings-block" });
+    const box = el("div", { className: "settings" });
     box.append(check("enabled", "Follow podcasts", settings.enabled));
     box.append(
       number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours),
@@ -76,10 +79,10 @@
       for (const input of box.querySelectorAll("input[data-key]")) {
         changes[input.dataset.key] = input.type === "checkbox" ? input.checked : Number(input.value);
       }
-      post(changes).then(() => say("Saved.")).catch((e) => say(e.message, true));
+      post(changes).then(() => say("Saved.")).catch((e) => say(fault(e), true));
     });
     const checkNow = el("button", { type: "button", className: "action-btn", textContent: "Check now" });
-    checkNow.addEventListener("click", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)));
+    checkNow.addEventListener("click", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(fault(e), true)));
     box.append(el("div", { className: "library-buttons" }, save, checkNow));
     return box;
   }
@@ -95,7 +98,7 @@
           title.value = "";
           say("Added. It is checked on the next run, or with Check now.");
         })
-        .catch((e) => say(e.message, true));
+        .catch((e) => say(fault(e), true));
     });
     return el("div", { className: "library-buttons" }, url, title, add);
   }
@@ -122,7 +125,7 @@
           "Delete its episodes from the box too? Choose Cancel to keep them on the box.",
           { anchor: remove, label: "Delete episodes" },
         );
-        post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(e.message, true));
+        post({ action: "remove", id: feed.id, delete_files: deleteFiles }).catch((e) => say(fault(e), true));
       });
       table.append(
         el(
@@ -143,7 +146,7 @@
     const text = el("textarea", { rows: 4, placeholder: "Paste an OPML file here", spellcheck: false });
     const doImport = el("button", { type: "button", className: "action-btn", textContent: "Import OPML" });
     doImport.addEventListener("click", () => {
-      post({ action: "import", opml: text.value }).then((data) => say(`Imported. ${data.feeds.length} feeds now.`)).catch((e) => say(e.message, true));
+      post({ action: "import", opml: text.value }).then((data) => say(`Imported. ${data.feeds.length} feeds now.`)).catch((e) => say(fault(e), true));
     });
     const doExport = el("button", { type: "button", className: "action-btn", textContent: "Export OPML" });
     doExport.addEventListener("click", async () => {
@@ -152,10 +155,10 @@
         text.value = data.opml || "";
         say("The OPML file is in the box below. Copy it.");
       } catch (e) {
-        say(e.message, true);
+        say(fault(e), true);
       }
     });
-    return el("div", {}, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doImport, doExport));
+    return el("div", { className: "opml" }, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doImport, doExport));
   }
 
   function draw() {
@@ -188,5 +191,5 @@
     snap = data;
     draw();
     if (data.running) setTimeout(poll, POLL);
-  }).catch((e) => panel.replaceChildren(el("p", { className: "setting-desc bad", textContent: e.message })));
+  }).catch((e) => panel.replaceChildren(el("p", { className: "setting-desc bad", textContent: fault(e) })));
 })();

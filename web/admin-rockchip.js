@@ -9,13 +9,7 @@
   'use strict';
   const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' };
   function say(text, ok, at) { at.textContent = text; at.classList.toggle('bad', !ok); at.hidden = !text; }
-  const el = (tag, props = {}, ...kids) => {
-    // A button with no class of its own is an action button (the control vocabulary).
-    if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  };
+  const el = AW.el;
   async function getJSON(url) { const response = await fetch(url); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
   async function postJSON(url, body) {
     const response = await fetch(url, { method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body) });
