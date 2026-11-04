@@ -13644,10 +13644,8 @@ const STATE_ICON = {
   running: "⏳",
 };
 const GIT_KINDS = [
-  ["all", "All", () => true],
-  ["mine", "Local repositories", (repo) => !repo.mirror_of],
-  ["mirrors", "Mirrors", (repo) => !!repo.mirror_of],
-  ["builds", "Builds", builds],
+  ["all", "All repositories", () => true],
+  ["builds", "With builds", builds],
 ];
 const GIT_AREAS = [
   ["all", "All access", () => true],
@@ -13696,14 +13694,14 @@ function renderGit(data) {
     (gitRemoved()
       ? `. Git is removed from this box. The repositories are kept, but nobody can browse, clone or push to them. ${GIT_ADD_BACK}`
       : `. A single push can be up to ${size(data.max_push)}.`);
-  // Submodule mirrors have no card of their own: Git → Mirrors lists them under their parent.
-  const shown = data.repos.filter((repo) => !repo.submodule_of);
+  // The mirror repositories and their submodules belong to Git Mirrors, not this list.
+  const shown = data.repos.filter((repo) => !repo.submodule_of && !repo.mirror_of);
   const chips = (box, list, key) =>
     box.replaceChildren(
       ...list.map(([id, label, test]) =>
         el("button", {
           type: "button",
-          className: `chip${gitView[key] === id ? " on" : ""}`,
+          className: `chip${gitView[key] === id ? " selected" : ""}`,
           textContent: `${label} ${shown.filter(test).length}`,
           onclick: () => {
             gitView[key] = id;
@@ -13715,11 +13713,11 @@ function renderGit(data) {
   chips(git.chipsKind, GIT_KINDS, "kind");
   chips(git.chipsArea, GIT_AREAS, "area");
   [...git.chipsKind.children, ...git.chipsArea.children].forEach((b) =>
-    b.setAttribute("aria-pressed", b.classList.contains("on")),
+    b.setAttribute("aria-pressed", b.classList.contains("selected")),
   );
   const q = gitView.q.toLowerCase();
-  const kindTest = GIT_KINDS.find((k) => k[0] === gitView.kind)[2];
-  const areaTest = GIT_AREAS.find((k) => k[0] === gitView.area)[2];
+  const kindTest = (GIT_KINDS.find((k) => k[0] === gitView.kind) || GIT_KINDS[0])[2];
+  const areaTest = (GIT_AREAS.find((k) => k[0] === gitView.area) || GIT_AREAS[0])[2];
   const list = shown.filter(
     (repo) =>
       kindTest(repo) &&
