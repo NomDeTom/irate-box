@@ -364,7 +364,7 @@ summary + .view-switch {
 }
 /* The OPML block under the feeds: its own heading is the space below it. */
 .opml {
-  margin-top: 1rem;
+  margin-top: 0.5rem;
 }
 .opml > h3:first-child {
   margin-top: 0;
@@ -3640,6 +3640,10 @@ body.drop > section + section {
 }
 .source-panel.open .source-head::after {
   content: "▾";
+}
+/* A "new …" card's head fills the card's height, so its enter details button sits at the foot. */
+.source-add-card .source-head {
+  min-height: 8rem;
 }
 .source-panel > .source-drawer {
   margin-top: -0.35rem;

@@ -421,127 +421,6 @@ function noteFor(key) {
   });
 }
 
-function sourceRow(src, st, busy) {
-  const cur = st.current || {};
-  const latest = st.latest || {};
-  const archive = st.archive || [];
-  const key = `book:${src.name}`;
-  const button = (label, body, opts = {}) =>
-    el("button", {
-      type: "button",
-      className: "action-btn",
-      textContent: label,
-      disabled: busy || !!opts.off,
-      title: opts.title || "",
-      onclick: (event) => {
-        libAct(key, body, event.currentTarget);
-      },
-    });
-  // Check finds a newer version; Download downloads and checks it beside the book in use;
-  // Update swaps it in (fetching first if that has not happened).
-  const newer = !!latest.version && latest.version !== cur.version;
-  const fetched =
-    st.fetched && st.fetched.version === latest.version ? st.fetched : null;
-  const pol = (lastLibrary && lastLibrary.policy) || {};
-  const budget = Number(pol.books_budget_mb) || 0;
-  return el(
-    "div",
-    { className: "setting library-source" },
-    el(
-      "span",
-      {},
-      el(
-        "span",
-        { className: "setting-name" },
-        `${src.name}.zim `,
-        AW.updatePill(st.last_check, newer, !!st.error),
-      ),
-      el("span", {
-        className: "setting-desc",
-        textContent: `${src.type}: ${where(src)}`,
-      }),
-      el("span", {
-        className: "setting-desc",
-        textContent:
-          "Access: Guests. Anyone on the network can read the library; books are kept for the whole hub.",
-      }),
-      el("span", {
-        className: "setting-desc",
-        textContent:
-          `Schedule: ${AW.patternSays(pol.check_every_hours, pol.auto_install)} Set in The librarian.`,
-      }),
-      el("span", {
-        className: "setting-desc",
-        textContent:
-          `Space: ${budget ? `${budget} MB limit for all books` : "no book limit"}; ` +
-          `${cur.size ? mb(cur.size) : "nothing"} kept for this book.`,
-      }),
-      el("span", {
-        className: "setting-desc",
-        textContent: cur.version
-          ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})`
-          : "The librarian has not installed it yet.",
-      }),
-      newer
-        ? el("span", {
-            className: "setting-desc",
-            textContent: fetched
-              ? `Downloaded: ${fetched.label} (${mb(fetched.size)}), ready to install.`
-              : `Available: ${latest.label} (${mb(latest.size)})`,
-          })
-        : null,
-      archive.length
-        ? el("span", {
-            className: "setting-desc",
-            textContent: `Retained versions: ${archive.join(", ")}`,
-          })
-        : null,
-      st.last_check
-        ? el("span", {
-            className: "setting-desc",
-            textContent: `Checked ${st.last_check}: ${st.outcome || ""}`,
-          })
-        : null,
-      st.error
-        ? el("a", {
-            className: "setting-desc bad",
-            href: "#updoctor",
-            textContent: `${errorSaid(st)} See the Updates doctor.`,
-          })
-        : null,
-      el(
-        "span",
-        { className: "library-buttons" },
-        button("Check now", { action: "check", names: [src.name] }),
-        button("Download", { action: "fetch", names: [src.name] }, {
-          off: !newer || fetched,
-          title: !newer
-            ? "Select Check now first. No newer version is known."
-            : fetched
-              ? "Already downloaded"
-              : "",
-        }),
-        button("Install", { action: "update", names: [src.name] }),
-        archive.length
-          ? button(
-              "Roll back",
-              { action: "rollback", name: src.name },
-              {
-                title: `Restores version ${archive[0]} as ${src.name}.zim. The librarian keeps the current version.`,
-              },
-            )
-          : null,
-        button(
-          "Stop tracking",
-          { action: "remove", name: src.name },
-          { title: `The book stays in the library.` },
-        ),
-      ),
-      noteFor(key),
-    ),
-  );
-}
-
 // One book, one card or one short-list line: the same source card as the Git repositories. A book with no
 // source says so on its card.
 function bookParts(b) {
@@ -582,8 +461,8 @@ function bookParts(b) {
   };
 }
 function bookCard(b) {
-  const p = bookParts(b);
-  return AW.sourceCard({ id: `book-${b.name}`, ...p });
+  const parts = bookParts(b);
+  return AW.sourceCard({ id: `book-${b.name}`, ...parts });
 }
 
 // The add-a-source mini-card lives in the Other sources tab: the source templates are chips at its top.
@@ -611,6 +490,7 @@ function bookAddCard() {
   drawChips();
   return AW.sourceCard({
     id: "book-add",
+    add: true,
     title: "Add a book source",
     source: "a project's releases, Actions builds, or a URL",
     state: "Template, name and source",
@@ -1207,7 +1087,6 @@ const bk = {
 };
 let bookPage = 1;
 let bookData = null;
-let bookTimer = null;
 const bookSel = new Set();
 const STATE_WORDS = {
   ok: "up to date",
@@ -1262,16 +1141,16 @@ function paintBookBulk() {
 }
 function renderBooksList(data) {
   const items = sortBooks(data.books).map((b) => {
-    const p = bookParts(b);
+    const parts = bookParts(b);
     return {
       id: `book-${b.name}`,
-      title: p.title,
-      summary: p.source,
-      pill: p.pill,
+      title: parts.title,
+      summary: parts.source,
+      pill: parts.pill,
       badges: [b.source ? (STATE_WORDS[b.state] || b.state) : "Managed updates: none", b.language || "no language", b.kept ? "managed" : "by hand"],
       tick: bookTick(b),
-      actions: p.actions,
-      body: p.body,
+      actions: parts.actions,
+      body: parts.body,
     };
   });
   const bar = el("div", { className: "books-bulk source-bulk" },
@@ -13630,20 +13509,8 @@ const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 let gitData = null;
 const gitView = { open: null };
 const gitChecks = {}; // a local repository has no upstream; Check now records when it was read
-const PUSH_WORDS = {
-  everyone: "anyone pushes",
-  admin: "administrators push",
-  nobody: "read-only",
-};
 const builds = (repo) => repo.can_build && repo.build && repo.has_script;
 const repoKey = (repo) => `${repo.area}/${repo.name}`;
-const STATE_ICON = {
-  passed: "✅",
-  failed: "❌",
-  "timed out": "⏱",
-  interrupted: "⏹",
-  running: "⏳",
-};
 // One sentence for the card: who sees it, who pushes, whether pushes are built.
 function accessSentence(repo) {
   const see =
@@ -13718,6 +13585,7 @@ function renderGit(data) {
 function newCard() {
   return AW.sourceCard({
     id: "git-add",
+    add: true,
     title: "New repository",
     source: "an empty repository, or a mirror",
     state: "Name, access and a description",
@@ -13732,47 +13600,6 @@ const withAttrs = (node, attrs) => {
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
   return node;
 };
-
-function newPanel(cls) {
-  git.form.hidden = false;
-  return el(
-    "div",
-    { className: `git-manage ${cls}` },
-    el(
-      "div",
-      { className: "git-manage-head" },
-      el("strong", { textContent: "New" }),
-      closeButton(),
-    ),
-    el(
-      "section",
-      {},
-      el("h4", { textContent: "An empty repository" }),
-      el("p", {
-        className: "setting-desc",
-        textContent:
-          "Push to it from a computer. Guests: anyone on the network can browse and clone it. Until you change the push setting, only administrators can push. Administrators: only administrators can browse, clone or push.",
-      }),
-      git.form,
-      git.createNote,
-    ),
-    el(
-      "section",
-      {},
-      el("h4", { textContent: "A mirror of a repository on the internet" }),
-      el("p", {
-        className: "setting-desc",
-        textContent:
-          "Kept by the librarian to a policy (branches, releases, submodules), read-only here. Mirrors are set up and managed under Mirrors, below.",
-      }),
-      el("a", {
-        href: "#mirrors",
-        className: "button-link",
-        textContent: "Add a mirror",
-      }),
-    ),
-  );
-}
 
 const closeButton = () =>
   actionButton(
@@ -13803,33 +13630,6 @@ function repoCard(repo, data) {
     ? (data.mirrors || []).find((x) => x.name === repo.name && x.area === repo.area)
     : null;
   const ms = (m && m.status) || {};
-  const b = repo.last_build;
-  const badges = [
-    [repo.area === "public" ? "Guests" : "Administrators", `badge-${repo.area}`],
-    [repo.mirror_of ? "read-only" : PUSH_WORDS[repo.write], "badge-push"],
-    repo.mirror_of ? ["Mirror", "badge-mirror"] : null,
-    builds(repo)
-      ? [
-          b
-            ? `${STATE_ICON[b.state] || ""} build ${b.state}${b.started ? `, ${commitDate(b.started)}` : ""}`
-            : "builds on push",
-          `badge-build${b && b.state === "failed" ? " bad" : ""}`,
-        ]
-      : null,
-  ].filter(Boolean);
-  const facts = repo.mirror_of
-    ? [
-        `from ${repo.mirror_of.replace(/^https:\/\//, "")}`,
-        ms.updated ? `updated ${commitDate(ms.updated)}` : "not downloaded yet",
-        size(repo.size),
-      ]
-    : [
-        repo.last_commit ? `Last commit ${commitDate(repo.last_commit)}` : "Empty",
-        repo.branches
-          ? `${repo.branches} branch${repo.branches === 1 ? "" : "es"}`
-          : null,
-        size(repo.size),
-      ];
   const open = gitView.open === repoKey(repo);
   const checked = repo.mirror_of ? ms.checked : gitChecks[repoKey(repo)];
   const newer = repo.mirror_of ? !!(ms.missing && ms.missing.length) : false;
@@ -14462,6 +14262,7 @@ function mirrorAddCard() {
   const form = git.mirrorForm;
   return AW.sourceCard({
     id: "mirror-add",
+    add: true,
     title: "Add a mirror",
     source: "a repository on the internet",
     state: "Upstream, access, branches and budget",
@@ -15067,7 +14868,6 @@ function asCard(holder) {
   const failed = !!st.error;
   const newer = !!(st.latest && st.latest.length) && !/up to date|nothing chosen/i.test(st.outcome || "");
   const pol = (asData && asData.policy) || {};
-  const when = checked || "";
   const body = [
     failed
       ? el("p", { className: "setting-desc bad" },
@@ -15189,6 +14989,7 @@ function asAddFlow(data) {
   draw();
   asEl.add.replaceChildren(AW.sourceCard({
     id: "appstore-add",
+    add: true,
     title: "Add a project",
     source: "a GitHub repository",
     state: "A preset, a recipe, or a repository",
@@ -15419,6 +15220,7 @@ function renderKits(data) {
       });
       const add = AW.sourceCard({
         id: "kit-custom",
+        add: true,
         title: "+ Custom toolkit",
         source: "your own packages",
         state: "Managed by the librarian",
@@ -15808,30 +15610,6 @@ function kitBody(k, st, cfg, setDirty) {
         })
       : null,
   ];
-}
-async function kitSave(it) {
-  const k = it.kit,
-    draft = kitDrafts.get(k.id),
-    mine = kitsData.settings.kits[k.id];
-  const ch = {};
-  if (draft.keep_current !== mine.keep_current) ch.keep_current = draft.keep_current;
-  if (draft.remove_after !== mine.remove_after) ch.remove_after = draft.remove_after;
-  const extra = draft.extra
-    .trim()
-    .split(/[\s,]+/)
-    .filter(Boolean);
-  if (
-    Object.keys(ch).length &&
-    !(await kitAct({ action: "settings", kits: { [k.id]: ch } }))
-  )
-    return false;
-  if (
-    !k.owner &&
-    extra.join(" ") !== (k.extra || []).join(" ") &&
-    !(await kitAct({ action: "extra", kit: k.id, packages: extra }))
-  )
-    return false;
-  return true;
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
 function customBody() {

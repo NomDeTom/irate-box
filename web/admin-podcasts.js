@@ -205,6 +205,7 @@
   function addCard() {
     return AW.sourceCard({
       id: "podcast-add",
+      add: true,
       title: "Add a feed",
       source: "an RSS or Atom address",
       state: "URL and an optional name",

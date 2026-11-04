@@ -323,8 +323,10 @@ const AW = (() => {
         h('span', { class: 't', text: it.title }),
         h('span', { class: 's', text: it.summary || '' }),
         h('span', { class: 'p' }, it.pill || null));
-      const actions = h('span', { class: 'library-buttons source-row-actions' },
-        ...[it.actions].flat(Infinity).filter(Boolean));
+      const actionNodes = [it.actions].flat(Infinity).filter(Boolean);
+      const actions = actionNodes.length
+        ? h('span', { class: 'library-buttons source-row-actions' }, ...actionNodes)
+        : null;
       list.append(h('div', { class: 'aw-row source-row' + (it.tick ? ' has-tick' : ''), 'data-aw-id': it.id, ...rowData({ title: it.title, summary: it.summary, badges: it.badges || [] }) },
         it.tick || null, head, actions, detail));
     }
@@ -356,7 +358,7 @@ const AW = (() => {
   //   opts: {title, source, pill, state, facts: [terse values], actions: [buttons], body: [the longer words and
   //          settings], open, onToggle}. The card stays in its grid when its drawer opens; the head is the fold.
   function sourceCard(opts) {
-    const card = h('div', { class: 'git-card source-card', id: opts.id || null });
+    const card = h('div', { class: 'git-card source-card' + (opts.add ? ' source-add-card' : ''), id: opts.id || null });
     const head = h('button', { type: 'button', class: 'source-head', 'aria-expanded': String(!!opts.open) },
       h('span', { class: 'source-title-line' },
         h('span', { class: 'source-title', title: opts.title, text: opts.title }),
