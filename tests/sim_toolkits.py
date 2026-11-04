@@ -164,6 +164,9 @@ def fake(cmd, timeout=0, check=True, env=None):
             f"Package: {cmd[-1]}\nVersion: {ARCHIVE[cmd[-1]][0]}\n" if cmd[-1] in ARCHIVE else "",
             0 if cmd[-1] in ARCHIVE else 100,
         )
+    if name == "apt-cache" and cmd[1] == "policy":
+        pkg = cmd[-1]
+        return R(f"{pkg}:\n  Candidate: {ARCHIVE[pkg][0]}\n" if pkg in ARCHIVE else f"{pkg}:\n  Candidate: (none)\n")
     if name == "dpkg" and cmd[1:] == ["--print-architecture"]:
         return R(BOARD["arch"] + "\n")
     if name == "dpkg-deb" and cmd[1] == "-x":
@@ -1003,6 +1006,48 @@ check(
     line,
 )
 check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_out"] == ["gdb"])
+# A package no source on this box carries (platformio on the Pi and bpi0) is left out, with the wheelhouse named;
+# the rest of the kit is still checked and fetched.
+(T / "defs" / "nocand.json").write_text(
+    json.dumps(
+        {
+            "id": "nocand",
+            "title": "No candidate",
+            "summary": "s",
+            "consent": "c",
+            "packages": ["gdb", "platformio"],
+            "pip": ["platformio"],
+            "remove_after_hours": 24,
+        }
+    )
+)
+saved_platformio = ARCHIVE.pop("platformio")
+try:
+    checked = kits.check("nocand")
+    check(
+        "  a check with the same missing package is not unavailable, and says what it left out",
+        checked.get("state") != "unavailable" and checked.get("left_out") == ["platformio"],
+        checked,
+    )
+    line = kits.fetch("nocand", budget_mb=10, log=lambda *a: None)
+    left = kits.status()["kits"]["nocand"]["cached"]["left_out"]
+    check(
+        "a package with no candidate is left out, said with where it comes from instead, and the rest cached",
+        left == ["platformio"]
+        and "platformio (not in this box's package sources; the toolkit's wheelhouse holds PlatformIO from PyPI)"
+        in args_of(line, "kits.fetch.left-out")["why"]
+        and "gdb" in {p["name"] for p in kits.manifest("nocand")["packages"]}
+        and "not in this box's package sources; the toolkit's wheelhouse holds PlatformIO from PyPI"
+        in kits.status()["kits"]["nocand"]["cached"]["left_out_why"],
+        (left, line),
+    )
+finally:
+    ARCHIVE["platformio"] = saved_platformio
+    (T / "defs" / "nocand.json").unlink()
+    for name in ("nocand.json", "nocand.previous.json"):
+        (kits.MANIFESTS / name).unlink(missing_ok=True)
+    (kits.CHECKS / "nocand.json").unlink(missing_ok=True)
+    kits.prune()
 BOARD["arch"] = "arm64"
 line = kits.fetch("small", budget_mb=10, log=lambda *a: None)
 check(
