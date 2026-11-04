@@ -91,7 +91,10 @@ _PRIVILEGED = [
     "config/irate-box.service",
 ]
 _PATH_ACTIONS = {
-    "pins": {"reads": [], "writes": ["control/pins.json"]},
+    "pins": {"reads": [], "writes": ["control/pins.json", "control/lcdtouch.json"]},
+    "pins-overlay": {"reads": [], "writes": ["control/lcdtouch.json"]},
+    "pins-display": {"reads": [], "writes": ["control/lcdtouch.json"]},
+    "pins-test": {"reads": [], "writes": ["control/lcdtouch.json"]},
 }
 _HUB_ACTIONS = {
     "https_only",

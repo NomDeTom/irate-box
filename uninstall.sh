@@ -221,6 +221,10 @@ fi
 if [ -f "$CODE/irate_box/root/ownserial.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" ownserial undo-all | sed 's/^/    /' || true
 fi
+# The SPI1 LCD and touch overlay: its .dtbo and user_overlays name taken away.
+if [ -f "$CODE/irate_box/root/lcdtouch.py" ]; then
+	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" lcdtouch undo-all | sed 's/^/    /' || true
+fi
 # The status light: each LED it took back to its trigger and brightness from before.
 if [ -f "$CODE/irate_box/root/led.py" ]; then
 	HUB_ETC_DIR="$ETC" HUB_STATE_DIR="$STATE" "$CODE/irate-box" led undo-all | sed 's/^/    /' || true

@@ -8223,12 +8223,46 @@ def wifi_country(req):
 
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
-    from irate_box.root import pinmap
+    from irate_box.root import lcdtouch, pinmap
 
     data = pinmap.snapshot()
     data["at"] = time.time()
     safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
+    lcdtouch.write_status()
     return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
+
+
+def pins_overlay(req):
+    """The SPI1 LCD and touch overlay switched on or off in the boot files (lcdtouch.py)."""
+    from irate_box.root import lcdtouch
+
+    on = req.get("on")
+    if type(on) is not bool:
+        raise Refused(M("control.pins-overlay.bad", "Say whether the overlay should be on or off."))
+    try:
+        return lcdtouch.set_overlay(on)
+    finally:
+        lcdtouch.write_status()
+
+
+def pins_display(req):
+    """The SPI1 panel initialised to the test card, or blanked (lcdtouch.py)."""
+    from irate_box.root import lcdtouch
+
+    on = req.get("on")
+    if type(on) is not bool:
+        raise Refused(M("control.pins-display.bad", "Say whether the display should be on or off."))
+    try:
+        return lcdtouch.set_display(on)
+    finally:
+        lcdtouch.write_status()
+
+
+def pins_test(_req):
+    """The 60-second animation sequence (lcdtouch.py), then the panel blanked."""
+    from irate_box.root import lcdtouch
+
+    return lcdtouch.run_screen_test(60)
 
 
 def _rk(fn):
@@ -9170,6 +9204,9 @@ ACTIONS = {
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
     "pins": pins,
+    "pins-overlay": pins_overlay,
+    "pins-display": pins_display,
+    "pins-test": pins_test,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,
     "uplink-hold": uplink_hold,

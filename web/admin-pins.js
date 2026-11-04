@@ -8,7 +8,43 @@
   const $ = (id) => document.getElementById(id);
   let lastAt = 0;
   let lastPins = null;
+  let lastOverlay = null;
   const say = (text, ok) => { const n = $('pins-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
+  const ovSay = (text, ok) => { const n = $('pins-overlay-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
+  const dispSay = (text, ok) => { const n = $('pins-display-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
+  function overlayState(o) {
+    if (!o) return 'Read the pins to see the overlay.';
+    if (!o.supported) return 'This overlay is for the Luckfox Lyra Zero W only.';
+    if (o.on) return o.pending ? 'On, waiting for a restart.' : 'On, active.';
+    if (o.enabled && !o.installed) return 'Enabled in the boot files, but the overlay file is missing.';
+    if (o.installed) return 'The overlay file is there, but it is not enabled.';
+    return 'Off.';
+  }
+  function renderOverlay(o) {
+    lastOverlay = o || null;
+    const state = $('pins-overlay-state');
+    const button = $('pins-overlay-toggle');
+    if (state) state.textContent = overlayState(lastOverlay);
+    if (button) {
+      button.disabled = !(lastOverlay && lastOverlay.supported);
+      button.textContent = lastOverlay && lastOverlay.on ? 'Disable' : 'Enable';
+    }
+    const displayState = $('pins-display-state');
+    const displayButton = $('pins-display-toggle');
+    const testButton = $('pins-test');
+    const ready = Boolean(lastOverlay && lastOverlay.supported && lastOverlay.on && lastOverlay.active);
+    if (displayState) {
+      if (!lastOverlay) displayState.textContent = 'Read the pins to see the display.';
+      else if (!lastOverlay.supported) displayState.textContent = 'This overlay is for the Luckfox Lyra Zero W only.';
+      else if (!ready) displayState.textContent = 'Enable the overlay and restart the box first.';
+      else displayState.textContent = lastOverlay.display_on ? 'On.' : 'Off.';
+    }
+    if (displayButton) {
+      displayButton.disabled = !ready;
+      displayButton.textContent = lastOverlay && lastOverlay.display_on ? 'Turn display off' : 'Turn display on';
+    }
+    if (testButton) testButton.disabled = !ready;
+  }
   async function get() { const response = await fetch('/admin/pins'); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
   async function post(body) {
     const response = await fetch('/admin/pins', { method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body) });
@@ -199,6 +235,7 @@
     return lines.join('\n');
   }
   function render(data) {
+    renderOverlay(data && data.overlay);
     const pins = data && data.pins;
     $('pins-copy').disabled = true;
     if (!pins) { $('pins-board').textContent = 'Not read yet.'; return; }
@@ -253,6 +290,41 @@
     say('The pins were not read in time.', false);
     $('pins-scan').disabled = false;
   }
+  async function waitOverlay(id) {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      let data;
+      try { data = await get(); } catch (_) { continue; }
+      const done = (data.results || []).find((result) => result.id === id);
+      if (!done) continue;
+      if (done.ok) {
+        renderOverlay(data.overlay);
+        ovSay(answerSaid(done) || 'Saved.', true);
+      } else {
+        ovSay(answerSaid(done) || 'The overlay could not be changed.', false);
+        $('pins-overlay-toggle').disabled = false;
+      }
+      return;
+    }
+    ovSay('The overlay change was not confirmed in time.', false);
+    $('pins-overlay-toggle').disabled = false;
+  }
+  async function waitDisplay(id, long) {
+    const tries = long ? 150 : 40;
+    for (let i = 0; i < tries; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      let data;
+      try { data = await get(); } catch (_) { continue; }
+      const done = (data.results || []).find((result) => result.id === id);
+      if (!done) continue;
+      renderOverlay(data.overlay);
+      if (done.ok) dispSay(answerSaid(done) || 'Done.', true);
+      else dispSay(answerSaid(done) || 'The display could not be changed.', false);
+      return;
+    }
+    renderOverlay(lastOverlay);
+    dispSay('The display change was not confirmed in time.', false);
+  }
   $('pins-scan').addEventListener('click', async () => {
     $('pins-scan').disabled = true;
     say('Reading the GPIO lines…', true);
@@ -266,6 +338,60 @@
     if (!lastPins) return;
     const ok = await copyText(textOf(lastPins));
     say(ok ? 'The header is copied as text.' : 'The header could not be copied.', ok);
+  });
+  $('pins-overlay-toggle').addEventListener('click', async (event) => {
+    if (!lastOverlay || !lastOverlay.supported) return;
+    const on = !lastOverlay.on;
+    const button = event.currentTarget;
+    const question = on
+      ? 'Enable the SPI1 display and touch overlay? A restart applies it.'
+      : 'Disable the SPI1 display and touch overlay? A restart removes it.';
+    if (!(await AW.confirmHere(question, { anchor: button, label: on ? 'Enable' : 'Disable' }))) return;
+    button.disabled = true;
+    ovSay(on ? 'Saving the overlay…' : 'Turning the overlay off…', true);
+    try {
+      const reply = await post({ action: 'pins-overlay', on });
+      await waitOverlay(reply.id);
+    } catch (err) {
+      ovSay(err.message || 'The overlay could not be changed.', false);
+      button.disabled = false;
+    }
+  });
+  $('pins-display-toggle').addEventListener('click', async (event) => {
+    if (!lastOverlay || !lastOverlay.supported || !lastOverlay.active) return;
+    const on = !lastOverlay.display_on;
+    const button = event.currentTarget;
+    const question = on ? 'Turn the display on and show the test card?' : 'Turn the display off?';
+    if (!(await AW.confirmHere(question, { anchor: button, label: on ? 'Turn on' : 'Turn off' }))) return;
+    button.disabled = true;
+    dispSay(on ? 'Turning the display on…' : 'Turning the display off…', true);
+    try {
+      const reply = await post({ action: 'pins-display', on });
+      await waitDisplay(reply.id);
+    } catch (err) {
+      dispSay(err.message || 'The display could not be changed.', false);
+      button.disabled = false;
+    }
+  });
+  $('pins-test').addEventListener('click', async (event) => {
+    if (!lastOverlay || !lastOverlay.supported || !lastOverlay.active) return;
+    if (
+      !(await AW.confirmHere('Run the 60-second screen test? The display turns off at the end.', {
+        anchor: event.currentTarget,
+        label: 'Run the test',
+      }))
+    )
+      return;
+    $('pins-test').disabled = true;
+    $('pins-display-toggle').disabled = true;
+    dispSay('Running the 60-second test…', true);
+    try {
+      const reply = await post({ action: 'pins-test' });
+      await waitDisplay(reply.id, true);
+    } catch (err) {
+      dispSay(err.message || 'The test could not be run.', false);
+      renderOverlay(lastOverlay);
+    }
   });
   if (typeof window !== 'undefined') window.rkRenderPins = render;
   get().then(render).catch(() => {});
