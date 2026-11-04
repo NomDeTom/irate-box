@@ -8777,10 +8777,10 @@ def doctor_settings():
             "groups": setting_groups(s, wd)
             + led_groups(ls, armbian_led_state() if ls else None)
             + rfkill_groups(rfkill_status())
-            + usb_gadget_groups(usb_gadget_status())
             + image_groups()
             + package_groups()
             + board_hold_groups(),
+            "usb_groups": usb_gadget_groups(usb_gadget_status()),
             "card_groups": card_groups(),
             "hardening_groups": hardening_groups(),
         }

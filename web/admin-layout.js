@@ -32,6 +32,7 @@ const AL = (() => {
     { name: 'System', art: 'controller', pages: [
       { title: 'Accounts', sections: ['accounts', 'access'] },
       { title: 'Network', sections: ['network'] },
+      { title: 'USB', sections: ['usb'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },
       { title: 'The librarian', sections: ['sources', 'podcasts', 'library-drive'] },
       { title: 'Toolkits', sections: ['toolkits'], art: 'workbench' },
