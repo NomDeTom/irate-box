@@ -18,7 +18,7 @@ Nothing below is encrypted at rest. The only encryption is in transit (HTTPS) an
 | Page | What it shows | Where it comes from | Who can read it on disk | Kept |
 | --- | --- | --- | --- | --- |
 | Accounts | Each account's name, state (user, admin, asked, disabled), when it was created, when it was last seen, who made it, and whether it signs in over HTTPS | `$STATE/accounts.json` (`accounts.public`) | `hub` (0600) and root | Until the account is removed; `seen` moves at each sign-in |
-| Moderation → Shoutbox, Board | Messages and threads, with the name of a signed-in author where the app shows one | `$STATE/messages.json`, `$STATE/board.json` | `hub` and root | Shoutbox 24 h of powered-on time; board 7 days after the last reply |
+| Moderation → Hub shoutbox, Hub board | Messages and threads, with the name of a signed-in author where the app shows one | `$STATE/messages.json`, `$STATE/board.json` | `hub` and root | Hub shoutbox 24 h of powered-on time; Hub board 7 days after the last reply |
 | Moderation → File drop | Names and details of uploaded files, to delete them | `$STATE/drop/` | `hub` and root | The retention set on Saved work |
 | Saved work | The shared gallery and collaboration saves, their sizes, and the storage settings | `$STATE/store/` | `hub` and root | The gallery's retention, or until the storage limit |
 | User data → Notes (SilverBullet) | **Download** of the shared notebook as a zip: every page and attachment | `$STATE/notes/` | `hub` and root | Until removed in the notebook |
@@ -42,12 +42,12 @@ The administrator pages do **not** offer:
 This is where the page and root differ most.
 
 - **Settings archive** (`level=settings`): top-level files and the settings folders. It includes `accounts.json` (the password hashes, not the passwords), the librarian's sources and settings, the add-ons' settings, and the hub's settings. An administrator can download it.
-- **Settings and shared data** (`level=data`): the same, plus the shared notes (`notes/`), the gallery and collaboration saves (`store/`), the file drop (`drop/`), the shoutbox and board, service history, the mesh nodes, and the git repositories. An administrator can download it.
+- **Settings and shared data** (`level=data`): the same, plus the shared notes (`notes/`), the gallery and collaboration saves (`store/`), the file drop (`drop/`), the Hub shoutbox and Hub board, service history, the mesh nodes, and the git repositories. An administrator can download it.
 - **Full storage image** (`backup-image`, root's): the whole card, including the private notebooks (`notebooks/`), the notes, the drop, the accounts, and every secret root keeps under `/etc/hub` and `/var/lib/irate-box-root` (the CA and server keys, the front secret, the signing config, the retain key). It is written to a USB drive and needs root to start. Whoever holds the image can pose as the box and read every user's data. The page says it contains everything; it does not say root's keys are in it too.
 
 ## What is unencrypted at rest
 
-All of it: the shared notes, the private notebooks, the gallery, the drop, the board and shoutbox, the accounts file, the git repositories, the logs and the doctors' reports. File modes and owners decide who can read through the operating system, not the content. On this box:
+All of it: the shared notes, the private notebooks, the gallery, the drop, the Hub board and Hub shoutbox, the accounts file, the git repositories, the logs and the doctors' reports. File modes and owners decide who can read through the operating system, not the content. On this box:
 
 - `$STATE` is `hub:hub`, and the hub process runs as `hub`. Everything under it is readable by that one account, so the private notebook folders are not isolated from each other by the operating system; the per-login folder is a name, not a permission.
 - `$STATE/accounts.json` is `0600 hub`, so only the hub and root read it. Its hashes are scrypt, not plain text.

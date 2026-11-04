@@ -27,11 +27,11 @@ A feature moves up one step at a time. Update its row in the same change that mo
 | Access and visibility for each app (Guests, Users, Administrators, Disabled)               | basic  |                                                                                                                          |
 | Appearance: name, subtitle, accent colour, favicon, header picture, tile layout            | basic  | Missing: one default theme for everyone, a background picture, the first-use and sign-in page text, languages and units. |
 | Themes and the theme picker (box palette, standard, low/high contrast, E-ink, Cybercore)   | basic  |                                                                                                                          |
-| Shoutbox and board, with reports and moderation                                            | basic  |                                                                                                                          |
+| Shoutbox and message board, with reports and moderation                                            | basic  |                                                                                                                          |
 | File drop                                                                                  | basic  |                                                                                                                          |
 | Device locks for saved items                                                               | basic  |                                                                                                                          |
 | Saved work across devices                                                                  | basic  |                                                                                                                          |
-| User guide on the box, as pages and as a Kiwix book                                        | basic  | The guide still names some labels that have changed.                                                                     |
+| User guide on the box, as pages and as a Kiwix book                                        | basic  | The pages are current. The shipped book waits for its repack; `tests/guide-pending` holds it back.                        |
 
 ### Apps
 

@@ -63,7 +63,7 @@ Select **👤 Sign in** at the top of the hub. After you sign in as an administr
 
 ## 4. Complete the setup
 
-The administration pages open with a list of **setup steps**. The steps are:
+The administration pages open with a list of **setup steps**. The first is **Quick setup**: choose what the box is for and how hard it writes to its card, and a preset sets several of the steps below and marks them done. The rest are:
 
 1. Set the administrator password.
 2. Set how guests reach the box, including the hotspot firewall.
@@ -71,7 +71,7 @@ The administration pages open with a list of **setup steps**. The steps are:
 4. Review what the box exposes.
 5. Add add-ons.
 6. Add books.
-7. Decide the security settings: visitor counts, signed-in names, account registration, locked tiles, HTTP and HTTPS, the root helper's policy, hotspot security, guest internet access, SSH password sign-in, remote access, Cockpit and the terminal.
+7. Decide the security settings: visitor counts, signed-in names, account registration, locked tiles, HTTP and HTTPS, the root helper's policy, hotspot security, guest internet access, SSH password sign-in, remote access (Tailscale), Cockpit and the terminal. Steps for things the box does not have (Tailscale, Cockpit) show only where they exist.
 8. Make a backup.
 
 You can skip a step and do it later.
