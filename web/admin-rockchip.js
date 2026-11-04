@@ -100,7 +100,7 @@
     } catch (_) {
       data = null;
     }
-    if (data) { render(data); renderCards(data); renderSetup(data.setup); renderFinish(data.setup); renderInstallLog(data.install_log); }
+    if (data) { render(data); renderCards(data); renderImages(data); renderSetup(data.setup); renderFinish(data.setup); renderInstallLog(data.install_log); }
     poll = setTimeout(load, document.hidden ? 30000 : waiting ? 2000 : 3000);
   }
 
@@ -325,6 +325,59 @@
       card,
     })), { id: 'rk-cards-list', body: (item) => cardBody(item.card, images, busy) }));
   }
+  // Board images: the shared parts in the approved order, then the images the box holds.
+  function renderImages(data) {
+    const at = document.getElementById('rk-images-panel');
+    if (!at) return;
+    const cfg = (data.rk_images && data.rk_images.settings) || {};
+    const st = (data.rk_images && data.rk_images.status) || {};
+    const images = data.images || [];
+    const checked = st.last_check ? String(st.last_check).replace('T', ' ').replace('Z', ' UTC') : '';
+    const note = el('p', { className: 'setting-desc action-note', role: 'status', hidden: true });
+    const run = (action, event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      postJSON('/admin/library', { action, names: ['rk-images'] })
+        .then(() => {
+          say(action === 'check' ? 'Checked. The outcome shows here when the librarian is done.' : 'Downloading the newer images.', true, note);
+          setTimeout(load, 1200);
+        })
+        .catch((err) => say(err.message, false, note))
+        .finally(() => { button.disabled = false; });
+    };
+    const pill = AW.updatePill(checked, false, !!st.error);
+    const card = el('div', { className: 'net-card setting' },
+      el('h3', {}, 'Board images ', pill),
+      el('p', { className: 'setting-desc' },
+        'Access: Administrators. This page and the image files are behind the administrator sign-in.'),
+      el('p', { className: 'setting-desc' },
+        `Schedule: every ${cfg.check_every_hours || 24} hours, set in rk-images.json; the librarian syncs it. There is no schedule control on this page.`),
+      el('p', { className: 'setting-desc' },
+        'Space: no budget of its own; the images are files on the box.'),
+      el('p', { className: 'library-buttons update-buttons' },
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', onclick: (event) => run('check', event) }),
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', onclick: (event) => run('fetch', event) })),
+      el('p', { className: `setting-desc${st.error ? ' bad' : ''}` },
+        ...(checked
+          ? [
+              st.error
+                ? `Last checked ${checked}: the check failed. ${st.error} `
+                : `Last checked ${checked}: ${st.outcome || 'nothing newer'}. `,
+              el('a', { href: '/admin/#updoctor', textContent: 'Open the Updates doctor.' }),
+            ]
+          : ['Not checked yet.']),
+      ),
+      note,
+      el('div', { className: 'admin-list' },
+        ...(images.length
+          ? images.map((image) => el('p', { className: 'setting-desc' },
+              el('strong', { textContent: image.name }),
+              ` ${(image.size / 2 ** 20).toFixed(0)} MB${image.sha256 ? ', its publisher SHA-256 beside it' : ''}.`))
+          : [el('p', { className: 'setting-desc', textContent: 'No image is on the box yet.' })])),
+    );
+    at.replaceChildren(card);
+  }
+
   function cardBody(card, images, busy) {
     const result = document.getElementById('rk-card-result');
     const ident = { card: card.name, size: card.size, serial: card.serial };

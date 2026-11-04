@@ -1421,7 +1421,50 @@
             use the <a href="#factory">Firmware Factory</a>.
           </p>
           <p class="setting-desc" id="fw-source"></p>
+          <p class="setting-desc">Access: Administrators. This page and the release files it keeps are behind the administrator sign-in.</p>
           <p class="setting-desc" id="fw-status"></p>
+          <form id="fw-policy" class="library-form surface-policy">
+            <div
+              data-update-pattern
+              data-often="firmware_every_hours"
+              data-act="firmware_auto"
+              data-acts="0,1"
+              data-says-1="The box downloads the release files for the web flasher."
+              data-why="Downloading the release files is their update. The box installs nothing."
+              data-i18n-why="admin.firmware.fw-policy-why"
+              data-i18n-says-1="admin.firmware.fw-policy-says-1"
+            ></div>
+            <button
+              class="action-btn primary"
+              type="submit"
+              data-i18n="admin.firmware.btn-save"
+            >
+              Save
+            </button>
+          </form>
+          <p class="setting-desc action-note" role="status" hidden></p>
+          <p class="library-buttons update-buttons">
+            <button
+              class="action-btn"
+              type="button"
+              id="fw-check"
+              data-update="check"
+              data-i18n="admin.firmware.fw-check"
+            >
+              Check now
+            </button>
+            <button
+              class="action-btn"
+              type="button"
+              id="fw-update"
+              data-update="fetch"
+              data-i18n="admin.firmware.fw-update"
+            >
+              Download
+            </button>
+          </p>
+          <p class="setting-desc">Space: no limit of its own; the card's free space shows above. The build cache has its own limit on Toolkits.</p>
+          <h3>Settings</h3>
           <form id="fw-form" class="library-form">
             <label
               class="inline"
@@ -1533,46 +1576,6 @@
             role="status"
             hidden
           ></p>
-          <form id="fw-policy" class="library-form surface-policy">
-            <div
-              data-update-pattern
-              data-often="firmware_every_hours"
-              data-act="firmware_auto"
-              data-acts="0,1"
-              data-says-1="The box downloads the release files for the web flasher."
-              data-why="Downloading the release files is their update. The box installs nothing."
-              data-i18n-why="admin.firmware.fw-policy-why"
-              data-i18n-says-1="admin.firmware.fw-policy-says-1"
-            ></div>
-            <button
-              class="action-btn primary"
-              type="submit"
-              data-i18n="admin.firmware.btn-save"
-            >
-              Save
-            </button>
-          </form>
-          <p class="setting-desc action-note" role="status" hidden></p>
-          <p class="library-buttons update-buttons">
-            <button
-              class="action-btn"
-              type="button"
-              id="fw-check"
-              data-update="check"
-              data-i18n="admin.firmware.fw-check"
-            >
-              Check now
-            </button>
-            <button
-              class="action-btn"
-              type="button"
-              id="fw-update"
-              data-update="fetch"
-              data-i18n="admin.firmware.fw-update"
-            >
-              Download
-            </button>
-          </p>
           <h3 data-i18n="admin.firmware.h-stored-releases">Stored releases</h3>
           <div id="fw-kept" class="admin-list"></div>
         </section>

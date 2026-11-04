@@ -43,6 +43,18 @@
       </div>
     </section>
 
+    <!-- Board images (library/rkimages.py): the newest mPWRD-OS and Armbian releases the librarian mirrors into
+         rk-images, one per Lyra board. The shared parts in the approved order: state, access, schedule, space,
+         Check now and Update, then the images themselves. -->
+    <section class="admin-pane" id="rk-images-pane" aria-labelledby="rk-images-title">
+      <h2 id="rk-images-title" data-i18n="admin-rockchip.images.title">Board images</h2>
+      <p class="setting-desc" data-i18n="admin-rockchip.images.intro">
+        The librarian mirrors the newest mPWRD-OS and Armbian releases into rk-images, one image for each Lyra
+        board, with the publisher's SHA-256. Cards written below take these images.
+      </p>
+      <div id="rk-images-panel"></div>
+    </section>
+
     <!-- Cards in a reader (hub/rkusb.cards, root/rkcard.py): a board's SD card in a USB reader on the box, one card
          each; its drawer checks it (reads only), tests it as genuine (erasing it), or writes an image to it. -->
     <section class="admin-pane" id="rk-cards-pane" aria-labelledby="rk-cards-title">

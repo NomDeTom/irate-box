@@ -3537,6 +3537,7 @@ def rkboard_snapshot():
     tools the Rockchip boards toolkit brings, the loaders, the root helper's work on them (waiting, and done), and the
     boards to set up (rksetup.py: a setup hotspot in range, and the box's values the page offers)."""
     from irate_box.hub import rksetup, rkusb  # not irate_box.root: that folder is root's alone, unreadable to the hub
+    from irate_box.library import rkimages
 
     return {
         "boards": rkusb.boards(),
@@ -3550,6 +3551,7 @@ def rkboard_snapshot():
         "cards": rkusb.cards(),
         "setup": rksetup.snapshot(),
         "install_log": _install_log(),
+        "rk_images": {"settings": rkimages.settings(), "status": rkimages.status()},
     }
 
 
