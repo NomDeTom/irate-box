@@ -274,7 +274,7 @@
             View installed and available apps. Select an app to change its
             access, tile, settings, updates or installation.
           </p>
-          <div id="quick-installer"></div>
+          <div id="quick-installer" class="quick-installer"></div>
           <div class="inv-tools">
             <label data-i18n="admin.app-inventory.label-search-apps"
               >Search apps
@@ -625,7 +625,7 @@
               <p class="setting-desc" id="card-writes-rate"></p>
               <!-- The system's write settings (health.py card_groups): applied by the root helper, each a file of
                  irate-box's. Their effect shows in Box doctor → SD card writes. -->
-              <details class="sec-fold" id="card-sys-fold" open>
+              <details class="sec-fold card-sys-fold" id="card-sys-fold" open>
                 <summary data-i18n="admin.recovery.summary-system-write-settings">
                   System write settings
                 </summary>
@@ -760,7 +760,7 @@
             reading width at every page width setting. On a phone, the page uses
             the width of the screen. Select the emoji sets below.
           </p>
-          <div id="appearance-box"></div>
+          <div id="appearance-box" class="appearance-box"></div>
         </section>
 
         <section
@@ -2428,7 +2428,7 @@
           <h3 data-i18n="admin.moderation.h-report-settings">
             Report settings
           </h3>
-          <div id="report-settings"></div>
+          <div id="report-settings" class="report-settings"></div>
           <p
             class="setting-desc"
             data-i18n="admin.moderation.each-app-page-lists"
@@ -3587,7 +3587,7 @@
                       >
                         Saved networks
                       </h5>
-                      <div id="net-saved"></div>
+                      <div id="net-saved" class="net-saved"></div>
                       <details id="net-join" class="net-join">
                         <summary
                           data-i18n="admin.network.summary-add-wifi-network"
@@ -4141,7 +4141,7 @@
                       role="group"
                       aria-labelledby="up-steps-label"
                     ></div>
-                    <details id="up-custom" class="up-box-only">
+                    <details id="up-custom" class="up-box-only up-custom">
                       <summary
                         data-i18n="admin.network.summary-custom-values-blank-use"
                       >
@@ -4155,7 +4155,7 @@
                     id="up-will"
                     role="status"
                   ></p>
-                  <div id="up-foot"></div>
+                  <div id="up-foot" class="up-foot"></div>
                   <div class="library-buttons">
                     <button
                       class="action-btn"
@@ -4423,7 +4423,7 @@
           ></p>
           <!-- The page in tabs by what each setting is about. Each tab has an address of its own
              (#security/guest-access …), so a doctor's or the tour's link lands on its setting. -->
-          <div id="security-findings">
+          <div id="security-findings" class="security-findings">
             <div class="tab-set" data-tabs="security">
               <div
                 class="view-switch"
@@ -4506,7 +4506,7 @@
                   they pass the sign-in page. The four protections below can
                   each be turned off. The doctor warns while one is off.
                 </p>
-                <div id="guest-net-box">
+                <div id="guest-net-box" class="guest-net-box">
                   <div
                     class="chip-group"
                     role="radiogroup"
@@ -4550,7 +4550,7 @@
                     get a new one, so these limits slow people down. They never
                     lock anyone out for long.
                   </p>
-                  <div id="signin-identity-box"></div>
+                  <div id="signin-identity-box" class="signin-identity-box"></div>
                 </section>
                 <div
                   id="security-findings-sign-in"

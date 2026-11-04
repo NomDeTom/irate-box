@@ -16,6 +16,7 @@
     '.net-card', '.net-device', '.setting', '.finding', '.aw-card', '.git-card', '.lib-card', '.aw-settings',
     '.admin-tile', '.update-card', '.service-card', '.factory-card', '.qr-card', '.people-card', '.system-card',
     '.attention', '.aw-block', '.sec-choice', '.access-card', '.doc-card', '.item-list', '.net-cards', '.admin-tiles',
+    '.settings',
     '.admin-checks', '.admin-progress', '.help-lead', '.danger-box', '.settings-note',
   ].join(', ');
   // A row of buttons, or the line that says what its action answered.
@@ -30,7 +31,8 @@
     'table', 'pre', 'blockquote', '.admin-list', '.fresh-strip', '.aw-note', '.aw-warn', '.aw-reason', '.chip-says',
     '.step-text', '.mock-row', '.mock-group-title',
   ].join(', ');
-  const SKIP = 'script, style, template, .admin-art, .krab, [data-art]';
+  // The page's own data-art names its background art; only the art elements themselves are skipped.
+  const SKIP = 'script, style, template, .admin-art, .krab';
 
   const visible = (el, win) => {
     if (!el || !el.getClientRects || !el.getClientRects().length) return false;
@@ -85,6 +87,8 @@
     return [...parent.children].filter((kid) => {
       if (!shown(kid, win)) return false;
       if (kid.matches('br')) return false;
+      // A textarea is inline-block by the browser's default, but it fills a block of the page like any field.
+      if (kid.matches('textarea')) return true;
       const st = win.getComputedStyle(kid);
       return st.display !== 'inline' && st.display !== 'inline-block' && st.display !== 'contents';
     });

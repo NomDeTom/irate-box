@@ -18,6 +18,11 @@ if [ -z "$pw" ]; then
 	pw=$(node -e 'console.log(require.resolve("playwright").replace(/\/index\.js$/, ""))' 2>/dev/null) || pw=""
 fi
 if [ -z "$pw" ] || [ ! -d "$pw" ]; then
+	# A required run (CI's spacing job) must measure, not pass because the browser is missing.
+	if [ "${SPACING_REQUIRED:-0}" = 1 ]; then
+		echo "spacing audit failed: no Playwright (set PLAYWRIGHT=/path/to/node_modules/playwright, or NODE_PATH)" >&2
+		exit 1
+	fi
 	echo "skipped: no Playwright (set PLAYWRIGHT=/path/to/node_modules/playwright, or NODE_PATH)"
 	exit 0
 fi
