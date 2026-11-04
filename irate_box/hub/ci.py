@@ -38,7 +38,7 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box import confine
+from irate_box import confine, validate
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -246,7 +246,7 @@ def queue_build(repo, branch=None):
     """Build now: a private repository's branch (its default one if none), queued as a push would
     queue it, with the same refusals: public, switched off, no .irate-ci.sh at that commit."""
     repo = Path(repo).resolve()
-    if repo.parent != PRIVATE.resolve() or not NAME_RE.match(repo.name[:-4]):
+    if repo.parent != PRIVATE.resolve() or not NAME_RE.fullmatch(repo.name[:-4]):
         raise Refused(NEED_PRIVATE)
     repo = confine.under(PRIVATE.resolve(), repo.name)
     if not (repo / "HEAD").exists():
@@ -280,7 +280,7 @@ def queue_build(repo, branch=None):
 def queue_run_change(run, what):
     """Keep or delete a run: the runs are hubci's, so the change goes through the queue, done by
     the builder (after the build in progress, if one is)."""
-    if not RUN_RE.match(run or "") or what not in ("keep", "unkeep", "delete"):
+    if not RUN_RE.fullmatch(run or "") or what not in ("keep", "unkeep", "delete"):
         raise Refused(M("ci.run.change", "Select a run and one action: keep, unkeep or delete."))
     QUEUE.mkdir(parents=True, exist_ok=True)
     _put({"run": run, "change": what, "queued": time.time()})
@@ -289,9 +289,12 @@ def queue_run_change(run, what):
 def run_view(run, offset=0, limit=64 * 1024):
     """One run for /admin: its status, its log from `offset` (a page at a time, for following it
     live), the steps (its == lines), and its artifacts with their sizes."""
-    if not RUN_RE.match(run or ""):
+    if not RUN_RE.fullmatch(run or ""):
         return None
-    base = RUNS / run
+    try:
+        base = validate.path(run, RUNS, "The run", must_exist=True)
+    except ValueError:
+        return None
     try:
         status = as_shown(json.loads((base / "status.json").read_text()), base)
     except (OSError, ValueError):
@@ -528,7 +531,7 @@ def mark_interrupted():
 def build(job):
     repo = Path(job["repo"])
     name = repo.name[:-4]
-    if not NAME_RE.match(name) or not re.fullmatch(r"[0-9a-f]{40}", job.get("commit", "")):
+    if not NAME_RE.fullmatch(name) or not re.fullmatch(r"[0-9a-f]{40}", job.get("commit", "")):
         return
     if repo.resolve().parent != PRIVATE.resolve():
         return  # a public (guest-pushed) repository, or anywhere else: never built
@@ -630,7 +633,7 @@ def _status(run):
 
 def change_run(job):
     """A queued keep, unkeep or delete (queue_run_change)."""
-    if not RUN_RE.match(job.get("run", "")):
+    if not RUN_RE.fullmatch(job.get("run", "")):
         return
     run = RUNS / job["run"]
     if not (run / "status.json").exists() or _status(run).get("state") == "running":
@@ -914,7 +917,9 @@ def build_firmware(job):
         return  # only the owner's mirrors and private repositories: never a guest's
     env_name, family = job.get("env", ""), job.get("family", "")
     if not (
-        ENV_RE.match(env_name) and FAMILY_RE.match(family) and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))
+        ENV_RE.fullmatch(env_name)
+        and FAMILY_RE.fullmatch(family)
+        and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))
     ):
         return
     runs = RUNS / FACTORY
@@ -981,7 +986,7 @@ def build_firmware(job):
             # The build folder is kept: the files an earlier build made there (another version's) are
             # not this one's, so they go first; its compiled objects stay.
             for f in (ws / "build" / env_name).iterdir() if (ws / "build" / env_name).is_dir() else []:
-                if f.is_file() and ARTIFACT_RE.match(f.name):
+                if f.is_file() and ARTIFACT_RE.fullmatch(f.name):
                     f.unlink()
             if offline and (ws / "build" / env_name).exists():
                 # An offline proof compiles everything: only the libraries and tools are taken as given.
@@ -1034,7 +1039,7 @@ def build_firmware(job):
             built = ws / "build" / env_name
             kept = []
             for f in sorted(built.iterdir()) if built.is_dir() else []:
-                if f.is_file() and not f.is_symlink() and ARTIFACT_RE.match(f.name):
+                if f.is_file() and not f.is_symlink() and ARTIFACT_RE.fullmatch(f.name):
                     shutil.copy2(f, run / "artifacts" / f.name)
                     kept.append(f.name)
             work_bytes = sum(
@@ -1167,9 +1172,9 @@ def build_proving(job):
     tag = str(job.get("tag") or job.get("ref") or "")
     version = str(job.get("version") or tag.lstrip("v"))
     if not (
-        ENV_RE.match(env_name)
-        and FAMILY_RE.match(family)
-        and TAG_RE.match(tag)
+        ENV_RE.fullmatch(env_name)
+        and FAMILY_RE.fullmatch(family)
+        and TAG_RE.fullmatch(tag)
         and re.fullmatch(r"[0-9a-f]{40}", job.get("commit", ""))
     ):
         return
@@ -1240,7 +1245,7 @@ def build_proving(job):
                 say(detail)
             else:
                 for f in (ws / "build" / env_name).iterdir() if (ws / "build" / env_name).is_dir() else []:
-                    if f.is_file() and ARTIFACT_RE.match(f.name):
+                    if f.is_file() and ARTIFACT_RE.fullmatch(f.name):
                         f.unlink()
                 shutil.rmtree(ws / "build" / env_name, ignore_errors=True)
                 env = dict(
@@ -1369,19 +1374,17 @@ def snapshot(limit=20):
 
 def run_file(run, name):
     """A run's log or one of its artifacts, for /admin: the path, or None."""
-    if not RUN_RE.match(run or ""):
+    if not RUN_RE.fullmatch(run or ""):
         return None
-    base = RUNS / run
-    if name == "log.txt":
-        path = base / "log.txt"
-    elif NAME_RE.match(name or ""):
-        path = base / "artifacts" / name
-    else:
+    try:
+        base = validate.path(run, RUNS, "The run", must_exist=True)
+        if name == "log.txt":
+            return validate.path("log.txt", base, "The log", must_exist=True)
+        if not NAME_RE.fullmatch(name or ""):
+            return None
+        return validate.path(name, base / "artifacts", "The artifact", must_exist=True)
+    except ValueError:
         return None
-    # Never through a link the build left: /admin would serve its target, read as the hub.
-    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(RUNS.resolve()):
-        return None
-    return path
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ import os
 import re
 import stat
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -235,6 +235,8 @@ def argv(command, what="The command"):
 def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     """`value` inside `root`: normalised and resolved, never through a symlink that leaves the
     root. A missing leaf is checked through its existing parent."""
+    if isinstance(value, os.PathLike):
+        value = os.fspath(value)
     value = _need(value, what)
     if not value:
         raise Invalid(f"{what} is empty.")
@@ -339,3 +341,16 @@ def config_line(key, value, what="The setting"):
 def html_text(value):
     """Text for an HTML page: escaped, never markup."""
     return html.escape(str(value), quote=True)
+
+
+def content_disposition(filename, disposition="attachment"):
+    """A Content-Disposition value for a download: no CR, LF or NUL; a quoted ASCII name with
+    quotes and backslashes replaced; and RFC 6266's filename* for the real, UTF-8 name."""
+    name = _need(filename, "The file name")
+    if any(char in name for char in "\x00\r\n"):
+        raise Invalid("The file name cannot contain a NUL, CR or LF.")
+    name = name.rsplit("/", 1)[-1]
+    if not name:
+        raise Invalid("The file name is empty.")
+    fallback = "".join(char if 32 <= ord(char) < 127 and char not in '"\\' else "_" for char in name)
+    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"

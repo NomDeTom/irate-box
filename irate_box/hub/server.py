@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from irate_box import confine, durable, finding, presets, security_levels, setup_code
+from irate_box import confine, durable, finding, presets, security_levels, setup_code, validate
 from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
 from irate_box.hub import (
     access,
@@ -5664,7 +5664,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Length", str(size))
-            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             try:
@@ -5691,7 +5691,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/x-tar")
             self.send_header("Content-Length", str(size))
-            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             try:
@@ -5724,7 +5724,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("Content-Disposition", validate.content_disposition(name))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
@@ -6294,13 +6294,23 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
                 return
+            try:
+                f = validate.path(f, ci.RUNS, "The build file", must_exist=True)
+            except ValueError:
+                self.send_json(
+                    404,
+                    refused.say(
+                        M("ci.file.not-found", "File not found. The build was deleted, or it did not make this file.")
+                    ),
+                )
+                return
             body = f.read_bytes()
             self.send_response(200)
             if name == "log.txt":
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
             else:
                 self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+                self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
@@ -6502,10 +6512,17 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
                 return
+            try:
+                f = validate.path(f, ci.RUNS, "The firmware file", must_exist=True)
+            except ValueError:
+                self.send_json(
+                    404, refused.say(M("factory.file.not-found", "File not found. The firmware was unpublished."))
+                )
+                return
             body = f.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
