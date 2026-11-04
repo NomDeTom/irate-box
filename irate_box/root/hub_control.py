@@ -6918,6 +6918,10 @@ def _drop_staged(zip_path):
 
 
 def install_app(app, zip_path):
+    try:
+        zip_path = str(validate.path(zip_path, APP_STAGING, "The bundle path", must_exist=True))
+    except ValueError:
+        raise Refused(NOT_STAGED) from None
     taken = _take_staged(zip_path)
     try:
         return _install_taken(app, taken, zip_path)

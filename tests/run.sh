@@ -147,6 +147,7 @@ run sim_validate.py
 run sim_root_configs.py
 run sim_hub_inputs.py
 run sim_forwarded.py
+run sim_queries_paths.py
 run sim_inspircd.py
 run sim_irc_group.py
 run sim_irc_app.py

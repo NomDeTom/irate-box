@@ -236,6 +236,8 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     """`value` inside `root`: normalised and resolved, never through a symlink that leaves the
     root. A missing leaf is checked through its existing parent."""
     value = _need(value, what)
+    if not value:
+        raise Invalid(f"{what} is empty.")
     if "\x00" in value:
         raise Invalid(f"{what} cannot contain a NUL.")
     root_real = os.path.realpath(os.fspath(root))
