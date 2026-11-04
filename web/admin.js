@@ -589,7 +589,25 @@ function renderBookSources(data) {
           });
         })
       : [el("p", { className: "setting-desc", textContent: "No book sources yet." })]),
+    bookAddCard(),
   );
+}
+
+// A book source's add form is a mini-card in the same grid, Add source as its footer.
+function bookAddCard() {
+  const form = document.getElementById("library-add");
+  if (!form) return null;
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.setAttribute("form", form.id);
+  return AW.sourceCard({
+    id: "book-add",
+    title: "Add a book source",
+    source: "a project's releases, a download URL, or Kiwix",
+    state: "Name and source",
+    facts: ["Access: Guests", "Schedule: shared"],
+    body: [form, document.getElementById("library-add-note")],
+    actions: submit ? [submit] : [],
+  });
 }
 
 let lastLibrary = null; // drawn again when the menu is rebuilt, for the apps' own pages
@@ -13771,35 +13789,23 @@ function renderGit(data) {
     );
   // The New card last, after the repositories, its drawer after it.
   cards.push(newCard());
-  if (gitView.open === "new") cards.push(newPanel("git-drawer"));
   git.grid.replaceChildren(...cards);
 }
 
 function newCard() {
-  return withAttrs(
-    el(
-      "button",
-      {
-        type: "button",
-        className: "git-card git-new",
-        onclick: () => {
-          gitView.open = gitView.open === "new" ? null : "new";
-          renderGit(gitData);
-        },
-      },
-      el("span", {
-        className: "git-new-plus",
-        textContent: "＋",
-        ariaHidden: "true",
-      }),
-      el("strong", { textContent: "New" }),
-      el("span", {
-        className: "setting-desc",
-        textContent: "An empty repository, or a mirror of one on the internet",
-      }),
-    ),
-    { "aria-expanded": String(gitView.open === "new") },
-  );
+  const submit = git.form.querySelector('button[type="submit"]');
+  if (submit) submit.setAttribute("form", git.form.id);
+  return AW.sourceCard({
+    id: "git-add",
+    title: "New repository",
+    source: "an empty repository, or a mirror",
+    state: "Name, access and a description",
+    facts: ["Access", "Clone URL"],
+    body: [git.form, git.createNote],
+    actions: submit ? [submit] : [],
+    open: gitView.open === "new",
+    onToggle: (open) => { gitView.open = open ? "new" : null; },
+  });
 }
 const withAttrs = (node, attrs) => {
   for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
@@ -14557,7 +14563,27 @@ function renderMirrors(data) {
           });
         })
       : [el("p", { className: "setting-desc", textContent: "None yet." })]),
+    mirrorAddCard(),
   );
+}
+
+// The add form is a mini-card in the same grid: the Git card's shape, Add as its footer.
+let mirrorAddOpen = false;
+function mirrorAddCard() {
+  const form = git.mirrorForm;
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.setAttribute("form", form.id);
+  return AW.sourceCard({
+    id: "mirror-add",
+    title: "Add a mirror",
+    source: "a repository on the internet",
+    state: "Upstream, access, branches and budget",
+    facts: ["Access", "Schedule", "Budget"],
+    body: [form, git.mirrorNote],
+    actions: submit ? [submit] : [],
+    open: mirrorAddOpen,
+    onToggle: (open) => { mirrorAddOpen = open; },
+  });
 }
 
 git.mirrorForm.addEventListener("submit", async (event) => {
@@ -15238,36 +15264,52 @@ function asAddFlow(data) {
     el("option", { value: "recipe", textContent: "Paste an Obtainium recipe" }),
     el("option", { value: "repo", textContent: "A GitHub repository" }));
   const part = el("div", { className: "appstore-add-part" });
-  const addButton = (makeBody) =>
-    part.append(el("p", { className: "library-buttons" },
-      actionButton("Add", async () => {
-        try {
-          await asPost(makeBody(), "Added. Open its card and select Read the releases again.");
-        } catch (err) {
-          say(err.message, false, note);
-        }
-      }, { className: "small primary" })));
+  const add = actionButton("Add", async () => {
+    const presetId = mode.value.startsWith("preset:") ? mode.value.slice(7) : null;
+    let body = null;
+    if (presetId) body = { action: "add-holder", preset: presetId };
+    else if (mode.value === "recipe") body = { action: "add-holder", recipe: part.querySelector("textarea[name=recipe]").value };
+    else if (mode.value === "repo") {
+      body = {
+        action: "add-holder",
+        id: part.querySelector("input[name=id]").value.trim(),
+        repo: part.querySelector("input[name=repo]").value.trim(),
+      };
+    }
+    if (!body) return;
+    try {
+      await asPost(body, "Added. Open its card and select Read the releases again.");
+    } catch (err) {
+      say(err.message, false, note);
+    }
+  });
+  add.disabled = true;
   const draw = () => {
     part.replaceChildren(note);
+    add.disabled = !mode.value;
     const presetId = mode.value.startsWith("preset:") ? mode.value.slice(7) : null;
     if (presetId) {
       const preset = (data.presets || []).find((p) => p.id === presetId);
       if (preset.summary) part.append(el("p", { className: "setting-desc", textContent: preset.summary }));
-      addButton(() => ({ action: "add-holder", preset: preset.id }));
     } else if (mode.value === "recipe") {
-      const paste = el("textarea", { name: "recipe", rows: "3", placeholder: "the recipe's JSON, or an obtainium:// link" });
-      part.append(paste);
-      addButton(() => ({ action: "add-holder", recipe: paste.value }));
+      part.append(el("textarea", { name: "recipe", rows: "3", placeholder: "the recipe's JSON, or an obtainium:// link" }));
     } else if (mode.value === "repo") {
       const id = el("input", { name: "id", placeholder: "a name on the box", maxlength: "64" });
       const repo = el("input", { name: "repo", placeholder: "meshtastic/Meshtastic-Android" });
       part.append(el("label", {}, "Name", id), el("label", {}, "Repository", repo));
-      addButton(() => ({ action: "add-holder", id: id.value.trim(), repo: repo.value.trim() }));
     }
   };
   mode.addEventListener("change", draw);
-  asEl.add.append(el("label", {}, "What to add", mode), part);
   draw();
+  asEl.add.replaceChildren(AW.sourceCard({
+    id: "appstore-add",
+    title: "Add a project",
+    source: "a GitHub repository",
+    state: "A preset, a recipe, or a repository",
+    facts: ["Access: Guests", "Schedule: shared"],
+    body: [el("label", {}, "What to add", mode), part],
+    actions: [add],
+  }));
 }
 
 function asStatus(data) {
@@ -15292,6 +15334,8 @@ function renderAppstore(data, statusOnly = false) {
       ...data.holders.map(asCard),
     );
     asAddFlow(data);
+    // The add form is a mini-card in the same grid as the projects.
+    if (asEl.add.firstElementChild) asEl.holders.append(asEl.add.firstElementChild);
   }
   clearTimeout(asPoll);
   if (data.running) asPoll = setTimeout(() => loadAppstore(true), 2000);
