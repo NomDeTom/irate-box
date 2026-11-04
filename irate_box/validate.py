@@ -359,9 +359,22 @@ def config_line(key, value, what="The setting"):
     return f"{key}={value}"
 
 
-def html_text(value):
+ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))?")
+
+
+def html_text(value, quote=True):
     """Text for an HTML page: escaped, never markup."""
-    return html.escape(str(value), quote=True)
+    return html.escape(str(value), quote=quote)
+
+
+def log_text(value, what="The log line", most=300):
+    """One line for a message or a report: terminal escapes and control characters removed,
+    a CR or LF turned into a space, and the length bounded."""
+    value = _need(value, what)
+    value = ANSI_RE.sub("", value)
+    value = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", value.replace("\r", " ").replace("\n", " "))
+    value = value.strip()
+    return value[:most]
 
 
 def content_disposition(filename, disposition="attachment"):

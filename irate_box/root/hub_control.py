@@ -434,7 +434,8 @@ def _why(exc):
 
 def _last_line(text, limit=300):
     """The last line a program printed, as evidence for a message, or "?"."""
-    return ((text or "").strip().splitlines() or ["?"])[-1][:limit]
+    line = ((text or "").strip().splitlines() or ["?"])[-1]
+    return validate.log_text(line, "The program's answer", limit) or "?"
 
 
 # Root's files in control/: safeio.write, a new file renamed into place, never through
