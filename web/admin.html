@@ -6025,6 +6025,32 @@
             <span class="pin-key pin-taken"></span><span data-i18n="admin.pins.legend-taken">Taken</span>
           </p>
           <div class="pinheader" id="pins-map"></div>
+          <div class="pin-overlay" id="pins-overlay">
+            <h3 data-i18n="admin.pins.overlay-title">SPI1 display and touch</h3>
+            <p class="setting-desc" data-i18n="admin.pins.overlay-intro">
+              A 3.5" SPI TFT and XPT2046 resistive touch on SPI1, clear of SPI0 and the MeshAdv-Pi HAT:
+              pins 27 (CLK), 29 (MOSI), 31 (MISO), 35 (display CS), 37 (touch CS), 28 (PEN), 18 (D/C)
+              and 22 (RST). The overlay is applied at the next restart.
+            </p>
+            <p class="setting-desc" id="pins-overlay-state" data-i18n="admin.pins.overlay-state">Not read yet.</p>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="pins-overlay-toggle" data-i18n="admin.pins.overlay-enable" disabled>Enable</button>
+            </div>
+            <p class="setting-desc action-note" id="pins-overlay-note" role="status" hidden></p>
+          </div>
+          <div class="pin-overlay" id="pins-display">
+            <h3 data-i18n="admin.pins.display-title">Display</h3>
+            <p class="setting-desc" data-i18n="admin.pins.display-intro">
+              Turn the panel on to the test card, or run the one-minute animation sequence. The test
+              turns the display off at the end. The panel keeps its picture only until the next restart.
+            </p>
+            <p class="setting-desc" id="pins-display-state" data-i18n="admin.pins.display-state">Not read yet.</p>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="pins-display-toggle" data-i18n="admin.pins.display-on" disabled>Turn display on</button>
+              <button class="action-btn" type="button" id="pins-test" data-i18n="admin.pins.test" disabled>Run 1-minute test</button>
+            </div>
+            <p class="setting-desc action-note" id="pins-display-note" role="status" hidden></p>
+          </div>
           <h3 data-i18n="admin.pins.claims">In use now</h3>
           <div id="pins-claims"></div>
           <h3 data-i18n="admin.pins.board-roles">The board's fixed roles</h3>

@@ -6893,6 +6893,16 @@ label > .aw-onoff-box ~ .chip-group,
   color: var(--muted);
 }
 
+/* --- Pin map: the SPI1 LCD and touch overlay --- */
+.pin-overlay {
+  margin: 1rem 0;
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--border);
+}
+.pin-overlay h3 {
+  margin-top: 0;
+}
+
 /* --- Pin map: the header drawing, a narrow strip with the words outward --- */
 .pinheader {
   display: flex;

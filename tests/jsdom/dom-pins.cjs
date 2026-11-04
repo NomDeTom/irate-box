@@ -49,6 +49,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   await wait(100);
   check('nothing read yet: said so, no pins', /Not read yet/.test(text('pins-board')) && !d.querySelector('#pins-map .pin'), text('pins-board'));
+  check(
+    'the SPI1 overlay: not read yet, Enable disabled',
+    /Read the pins/.test(text('pins-overlay-state')) && d.getElementById('pins-overlay-toggle').disabled,
+    [text('pins-overlay-state'), d.getElementById('pins-overlay-toggle').disabled],
+  );
   const at = Date.now() / 1000;
   state = { pins: map(at - 3600), pending: 1, results: [] };
   d.getElementById('pins-scan').click();
@@ -148,6 +153,124 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   };
   await wait(700);
   check('a failed read: the helper\'s own message, not "not read in time"', /gpiod package/.test(text('pins-note')), text('pins-note'));
+  // The SPI1 LCD and touch overlay: off, Enable asks and sends; on and pending, Disable asks and sends.
+  posted.length = 0;
+  const off = {
+    pins: fresh,
+    overlay: { supported: true, on: false, enabled: false, installed: false, active: false, pending: false },
+    pending: 0,
+    results: [],
+  };
+  w.rkRenderPins(off);
+  check(
+    'the SPI1 overlay off: Enable offered',
+    /Off\./.test(text('pins-overlay-state')) && !d.getElementById('pins-overlay-toggle').disabled && /Enable/.test(text('pins-overlay-toggle')),
+    [text('pins-overlay-state'), text('pins-overlay-toggle')],
+  );
+  d.getElementById('pins-overlay-toggle').click();
+  await wait(50);
+  check('  Enable asks before changing the boot files', !!d.querySelector('.aw-ask'));
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  the overlay action sent, on',
+    posted.length === 1 && posted[0].action === 'pins-overlay' && posted[0].on === true,
+    posted,
+  );
+  const on = {
+    ...off,
+    overlay: { supported: true, on: true, enabled: true, installed: true, active: false, pending: true },
+    results: [{ id: 'p4', ok: true, msg: { id: 'lcdtouch.on', en: 'Saved. Restart the box to use the SPI1 display and touch.' } }],
+  };
+  state = on;
+  await wait(700);
+  check(
+    '  pending after the save: Disable offered',
+    /waiting for a restart/.test(text('pins-overlay-state')) && /Disable/.test(text('pins-overlay-toggle')),
+    [text('pins-overlay-state'), text('pins-overlay-toggle')],
+  );
+  posted.length = 0;
+  d.getElementById('pins-overlay-toggle').click();
+  await wait(50);
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  Disable sends the overlay off',
+    posted.length === 1 && posted[0].action === 'pins-overlay' && posted[0].on === false,
+    posted,
+  );
+  state = {
+    ...on,
+    overlay: { ...on.overlay, on: false, enabled: false, installed: false, active: false, pending: false },
+    results: [{ id: 'p5', ok: true, msg: { id: 'lcdtouch.off', en: 'Saved. The SPI1 display and touch overlay is off after a restart.' } }],
+  };
+  await wait(700);
+  check(
+    '  off again: Enable offered',
+    /Off\./.test(text('pins-overlay-state')) && /Enable/.test(text('pins-overlay-toggle')),
+    [text('pins-overlay-state'), text('pins-overlay-toggle')],
+  );
+  // The display's own controls: on/off, and the one-minute test.
+  const activeOff = {
+    pins: fresh,
+    overlay: { supported: true, on: true, enabled: true, installed: true, active: true, pending: false, display_on: false },
+    pending: 0,
+    results: [],
+  };
+  w.rkRenderPins(activeOff);
+  check(
+    'display off: both display controls offered',
+    /Off\./.test(text('pins-display-state'))
+      && !d.getElementById('pins-display-toggle').disabled
+      && !d.getElementById('pins-test').disabled,
+    [text('pins-display-state'), d.getElementById('pins-display-toggle').disabled],
+  );
+  posted.length = 0;
+  d.getElementById('pins-display-toggle').click();
+  await wait(50);
+  check('  turning it on asks first', !!d.querySelector('.aw-ask'));
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  the display action sent, on',
+    posted.length === 1 && posted[0].action === 'pins-display' && posted[0].on === true,
+    posted,
+  );
+  state = {
+    ...activeOff,
+    overlay: { ...activeOff.overlay, display_on: true },
+    results: [{ id: 'p6', ok: true, msg: { id: 'lcdtouch.display-on', en: 'The test card is on the display.' } }],
+  };
+  await wait(700);
+  check(
+    '  on: Turn display off offered, the test still offered',
+    /On\./.test(text('pins-display-state'))
+      && /Turn display off/.test(text('pins-display-toggle'))
+      && !d.getElementById('pins-test').disabled,
+    [text('pins-display-state'), text('pins-display-toggle')],
+  );
+  posted.length = 0;
+  d.getElementById('pins-test').click();
+  await wait(50);
+  check('  the one-minute test asks first', !!d.querySelector('.aw-ask'));
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check('  the test action sent', posted.length === 1 && posted[0].action === 'pins-test', posted);
+  state = {
+    ...state,
+    overlay: { ...state.overlay, display_on: false },
+    results: [{ id: 'p7', ok: true, msg: { id: 'lcdtouch.test-done', en: 'The 60-second test ran. The display is off.' } }],
+  };
+  await wait(700);
+  check('  the test note is shown', /60-second test/.test(text('pins-display-note')), text('pins-display-note'));
+  w.rkRenderPins({ ...activeOff, overlay: { ...activeOff.overlay, active: false } });
+  check(
+    '  overlay not active: the display controls are disabled and say why',
+    d.getElementById('pins-display-toggle').disabled
+      && d.getElementById('pins-test').disabled
+      && /Enable the overlay/.test(text('pins-display-state')),
+    [text('pins-display-state'), d.getElementById('pins-display-toggle').disabled],
+  );
   check('no page errors', errors.length === 0, errors);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);
