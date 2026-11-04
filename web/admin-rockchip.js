@@ -333,6 +333,9 @@
     const st = (data.rk_images && data.rk_images.status) || {};
     const images = data.images || [];
     const checked = st.last_check ? String(st.last_check).replace('T', ' ').replace('Z', ' UTC') : '';
+    const checkedShort = st.last_check
+      ? new Date(st.last_check).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : '';
     const note = el('p', { className: 'setting-desc action-note', role: 'status', hidden: true });
     const run = (action, event) => {
       const button = event.currentTarget;
@@ -345,37 +348,44 @@
         .catch((err) => say(err.message, false, note))
         .finally(() => { button.disabled = false; });
     };
-    const pill = AW.updatePill(checked, false, !!st.error);
-    const card = el('div', { className: 'net-card setting' },
-      el('h3', {}, 'Board images ', pill),
-      el('p', { className: 'setting-desc' },
-        'Access: Administrators. This page and the image files are behind the administrator sign-in.'),
-      el('p', { className: 'setting-desc' },
-        `Schedule: every ${cfg.check_every_hours || 24} hours, set in rk-images.json; the librarian syncs it. There is no schedule control on this page.`),
-      el('p', { className: 'setting-desc' },
-        'Space: no budget of its own; the images are files on the box.'),
-      el('p', { className: 'library-buttons update-buttons' },
+    at.replaceChildren(AW.sourceCard({
+      id: 'board-images',
+      title: 'Board images',
+      source: 'rk-images',
+      pill: AW.updatePill(checked, false, !!st.error),
+      state: checked
+        ? `Checked ${checkedShort} · ${st.error ? 'check failed' : st.outcome || 'up to date'}`
+        : 'Not checked yet',
+      facts: [`Access: Administrators`, `Schedule: ${cfg.check_every_hours || 24} h`, `${images.length} images`],
+      actions: [
         el('button', { type: 'button', className: 'action-btn', textContent: 'Check now', onclick: (event) => run('check', event) }),
-        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', onclick: (event) => run('fetch', event) })),
-      el('p', { className: `setting-desc${st.error ? ' bad' : ''}` },
-        ...(checked
-          ? [
-              st.error
-                ? `Last checked ${checked}: the check failed. ${st.error} `
-                : `Last checked ${checked}: ${st.outcome || 'nothing newer'}. `,
-              el('a', { href: '/admin/#updoctor', textContent: 'Open the Updates doctor.' }),
-            ]
-          : ['Not checked yet.']),
-      ),
-      note,
-      el('div', { className: 'admin-list' },
+        el('button', { type: 'button', className: 'action-btn', textContent: 'Update', onclick: (event) => run('fetch', event) }),
+      ],
+      body: [
+        el('p', { className: 'setting-desc' },
+          'Access: Administrators. This page and the image files are behind the administrator sign-in.'),
+        el('p', { className: 'setting-desc' },
+          `Schedule: every ${cfg.check_every_hours || 24} hours, set in rk-images.json; the librarian syncs it. There is no schedule control on this page.`),
+        el('p', { className: 'setting-desc' },
+          'Space: no budget of its own; the images are files on the box.'),
+        el('p', { className: `setting-desc${st.error ? ' bad' : ''}` },
+          ...(checked
+            ? [
+                st.error
+                  ? `Last checked ${checked}: the check failed. ${st.error} `
+                  : `Last checked ${checked}: ${st.outcome || 'nothing newer'}. `,
+                el('a', { href: '/admin/#updoctor', textContent: 'Open the Updates doctor.' }),
+              ]
+            : ['Not checked yet.']),
+        ),
+        note,
         ...(images.length
           ? images.map((image) => el('p', { className: 'setting-desc' },
               el('strong', { textContent: image.name }),
               ` ${(image.size / 2 ** 20).toFixed(0)} MB${image.sha256 ? ', its publisher SHA-256 beside it' : ''}.`))
-          : [el('p', { className: 'setting-desc', textContent: 'No image is on the box yet.' })])),
-    );
-    at.replaceChildren(card);
+          : [el('p', { className: 'setting-desc', textContent: 'No image is on the box yet.' })]),
+      ],
+    }));
   }
 
   function cardBody(card, images, busy) {

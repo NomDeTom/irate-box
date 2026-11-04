@@ -331,6 +331,18 @@ const onOffLine = (tag, props, ...kids) => {
   return line;
 };
 const mb = (bytes) => (bytes ? `${Math.round(bytes / 2 ** 20)} MB` : "");
+// A terse schedule value for a card: the long sentence belongs in the drawer.
+const scheduleShort = (hours) => {
+  const h = Number(hours) || 0;
+  return h === 24 ? "daily" : h === 168 ? "weekly" : h === 6 ? "every 6 h" : h ? `${h} h` : "manual";
+};
+// A terse moment for a card ("04 Nov, 03:09"); the long line is in the drawer.
+const whenShort = (value) => {
+  if (!value) return "";
+  const ms = typeof value === "number" ? value * 1000 : Date.parse(value);
+  if (Number.isNaN(ms)) return String(value).replace("T", " ").replace("Z", " UTC");
+  return new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+};
 const where = (source) =>
   source.type === "kiwix"
     ? `Kiwix's catalogue, ${source.kiwix_name}${source.flavour ? ` (${source.flavour})` : ""}`
@@ -529,6 +541,57 @@ function sourceRow(src, st, busy) {
   );
 }
 
+// The book sources as the same source card as the Git repositories: one per source, in the Books grid.
+function renderBookSources(data) {
+  const at = document.getElementById("library-sources");
+  if (!at) return;
+  const pol = (data && data.policy) || (lastLibrary && lastLibrary.policy) || {};
+  const budget = Number(pol.books_budget_mb) || 0;
+  const seen = new Map();
+  for (const b of (data && data.books) || []) if (b.source && !seen.has(b.source.name)) seen.set(b.source.name, b);
+  at.replaceChildren(
+    ...(seen.size
+      ? [...seen.values()].map((b) => {
+          const src = b.source, st = b.status || {}, cur = st.current || {}, latest = st.latest || {};
+          const newVersion = !!latest.version && latest.version !== cur.version;
+          const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
+          const key = `book:${src.name}`;
+          return AW.sourceCard({
+            id: `book-${src.name}`,
+            title: `${src.name}.zim`,
+            source: where(src),
+            pill: AW.updatePill(st.last_check, newVersion, !!st.error),
+            state: !checked ? "Not checked yet" : st.error ? `Checked ${whenShort(st.last_check)} · check failed` : `Checked ${whenShort(st.last_check)} · ${newVersion ? "update available" : "up to date"}`,
+            facts: [
+              "Access: Guests",
+              `Schedule: ${scheduleShort(pol.check_every_hours)}`,
+              `${cur.size ? mb(cur.size) : "0 MB"}`,
+            ],
+            actions: [
+              actionButton("Check now", () => libAct(key, { action: "check", names: [src.name] })),
+              actionButton("Download", () => libAct(key, { action: "fetch", names: [src.name] })),
+              actionButton("Install", () => libAct(key, { action: "update", names: [src.name] })),
+            ],
+            body: [
+              el("p", { className: "setting-desc", textContent: `Source: ${where(src)}.` }),
+              el("p", { className: "setting-desc", textContent: "Access: Guests. Anyone on the network can read the library; books are kept for the whole hub." }),
+              el("p", { className: "setting-desc", textContent: `Schedule: ${AW.patternSays(pol.check_every_hours, pol.auto_install)} Set in Librarian.` }),
+              el("p", { className: "setting-desc", textContent: `Space: ${budget ? `${budget} MB limit for all books` : "no book limit"}; ${cur.size ? mb(cur.size) : "nothing"} kept for this book.` }),
+              el("p", { className: "setting-desc", textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : "The librarian has not installed it yet." }),
+              newVersion ? el("p", { className: "setting-desc", textContent: latest.version ? `Available: ${latest.label || latest.version} (${mb(latest.size)})` : "" }) : null,
+              (st.archive || []).length ? el("p", { className: "setting-desc", textContent: `Retained versions: ${st.archive.join(", ")}` }) : null,
+              st.last_check ? el("p", { className: "setting-desc", textContent: `Checked ${st.last_check}: ${st.outcome || ""}` }) : null,
+              st.error ? el("a", { className: "setting-desc bad", href: "#updoctor", textContent: `${errorSaid(st)} See the Updates doctor.` }) : null,
+              el("p", { className: "library-buttons" },
+                (st.archive || []).length ? actionButton("Roll back", () => libAct(key, { action: "rollback", name: src.name }), { className: "small" }) : null,
+                actionButton("Stop tracking", () => libAct(key, { action: "remove", name: src.name }), { className: "small" })),
+            ],
+          });
+        })
+      : [el("p", { className: "setting-desc", textContent: "No book sources yet." })]),
+  );
+}
+
 let lastLibrary = null; // drawn again when the menu is rebuilt, for the apps' own pages
 AL.onBuild(() => {
   if (lastLibrary) renderApps(lastLibrary, lastLibrary.running);
@@ -720,6 +783,7 @@ function renderApps(snap, busy) {
     );
   });
   lastLibrary = snap;
+  if (bookData) renderBookSources(bookData);
   renderInventory();
 }
 
@@ -1152,6 +1216,7 @@ async function loadBooks() {
 function renderBooks(data) {
   bookData = data;
   bookPage = data.page;
+  renderBookSources(data);
   const sm = data.summary;
   setupStep(
     "books",
@@ -1195,7 +1260,7 @@ function renderBooks(data) {
         renderBookBulk();
       },
     });
-    const open = bookOpen === b.name;
+    const open = false; // the source is the card in the Book sources grid above
     rows.push(
       el(
         "tr",
@@ -13696,8 +13761,6 @@ function renderGit(data) {
   const cards = [];
   for (const repo of list) {
     cards.push(repoCard(repo, data));
-    if (gitView.open === repoKey(repo))
-      cards.push(managePanel(repo, data, "git-drawer"));
   }
   if (!list.length)
     cards.push(
@@ -13844,60 +13907,19 @@ function repoCard(repo, data) {
   const checked = repo.mirror_of ? ms.checked : gitChecks[repoKey(repo)];
   const newer = repo.mirror_of ? !!(ms.missing && ms.missing.length) : false;
   const failed = repo.mirror_of ? !!ms.error : false;
-  return el(
-    "div",
-    { className: `git-card${open ? " open" : ""}` },
-    el(
-      "h4",
-      {},
-      gitRemoved()
-        ? el("span", { textContent: `${repo.name}.git` })
-        : el("a", { href: repo.url, textContent: `${repo.name}.git` }),
-      " ",
-      AW.updatePill(checked, newer, failed),
-    ),
-    el(
-      "p",
-      { className: "badges" },
-      ...badges.map(([text, cls]) =>
-        el("span", { className: `badge ${cls}`, textContent: text }),
-      ),
-    ),
-    repo.description
-      ? el(
-          "p",
-          { className: "git-about" },
-          el("span", { className: "git-label", textContent: "About " }),
-          repo.description,
-        )
-      : null,
-    el("p", {
-      className: "setting-desc git-facts",
-      textContent: facts.filter(Boolean).join(" · "),
-    }),
-    el("p", {
-      className: "setting-desc git-access",
-      textContent: accessSentence(repo),
-    }),
-    el("p", {
-      className: "setting-desc",
-      textContent: repo.mirror_of
-        ? "Schedule: the librarian checks every mirror at the interval set under Mirrors, below."
-        : "Schedule: none. A local repository is pushed to; Builds follows pushes.",
-    }),
-    el("p", {
-      className: "setting-desc",
-      textContent: `Space: ${size(repo.size)} on the card; there is no budget of its own.`,
-    }),
-    el("p", {
-      className: "setting-desc",
-      textContent: checked
-        ? `Last checked ${new Date(checked * 1000).toLocaleString()}: ${ms.outcome || "up to date"}.`
-        : "Not checked yet.",
-    }),
-    el(
-      "p",
-      { className: "library-buttons" },
+  const when = checked ? new Date(checked * 1000).toLocaleString() : "";
+  return AW.sourceCard({
+    id: `repo-${repoKey(repo)}`,
+    title: `${repo.name}.git`,
+    source: repo.mirror_of ? repo.mirror_of.replace(/^https:\/\//, "") : "Local repository",
+    pill: AW.updatePill(checked, newer, failed),
+    state: checked ? `Checked ${when} · ${ms.outcome || "up to date"}` : "Not checked yet",
+    facts: [
+      `Access: ${repo.area === "public" ? "Guests" : "Administrators"}`,
+      repo.mirror_of ? "Schedule: shared" : "Schedule: on push",
+      `${size(repo.size)}`,
+    ],
+    actions: [
       actionButton(
         "Check now",
         (event) => {
@@ -13923,27 +13945,40 @@ function repoCard(repo, data) {
       ),
       copyUrl(repo),
       repo.mirror_of
-        ? el("a", {
-            href: "#mirrors",
-            className: "button-link small",
-            textContent: "Manage the mirror",
-          })
-        : withAttrs(
-            actionButton(
-              "Manage",
-              () => {
-                gitView.open = open ? null : repoKey(repo);
-                renderGit(gitData);
-              },
-              { className: "small" },
-            ),
-            { "aria-expanded": String(open) },
-          ),
-    ),
-  );
+        ? el("a", { href: "#mirrors", className: "button-link small", textContent: "Open Mirrors" })
+        : null,
+    ],
+    body: [
+      el("p", { className: "setting-desc", textContent: accessSentence(repo) }),
+      el("p", {
+        className: "setting-desc",
+        textContent: repo.mirror_of
+          ? "Schedule: the librarian checks this mirror at the interval set under Mirrors."
+          : "Schedule: none. A local repository is pushed to; Builds follows pushes.",
+      }),
+      el("p", {
+        className: "setting-desc",
+        textContent: `Space: ${size(repo.size)} on the card; there is no budget of its own.`,
+      }),
+      el("p", {
+        className: "setting-desc",
+        textContent: checked
+          ? `Last checked ${new Date(checked * 1000).toLocaleString()}: ${ms.outcome || "up to date"}.`
+          : "Not checked yet.",
+      }),
+      repo.description
+        ? el("p", { className: "setting-desc" }, el("span", { className: "git-label", textContent: "About " }), repo.description)
+        : null,
+      el("p", { className: "setting-desc git-facts", textContent: facts.filter(Boolean).join(" · ") }),
+      repo.mirror_of ? null : managePanel(repo, data, "source-drawer-manage"),
+    ],
+    open,
+    onToggle: (isOpen) => {
+      gitView.open = isOpen ? repoKey(repo) : null;
+    },
+  });
 }
 
-// Manage: each part with a sentence of what it does; Delete at the bottom, apart.
 function managePanel(repo, data, cls) {
   // Only Delete asks, on the page (confirmText): a move can be moved back.
   const act = (body, confirmText, done) => async (event) => {
@@ -14374,32 +14409,44 @@ function renderMirrors(data) {
               ]
                 .filter(Boolean)
                 .join(" · ");
-          return el(
-            "div",
-            { className: "admin-item" },
-            el(
-              "span",
-              {},
-              el(
-                "strong",
-                {},
-                el("a", {
-                  href: `${m.area === "public" ? "/git/" : "/git-private/"}${m.name}.git/`,
-                  textContent: `${m.name}.git`,
-                }),
+          return AW.sourceCard({
+            id: `mirror-${m.name}`,
+            title: `${m.name}.git`,
+            source: m.upstream.replace(/^https:\/\//, ""),
+            pill: AW.updatePill(st.checked, !!(st.missing && st.missing.length), !!st.error),
+            state: st.error
+              ? "Check failed"
+              : st.checked
+                ? `Checked ${commitDate(st.checked)} · ${st.outcome || "up to date"}`
+                : "Not checked yet",
+            facts: [
+              `Access: ${m.area === "public" ? "Guests" : "Administrators"}`,
+              `Space: ${m.budget_mb} MB`,
+              st.size != null ? size(st.size) : null,
+            ],
+            actions: [
+              actionButton(
+                "Check now",
+                act({ action: "mirror-check", name: m.name }),
+                { className: "small", disabled: data.running },
               ),
-              " ",
-              AW.updatePill(st.checked, !!(st.missing && st.missing.length), !!st.error),
-              el("span", {
+              actionButton(
+                "Update",
+                act({ action: "mirror-update", name: m.name }),
+                {
+                  className: "small",
+                  disabled: data.running,
+                  title: "Updating a mirror downloads new data from the upstream repository",
+                },
+              ),
+            ],
+            body: [
+              el("p", {
                 className: "setting-desc",
                 textContent: m.description || st.described || "",
                 hidden: !(m.description || st.described),
               }),
-              el("span", {
-                className: "setting-desc",
-                textContent: `from ${m.upstream}`,
-              }),
-              el("span", {
+              el("p", {
                 className: "setting-desc",
                 textContent:
                   `Access: ${m.area === "public" ? "Guests" : "Administrators"}. ` +
@@ -14407,39 +14454,31 @@ function renderMirrors(data) {
                     ? "Anyone on the network can browse and clone it."
                     : "Only administrators can browse and clone it."),
               }),
-              el("span", {
+              el("p", {
                 className: "setting-desc",
                 textContent:
                   "Schedule: the Check interval and When something newer is found under Mirrors, above, for every mirror.",
               }),
-              el("span", {
+              el("p", {
                 className: "setting-desc",
-                textContent:
-                  `Space: budget ${m.budget_mb} MB; ${st.size != null ? size(st.size) : "nothing"} kept.`,
+                textContent: `Space: budget ${m.budget_mb} MB; ${st.size != null ? size(st.size) : "nothing"} kept.`,
               }),
-              el("span", {
-                className: "setting-desc",
-                textContent: `keeps ${keeps}`,
-              }),
+              el("p", { className: "setting-desc", textContent: `keeps ${keeps}` }),
               subs.length
-                ? el("span", {
-                    className: "setting-desc",
-                    textContent: `submodules: ${subs.join(", ")}`,
-                  })
+                ? el("p", { className: "setting-desc", textContent: `submodules: ${subs.join(", ")}` })
                 : null,
               relNote
-                ? el("span", {
+                ? el("p", {
                     className: `setting-desc${st.releases_cached ? " warn" : ""}`,
                     textContent: relNote,
                   })
                 : null,
-              el("span", {
+              el("p", {
                 className: `setting-desc${st.error || st.over_budget ? " bad" : ""}`,
                 textContent: state,
               }),
-              // Every upstream tag, held apart for checking (mirrors.py _sync_tags); one moved upstream said plainly.
               st.tags
-                ? el("span", {
+                ? el("p", {
                     className: `setting-desc${(st.tags.moved || []).length ? " bad" : ""}`,
                     textContent:
                       `Holds all ${st.tags.count} tags of its upstream repository (${st.tags.signed} carry a signature that the box does not verify), without their files.` +
@@ -14449,82 +14488,53 @@ function renderMirrors(data) {
                   })
                 : null,
               st.tags_error
-                ? el("span", {
-                    className: "setting-desc bad",
-                    textContent: `The tags: ${st.tags_error}`,
-                  })
+                ? el("p", { className: "setting-desc bad", textContent: `The tags: ${st.tags_error}` })
                 : null,
-            ),
-            el(
-              "span",
-              { className: "library-buttons" },
-              actionButton(
-                "Check now",
-                act({ action: "mirror-check", name: m.name }),
-                { className: "small", disabled: data.running },
+              el("p", { className: "library-buttons" },
+                el("input", {
+                  type: "text",
+                  maxLength: 200,
+                  value: m.description || "",
+                  placeholder: st.described || "From the README's first heading",
+                  ariaLabel: `Description of ${m.name}.git`,
+                  id: `mirror-description-${m.name}`,
+                }),
+                actionButton(
+                  "Change description",
+                  async () => {
+                    const text = document.getElementById(`mirror-description-${m.name}`).value.trim();
+                    try {
+                      renderGit(
+                        await postJSON("/admin/git", {
+                          action: "mirror-change",
+                          mirror: Object.assign({}, m, { status: undefined, description: text }),
+                        }),
+                      );
+                      say("Saved. It shows on cgit after the next update.", true, git.mirrorNote);
+                    } catch (err) {
+                      say(err.message, false, git.mirrorNote);
+                    }
+                  },
+                  { className: "small" },
+                ),
               ),
-              actionButton(
-                "Update mirror",
-                act({ action: "mirror-update", name: m.name }),
-                {
-                  className: "small",
-                  disabled: data.running,
-                  title:
-                    "Updating a mirror downloads new data from the upstream repository",
-                },
-              ),
-              el("input", {
-                type: "text",
-                maxLength: 200,
-                value: m.description || "",
-                placeholder: st.described || "From the README's first heading",
-                ariaLabel: `Description of ${m.name}.git`,
-                id: `mirror-description-${m.name}`,
-              }),
-              actionButton(
-                "Change description",
-                async () => {
-                  const text = document.getElementById(`mirror-description-${m.name}`).value.trim();
-                  try {
-                    renderGit(
-                      await postJSON("/admin/git", {
-                        action: "mirror-change",
-                        mirror: Object.assign({}, m, { status: undefined, description: text }),
-                      }),
-                    );
-                    say("Saved. It shows on cgit after the next update.", true, git.mirrorNote);
-                  } catch (err) {
-                    say(err.message, false, git.mirrorNote);
-                  }
-                },
-                { className: "small" },
-              ),
-              el("span", { className: "setting-desc", textContent: "Submodules" }),
+              el("p", { className: "setting-desc", textContent: "Submodules" }),
               AW.onOffChips("Mirror its submodules too", !!m.submodules, false, (on) =>
                 act({
                   action: "mirror-change",
-                  mirror: Object.assign({}, m, {
-                    status: undefined,
-                    submodules: on,
-                  }),
+                  mirror: Object.assign({}, m, { status: undefined, submodules: on }),
                 })(),
               ),
               relGroups.length
                 ? actionButton(
-                    skipping
-                      ? "Include revoked releases"
-                      : "Exclude revoked releases",
+                    skipping ? "Include revoked releases" : "Exclude revoked releases",
                     act(
                       {
                         action: "mirror-change",
                         mirror: Object.assign({}, m, {
                           status: undefined,
                           groups: m.groups.map((g) =>
-                            g.kind === "tags"
-                              ? g
-                              : Object.assign({}, g, {
-                                  skip_revoked: !skipping,
-                                }),
+                            g.kind === "tags" ? g : Object.assign({}, g, { skip_revoked: !skipping }),
                           ),
                         }),
                       },
@@ -14543,8 +14553,8 @@ function renderMirrors(data) {
                 ),
                 { className: "small" },
               ),
-            ),
-          );
+            ],
+          });
         })
       : [el("p", { className: "setting-desc", textContent: "None yet." })]),
   );
@@ -14725,6 +14735,34 @@ function renderFirmware(data) {
     running,
     data.free_mb != null ? ` ${size(data.free_mb * 2 ** 20)} free.` : "",
   );
+  // The firmware is one subscription, in the same card as the Git repositories: terse here, the settings in its fold.
+  const record = document.getElementById("fw-record");
+  if (record) {
+    const move = (...ids) => ids.map((id) => document.getElementById(id)).filter(Boolean);
+    const body = [
+      ...move("fw-source", "fw-access-note", "fw-status"),
+      ...move("fw-policy"),
+      ...move("fw-policy-note"),
+      ...move("fw-settings-head", "fw-form", "fw-note"),
+    ];
+    const actions = move("fw-check", "fw-update");
+    record.replaceChildren(AW.sourceCard({
+      id: "firmware-source",
+      title: "Meshtastic firmware",
+      source: data.source ? `${data.source.name}.git` : "not mirrored",
+      pill: AW.updatePill(st.last_check, false, !!st.error),
+      state: st.last_check
+        ? `Checked ${whenShort(st.last_check)} · ${st.outcome || "up to date"}`
+        : "Not checked yet",
+      facts: [
+        "Access: Administrators",
+        "Schedule: daily",
+        `${Object.keys(st.versions || {}).length} releases`,
+      ],
+      actions,
+      body,
+    }));
+  }
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter(
     (t) => !q || t.board.includes(q) || t.platform.includes(q),
@@ -15088,25 +15126,30 @@ function asSettingsForm(holder) {
 }
 
 function asFirmware(fw) {
-  return el("div", { className: "aw-card appstore-firmware" },
-    el("div", { className: "aw-drawer" },
-      el("p", {}, el("strong", { textContent: "🧩 Meshtastic firmware" })),
-      el("p", { className: "setting-desc", textContent: `${fw.versions} version${fw.versions === 1 ? "" : "s"}, ${fw.boards} board${fw.boards === 1 ? "" : "s"}, ${size(fw.bytes)}.` }),
+  return AW.sourceCard({
+    id: "firmware-holder",
+    title: "Meshtastic firmware",
+    source: "Firmware page",
+    state: `${fw.versions} versions · ${fw.boards} boards · ${size(fw.bytes)}`,
+    facts: ["Access: Administrators", "Schedule: shared", `${size(fw.bytes)}`],
+    actions: [el("a", { href: fw.href, className: "button-link small", textContent: "Open Firmware" })],
+    body: [
       el("p", { className: "setting-desc", textContent: "Set on the Firmware page; the App store only lists it." }),
-      el("p", {}, el("a", { href: fw.href, textContent: "Firmware settings" }))));
+    ],
+  });
 }
 
 function asCard(holder) {
   const st = holder.status || {};
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const body = el("div", { className: "aw-drawer appstore-card", hidden: !asOpen.has(holder.id) });
   const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
   // A failed check's outcome is its error already ("error: …"): said once, with its own full stop.
   const sentence = (text) => `${String(text).trim().replace(/\.+$/, "")}.`;
-  const failed = st.error && checked;
+  const failed = !!st.error;
   const newer = !!(st.latest && st.latest.length) && !/up to date|nothing chosen/i.test(st.outcome || "");
   const pol = (asData && asData.policy) || {};
-  body.append(
+  const when = checked || "";
+  const body = [
     el("p", { className: `setting-desc${failed ? " bad" : ""}` },
       ...(failed
         ? [
@@ -15122,7 +15165,7 @@ function asCard(holder) {
         : "Every device on the box's network sees this project and can download its files.")),
     el("p", { className: "setting-desc" },
       `Schedule: ${AW.patternSays(pol.holders_every_hours, pol.holders_auto)} ` +
-      "Check interval and when something newer is found are set for every project, under App store, above."),
+      "Set for every project, under App store, above."),
     el("p", { className: "setting-desc" },
       `Space: ${holder.budget_mb ? `${holder.budget_mb} MB` : "the free limit"}; ` +
       `${holder.kept.length} version${holder.kept.length === 1 ? "" : "s"}, ${size(holder.bytes)} kept.`),
@@ -15132,10 +15175,7 @@ function asCard(holder) {
             el("strong", { textContent: `${v.tag} (${v.channel})` }),
             ` ${v.files.length} file${v.files.length === 1 ? "" : "s"}, ${size(v.bytes)}.`))
         : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
-    // Each button says what it acts on; removing the project, the one that cannot be undone, set apart at the end.
     el("p", { className: "library-buttons appstore-actions" },
-      asRun("Check for newer versions", "holder-check", holder.id, note),
-      asRun("Download newer versions", "holder-update", holder.id, note),
       asRun("Delete the kept files", "remove-files", holder.id, note,
         `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download gets the files again.`),
       asRun("Remove this project", "remove-holder", holder.id, note,
@@ -15148,29 +15188,32 @@ function asCard(holder) {
       "."),
     note,
     asSettingsForm(holder),
-  );
-  asSurveyTable(holder, body);
-  // A failed check said on the closed card too, not only inside it; opening it hides this line,
-  // since the drawer below then says the reason in full.
-  const failedNote = st.error
-    ? el("span", { className: "s bad", textContent: "The last check failed. Open for the reason." })
-    : null;
-  if (failedNote) failedNote.hidden = !body.hidden;
-  const head = el("button", { type: "button", className: "aw-card-head",
-    onclick: (event) => {
-      const open = body.hidden;
-      body.hidden = !open;
-      if (failedNote) failedNote.hidden = open;
+  ];
+  const survey = el("div", {});
+  asSurveyTable(holder, survey);
+  body.push(survey);
+  return AW.sourceCard({
+    id: `holder-${holder.id}`,
+    title: holder.title || holder.id,
+    source: holder.repo,
+    pill: AW.updatePill(st.last_check, newer, failed),
+    state: !checked ? "Not checked yet" : failed ? `Checked ${whenShort(st.last_check)} · check failed` : `Checked ${whenShort(st.last_check)} · ${newer ? "update available" : "up to date"}`,
+    facts: [
+      `Access: ${holder.visibility === "members" ? "Users" : "Guests"}`,
+      `Schedule: ${scheduleShort(pol.holders_every_hours)}`,
+      `${holder.kept.length} v · ${size(holder.bytes)}`,
+    ],
+    actions: [
+      asRun("Check now", "holder-check", holder.id, note),
+      asRun("Download", "holder-update", holder.id, note),
+    ],
+    body,
+    open: asOpen.has(holder.id),
+    onToggle: (open) => {
       if (open) asOpen.add(holder.id);
       else asOpen.delete(holder.id);
-      event.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
-    } },
-    el("span", { className: "t", textContent: `🛒 ${holder.title || holder.id}` }),
-    el("span", { className: "s", textContent: `${holder.repo} · ${holder.kept.length} version${holder.kept.length === 1 ? "" : "s"}, ${size(holder.bytes)}` }),
-    el("span", { className: "p" }, AW.updatePill(st.last_check, newer, !!st.error)),
-    ...(failedNote ? [failedNote] : []));
-  head.setAttribute("aria-expanded", body.hidden ? "false" : "true");
-  return el("div", { className: "aw-card appstore-holder", dataset: { holder: holder.id } }, head, body);
+    },
+  });
 }
 
 function asRun(label, action, id, note, ask, extra = {}) {

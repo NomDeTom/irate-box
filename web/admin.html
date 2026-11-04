@@ -1021,7 +1021,7 @@
               Next
             </button>
           </p>
-          <div id="library-sources" hidden></div>
+          <div id="library-sources" class="card-grid source-grid"></div>
           <div class="library-actions">
             <button
               class="action-btn"
@@ -1420,8 +1420,9 @@
             firmware for boards that a release does not cover, or from a fork,
             use the <a href="#factory">Firmware Factory</a>.
           </p>
+          <div id="fw-record" class="card-grid source-grid"></div>
           <p class="setting-desc" id="fw-source"></p>
-          <p class="setting-desc">Access: Administrators. This page and the release files it keeps are behind the administrator sign-in.</p>
+          <p class="setting-desc" id="fw-access-note">Access: Administrators. This page and the release files it keeps are behind the administrator sign-in.</p>
           <p class="setting-desc" id="fw-status"></p>
           <form id="fw-policy" class="library-form surface-policy">
             <div
@@ -1442,7 +1443,7 @@
               Save
             </button>
           </form>
-          <p class="setting-desc action-note" role="status" hidden></p>
+          <p class="setting-desc action-note" id="fw-policy-note" role="status" hidden></p>
           <p class="library-buttons update-buttons">
             <button
               class="action-btn"
@@ -1463,8 +1464,8 @@
               Download
             </button>
           </p>
-          <p class="setting-desc">Space: no limit of its own; the card's free space shows above. The build cache has its own limit on Toolkits.</p>
-          <h3>Settings</h3>
+          <p class="setting-desc" id="fw-space-note">Space: no limit of its own; the card's free space shows above. The build cache has its own limit on Toolkits.</p>
+          <h3 id="fw-settings-head">Settings</h3>
           <form id="fw-form" class="library-form">
             <label
               class="inline"
@@ -1626,7 +1627,7 @@
             </button>
           </form>
           <p class="setting-desc action-note" role="status" hidden></p>
-          <div id="appstore-holders" class="admin-list"></div>
+          <div id="appstore-holders" class="card-grid source-grid"></div>
           <p class="library-buttons update-buttons appstore-all">
             <span class="setting-desc" data-i18n="admin.appstore.all-projects">Every project:</span>
             <button
@@ -1710,7 +1711,7 @@
               Update all mirrors
             </button>
           </p>
-          <div id="git-mirrors" class="admin-list"></div>
+          <div id="git-mirrors" class="card-grid source-grid"></div>
           <h3 data-i18n="admin.mirrors.h-add-mirror">Add a mirror</h3>
           <form id="git-mirror-add" class="library-form">
             <label data-i18n="admin.mirrors.label-upstream"
@@ -2772,7 +2773,7 @@
             <span class="chips" id="git-chips-area"></span>
           </div>
           <div class="git-layout" id="git-layout">
-            <div class="card-grid git-grid" id="git-grid"></div>
+            <div class="card-grid source-grid" id="git-grid"></div>
           </div>
           <div hidden id="git-forms">
             <form id="git-create" class="library-form git-create">

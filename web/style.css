@@ -209,7 +209,7 @@ h2 {
 .admin-pane > :is(.library-buttons, .action-note) + :is(.net-card, .setting, .settings, .admin-list) {
   margin-top: 1rem;
 }
-.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block) {
+.admin-pane > p + :is(.net-card, .setting, .settings, .aw-block, .source-grid) {
   margin-top: 1rem;
 }
 .admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .quick-chips, .admin-meter) {
@@ -1524,7 +1524,6 @@ body.app-frame iframe {
 }
 
 /* Library (admin): sources, the add form and the policy. */
-#library-sources,
 #apps-list,
 #builtin-list,
 #addons-list {
@@ -3521,6 +3520,76 @@ body.drop > section + section {
 .git-card p {
   margin: 0;
 }
+/* One source card, the Git repository's shape, on every page: terse on the card, the long words in the fold. */
+.source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.75rem;
+}
+.source-card {
+  padding: 0;
+  gap: 0;
+}
+.source-fold > .source-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  list-style: none;
+}
+.source-fold > .source-head::-webkit-details-marker {
+  display: none;
+}
+.source-fold > .source-head::after {
+  content: "▸";
+  position: absolute;
+  top: 0.65rem;
+  right: 0.8rem;
+  color: var(--muted);
+}
+.source-fold[open] > .source-head::after {
+  content: "▾";
+}
+.source-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  padding-right: 1.1rem;
+}
+.source-sub,
+.source-state {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.source-facts {
+  margin-top: 0.1rem;
+}
+.source-drawer {
+  margin-top: 0.3rem;
+  padding: 0.65rem 0.9rem 0.8rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+@keyframes source-open {
+  from { opacity: 0; transform: translateY(-0.2rem); }
+  to { opacity: 1; transform: none; }
+}
+.source-fold[open] > .source-drawer {
+  animation: source-open 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .source-fold[open] > .source-drawer { animation: none; }
+}
+.source-drawer > p {
+  margin: 0;
+}
+.source-card .source-actions {
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.9rem 0.7rem;
+  border-top: 1px solid var(--border);
+}
 .git-new {
   font: inherit;
   cursor: pointer;
@@ -3580,6 +3649,10 @@ body.drop > section + section {
 .git-card .library-buttons {
   margin-top: auto;
   padding-top: 0.3rem;
+}
+/* A source card's actions sit under its fold, apart from it (the card already spaces its own parts). */
+.git-card.source-card .source-actions {
+  margin-top: 0.6rem;
 }
 .button-link {
   display: inline-block;

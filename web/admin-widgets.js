@@ -311,6 +311,30 @@ const AW = (() => {
       items.length > FILTER_AT ? filterBar(list, 'div[data-aw-id]', items) : null, list);
   }
 
+  // ---- One source card for every subscription: the Git repository card's shape, on every page ----
+  //   opts: {title, source, pill, state, facts: [terse values], actions: [buttons], body: [the longer words and
+  //          settings], open, onToggle}. The card stays in its grid when its drawer opens; the head is the fold.
+  function sourceCard(opts) {
+    const card = h('div', { class: 'git-card source-card', id: opts.id || null });
+    const details = h('details', { class: 'source-fold' });
+    if (opts.open) details.open = true;
+    const summary = h('summary', { class: 'source-head' },
+      h('span', { class: 'source-title' }, opts.title, opts.pill ? ' ' : null, opts.pill || null),
+      opts.source ? h('span', { class: 'source-sub', text: opts.source }) : null,
+      opts.state ? h('span', { class: 'source-state', text: opts.state }) : null,
+      opts.facts && opts.facts.length
+        ? h('span', { class: 'badges source-facts' }, ...opts.facts.filter(Boolean).map((text) => h('span', { class: 'badge', text })))
+        : null);
+    const drawer = h('div', { class: 'source-drawer' },
+      ...[opts.body].flat(Infinity).filter((node) => node !== null && node !== undefined));
+    details.append(summary, drawer);
+    if (opts.onToggle) details.addEventListener('toggle', () => opts.onToggle(details.open));
+    card.append(details);
+    if (opts.actions && opts.actions.length)
+      card.append(h('p', { class: 'library-buttons source-actions' }, ...opts.actions.filter(Boolean)));
+    return card;
+  }
+
   // ---- Cards (3a–3c): the drawer opens inside the card, which widens to the row ----
   //   items: [{id, title, summary, badges}]
   //   opts:  {id, body(item, setDirty) → nodes, save(item) → Promise|void (false: not saved, said already)}
@@ -1101,7 +1125,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, sourceCard, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
