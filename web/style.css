@@ -3600,6 +3600,10 @@ body.drop > section + section {
 .source-panel {
   grid-column: 1 / -1;
 }
+.source-panel[hidden],
+.source-panel.source-expanded[hidden] {
+  display: none;
+}
 /* An open source card: the small card keeps its space, and the larger card takes the next row under it. */
 .source-panel.source-expanded {
   display: flex;
