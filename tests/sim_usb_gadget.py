@@ -28,6 +28,9 @@ os.environ.update(
     HUB_GADGET_SRC=str(T / "src"),
     HUB_MACHINE_ID=str(T / "machine-id"),
     HUB_DNSMASQ_BIN=str(T / "dnsmasq"),
+    HUB_MKFS_VFAT="mkfs.vfat",
+    HUB_MCOPY="mcopy",
+    HUB_MDIR="mdir",
 )
 for d in (
     "etc",
@@ -48,7 +51,7 @@ for d in (
 (T / "machine-id").write_text("machine-one\n")
 (T / "dnsmasq").write_text("")
 (T / "sys/class/udc/ff740000.usb").write_text("")
-for m in ("u_ether", "usb_f_ncm", "u_serial", "usb_f_acm"):
+for m in ("u_ether", "usb_f_ncm", "u_serial", "usb_f_acm", "usb_f_mass_storage"):
     (T / "sys/module" / m).mkdir(parents=True)
 (T / "sys/class/net/usb0").mkdir()
 (T / "sys/class/tty/ttyGS0").mkdir()
@@ -57,6 +60,7 @@ for f in ("Makefile", "dkms.conf"):
 
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
+from irate_box.hub import store
 from irate_box.root import health, usbgadget
 
 fails = 0
@@ -223,6 +227,100 @@ check(
     usbgadget.load_settings()["on"] is True and ["systemctl", "restart", "irate-box-usb-gadget.service"] in ran,
     said,
 )
+
+# The USB drive: the file drop as a FAT image, read-only by default, writable by choice.
+check("USB drive: off by default", usbgadget.load_settings()["drive"] is False)
+drop = T / "state/drop"
+drop.mkdir(parents=True, exist_ok=True)
+(drop / "one.data").write_bytes(b"hello")
+(drop / "one.meta").write_text(json.dumps({"id": "one", "name": "hello.txt", "size": 5, "created": 0}))
+said = usbgadget.set_drive("on")
+check("  set on: saved", usbgadget.load_settings()["drive"] is True, said)
+ran.clear()
+ok, why, children = usbgadget.setup(sleep=lambda _: None)
+g = T / "config/usb_gadget/irate"
+lun = g / "functions/mass_storage.usb0/lun.0"
+image = drop / ".usb-drive.img"
+check("  setup builds the image and the LUN", ok and image.is_file() and lun.is_dir(), why)
+check("  the LUN points at the image", lun.joinpath("file").read_text() == str(image))
+check("  read-only by default", lun.joinpath("ro").read_text() == "1")
+check(
+    "  the manifest names the drop's file",
+    json.loads((drop / ".usb-drive-manifest.json").read_text())["hello.txt"]["id"] == "one",
+)
+said = usbgadget.set_drive_write("on")
+ran.clear()
+ok, why, children = usbgadget.setup(sleep=lambda _: None)
+check("  writable: the LUN is read-write", ok and lun.joinpath("ro").read_text() == "0", why)
+manifest = json.loads((drop / ".usb-drive-manifest.json").read_text())
+
+
+def fake_import_run(cmd, timeout=120):
+    if cmd[0] == usbgadget.MDIR:
+        return mock.Mock(returncode=0, stdout="hello.txt\nnew.txt\n", stderr="")
+    if cmd[0] == usbgadget.MCOPY:
+        Path(cmd[-1]).write_bytes(b"new")
+        return mock.Mock(returncode=0, stdout="", stderr="")
+    return fake_run(cmd, timeout)
+
+
+usbgadget.run = fake_import_run
+added = usbgadget.import_drive(log=lambda *_: None)
+check("  a new file on the drive is added to the drop", added == 1, added)
+check(
+    "  the manifest remembers it, so it is not imported twice",
+    json.loads((drop / ".usb-drive-manifest.json").read_text()).get("new.txt", {}).get("size") == 3,
+)
+# A host file that would not fit: the import stops and the guests' files stay.
+old_total = store.DROP_MAX_TOTAL
+store.DROP_MAX_TOTAL = 10
+
+
+def fake_full_run(cmd, timeout=120):
+    if cmd[0] == usbgadget.MDIR:
+        return mock.Mock(returncode=0, stdout="hello.txt\nnew.txt\nfull.txt\n", stderr="")
+    if cmd[0] == usbgadget.MCOPY:
+        Path(cmd[-1]).write_bytes(b"0123456789")
+        return mock.Mock(returncode=0, stdout="", stderr="")
+    return fake_run(cmd, timeout)
+
+
+logs = []
+usbgadget.run = fake_full_run
+added = usbgadget.import_drive(log=logs.append)
+check(
+    "  a file that would not fit: nothing is added, and the guests' files stay",
+    added == 0 and (drop / "one.data").is_file() and any("stopped importing at full.txt" in line for line in logs),
+    (added, logs),
+)
+check(
+    "  the manifest is unchanged by the refused import",
+    set(json.loads((drop / ".usb-drive-manifest.json").read_text())) == {"hello.txt", "new.txt"},
+)
+store.DROP_MAX_TOTAL = old_total
+usbgadget.run = fake_run
+st_drive = usbgadget.status()
+check(
+    "  the drive state keeps the stopped import",
+    st_drive["drive"]["import"]["stopped"] and "storage" in st_drive["drive"]["import"]["stopped"].lower(),
+    st_drive["drive"].get("import"),
+)
+found = health.check_usb_gadget(st_drive)
+check(
+    "  the doctor says the import stopped at the full drop",
+    found and found[0]["status"] == "warn" and "usb-gadget.import-stopped" in message_ids(found[0]),
+    found,
+)
+st_drive["drive"]["tools"]["mkfs.vfat"] = False
+found = health.check_usb_gadget(st_drive)
+check(
+    "  missing dosfstools: a problem naming the tools",
+    found and found[0]["status"] == "problem" and "usb-gadget.tools" in message_ids(found[0]),
+    found,
+)
+usbgadget.set_drive_write("off")
+usbgadget.set_drive("off")
+check("  off: the drive choice is saved", usbgadget.load_settings()["drive"] is False)
 
 # The pinned source fetch: the cache first, then the commit's raw file, checked against its sha256.
 data = b"// a pinned source\n"

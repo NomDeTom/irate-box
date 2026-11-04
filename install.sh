@@ -1201,9 +1201,9 @@ CADDY_FROM_RELEASE=0
 # on cgit's about pages (scripts/cgit-about.py), ~1 MB. libjs-highlight.js: code highlighted
 # in the visitor's browser (web/cgit-hub.js), ~2 MB; Pygments on the box took 2-5 s a page.
 # iw: the network inventory (netinv.py) reads the radios with it; ~0.3 MB.
-pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base nftables procps gpgv)
+pkgs=(python3 curl ca-certificates git unzip fcgiwrap cgit python3-markdown libjs-highlight.js iw dnsmasq-base dosfstools mtools nftables procps gpgv)
 # Without the Git add-on: git itself stays (the librarian's mirrors and the self-update use it), cgit's parts go.
-[ "$NO_GIT" = 1 ] && pkgs=(python3 curl ca-certificates git unzip iw dnsmasq-base nftables procps gpgv)
+[ "$NO_GIT" = 1 ] && pkgs=(python3 curl ca-certificates git unzip iw dnsmasq-base dosfstools mtools nftables procps gpgv)
 [ "$WITH_SYNC" = 1 ] && pkgs+=(syncthing)
 # mosquitto-clients: mosquitto_sub/_pub, for watching the broker from the terminal.
 [ "$WITH_MQTT" = 1 ] && pkgs+=(mosquitto mosquitto-clients)
@@ -3147,9 +3147,10 @@ RestrictAddressFamilies=AF_UNIX
 WantedBy=multi-user.target
 EOF
 
-# USB networking (usbgadget.py): NCM and ACM over the board's USB device port, as chosen on Recovery
-# and monitoring; on by default on a Lyra. The function modules are fetched from the pinned vendor
-# sources, built with DKMS and loaded here; the gadget is composed through configfs.
+# USB networking and the USB drive (usbgadget.py): NCM, ACM and mass storage over the board's USB
+# device port, as chosen on Recovery and monitoring; networking is on by default on a Lyra. The
+# function modules are fetched from the pinned vendor sources, built with DKMS and loaded here;
+# the gadget is composed through configfs.
 cat >/etc/systemd/system/irate-box-usb-gadget.service <<EOF
 [Unit]
 Description=Irate-Box USB networking: a network link and a serial console over the USB port (usbgadget.py; /admin, Recovery and monitoring)
@@ -3165,7 +3166,7 @@ Nice=5
 RuntimeDirectory=irate-box-usb-gadget
 RuntimeDirectoryMode=0755
 $ROOT_SANDBOX
-ReadWritePaths=$ETC /usr/src /var/lib/dkms /lib/modules /var/cache/irate-box/kits
+ReadWritePaths=$ETC $STATE/drop /usr/src /var/lib/dkms /lib/modules /var/cache/irate-box/kits
 # /sys/kernel/config and /sys/class/udc are written (configfs and the UDC), and modprobe loads the
 # function modules: not ProtectKernelTunables or ProtectKernelModules. /dev/ttyGS0 is the console.
 PrivateDevices=no

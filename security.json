@@ -1407,6 +1407,7 @@
       "ProtectSystem": "strict",
       "ReadWritePaths": [
         "$ETC",
+        "$STATE/drop",
         "/usr/src",
         "/var/lib/dkms",
         "/lib/modules",

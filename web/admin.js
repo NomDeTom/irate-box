@@ -6299,6 +6299,16 @@ const hardeningSettings = doctorSection({
   groupsOf: (st) => st.hardening_groups,
   empty: "Shown after the Box doctor's next check.",
 });
+const usbSettings = doctorSection({
+  id: "usb-settings",
+  label: "USB",
+  prefix: "usb",
+  groupsEl: document.getElementById("usb-gadget-groups"),
+  footEl: document.getElementById("usb-gadget-foot"),
+  noteEl: document.getElementById("usb-gadget-note"),
+  groupsOf: (st) => st.usb_groups,
+  empty: "Shown after the Box doctor's next check.",
+});
 document
   .getElementById("health-search")
   .addEventListener("input", () => hlLast && renderHealth(hlLast));
@@ -6559,6 +6569,7 @@ function renderHealth(data) {
   doctorOwn.render(data, rep);
   cardSystem.render(data, rep);
   hardeningSettings.render(data, rep);
+  usbSettings.render(data, rep);
   const all = rep
     ? [...rep.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];

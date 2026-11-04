@@ -22,7 +22,7 @@
    "note": "Radxa's aic8800-usb-dkms with the same fixes as patches, including the 1 November port-reboot fix, the D80's 368b:8d81 and an eject rule: for a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."},
   {"title": "USB gadget functions (Armbian linux-rockchip v6.1.115)", "url": "https://github.com/armbian/linux-rockchip/tree/v6.1.115",
    "version": "7c15117", "licence": "GPL-2.0",
-   "note": "NCM and ACM, built out of tree by the box's USB networking service for the Lyra's vendor kernel. The toolkit pins each source file's sha256; the service fetches and checks them before DKMS builds them."}
+   "note": "NCM, ACM and mass storage, built out of tree by the box's USB networking service for the Lyra's vendor kernel. The toolkit pins each source file's sha256; the service fetches and checks them before DKMS builds them."}
  ],
  "gadget": {"repo": "https://github.com/armbian/linux-rockchip",
             "tag": "v6.1.115",
@@ -31,6 +31,10 @@
             "files": {
               "drivers/usb/gadget/function/f_ncm.c": "916acc2712a474e7c3f5530b0358435b590692a3d4e65aa062b7ce74772f4bdb",
               "drivers/usb/gadget/function/f_acm.c": "2800b3763d6f35021e52c6e5eb2028c3dd86c060f478b33cbea7289239cd3b6c",
+              "drivers/usb/gadget/function/f_mass_storage.c": "c3df45de239ae976a4d132282c7606cccc22659b1e271d63b20dd43679255ec9",
+              "drivers/usb/gadget/function/f_mass_storage.h": "cf6ee3b19ad154ae08a9a4c1add6198a83d3d2ff6713147841baa812db3852c8",
+              "drivers/usb/gadget/function/storage_common.c": "d85db1025afc6c46f028eac75720da191cd982cc5c969fc7c309c8873c1a4167",
+              "drivers/usb/gadget/function/storage_common.h": "c1745bc93de9d488fecce70bfc2f3532bbd33c831e7cb18774c7e4f67b3aa493",
               "drivers/usb/gadget/function/u_ether.c": "4b24e7ee9c30fe5632d6122caace4a835d64bad01ee740e67f24ad4142391810",
               "drivers/usb/gadget/function/u_serial.c": "7801d91b06e9d8a1395344c33cdf5b0c6ac3b14e17a6dba2d1852ec71d1a8408",
               "drivers/usb/gadget/function/u_ether.h": "be629f6e64de23f1ab0a0e7208280122ceaba67b8e6c7d288e6a16cf20d49ffe",
