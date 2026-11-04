@@ -16,6 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="wifijoin-"))
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_NM_CONNECTIONS=str(T / "nm"))
 sys.path.insert(0, str(REPO))
+from irate_box import validate as V
 from irate_box.msg import Refused
 from irate_box.root import wifijoin as W
 
@@ -70,7 +71,8 @@ check(
     "added: one keyfile, root's alone (0600), the network, its password, hidden, below the owner's own",
     len(files) == 1
     and stat.S_IMODE(files[0].stat().st_mode) == 0o600
-    and "ssid=Home Net" in text
+    and V.keyfile_ssid("Home Net") in text
+    and "ssid=Home Net" not in text
     and "psk=s3cret-pass;x" in text
     and "hidden=true" in text
     and "key-mgmt=wpa-psk" in text
@@ -123,11 +125,10 @@ check(
 )
 up_fails.clear()
 msg = W.join("Open Cafe", "open", "", now=True)
+open_files = [f for f in (T / "nm").glob("*.nmconnection") if V.keyfile_ssid("Open Cafe") in f.read_text()]
 check(
     "open, joined now: no security section, on it",
-    "[wifi-security]"
-    not in [f.read_text() for f in (T / "nm").glob("*.nmconnection") if "Open Cafe" in f.read_text()][0]
-    and msg["id"] == "wifi-join.joined",
+    len(open_files) == 1 and "[wifi-security]" not in open_files[0].read_text() and msg["id"] == "wifi-join.joined",
     msg,
 )
 try:
