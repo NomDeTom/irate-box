@@ -11,7 +11,6 @@ import base64
 import binascii
 import hashlib
 import hmac
-import html
 import io
 import ipaddress
 import json
@@ -564,7 +563,7 @@ def render_tiles(
         if size:
             attrs.append(f'data-size="{size}"')
         if tile.get("element_id"):
-            attrs.append(f'id="{html.escape(tile["element_id"])}"')
+            attrs.append(f'id="{validate.html_text(tile["element_id"])}"')
         if dead:
             attrs.append('aria-disabled="true"')
         elif how == "signup":
@@ -572,10 +571,10 @@ def render_tiles(
         elif how == "signin" and access.mode_of(access_state, m["id"]) == "users":
             attrs.append(f'href="/account.html?next={quote(tile["href"], safe="")}"')
         else:
-            attrs.append(f'href="{html.escape(tile["href"])}"')
+            attrs.append(f'href="{validate.html_text(tile["href"])}"')
         path = m.get("status", {}).get("path")
         if path:
-            attrs.append(f'data-service="{html.escape(path)}"')
+            attrs.append(f'data-service="{validate.html_text(path)}"')
         if tile.get("new_tab") and not dead:
             attrs.append('target="_blank"')
         tag = "div" if dead else "a"
@@ -587,8 +586,8 @@ def render_tiles(
         out.append(
             f"      <{tag} {' '.join(attrs)}>\n"
             + icon_html(own_icons.get(m["id"]) or tile["icon"])
-            + f'        <span class="name">{html.escape(tile["name"])}</span>\n'
-            f'        <span class="desc">{html.escape(tile["desc"])}</span>\n'
+            + f'        <span class="name">{validate.html_text(tile["name"])}</span>\n'
+            f'        <span class="desc">{validate.html_text(tile["desc"])}</span>\n'
             + (f'        <span class="lock">{lock}</span>\n' if lock else "")
             + (
                 '        <span class="tile-pill admin-pill" title="Only administrators see this tile">admin only</span>\n'
@@ -962,7 +961,7 @@ def icon_html(icon):
             f'        <span class="icon"><span class="svg-icon" data-icon="{name}" aria-hidden="true"></span></span>\n'
         )
     cls = "icon icon-text" if ICON_TEXT.fullmatch(icon) else "icon"
-    return f'        <span class="{cls}">{html.escape(icon)}</span>\n'
+    return f'        <span class="{cls}">{validate.html_text(icon)}</span>\n'
 
 
 TILES_MARK = "<!-- apps.d tiles -->"
@@ -1062,22 +1061,22 @@ def home_page(signed_in=False):
             render_tiles("apps", hidden, locked=locked, admin_only=admin_only),
         ).replace(BOX_MARK, render_tiles("box", hidden, show_factory, locked))
         text = text.replace(ACCOUNT_MARK, _account_nav(signed_in)).replace(FIRST_USE_MARK, _first_use_note())
-        title, sub = html.escape(words["hub_title"].strip()), html.escape(words["hub_subtitle"].strip())
+        title, sub = validate.html_text(words["hub_title"].strip()), validate.html_text(words["hub_subtitle"].strip())
         # The keeper's own name for the hub is theirs, not the page's words: no message ID on it.
-        if title != html.escape(DEFAULT_SETTINGS["hub_title"]):
+        if title != validate.html_text(DEFAULT_SETTINGS["hub_title"]):
             text = re.sub(r"<title[^>]*>Hub</title>", f"<title>{title}</title>", text, count=1)
             text = re.sub(r"<h1[^>]*>Hub</h1>", f"<h1>{title}</h1>", text, count=1)
         notice, keeper = words["notice_text"].strip(), words["keeper_contact"].strip()
         if notice and not notice_over:
             text = text.replace(
                 "</header>",
-                f'</header>\n  <p class="hub-notice" role="status">{html.escape(notice)}</p>',
+                f'</header>\n  <p class="hub-notice" role="status">{validate.html_text(notice)}</p>',
                 1,
             )
         if keeper:
             text = text.replace(
                 '  <script src="qrcode.js">',
-                f'  <footer class="hub-keeper">Looked after by: {html.escape(keeper)}</footer>\n'
+                f'  <footer class="hub-keeper">Looked after by: {validate.html_text(keeper)}</footer>\n'
                 '  <script src="qrcode.js">',
                 1,
             )
@@ -1089,7 +1088,7 @@ def home_page(signed_in=False):
                 text,
                 count=1,
             )
-        if sub != html.escape(DEFAULT_SETTINGS["hub_subtitle"]):
+        if sub != validate.html_text(DEFAULT_SETTINGS["hub_subtitle"]):
             text = re.sub(
                 r'<p class="subtitle"[^>]*>[^<]*</p>',
                 (f'<p class="subtitle">{sub}</p>' if sub else ""),
@@ -1117,7 +1116,7 @@ FIRST_EMOJI = re.compile("[\U0001f1e6-\U0001f1ff]{2}|.[\ufe0f\U0001f3fb-\U0001f3
 
 def emoji_icon(icon, fallback="🏴\u200d☠️"):
     m = None if (icon or "").startswith("svg:") else FIRST_EMOJI.match(icon or "")
-    e = html.escape(m.group(0) if m else fallback)
+    e = validate.html_text(m.group(0) if m else fallback)
     return (
         '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22>'
         f'<text y=%22.9em%22 font-size=%2290%22>{e}</text></svg>">'
@@ -1184,14 +1183,20 @@ def menu_page(m, signed_in=False):
             if href.startswith("/app.html#"):
                 # The hub bar then offers ↑ back to this list (app.js).
                 href = f"/app.html?from={m['id']}#" + href[len("/app.html#") :]
-            attrs = f'href="{html.escape(href)}"'
+            attrs = f'href="{validate.html_text(href)}"'
             if service:
-                attrs += f' data-service="{html.escape(service)}"'
+                attrs += f' data-service="{validate.html_text(service)}"'
             if e.get("new_tab", True):
                 attrs += ' target="_blank"'
-            desc = f'<span class="desc">{html.escape(e["desc"])}</span>' if e.get("desc") else ""
-            lines.append(f'      <li><a {attrs}><span class="name">{html.escape(e["name"])}</span>{desc}</a></li>')
-        heading = f'    <h2 id="{html.escape(section["id"])}">{html.escape(section["title"])}</h2>\n' if section else ""
+            desc = f'<span class="desc">{validate.html_text(e["desc"])}</span>' if e.get("desc") else ""
+            lines.append(
+                f'      <li><a {attrs}><span class="name">{validate.html_text(e["name"])}</span>{desc}</a></li>'
+            )
+        heading = (
+            f'    <h2 id="{validate.html_text(section["id"])}">{validate.html_text(section["title"])}</h2>\n'
+            if section
+            else ""
+        )
         blocks.append(
             '  <section class="item-section">\n'
             + heading
@@ -1206,15 +1211,19 @@ def menu_page(m, signed_in=False):
     # faint ident in the bottom-right corner, behind the list (style.css: .menu-ident).
     art_attrs = f' data-art="{art}" data-art-side="left"' if art else (' data-art="ident"' if lines else "")
     art_html = '  <div class="admin-art" aria-hidden="true"></div>\n' if art else ""
-    banner = f'  <pre class="menu-ident" aria-hidden="true">{html.escape(chr(10).join(lines))}</pre>\n' if lines else ""
+    banner = (
+        f'  <pre class="menu-ident" aria-hidden="true">{validate.html_text(chr(10).join(lines))}</pre>\n'
+        if lines
+        else ""
+    )
     return MENU_TEMPLATE.format(
         art_attrs=art_attrs,
         art=art_html,
         banner=banner,
-        title=html.escape(menu["title"]),
-        subtitle=html.escape(menu["subtitle"]),
+        title=validate.html_text(menu["title"]),
+        subtitle=validate.html_text(menu["subtitle"]),
         icon=emoji_icon((m.get("tile") or {}).get("icon")),
-        about=html.escape(menu.get("about", "")).replace("--", "-"),
+        about=validate.html_text(menu.get("about", "")).replace("--", "-"),
         sections="\n\n".join(blocks),
     ).encode()
 
@@ -5142,7 +5151,7 @@ class Handler(BaseHTTPRequestHandler):
         # whose body is a page that goes to the hub by itself.
         # A guest on the hotspot goes to the hub's own address (not "/" under whatever name they typed).
         target = HUB_URL if HUB_HOST or not self._from_hotspot() else HOTSPOT_URL
-        url = html.escape(target, quote=True)
+        url = validate.html_text(target, quote=True)
         body = (
             f'<!DOCTYPE html><html><head><meta charset="utf-8"><title>Irate-Box</title>'
             f'<meta http-equiv="refresh" content="0; url={url}"></head>'
@@ -5764,7 +5773,7 @@ class Handler(BaseHTTPRequestHandler):
                     '<title>Unencrypted administrator access</title><link rel="stylesheet" href="/palette.css">'
                     "<main><h1>Unencrypted administrator access</h1><p>Other people on this network can read your password "
                     'and change traffic sent over HTTP. Use HTTPS when possible.</p><p><a href="/http-admin-continue?next='
-                    + html.escape(nxt, quote=True)
+                    + validate.html_text(nxt, quote=True)
                     + '">Continue over HTTP</a></p></main></html>'
                 ).encode()
                 self.send_response(200)
