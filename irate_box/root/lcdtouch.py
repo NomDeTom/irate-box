@@ -39,6 +39,7 @@ PINS = [
     {"signal": "Touch PEN", "pin": 28, "soc": "GPIO1_D3", "rmio": 31, "gpio": 59},
     {"signal": "Display D/C", "pin": 18, "soc": "GPIO0_B4", "rmio": 12, "gpio": 12},
     {"signal": "Display RST", "pin": 22, "soc": "GPIO0_B3", "rmio": 11, "gpio": 11},
+    {"signal": "Display BL", "pin": 36, "soc": "GPIO1_D1", "rmio": 29, "gpio": 57},
 ]
 DTS = """/dts-v1/;
 /plugin/;
@@ -47,8 +48,8 @@ DTS = """/dts-v1/;
 \t\ttitle = "SPI1 for a 3.5in TFT + XPT2046 touch on Luckfox Lyra Zero W";
 \t\tcompatible = "rockchip,rk3506b-lyra-zero";
 \t\tcategory = "spi";
-\t\texclusive = "spi1", "RM_IO16", "RM_IO24", "RM_IO25", "RM_IO26", "RM_IO28", "RM_IO31";
-\t\tdescription = "SPI1 using RM_IO24(CLK), RM_IO25(MOSI), RM_IO26(MISO), RM_IO16(CS0/display), RM_IO28(CS1/touch). Leaves SPI0 and the MeshAdv-Pi HAT pins free.";
+\t\texclusive = "spi1", "RM_IO16", "RM_IO24", "RM_IO25", "RM_IO26", "RM_IO28", "RM_IO29", "RM_IO31";
+\t\tdescription = "SPI1 using RM_IO24(CLK), RM_IO25(MOSI), RM_IO26(MISO), RM_IO16(CS0/display), RM_IO28(CS1/touch); BL on header 36 (RMIO29), which the MeshAdv-Pi HAT uses for IRQ. Leaves SPI0 free.";
 \t};
 \tfragment@0 {
 \t\ttarget = <&spi1>;
@@ -73,7 +74,7 @@ DTS = """/dts-v1/;
 \t\t\t};
 \t\t};
 \t};
-};\n"""
+\tfragment@1 {\n\t\ttarget-path = "/";\n\t\t__overlay__ {\n\t\t\tlcd_backlight: lcd-backlight {\n\t\t\t\tcompatible = "gpio-leds";\n\t\t\t\tbacklight {\n\t\t\t\t\tlabel = "lcd-backlight";\n\t\t\t\t\tgpios = <&gpio1 25 0>;\n\t\t\t\t\tdefault-state = "off";\n\t\t\t\t};\n\t\t\t};\n\t\t};\n\t};\n};\n"""
 
 
 def run(*cmd, timeout=60, inp=None):
@@ -162,9 +163,11 @@ def status():
         "dtbo": str(DTBO),
         "devices": ["/dev/spidev1.0", "/dev/spidev1.1"],
         "pins": PINS,
+        "backlight": str(lcdpanel.BL),
         "warning": (
-            "The display and touch share SPI1; the panel's backlight adds current and RF noise, "
-            "so keep its ribbon and backlight wires away from the LoRa antenna."
+            "The display and touch share SPI1; BL is header 36 (the MeshAdv-Pi HAT's IRQ), so the "
+            "HAT and the backlight control cannot both be fitted. Keep the panel's ribbon and "
+            "backlight wires away from the LoRa antenna."
             if supported()
             else ""
         ),

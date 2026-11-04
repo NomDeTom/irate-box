@@ -8,12 +8,23 @@ because there is no kernel display driver. D/C is GPIO0 line 12 (header 18), RST
 """
 
 import colorsys
+import os
 import time
+from pathlib import Path
 
 W, H = 480, 320
 DC = 12
 RST = 11
 SPEED = 10_000_000
+BL = Path(os.environ.get("HUB_LCD_BL", "/sys/class/leds/lcd-backlight/brightness"))
+
+
+def set_bl(on):
+    """The backlight, through the gpio-leds node the overlay adds (header pin 36)."""
+    try:
+        BL.write_text("1" if on else "0")
+    except OSError:
+        pass
 
 
 def rgb(r, g, b):
@@ -82,6 +93,7 @@ class Panel:
         self.cmd(0x21)
         self.cmd(0x13)
         self.cmd(0x29)
+        set_bl(True)
         time.sleep(0.1)
 
     def window(self, x0, y0, x1, y1):
@@ -112,6 +124,7 @@ class Panel:
         self.fill(RED, 190, 110, 289, 209)
 
     def off(self):
+        set_bl(False)
         try:
             self.fill(BLACK)
             self.cmd(0x28)
