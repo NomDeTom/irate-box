@@ -864,8 +864,12 @@ function renderLibrary(snap) {
   // own kind. A kind that is not running says nothing of another's job, and no bar.
   lib.states.forEach((n) => {
     const want = n.dataset.jobKind;
-    // Books has its own data (/admin/books): its line is set there, from the same checks as its cards.
-    if (want === "books") return;
+    // Books has its own data (/admin/books): its idle line is set there, from the same checks as
+    // its cards, but a run in progress still shows on it.
+    if (want === "books") {
+      if (busy && (kind === "books" || kind === "all")) n.textContent = busyText;
+      return;
+    }
     if (want === "now") n.textContent = busy ? busyText : idleText;
     else if (want === "holders" && !busy) n.textContent = "";
     else
@@ -13567,20 +13571,22 @@ function renderGit(data) {
       ...(builds(repo) ? ["Builds"] : []),
     ],
   }));
-  const cards = [];
-  for (const repo of shown) {
-    const card = repoCard(repo, data);
-    card.dataset.repo = "1";
-    card.dataset.text = `${repo.name} ${repo.description || ""}`.toLowerCase();
-    card.dataset.tags = items.find((item) => item.id === repoKey(repo)).badges.join("|");
-    cards.push(card);
-  }
-  if (!shown.length)
-    cards.push(el("p", { className: "setting-desc", textContent: "No repositories yet." }));
-  // The New card last, after the repositories, its drawer after it.
-  cards.push(newCard());
   const key = JSON.stringify([data.repos, data.mirrors, gitView.open, gitChecks]);
-  AW.redrawIfChanged(git.grid, key, () => cards);
+  AW.redrawIfChanged(git.grid, key, () => {
+    const cards = [];
+    for (const repo of shown) {
+      const card = repoCard(repo, data);
+      card.dataset.repo = "1";
+      card.dataset.text = `${repo.name} ${repo.description || ""}`.toLowerCase();
+      card.dataset.tags = items.find((item) => item.id === repoKey(repo)).badges.join("|");
+      cards.push(card);
+    }
+    if (!shown.length)
+      cards.push(el("p", { className: "setting-desc", textContent: "No repositories yet." }));
+    // The New card last, after the repositories, its drawer after it.
+    cards.push(newCard());
+    return cards;
+  });
   // The same filter bar as the short lists: a search box, tag chips, a count.
   AW.redrawIfChanged(git.filter, key, () => (shown.length
     ? [AW.filterBar(git.grid, ".source-card[data-repo]", items)]
@@ -15197,11 +15203,10 @@ function renderKits(data) {
       ),
     ),
   );
-  // A card per kit, its details in a drawer inside the card; not redrawn
-  // under an open drawer with changes not saved.
-  const open = kitsEl.grid.querySelector(".aw-card.open");
+  // A row per kit, its details in a drawer under the row; an open row opens again after a redraw.
+  const open = kitsEl.grid.querySelector(".source-row-detail:not([hidden])");
   if (!(open && open._dirty && open._dirty())) {
-    const openId = open && open.dataset.awId;
+    const openId = open && open.closest(".source-row")?.dataset.awId;
     // Its cards hold a budget form and each drawer's fields: drawn again only when what they show changes,
     // so a poll that brings nothing new leaves a selection, a field or an open drawer alone.
     const gridKey = JSON.stringify([kits, st.kits, st.installed, cfg.kits, data.flag_details || {}]);
@@ -15241,7 +15246,7 @@ function renderKits(data) {
     const again =
       drew && openId &&
       kitsEl.grid.querySelector(
-        `.aw-card[data-aw-id="${openId}"] .aw-card-head`,
+        `.source-row[data-aw-id="${openId}"] .source-row-head`,
       );
     if (again) again.click();
   }
@@ -15505,7 +15510,30 @@ function kitBody(k, st, cfg, setDirty) {
   );
   // Save is on only while the drawer differs from what is saved: changing a setting back turns it off again.
   const saved = JSON.stringify(draft);
-  const changed = () => setDirty(JSON.stringify(draft) !== saved);
+  const saveB = actionButton("Save", async (event) => {
+    const ch = {};
+    if (draft.keep_current !== mine.keep_current) ch.keep_current = draft.keep_current;
+    if (draft.remove_after !== mine.remove_after) ch.remove_after = draft.remove_after;
+    const extra = draft.extra.trim().split(/[\s,]+/).filter(Boolean);
+    if (Object.keys(ch).length && !(await kitAct({ action: "settings", kits: { [k.id]: ch } }, false, event.currentTarget))) return;
+    if (!k.owner && extra.join(" ") !== (k.extra || []).join(" ") &&
+      !(await kitAct({ action: "extra", kit: k.id, packages: extra }, false, event.currentTarget))) return;
+  }, { className: "small aw-save", disabled: true });
+  const discardB = actionButton("Discard", () => {
+    draft.keep_current = mine.keep_current;
+    draft.remove_after = mine.remove_after;
+    draft.extra = (k.extra || []).join(" ");
+    drawKeep();
+    def.value = mine.remove_after == null ? "never" : String(mine.remove_after);
+    if (extra) extra.value = draft.extra;
+    changed();
+  }, { className: "small aw-discard", disabled: true });
+  const changed = () => {
+    const dirty = JSON.stringify(draft) !== saved;
+    saveB.disabled = !dirty;
+    discardB.disabled = !dirty;
+    setDirty(dirty);
+  };
   // Automatic cache refresh: On and Off.
   let keepChips;
   const drawKeep = () => {
@@ -15542,6 +15570,7 @@ function kitBody(k, st, cfg, setDirty) {
       el("span", { className: "aw-label", textContent: label }),
       ...kids,
     );
+  changed();
   return [
     el("p", { className: "setting-desc kit-facts", textContent: kitFacts(k, st) }),
     el("p", {
@@ -15614,6 +15643,7 @@ function kitBody(k, st, cfg, setDirty) {
           textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, "")}, a mirror)`).join(", ")}.`,
         })
       : null,
+    el("p", { className: "aw-foot" }, discardB, saveB),
   ];
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
@@ -15634,9 +15664,9 @@ function editKit(k, mine) {
   kitsEl.addCancel.hidden = false;
   kitsEl.add.querySelector("button[type=submit]").textContent = "Update toolkit";
   // In the custom card's drawer: open it if it isn't.
-  const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
-  if (card && !card.classList.contains("open"))
-    card.querySelector(".aw-card-head").click();
+  const card = kitsEl.grid.querySelector("#kit-custom");
+  if (card && card.querySelector(".source-panel")?.hidden)
+    card.querySelector(".source-head").click();
   kitsEl.add.scrollIntoView?.({ block: "center" });
 }
 function resetKitForm() {

@@ -141,7 +141,7 @@ setTimeout(() => {
     check('  each off while nothing has changed, and nothing counted unsaved', !on.length && !w.AW.unsaved().length,
       on.map((b) => (b.closest('[id]') || {}).id).join(', ') + ' / ' + w.AW.unsaved().map((x) => x.id).join(', '));
   }
-  const addMode = d.querySelector('#appstore-add select');
+  const addMode = d.querySelector('#appstore-add .chip-group[aria-label="What to add"]');
   check(
     'el() sets aria-* as attributes, so assistive technology sees them',
     addMode && addMode.getAttribute('aria-label') === 'What to add',
@@ -182,7 +182,7 @@ setTimeout(() => {
   const picked = (root, label) => (chipsOf(root, label).find((c) => c.getAttribute('aria-pressed') === 'true') || {}).textContent;
   const kiwix = d.getElementById('page-app-wiki');
   const panes = (id) => [...d.querySelectorAll(`#${id} > .admin-pane`)].map((x) => x.id).join(' ');
-  check('an app\'s page: its state, its own sections, then access, its tile and maintenance', panes('page-app-wiki') === 'app-head-wiki books app-access-wiki app-tile-wiki app-maint-wiki', panes('page-app-wiki'));
+  check('an app\'s page: its state, its own sections, then access, its tile and maintenance', panes('page-app-wiki') === 'app-head-wiki app-access-wiki app-tile-wiki books app-maint-wiki', panes('page-app-wiki'));
   check('  access, tile and maintenance fold, open to start', kiwix.querySelectorAll(':scope > .admin-pane > details.app-fold[open]').length === 3
     && !kiwix.querySelector(':scope > .admin-pane > details.app-fold:not([open])'));
   check('  its header: what it is, who opens it, and Open', /Built-in app/.test(t('#app-head-wiki')[0]) && /Access: administrators/.test(t('#app-head-wiki')[0])
@@ -255,7 +255,7 @@ setTimeout(() => {
   check('GitHub token: an Adapt to rate limit button, and the state said (adapting from the first check, Stop offered)', !!d.getElementById('library-adapt')
     && /Adapting from the first check/.test(d.getElementById('library-pace-state').textContent) && !d.getElementById('library-adapt-off').hidden);
   // Each app's page carries its slices: its own updates, what people made there, what was reported.
-  check('Excalidraw\'s page: its state, Saved work, then access, tile and maintenance (its own updates)', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-head-draw saved app-access-draw app-tile-draw app-maint-draw'
+  check('Excalidraw\'s page: its state, Saved work, then access, tile and maintenance (its own updates)', [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' ') === 'app-head-draw app-access-draw app-tile-draw saved app-maint-draw'
     && !!d.querySelector('#app-maint-draw #app-updates-draw'),
     [...d.querySelectorAll('#page-app-draw > .admin-pane')].map((x) => x.id).join(' '));
   check('  its own updates: the librarian\'s row, with Check and Update, without a second access switch', /Installed: abc1234/.test(t('#app-updates-draw')[0])
@@ -287,8 +287,7 @@ setTimeout(() => {
     check(
       '  an app with known docs says so on its line and its page',
       /Docs: Mermaid docs added/.test(line('Mermaid').textContent)
-        && /Docs: Mermaid docs/.test(t('#app-head-mermaid')[0])
-        && /Download now/.test(t('#app-head-mermaid')[0]),
+        && /Download docs/.test(t('#app-head-mermaid')[0]),
       JSON.stringify({ line: line('Mermaid') && line('Mermaid').textContent, head: t('#app-head-mermaid')[0] }),
     );
     d.querySelector('[data-inv="builtin"]').click();
@@ -491,12 +490,15 @@ setTimeout(() => {
   check('git: a release list from the cache says so, and why', /release list from the cache of .*rate limit/.test(t('#git-mirrors')[0])
     && d.querySelector('#git-mirrors .setting-desc.warn'), t('#git-mirrors')[0]);
   w.confirm = () => true;
+  d.querySelector('#git-mirrors .source-card:not(.source-add-card) .source-head').click();
   [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Include revoked releases').click();
-  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update mirror').click();
+  [...d.querySelectorAll('#git-mirrors button')].find((b) => b.textContent === 'Update').click();
   // The repository cards are dom-git.cjs's; the mirrors' list is now Library → Mirrors.
   // A section headed with its page's title doesn't repeat it; a page of one section keeps it.
-  check('headings: Git\'s page says "Git" once; a page of one section keeps its heading',
-    d.querySelector('#page-app-git #git > h2').classList.contains('same-as-page')
+  check('headings: Git\'s page names its two lists; a page of one section keeps its heading',
+    d.querySelector('#page-app-git #git > h2').textContent === 'Git Repositories'
+    && d.querySelector('#page-app-git #mirrors > h2').textContent === 'Git Mirrors'
+    && !d.querySelector('#page-app-git #git > h2').classList.contains('same-as-page')
     && !d.querySelector('#page-clock #clock > h2').classList.contains('same-as-page'));
   // The sidebar's groups fold: open by default, each can be toggled.
   {

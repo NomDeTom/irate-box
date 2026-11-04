@@ -65,43 +65,44 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   await wait();
   const d = w.document;
-  const rows = () => [...d.querySelectorAll('#books-table tbody tr.book-row')];
+  const rows = () => [...d.querySelectorAll('#books-source-list .source-row')];
+  const row = (name) => rows().find((r) => (r.dataset.awId || '').endsWith(name));
   check('the library\'s poll leaves the books out', libraryAsked === '/admin/library?books=0', libraryAsked);
   check('the summary: all of them, their size, the states worth a look', /^300 books, 43\.1 MB\. 40 kept current\. 1 newer available\. 1 check failed\.$/.test(t(d.getElementById('books-summary'))),
     t(d.getElementById('books-summary')));
   check('one page of 50, from the hub', rows().length === 50 && /Page 1 of 6 \(300 matching\)/.test(t(d.getElementById('books-page'))));
-  const cells = (r) => [...r.cells].map((c) => t(c));
-  check('  a row: title, file, language, size, date, kept current, state', cells(rows()[0]).slice(1).join(' | ') === 'Book 1 book-001.zim | fra | 0.1 MB | 2026-02-01 | yes (url) | up to date',
-    cells(rows()[0]).join(' | '));
-  check('the languages, with their counts', [...d.querySelectorAll('#books-language option')].map((o) => t(o)).join(',') === 'any,deu (100),eng (100),fra (100)');
+  check('  a row: title, where it comes from, its state; its tags the filters use', /Book 1/.test(t(rows()[0]))
+    && /example\.invalid\/1\.zim/.test(t(rows()[0])) && /not checked yet/.test(t(rows()[0]))
+    && rows()[0].dataset.tags.split('|').join(',') === 'up to date,fra,managed',
+    JSON.stringify({ text: t(rows()[0]), tags: rows()[0].dataset.tags }));
+  const filter = d.querySelector('#books-cards .aw-filter input[type=search]');
+  filter.value = 'example.invalid/1.zim'; filter.dispatchEvent(new w.Event('input'));
+  check('the filter narrows the page at once', rows().filter((r) => !r.hidden).length === 1 && /1 of 50/.test(t(d.querySelector('#books-cards .aw-count'))),
+    t(d.querySelector('#books-cards .aw-count')));
+  filter.value = ''; filter.dispatchEvent(new w.Event('input'));
   d.getElementById('books-next').click(); await wait();
   check('Next: page 2 asked for', asked[asked.length - 1].page === '2' && /Page 2 of 6/.test(t(d.getElementById('books-page'))));
-  d.getElementById('books-q').value = 'Book 1'; d.getElementById('books-q').dispatchEvent(new w.Event('input')); await wait();
-  check('search: asked of the hub, from page 1', asked[asked.length - 1].q === 'Book 1' && asked[asked.length - 1].page === '1' && /\(111 matching\)/.test(t(d.getElementById('books-page'))),
-    JSON.stringify(asked[asked.length - 1]));
-  d.getElementById('books-q').value = ''; d.getElementById('books-kept').value = 'yes'; d.getElementById('books-kept').dispatchEvent(new w.Event('change')); await wait();
-  check('filter: kept current', asked[asked.length - 1].kept === 'yes' && rows().length === 40);
-  d.getElementById('books-page-all').click(); await wait(50);
-  check('select this page', rows().every((r) => r.querySelector('input').checked) && /40 selected:/.test(t(d.getElementById('books-bulk'))));
-  [...d.querySelectorAll('[data-bulk]')].find((b) => b.dataset.bulk === 'check').click(); await wait();
+  d.getElementById('books-prev').click(); await wait();
+  check('Previous: page 1 again', asked[asked.length - 1].page === '1' && /Page 1 of 6/.test(t(d.getElementById('books-page'))));
+  const picked = rows().slice(0, 2).map((r) => r.dataset.awId.replace(/^book-/, ''));
+  rows()[0].querySelector('input').click(); rows()[1].querySelector('input').click();
+  check('two ticks: the bulk bar says so', /2 selected/.test(t(d.querySelector('#books-cards .books-bulk-count'))));
+  d.querySelector('[data-book-bulk="check"]').click(); await wait();
   const chk = posted.find((b) => b.action === 'check');
-  check('bulk Check: every selected book, by name', chk && chk.names.length === 40 && chk.names[0] === 'book-001', JSON.stringify(chk));
-  d.getElementById('books-select-none').click(); await wait(50);
-  d.getElementById('books-kept').value = ''; d.getElementById('books-kept').dispatchEvent(new w.Event('change')); await wait();
-  check('  Clear the selection', !rows().some((r) => r.querySelector('input').checked));
-  d.getElementById('books-select-matching').click(); await wait();
-  check('select every matching book, across the pages', /300 selected:/.test(t(d.getElementById('books-bulk'))) && asked.some((a) => a.names === '1'));
-  d.getElementById('books-select-none').click(); await wait(50);
-  rows()[1].querySelector('input').click(); rows()[2].querySelector('input').click();
-  [...d.querySelectorAll('[data-bulk]')].find((b) => b.dataset.bulk === 'untrack').click(); await wait();
-  check('bulk Stop tracking: one remove each', posted.filter((b) => b.action === 'remove').map((b) => b.name).join() === 'book-002,book-003',
+  check('bulk Check: every selected book, by name', chk && chk.names.join() === picked.join(), JSON.stringify({ chk, picked }));
+  d.querySelector('[data-book-bulk="untrack"]').click(); await wait();
+  check('bulk Stop tracking: one remove each', posted.filter((b) => b.action === 'remove').map((b) => b.name).join() === picked.join(),
     JSON.stringify(posted.filter((b) => b.action === 'remove')));
-  rows()[0].querySelector('.link-button').click(); await wait(50);
-  const card = d.querySelector('#books-table tr.book-card');
-  check('a kept book\'s card opens under its row, with its buttons', card && /book-001\.zim/.test(t(card)) && [...card.querySelectorAll('button')].some((b) => t(b) === 'Install'));
-  const hand = rows().find((r) => /book-050/.test(t(r)));
-  hand.querySelector('.link-button').click(); await wait(50);
-  check('  one put here by hand says the librarian leaves it alone', /put here by hand or from a USB drive\. The librarian does not change it/.test(t(d.querySelector('#books-table tr.book-card'))));
+  await wait();
+  rows()[0].querySelector('.source-row-head').click(); await wait(50);
+  const card = rows()[0].querySelector('.source-row-detail');
+  check('a kept book\'s drawer opens under its row, with its actions',
+    card && !card.hidden && [...card.querySelectorAll('button')].some((b) => t(b) === 'Stop tracking'), card && t(card));
+  const hand = row('book-050');
+  hand.querySelector('.source-row-head').click(); await wait(50);
+  check('  one put here by hand says the librarian leaves it alone',
+    /by hand or USB/.test(t(hand)) && /Managed updates: none/.test(hand.dataset.tags)
+      && /number 50/.test(t(hand.querySelector('.source-row-detail'))), t(hand));
   // Kiwix's catalogue.
   const cf = d.getElementById('catalogue-form');
   cf.elements.q.value = 'raspberry'; cf.elements.language.value = 'eng';

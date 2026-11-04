@@ -209,9 +209,9 @@ const type = (input, value) => {
   w.renderGit = () => { redrawn++; };
   const panel = ev('managePanel')({ name: 'r', area: 'public' }, { presets: {}, repos: [] });
   confirms = false;
-  const priv = [...panel.querySelectorAll('input[type="radio"]')].find((r) => r.value === 'private');
-  priv.checked = true;
-  priv.dispatchEvent(new w.Event('change', { bubbles: true }));
+  const priv = [...panel.querySelectorAll('.chip-group[aria-label="Who can see it?"] .chip')]
+    .find((b) => b.textContent === 'Administrators');
+  priv.click();
   await wait();
   confirms = true;
   w.renderGit = realGit;
