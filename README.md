@@ -3,7 +3,7 @@
 
 # Irate-Box
 
-A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, offline-first, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox and forum and filedrop just like the original.
+A self-contained offline hub for a small board. Spiritually a [PirateBox](https://github.com/PirateBox-Dev) successor (hence the name), but Pi-first, offline-first, and built from maintained, packaged components rather than a 2013 shell-script. It runs a WiFi access point; anything that joins gets a captive portal that opens a landing page (the Hub), with an anonymous shoutbox, message board and filedrop just like the original.
 
 <img src="docs/images/iratebox-hub.webp" alt="Irate-Box hub home page" width="960">
 
@@ -45,7 +45,7 @@ git clone <this repo> irate-box && cd irate-box
 ./irate-box server
 ```
 
-Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** and the **board** — the parts that need nothing else. The service tiles link to paths that only exist behind the web server, so they show as "not running" until you add one. For a dev checkout Caddy is the quick one, since its Caddyfile runs as it is (the board uses nginx with the same routes, from `config/irate-box.nginx`):
+Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** and the **message board** — the parts that need nothing else. The service tiles link to paths that only exist behind the web server, so they show as "not running" until you add one. For a dev checkout Caddy is the quick one, since its Caddyfile runs as it is (the board uses nginx with the same routes, from `config/irate-box.nginx`):
 
 ```sh
 caddy run --config config/Caddyfile        # needs :80 — sudo, setcap, or edit the port

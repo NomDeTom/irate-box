@@ -19,7 +19,7 @@
 
 ## Guests and users
 
-- [Using the hub](for-guests.md): the apps, the shoutbox, the board, files and privacy.
+- [Using the hub](for-guests.md): the apps, the shoutbox, the message board, files and privacy.
 - [What an administrator can see](what-the-admin-can-see.md): your account and your work.
 - [Glossary](glossary.md)
 

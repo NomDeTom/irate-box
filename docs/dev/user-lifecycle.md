@@ -54,20 +54,21 @@ The administration pages then guide the administrator through the setup steps (`
 
 The steps, in order (`web/admin-tour.js`):
 
-1. **Administrator password**: set at first use, changeable here.
-2. **How guests reach the box**: through the network that the box is on, or through its own hotspot. This step includes the hotspot firewall.
-3. **WiFi country**: the country the box is in, so its radios use the right channels and power. Done already where the operating system has set one.
-4. **What the box exposes**: what a device on the network can reach, and the settings that change it.
-5. **Add-ons**: the extras this box needs.
-6. **Books**: the offline library.
-7. **The security decisions**, each with its default stated: visitor counts, signed-in name visibility, account registration, locked tiles, HTTP and HTTPS, the root helper's policy, hotspot security, guest internet access, SSH password sign-in, remote access (Tailscale), Cockpit, the terminal. Steps for things the image does not have (Tailscale, Cockpit) show only where they exist.
-8. **Take a backup**, and keep the file off the box.
+1. **Quick setup**: what the box is for, and how hard it writes to its card. A preset sets several of the steps below and marks the ones it completes done.
+2. **Administrator password**: set at first use, changeable here.
+3. **How guests reach the box**: through the network that the box is on, or through its own hotspot. This step includes the hotspot firewall.
+4. **WiFi country**: the country the box is in, so its radios use the right channels and power. Done already where the operating system has set one.
+5. **What the box exposes**: what a device on the network can reach, and the settings that change it.
+6. **Add-ons**: the extras this box needs.
+7. **Books**: the offline library.
+8. **The security decisions**, each with its default stated: visitor counts, signed-in name visibility, account registration, locked tiles, HTTP and HTTPS, the root helper's policy, hotspot security, guest internet access, SSH password sign-in, remote access (Tailscale), Cockpit, the terminal. Steps for things the image does not have (Tailscale, Cockpit) show only where they exist.
+9. **Take a backup**, and keep the file off the box.
 
 A new setting that changes what guests or users can reach, or that weakens the box's security, must be a step here, with its default stated.
 
 ## 4. Everyday use
 
-**Guests** join the hotspot or the box's network. On the hotspot, the captive portal opens the hub; on other networks they open the box's address. They use the apps open to guests, read the library, post on the shoutbox and the board, and report content.
+**Guests** join the hotspot or the box's network. On the hotspot, the captive portal opens the hub; on other networks they open the box's address. They use the apps open to guests, read the library, post on the shoutbox and the message board, and report content.
 
 **Users** sign in. How they get an account depends on the registration setting:
 
