@@ -3611,11 +3611,12 @@ body.drop > section + section {
 .source-expanded > .source-actions {
   margin-top: auto;
 }
-.source-expanded > .source-drawer {
+.source-panel.source-expanded > .source-drawer {
   margin-top: 0;
   border: 0;
   border-top: 1px solid var(--border);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0;
+  background: var(--surface);
 }
 .source-panel.open .source-head::after {
   content: "▾";

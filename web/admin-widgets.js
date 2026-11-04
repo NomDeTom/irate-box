@@ -387,7 +387,7 @@ const AW = (() => {
         card.style.minHeight = `${height}px`;
         card.style.visibility = 'hidden';
         panel.classList.add('open');
-        panel.replaceChildren(head, actionsNode || '', body);
+        panel.replaceChildren(head, body, actionsNode || '');
         place();
         onResize = () => place();
         window.addEventListener('resize', onResize);
