@@ -45,7 +45,29 @@
     }
     if (testButton) testButton.disabled = !ready;
   }
-  async function get() { const response = await fetch('/admin/pins'); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); }
+  // The hardware document carries the overlay and display state without a Box doctor scan; /admin/pins carries
+  // the last pin read and the helper's answers. On a box whose root helper has not published one yet, the pin
+  // page's own copy of the overlay is used.
+  function overlayFromHardware(hw) {
+    const lcd = hw && hw.overlays && hw.overlays.items && hw.overlays.items.lcd;
+    if (!lcd) return null;
+    const display = hw.display || {};
+    return { ...lcd, display_on: lcd.display_on === undefined ? Boolean(display.on) : lcd.display_on };
+  }
+  async function get() {
+    const response = await fetch('/admin/pins');
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    try {
+      const hwResponse = await fetch('/admin/hardware');
+      if (hwResponse.ok) {
+        const hw = await hwResponse.json();
+        data.overlay = overlayFromHardware(hw) || data.overlay;
+        if (!data.pins && hw.pins && hw.pins.header) data.pins = hw.pins;
+      }
+    } catch (_) { /* the pin page's own copy still stands */ }
+    return data;
+  }
   async function post(body) {
     const response = await fetch('/admin/pins', { method: 'POST', headers: ADMIN_HEADERS, body: JSON.stringify(body) });
     const data = await response.json().catch(() => ({}));

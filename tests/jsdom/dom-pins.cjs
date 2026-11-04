@@ -31,6 +31,17 @@ const map = (at) => ({
   ],
 });
 w.fetch = async (u, opts = {}) => {
+  // The page reads the hardware document too, for the overlay and display state without a scan.
+  if (u === '/admin/hardware') {
+    return new Response(
+      JSON.stringify({
+        overlays: { items: { lcd: state.overlay } },
+        display: state.overlay ? { on: !!state.overlay.display_on } : { supported: false },
+        pins: state.pins,
+      }),
+      { status: 200 },
+    );
+  }
   if (u !== '/admin/pins') return new Response('{}', { status: 404 });
   if (opts.method === 'POST') {
     const body = JSON.parse(opts.body);
