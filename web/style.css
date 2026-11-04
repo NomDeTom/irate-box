@@ -3614,7 +3614,7 @@ body.drop > section + section {
 }
 .source-expanded > .source-actions {
   margin-top: auto;
-  padding: 0.75rem 1rem 0.85rem;
+  padding: 0.75rem 1rem 1rem;
   border-top: 1px solid var(--border);
 }
 /* An add mini-card's fields: two or three to a line, the wider parts across the row. */
@@ -3709,7 +3709,7 @@ body.drop > section + section {
 }
 .source-card .source-actions {
   margin-top: auto;
-  padding: 0.6rem 0.9rem 0.7rem;
+  padding: 0.6rem 1rem 1rem;
   border-top: 1px solid var(--border);
 }
 .git-new {
