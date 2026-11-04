@@ -268,11 +268,14 @@ with (
 check("  the console command still approves it", said["id"] == "update.security.approved", said)
 (T / "etc/install-options").write_text("--repo\nhttps://example.invalid/irate-box\n--branch\nmain\n")
 with (
-    mock.patch.object(H, "_run_install", lambda *args, **kwargs: 3),
+    mock.patch.object(H, "_run_install", lambda *args, **kwargs: (3, [])),
     mock.patch.object(H, "_installed_commit", lambda: "abcdef0"),
 ):
     said = H.update_install({})
 check("  and the approved update installs", said["id"] == "update.install.done", said)
+with mock.patch.object(H, "_installed_commit", lambda: full):
+    said = H.update_approve_security({})
+check("an approval for the version the box already runs says so", said["id"] == "update.security.installed", said)
 
 record = H._security_record_finding()
 check(

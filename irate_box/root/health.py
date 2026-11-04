@@ -305,6 +305,21 @@ def check_install():
                 ),
                 notes=[M("install.problems.now", "The findings below say which ones are still there.")],
                 evidence=[p[:200] for p in problems[:12]],
+                actions=(
+                    [
+                        action(
+                            "syncthing-password",
+                            M("install.syncthing.action", "Set the Syncthing password again"),
+                            M(
+                                "install.syncthing.confirm",
+                                "Set Syncthing's GUI password to the administrator password again? /sync/ "
+                                "keeps its current password until this succeeds.",
+                            ),
+                        )
+                    ]
+                    if any("Syncthing" in problem for problem in problems)
+                    else []
+                ),
             )
         ]
     return [

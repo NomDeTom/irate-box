@@ -713,12 +713,8 @@ def _web_open(request, timeout, local_origin=None):
     return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
 
 
-def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
-    """Syncthing's GUI password, through its REST API with the API key from its own config: the
-    password travels in the request body, never on a command line (`syncthing cli … password
-    set` would put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves.
-    Tried again for a while: install.sh's `gui user set` just before restarts the GUI's listener,
-    and a request in that gap finds nothing there."""
+def _syncthing_api_key():
+    """Syncthing's API key from the config it writes, re-read so a restarted Syncthing is still met."""
     cfg = next(
         (
             t
@@ -730,22 +726,43 @@ def syncthing_gui_password(pw, tries=15, sleep=time.sleep):
         ),
         None,
     )
-    m = re.search(r"<apikey>([^<]+)</apikey>", cfg.read_text()) if cfg else None
-    if not m:
-        return False
-    req = urllib.request.Request(
-        f"{SYNCTHING_GUI}/rest/config/gui",
-        method="PATCH",
-        data=json.dumps({"password": pw}).encode(),
-        headers={"X-API-Key": m.group(1), "Content-Type": "application/json"},
-    )
+    try:
+        text = cfg.read_text() if cfg else ""
+    except OSError:
+        return None
+    m = re.search(r"<apikey>([^<]+)</apikey>", text)
+    return m.group(1) if m else None
+
+
+def syncthing_gui_password(pw, tries=60, sleep=time.sleep):
+    """Syncthing's GUI password, through its REST API with the API key from its own config: the
+    password travels in the request body, never on a command line (`syncthing cli … password
+    set` would put it in /proc for every process to read). Syncthing hashes it (bcrypt) as it saves.
+    Tried again for a minute: install.sh's `gui user set` just before restarts the GUI's listener,
+    and on a slow board (the Lyra) the new one can be later than the old 15-second window. The key
+    is read again on each try, so a restarted Syncthing with a fresh key is still met; the last
+    error is printed for install.log when every try fails."""
+    last = None
     for attempt in range(tries):
-        try:
-            with _web_open(req, timeout=20, local_origin=SYNCTHING_GUI) as resp:
-                return resp.status == 200
-        except OSError:
-            if attempt + 1 < tries:
-                sleep(1)
+        key = _syncthing_api_key()
+        if key:
+            req = urllib.request.Request(
+                f"{SYNCTHING_GUI}/rest/config/gui",
+                method="PATCH",
+                data=json.dumps({"password": pw}).encode(),
+                headers={"X-API-Key": key, "Content-Type": "application/json"},
+            )
+            try:
+                with _web_open(req, timeout=20, local_origin=SYNCTHING_GUI) as resp:
+                    if resp.status == 200:
+                        return True
+                    last = OSError(f"HTTP {resp.status}")
+            except OSError as exc:
+                last = exc
+        if attempt + 1 < tries:
+            sleep(1)
+    if last is not None:
+        print(f"syncthing_gui_password: {last}", file=sys.stderr)
     return False
 
 
@@ -2216,6 +2233,24 @@ def _installed_commit():
     return match.group(1) if match else None
 
 
+def _same_commit(a, b):
+    """Two commits as the state and VERSION hold them: a short sha may stand for a full one."""
+    a, b = str(a or ""), str(b or "")
+    return bool(a and b and (a.startswith(b) or b.startswith(a)))
+
+
+def _installed_is(sha):
+    """Whether the commit in VERSION is this sha."""
+    return _same_commit(_installed_commit(), sha)
+
+
+def _state_stale(state):
+    """The update state is from before an install: it names an installed commit VERSION does not."""
+    old = str(state.get("installed") or "")
+    now = _installed_commit()
+    return bool(now and old and not _same_commit(now, old))
+
+
 def _relation(gitdir, installed, head="HEAD"):
     """How a commit stands against the installed one, in a git directory that has both: "same", "ahead" (it continues
     from the installed commit), "behind" (the installed commit already contains it: installing it goes back),
@@ -2739,6 +2774,27 @@ def update_approve_security(req):
         )
     state = _read_update_state()
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if _installed_is(full):
+        # The fetched tree is what this box already runs. The cached report may still hold changes for it; the
+        # approval is for a download, not for a version already in place.
+        if state:
+            state["security_approved_sha"] = None
+            state["security_approved_commit"] = None
+            _write_update_state(state)
+        return M(
+            "update.security.installed",
+            "This version is already installed. Check for updates to see whether a newer one is available.",
+        )
+    if _state_stale(state):
+        raise Refused(
+            M(
+                "update.security.stale",
+                "The update state is out of date: the box now runs {now}, and this download was checked for {old}. "
+                "Check for updates again.",
+                now=_installed_commit() or "",
+                old=state.get("installed") or "",
+            )
+        )
     if state.get("checked_sha") != full:
         raise Refused(
             M(
@@ -2746,7 +2802,7 @@ def update_approve_security(req):
                 "The downloaded version has not been checked. Check for updates again.",
             )
         )
-    report = security_report(UPDATE_SRC, state.get("installed"), sha=full)
+    report = security_report(UPDATE_SRC, _installed_commit() or state.get("installed"), sha=full)
     if not report["manifest"] or report["problems"]:
         raise Refused(
             M(
@@ -3737,6 +3793,49 @@ def update_check(req):
     )
 
 
+def update_state_sync(req):
+    """The Update doctor's repair for a state left behind by an install: bring control/update.json's
+    installed commit back to the one in VERSION, without a network check. The checks and approval it
+    held were made for the older version, so they go; a check for updates finds anything newer."""
+    state = _read_update_state()
+    now = _installed_commit()
+    if not now:
+        raise Refused(
+            M(
+                "update.sync.none",
+                "The installed version could not be read from VERSION. Run the installer again or check for updates.",
+            )
+        )
+    if not state:
+        raise Refused(
+            M(
+                "update.sync.no-state",
+                "There is no update state to bring up to date. Check for updates first.",
+            )
+        )
+    if not _same_commit(state.get("installed"), now):
+        state.update(
+            installed=now,
+            checked_sha=None,
+            verified=None,
+            verified_sha=None,
+            checks=[],
+            security={},
+            security_approved_sha=None,
+            security_approved_commit=None,
+        )
+    if _same_commit(state.get("available_sha"), now):
+        state.update(up_to_date=True, changes=[])
+    _write_update_state(state)
+    _doctor_again()
+    return M(
+        "update.sync.done",
+        "The update state now follows the installed version {commit}. Check for updates to see whether a newer "
+        "one is available.",
+        commit=now,
+    )
+
+
 def update_fetch(req):
     # Steps: the verification, plus the check if one is needed, plus each download
     # (prefetch adds those once it knows them).
@@ -3895,6 +3994,21 @@ def update_install(req):
     state = _read_update_state()
     # The whole hash of what is checked out, against the whole hash that passed.
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if _installed_is(full):
+        return M(
+            "update.install.installed",
+            "This version is already installed. Check for updates to see whether a newer one is available.",
+        )
+    if _state_stale(state):
+        raise Refused(
+            M(
+                "update.install.stale",
+                "The update state is out of date: the box now runs {now}, and this download was checked for {old}. "
+                "Check for updates again.",
+                now=_installed_commit() or "",
+                old=state.get("installed") or "",
+            )
+        )
     if not state.get("verified_sha") or state.get("verified_sha") != full:
         if not _approved_only(state, full):
             raise Refused(
@@ -3940,7 +4054,17 @@ def _install_fetched(state, how="https", forced=False, overridden=()):
     levels = report.get("levels") or secchanges.levels()
     signing_level = signing.load(ETC)["level"]
     tag = state.get("tag")
-    seen = _run_install(UPDATE_SRC, _install_options(), "install", state.get("install_steps"))
+    try:
+        seen, problems = _run_install(UPDATE_SRC, _install_options(), "install", state.get("install_steps"))
+    except Refused:
+        # An install that stopped leaves the approval without a version it belongs to. The record keeps the
+        # approval; the state must not claim the install is ready.
+        latest = _read_update_state()
+        if latest:
+            latest["security_approved_sha"] = None
+            latest["security_approved_commit"] = None
+            _write_update_state(latest)
+        raise
     commit = _installed_commit()
     secchanges.record_install(commit or "", tag, signing_level, levels, changes, how, forced, overridden)
     state = _read_update_state()
@@ -3954,6 +4078,18 @@ def _install_fetched(state, how="https", forced=False, overridden=()):
             security_approved_commit=None,
         )
         _write_update_state(state)
+    # The doctor's report follows every install, so what it says is never older than the box it describes.
+    _doctor_again()
+    if problems:
+        return M(
+            "update.install.done-problems",
+            {
+                "one": "Updated to {commit}, with {n} problem. Read it on Updates.",
+                "other": "Updated to {commit}, with {n} problems. Read them on Updates.",
+            },
+            commit=commit or "",
+            n=len(problems),
+        )
     return _installed_now()
 
 
@@ -3980,6 +4116,19 @@ def _force_refusal(state, over=None):
             "No update is downloaded yet. Check for updates, then download the update.",
         )
     full = _git("-C", str(UPDATE_SRC), "rev-parse", "HEAD")
+    if _installed_is(full):
+        return M(
+            "update.force.installed",
+            "This version is already installed. Check for updates to see whether a newer one is available.",
+        )
+    if _state_stale(state):
+        return M(
+            "update.force.stale",
+            "The update state is out of date: the box now runs {now}, and this download was checked for {old}. "
+            "Check for updates again.",
+            now=_installed_commit() or "",
+            old=state.get("installed") or "",
+        )
     if state.get("checked_sha") != full or not state.get("checks"):
         return M(
             "update.force.not-checked",
@@ -4065,15 +4214,35 @@ def update_force_install(req):
     return _installed_now()
 
 
+def _problem_only_install(started, code):
+    """The problems a finished installer reported, when its non-zero exit is install.sh's `problem()`
+    flag rather than an abort. `problem()` lets the install carry on but sets the same exit code as
+    `die()`; the state file it writes says which happened: `aborted` false, with a problem list. A
+    file from an earlier run is ignored by its start time."""
+    if code == 0:
+        return None
+    try:
+        info = json.loads(health.INSTALL_STATE.read_text())
+    except (OSError, ValueError):
+        return None
+    if info.get("aborted") or not info.get("problems"):
+        return None
+    if float(info.get("started") or 0) < started - 2:  # not this run's file
+        return None
+    return [str(problem) for problem in info["problems"]]
+
+
 def _run_install(src, args, action, steps=None):
     """Run src's install.sh with args, its output in control/update.log and its "==> " steps in
     update-progress.json. steps: what the last install here printed (a guess until one has).
-    Returns the steps it printed; raises ValueError if it fails."""
+    Returns (the steps it printed, the problems a finished installer reported); raises Refused when
+    it stopped: a failed command, an abort, or a non-zero exit with no finished-install record."""
     cmd = ["bash", "-p", str(src / "install.sh"), "--src", str(src), *args]
     if "--download-cache" in (src / "install.sh").read_text():
         cmd += ["--download-cache", str(DOWNLOADS)]
     # systemd gives the helper no HOME, and Caddy (the fallback) warns about it on every validate.
     env = dict(os.environ, HOME=os.environ.get("HOME", "/root"))
+    started = time.time()
     with (
         Progress(action, steps or INSTALL_STEPS_GUESS, estimate=not steps) as progress,
         safeio.open_new(UPDATE_LOG) as log,
@@ -4082,7 +4251,8 @@ def _run_install(src, args, action, steps=None):
         log.flush()
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env)  # noqa: TID251
         code, seen = _follow_install(proc, progress)
-    if code != 0:
+    problems = _problem_only_install(started, code)
+    if code != 0 and problems is None:
         raise Refused(
             M(
                 "update.install.failed",
@@ -4090,7 +4260,7 @@ def _run_install(src, args, action, steps=None):
                 code=code,
             )
         )
-    return seen
+    return seen, problems or []
 
 
 # --- add-ons ---------------------------------------------------------------------------
@@ -4152,7 +4322,7 @@ def addon(req):
     shutil.copytree(CODE, ADDON_SRC, symlinks=True)
     state = _read_update_state()
     try:
-        seen = _run_install(ADDON_SRC, args, "addon", state.get("install_steps"))
+        seen, _ = _run_install(ADDON_SRC, args, "addon", state.get("install_steps"))
     finally:
         shutil.rmtree(ADDON_SRC, ignore_errors=True)
     if state:  # the next run's step count: the same script, near enough the same steps
@@ -4190,7 +4360,7 @@ def addon_switch(req):
     shutil.copytree(CODE, ADDON_SRC, symlinks=True)
     state = _read_update_state()
     try:
-        seen = _run_install(ADDON_SRC, args, "addon", state.get("install_steps"))
+        seen, _ = _run_install(ADDON_SRC, args, "addon", state.get("install_steps"))
     finally:
         shutil.rmtree(ADDON_SRC, ignore_errors=True)
     if state:
@@ -4999,10 +5169,52 @@ def updates_doctor_findings():
     # 10. The last fetch, as the page last saw it.
     try:
         last = json.loads(UPDATE_STATE.read_text())
+        stale = _state_stale(last)
+        if stale:
+            findings.append(
+                finding(
+                    "last-check",
+                    M("update.last-check.title", "Last update check"),
+                    "warn",
+                    M(
+                        "update.last-check.stale",
+                        "The last check is out of date: it was made for {old}, and the box now runs {new}. "
+                        "Check for updates again.",
+                        old=last.get("installed") or "",
+                        new=_installed_commit() or "",
+                    ),
+                    M(
+                        "update.last-check.stale.why",
+                        "The held changes and failed checks it names belong to the version the box ran before "
+                        "the last install.",
+                    ),
+                    M(
+                        "update.last-check.stale.fix",
+                        "Bring the state up to date now, or check for updates again to see whether a newer one "
+                        "is available.",
+                    ),
+                    actions=[
+                        finding_action(
+                            "state-sync",
+                            M("update.last-check.sync", "Re-sync the update state"),
+                            M(
+                                "update.last-check.sync.confirm",
+                                "Bring the update state up to date with the version this box runs? The state's "
+                                "checks for the older version are cleared, and a check for updates finds anything "
+                                "newer.",
+                            ),
+                        )
+                    ],
+                )
+            )
         approved = _security_approved(last)
-        failed = [
-            c for c in last.get("checks", []) if not c.get("ok") and (not c.get("warn") or c.get("id") == "nginx")
-        ]
+        failed = (
+            []
+            if stale
+            else [
+                c for c in last.get("checks", []) if not c.get("ok") and (not c.get("warn") or c.get("id") == "nginx")
+            ]
+        )
         if failed:
             findings.append(
                 finding(
@@ -5172,15 +5384,21 @@ def _security_only_held(state):
 
 
 def _security_approved(state):
-    """Whether the held changes are already approved for the downloaded version."""
+    """Whether the held changes are already approved for the downloaded version. A version the box already
+    runs is not waiting for an install, whatever an older approval says."""
     sha = state.get("security_approved_sha")
-    return bool(sha) and sha == state.get("checked_sha")
+    return bool(sha) and sha == state.get("checked_sha") and not _installed_is(sha)
 
 
 def _approve_actions(state):
     """Approve and install, when the security hold is the only failed check and the level allows it over HTTPS.
     An approval that is already recorded leaves no button: the page says it is approved instead."""
-    if not _security_only_held(state) or _security_approved(state):
+    if (
+        not _security_only_held(state)
+        or _security_approved(state)
+        or _state_stale(state)
+        or _installed_is(state.get("checked_sha"))
+    ):
         return []
     report = state["security"]
     held = report["held"]
@@ -5219,6 +5437,8 @@ def _force_actions(state):
     """Install anyway, for the last download's failed checks, only when update_force_install would run: the button's
     question lists exactly the checks it skips. A security hold that can be approved has its own button instead, so
     the two are never offered side by side for the same case."""
+    if _state_stale(state) or _installed_is(state.get("checked_sha")):
+        return []
     skipped = _force_failed(state)
     if _security_only_held(state):
         return []
@@ -7089,6 +7309,41 @@ def rerun_install(port=None):
     return M("control.health.rerun.done", "The installer ran again and finished.")
 
 
+def syncthing_password_again():
+    """The Last install finding's button: set Syncthing's GUI password to the administrator password again."""
+    try:
+        pw = (ETC / "admin-password").read_text().strip()
+    except OSError:
+        raise Refused(
+            M(
+                "control.syncthing.no-password",
+                "The administrator password is not on the box. Set one on Security, then try again.",
+            )
+        ) from None
+    if not pw:
+        raise Refused(
+            M(
+                "control.syncthing.no-password",
+                "The administrator password is not on the box. Set one on Security, then try again.",
+            )
+        )
+    if run("systemctl", "is-active", "--quiet", f"syncthing@{HUB_USER}").returncode != 0:
+        raise Refused(
+            M(
+                "control.syncthing.not-running",
+                "Syncthing is not running. Start it on Recovery and monitoring, then try again.",
+            )
+        )
+    if not syncthing_gui_password(pw):
+        raise Refused(
+            M(
+                "control.syncthing.failed",
+                "Syncthing's GUI did not answer within a minute. Try again once it is running.",
+            )
+        )
+    return M("control.syncthing.done", "Syncthing's GUI password is set again.")
+
+
 def health_fix(req):
     choice = str(req.get("choice", ""))
     try:
@@ -7096,6 +7351,8 @@ def health_fix(req):
             msg = rerun_install()
         elif choice == "rerun-install-port-80":
             msg = rerun_install(port="80")
+        elif choice == "syncthing-password":
+            msg = syncthing_password_again()
         elif choice == "net-scan":
             msg = net_scan({})
         else:
@@ -8861,6 +9118,7 @@ ACTIONS = {
     "update-set-source": update_set_source,
     "update-signing": update_signing,
     "update-approve-security": update_approve_security,
+    "update-state-sync": update_state_sync,
     "security-scan": security_scan,
     "security-audit": security_audit,
     "security-deep-audit": security_deep_audit,
