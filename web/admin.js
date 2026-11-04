@@ -11874,6 +11874,7 @@ async function addDoc(doc, button) {
     loadLibrary();
   }
 }
+const docsWanted = new Set();
 function docsLine(m) {
   const docs = docsOf(m);
   if (!docs.length) return null;
@@ -11896,11 +11897,12 @@ function docsLine(m) {
     } else if (st.fetching) {
       bits.push(AW.pill("Downloading", "warn"));
     } else if (st.kiwixReady === false) {
-      bits.push(AW.pill("Needs Kiwix", "bad"));
       bits.push(
-        actionButton("Add Kiwix and the book", (event) => addDoc(doc, event.currentTarget), {
-          className: "small",
-          dataset: { wait: `docs:${doc.book}` },
+        AW.pill("Needs Kiwix", "bad"),
+        el("a", {
+          className: "button-link small",
+          href: "#app-install-wiki",
+          textContent: "Open Kiwix",
         }),
       );
     } else if (st.added) {
@@ -11953,6 +11955,51 @@ function fillHeadBlocks() {
           textContent: "Open",
         }),
       );
+    }
+    // Read Docs sits beside Open. No docs: greyed. On the box: open them. Missing Kiwix: reveal the
+    // "Needs Kiwix" line and its shortcut. Kiwix there: download the docs.
+    const docs = docsOf(m);
+    const doc = docs[0];
+    if (!doc) {
+      buttons.push(actionButton("Read Docs", () => {}, { disabled: true }));
+    } else {
+      const st = docState(doc);
+      if (st.onBox) {
+        buttons.push(
+          el("a", {
+            className: "action-btn",
+            href: `/wiki/content/${encodeURIComponent(doc.book)}/`,
+            target: "_blank",
+            rel: "noopener",
+            textContent: "Read Docs",
+          }),
+        );
+      } else if (st.fetching) {
+        buttons.push(actionButton("Downloading docs…", () => {}, { disabled: true }));
+      } else if (st.kiwixReady === false) {
+        buttons.push(
+          actionButton("Read Docs", () => {
+            docsWanted.add(id);
+            fillHeadBlocks();
+          }),
+        );
+      } else if (st.added) {
+        buttons.push(
+          actionButton(
+            "Download docs",
+            (event) => libAct(`docs:${doc.book}`, { action: "update", names: [doc.book] }, event.currentTarget),
+            { dataset: { wait: `docs:${doc.book}` } },
+          ),
+        );
+      } else {
+        buttons.push(
+          actionButton(
+            "Download docs",
+            (event) => addDoc(doc, event.currentTarget),
+            { dataset: { wait: `docs:${doc.book}` } },
+          ),
+        );
+      }
     }
     const addon =
       lastAddons && (lastAddons.addons || []).find((x) => x.id === id);
@@ -12030,7 +12077,7 @@ function fillHeadBlocks() {
         buttons.length
           ? el("p", { className: "library-buttons" }, ...buttons)
           : null,
-        docsLine(m),
+        docsWanted.has(id) ? docsLine(m) : null,
       ].filter(Boolean),
     );
   });
