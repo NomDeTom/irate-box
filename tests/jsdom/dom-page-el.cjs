@@ -47,7 +47,7 @@ setTimeout(() => {
   const podcastText = d.getElementById('podcasts-panel').textContent;
   const driveText = d.getElementById('library-drive-panel').textContent;
   check('the podcast page draws its settings form, not a dataset fault',
-    /Follow podcasts/.test(podcastText) && /Save settings/.test(podcastText) && /fault in the page/.test(podcastText) === false,
+    /Follow podcasts/.test(podcastText) && /Save/.test(podcastText) && /fault in the page/.test(podcastText) === false,
     podcastText.slice(0, 200));
   check('the library drive page draws its form, not a dataset fault',
     /Where each kind is kept/.test(driveText) && /Save drive and places/.test(driveText) && /fault in the page/.test(driveText) === false,

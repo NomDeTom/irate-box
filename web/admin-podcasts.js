@@ -9,6 +9,7 @@
   let snap = null;
 
   const el = AW.el;
+  const actionButton = (label, onclick, extra = {}) => AW.btn(label, { ...extra, onclick });
   const size = (n) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`);
   const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "never");
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
