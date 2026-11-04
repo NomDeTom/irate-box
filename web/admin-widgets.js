@@ -234,7 +234,7 @@ const AW = (() => {
   const scopeOf = (node) => node.closest('.admin-pane, [data-aw-scope]') || document.body;
 
   // ---- A filter bar (3f) over any list whose rows carry data-text and data-tags ----
-  function filterBar(list, rowSel, items) {
+  function filterBar(list, rowSel, items, opts = {}) {
     const tags = [...new Set(items.flatMap((i) => i.badges || []))].slice(0, 8);
     const active = new Set();
     const count = h('span', { class: 'aw-count' });
@@ -257,7 +257,8 @@ const AW = (() => {
       event.currentTarget.setAttribute('aria-pressed', String(active.has(t)));
       apply();
     } }, t));
-    const bar = h('div', { class: 'aw-filter', 'data-filter-for': list.id }, q, chips.length ? h('div', { class: 'filter-chips' }, chips) : null, count);
+    const bar = h('div', { class: 'aw-filter', 'data-filter-for': list.id }, q, chips.length ? h('div', { class: 'filter-chips' }, chips) : null, count,
+      opts.sort ? h('span', { class: 'aw-filter-sort' }, opts.sort) : null);
     bar.apply = apply;
     count.textContent = `${items.length} of ${items.length}`;
     return bar;
@@ -300,6 +301,37 @@ const AW = (() => {
   }
   const dl = (obj) => obj ? h('dl', { class: 'aw-dl' }, Object.entries(obj).map(([k, v]) => [h('dt', { text: k }), h('dd', { text: String(v) })])) : null;
 
+  // The short-list view of a source with many entries: Mock controls' row, the line's own actions beside it, and
+  // the same drawer as the card opening directly under the line at the list's full width.
+  //   items: [{id, title, summary, pill, badges, actions, tick, body}]
+  function sourceList(items, opts = {}) {
+    const id = listId(opts, 'source-list');
+    const list = h('div', { class: 'aw-list source-list', id, 'data-list': 'source-list', 'data-count': items.length });
+    for (const it of items) {
+      const detail = h('div', { class: 'aw-row-detail source-row-detail', hidden: true },
+        ...[it.body].flat(Infinity).filter((node) => node !== null && node !== undefined));
+      const head = h('button', {
+        type: 'button', class: 'aw-row-head source-row-head', 'aria-expanded': 'false', 'data-disclosure': '',
+        onclick: () => {
+          const open = detail.hidden;
+          list.querySelectorAll('.source-row-detail').forEach((d) => { d.hidden = true; });
+          list.querySelectorAll('.source-row-head').forEach((hd) => hd.setAttribute('aria-expanded', 'false'));
+          detail.hidden = !open;
+          head.setAttribute('aria-expanded', String(open));
+        },
+      },
+        h('span', { class: 't', text: it.title }),
+        h('span', { class: 's', text: it.summary || '' }),
+        h('span', { class: 'p' }, it.pill || null));
+      const actions = h('span', { class: 'library-buttons source-row-actions' },
+        it.tick || null, ...[it.actions].flat(Infinity).filter(Boolean));
+      list.append(h('div', { class: 'aw-row source-row', 'data-aw-id': it.id, ...rowData({ title: it.title, summary: it.summary, badges: it.badges || [] }) },
+        head, actions, detail));
+    }
+    if (!items.length && opts.empty) list.append(h('p', { class: 'setting-desc', text: opts.empty }));
+    return h('div', { class: 'aw-block source-list-block' }, items.length > FILTER_AT ? filterBar(list, '.aw-row', items, { sort: opts.sort }) : null, list);
+  }
+
   // ---- Records (3e): newest first, a limited height and a scroll bar ----
   //   items: [{id, title}]   opts: {id, noun}
   function records(items, opts = {}) {
@@ -316,9 +348,7 @@ const AW = (() => {
   //          settings], open, onToggle}. The card stays in its grid when its drawer opens; the head is the fold.
   function sourceCard(opts) {
     const card = h('div', { class: 'git-card source-card', id: opts.id || null });
-    const details = h('details', { class: 'source-fold' });
-    if (opts.open) details.open = true;
-    const summary = h('summary', { class: 'source-head' },
+    const head = h('button', { type: 'button', class: 'source-head', 'aria-expanded': String(!!opts.open) },
       h('span', { class: 'source-title-line' },
         h('span', { class: 'source-title', title: opts.title, text: opts.title }),
         opts.pill ? h('span', { class: 'source-pill' }, opts.pill) : null),
@@ -327,13 +357,38 @@ const AW = (() => {
       opts.facts && opts.facts.length
         ? h('span', { class: 'badges source-facts' }, ...opts.facts.filter(Boolean).map((text) => h('span', { class: 'badge', text })))
         : null);
-    const drawer = h('div', { class: 'source-drawer' },
+    const body = h('div', { class: 'source-drawer' },
       ...[opts.body].flat(Infinity).filter((node) => node !== null && node !== undefined));
-    details.append(summary, drawer);
-    if (opts.onToggle) details.addEventListener('toggle', () => opts.onToggle(details.open));
-    card.append(details);
+    const panel = h('div', { class: 'source-panel' }, body);
+    let onResize = null;
+    const place = () => {
+      if (!panel.isConnected) {
+        const parent = card.parentElement;
+        const top = Math.round(card.getBoundingClientRect().top);
+        const row = [...parent.querySelectorAll(':scope > .source-card')]
+          .filter((other) => Math.round(other.getBoundingClientRect().top) === top);
+        (row[row.length - 1] || card).after(panel);
+      }
+    };
+    const setOpen = (open) => {
+      card.classList.toggle('open', open);
+      head.setAttribute('aria-expanded', String(open));
+      if (open) {
+        place();
+        onResize = () => place();
+        window.addEventListener('resize', onResize);
+      } else {
+        panel.remove();
+        if (onResize) window.removeEventListener('resize', onResize);
+        onResize = null;
+      }
+      if (opts.onToggle) opts.onToggle(open);
+    };
+    head.addEventListener('click', () => setOpen(!card.classList.contains('open')));
+    card.append(head);
     if (opts.actions && opts.actions.length)
       card.append(h('p', { class: 'library-buttons source-actions' }, ...opts.actions.filter(Boolean)));
+    if (opts.open) setTimeout(() => setOpen(true), 0);
     return card;
   }
 
@@ -1127,7 +1182,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, sourceCard, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, sourceCard, sourceList, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;

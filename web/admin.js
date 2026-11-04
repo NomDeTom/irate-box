@@ -284,6 +284,7 @@ const lib = {
   allNote: document.getElementById("library-all-note"),
   sources: document.getElementById("library-sources"),
   add: document.getElementById("library-add"),
+  addNote: document.getElementById("library-add-note"),
   policy: document.getElementById("library-policy"),
   token: document.getElementById("library-token"),
   tokenState: document.getElementById("library-token-state"),
@@ -541,73 +542,90 @@ function sourceRow(src, st, busy) {
   );
 }
 
-// The book sources as the same source card as the Git repositories: one per source, in the Books grid.
-function renderBookSources(data) {
-  const at = document.getElementById("library-sources");
-  if (!at) return;
-  const pol = (data && data.policy) || (lastLibrary && lastLibrary.policy) || {};
+// One book, one card or one short-list line: the same source card as the Git repositories. A book with no
+// source says so on its card.
+function bookParts(b) {
+  const st = b.status || {}, src = b.source;
+  const pol = (lastLibrary && lastLibrary.policy) || {};
   const budget = Number(pol.books_budget_mb) || 0;
-  const seen = new Map();
-  for (const b of (data && data.books) || []) if (b.source && !seen.has(b.source.name)) seen.set(b.source.name, b);
-  at.replaceChildren(
-    ...(seen.size
-      ? [...seen.values()].map((b) => {
-          const src = b.source, st = b.status || {}, cur = st.current || {}, latest = st.latest || {};
-          const newVersion = !!latest.version && latest.version !== cur.version;
-          const checked = st.last_check ? String(st.last_check).replace("T", " ").replace("Z", " UTC") : "";
-          const key = `book:${src.name}`;
-          return AW.sourceCard({
-            id: `book-${src.name}`,
-            title: `${src.name}.zim`,
-            source: where(src),
-            pill: AW.updatePill(st.last_check, newVersion, !!st.error),
-            state: !checked ? "Not checked yet" : st.error ? `Checked ${whenShort(st.last_check)} · check failed` : `Checked ${whenShort(st.last_check)} · ${newVersion ? "update available" : "up to date"}`,
-            facts: [
-              "Access: Guests",
-              `Schedule: ${scheduleShort(pol.check_every_hours)}`,
-              `${cur.size ? mb(cur.size) : "0 MB"} of ${budget ? `${budget} MB` : "free"}`,
-            ],
-            actions: [
-              actionButton("Check now", () => libAct(key, { action: "check", names: [src.name] })),
-              actionButton("Download", () => libAct(key, { action: "fetch", names: [src.name] })),
-              actionButton("Install", () => libAct(key, { action: "update", names: [src.name] })),
-            ],
-            body: [
-              el("p", { className: "setting-desc", textContent: `Source: ${where(src)}.` }),
-              el("p", { className: "setting-desc", textContent: "Access: Guests. Anyone on the network can read the library; books are kept for the whole hub." }),
-              el("p", { className: "setting-desc", textContent: `Schedule: ${AW.patternSays(pol.check_every_hours, pol.auto_install)} Set in Librarian.` }),
-              el("p", { className: "setting-desc", textContent: `Space: ${budget ? `${budget} MB limit for all books` : "no book limit"}; ${cur.size ? mb(cur.size) : "nothing"} kept for this book.` }),
-              el("p", { className: "setting-desc", textContent: cur.version ? `Installed: ${cur.label || cur.version} (${mb(cur.size)}, ${cur.installed})` : "The librarian has not installed it yet." }),
-              newVersion ? el("p", { className: "setting-desc", textContent: latest.version ? `Available: ${latest.label || latest.version} (${mb(latest.size)})` : "" }) : null,
-              (st.archive || []).length ? el("p", { className: "setting-desc", textContent: `Retained versions: ${st.archive.join(", ")}` }) : null,
-              st.last_check ? el("p", { className: "setting-desc", textContent: `Checked ${st.last_check}: ${st.outcome || ""}` }) : null,
-              st.error ? el("a", { className: "setting-desc bad", href: "#updoctor", textContent: `${errorSaid(st)} See the Updates doctor.` }) : null,
-              el("p", { className: "library-buttons" },
-                (st.archive || []).length ? actionButton("Roll back", () => libAct(key, { action: "rollback", name: src.name }), { className: "small" }) : null,
-                actionButton("Stop tracking", () => libAct(key, { action: "remove", name: src.name }), { className: "small" })),
-            ],
-          });
-        })
-      : [el("p", { className: "setting-desc", textContent: "No book sources yet." })]),
-    bookAddCard(),
-  );
+  const checked = st.last_check ? whenShort(st.last_check) : "";
+  const newer = b.state === "newer";
+  const body = [
+    !src && b.description ? el("p", { className: "setting-desc", textContent: b.description }) : null,
+    src && st.current && st.current.version ? el("p", { className: "setting-desc", textContent: `Installed: ${st.current.label || st.current.version} (${mb(st.current.size)}, ${st.current.installed})` }) : null,
+    src && newer && st.latest && st.latest.version ? el("p", { className: "setting-desc", textContent: `Available: ${st.latest.label || st.latest.version} (${mb(st.latest.size)})` }) : null,
+    src && (st.archive || []).length ? el("p", { className: "setting-desc", textContent: `Retained versions: ${st.archive.join(", ")}` }) : null,
+    src && st.error ? el("a", { className: "setting-desc bad", href: "#updoctor", textContent: `${errorSaid(st)} See the Updates doctor.` }) : null,
+  ];
+  if (src) {
+    body.push(
+      (st.archive || []).length
+        ? el("p", { className: "library-buttons" },
+            actionButton("Roll back", () => libAct(`book:${src.name}`, { action: "rollback", name: src.name }), { className: "small" }))
+        : null,
+      el("p", { className: "library-buttons source-danger" },
+        actionButton("Stop tracking", () => libAct(`book:${src.name}`, { action: "remove", name: src.name }), { className: "small" })));
+  }
+  return {
+    title: b.title,
+    source: src ? where(src) : `${b.name}.zim · by hand or USB`,
+    pill: src ? AW.updatePill(st.last_check, newer, !!st.error) : null,
+    state: src ? (checked ? `Checked ${checked} · ${STATE_WORDS[b.state] || b.state}` : "Not checked yet") : "Managed updates: none",
+    facts: src
+      ? ["Access: Guests", `Updates: ${src.type}`, `${b.size ? size(b.size) : "0 MB"} of ${budget ? `${budget} MB` : "free"}`]
+      : ["Access: Guests", "Managed updates: none", b.size ? size(b.size) : "0 MB"],
+    actions: src ? [
+      actionButton("Check now", () => libAct(`book:${src.name}`, { action: "check", names: [src.name] }), { className: "small" }),
+      actionButton("Update", () => libAct(`book:${src.name}`, { action: "update", names: [src.name] }), { className: "small" }),
+    ] : [],
+    body,
+  };
+}
+function bookCard(b) {
+  const p = bookParts(b);
+  return AW.sourceCard({ id: `book-${b.name}`, ...p });
 }
 
-// A book source's add form is a mini-card in the same grid, Add source as its footer.
+// The add-a-source mini-card lives in the Other sources tab: the source templates are chips at its top.
 function bookAddCard() {
-  const form = document.getElementById("library-add");
+  const form = lib.add;
   if (!form) return null;
   const submit = form.querySelector('button[type="submit"]');
   if (submit) submit.setAttribute("form", form.id);
+  const templates = [
+    ["release", "A project's releases"],
+    ["actions", "A fork's Actions builds"],
+    ["nightly-link", "Actions builds via nightly.link"],
+  ];
+  let chosen = "release";
+  const chips = el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Source template" });
+  const drawChips = () => chips.replaceChildren(...templates.map(([value, label]) => {
+    const chip = el("button", {
+      type: "button",
+      className: `chip${chosen === value ? " selected" : ""}`,
+      role: "radio",
+      "aria-checked": String(chosen === value),
+      textContent: label,
+    });
+    chip.addEventListener("click", () => { chosen = value; applySourcePreset(value); drawChips(); });
+    return chip;
+  }));
+  drawChips();
   return AW.sourceCard({
     id: "book-add",
     title: "Add a book source",
-    source: "a project's releases, a download URL, or Kiwix",
-    state: "Name and source",
+    source: "a project's releases, Actions builds, or a URL",
+    state: "Template, name and source",
     facts: ["Access: Guests", "Schedule: shared"],
-    body: [form, document.getElementById("library-add-note")],
+    body: [chips, form, lib.addNote],
     actions: submit ? [submit] : [],
   });
+}
+function renderBookAddCard() {
+  const at = document.getElementById("book-add-card");
+  if (!at) return;
+  const card = bookAddCard();
+  if (card) at.replaceChildren(card);
 }
 
 let lastLibrary = null; // drawn again when the menu is rebuilt, for the apps' own pages
@@ -801,7 +819,7 @@ function renderApps(snap, busy) {
     );
   });
   lastLibrary = snap;
-  if (bookData) renderBookSources(bookData);
+  if (bookData) renderBooks(bookData);
   renderInventory();
 }
 
@@ -966,6 +984,8 @@ function renderLibrary(snap) {
   // own kind. A kind that is not running says nothing of another's job, and no bar.
   lib.states.forEach((n) => {
     const want = n.dataset.jobKind;
+    // Books has its own data (/admin/books): its line is set there, from the same checks as its cards.
+    if (want === "books") return;
     if (want === "now") n.textContent = busy ? busyText : idleText;
     else if (want === "holders" && !busy) n.textContent = "";
     else
@@ -1069,14 +1089,11 @@ function showTypeFields() {
 }
 
 lib.add.elements.type.addEventListener("change", showTypeFields);
-document.querySelectorAll("[data-preset]").forEach((b) =>
-  b.addEventListener("click", () => {
-    lib.add.reset();
-    for (const [k, v] of Object.entries(PRESETS[b.dataset.preset]))
-      lib.add.elements[k].value = v;
-    showTypeFields();
-  }),
-);
+function applySourcePreset(name) {
+  lib.add.reset();
+  for (const [k, v] of Object.entries(PRESETS[name] || {})) lib.add.elements[k].value = v;
+  showTypeFields();
+}
 lib.add.addEventListener("submit", async (event) => {
   event.preventDefault();
   const fields = lib.add.elements;
@@ -1184,27 +1201,16 @@ document
 let libWasBusy = false;
 let libBusy = false;
 const bk = {
-  q: document.getElementById("books-q"),
-  language: document.getElementById("books-language"),
-  state: document.getElementById("books-state"),
-  kept: document.getElementById("books-kept"),
-  sort: document.getElementById("books-sort"),
-  body: document.querySelector("#books-table tbody"),
-  pageAll: document.getElementById("books-page-all"),
+  cards: document.getElementById("books-cards"),
   summary: document.getElementById("books-summary"),
   page: document.getElementById("books-page"),
   prev: document.getElementById("books-prev"),
   next: document.getElementById("books-next"),
-  bulk: document.getElementById("books-bulk"),
-  selected: document.getElementById("books-selected"),
-  matching: document.getElementById("books-select-matching"),
-  none: document.getElementById("books-select-none"),
 };
-const bookSel = new Set();
 let bookPage = 1;
 let bookData = null;
-let bookOpen = null;
 let bookTimer = null;
+const bookSel = new Set();
 const STATE_WORDS = {
   ok: "up to date",
   newer: "newer available",
@@ -1212,16 +1218,21 @@ const STATE_WORDS = {
   "not installed": "not installed yet",
   unreadable: "Kiwix cannot read it",
 };
+let bookSort = "title";
 const bookQuery = (extra = {}) =>
-  new URLSearchParams({
-    q: bk.q.value.trim(),
-    language: bk.language.value,
-    state: bk.state.value,
-    kept: bk.kept.value,
-    sort: bk.sort.value,
-    page: String(bookPage),
-    ...extra,
-  }).toString();
+  new URLSearchParams({ page: String(bookPage), ...extra }).toString();
+function sortBooks(books) {
+  return [...books].sort((a, b) =>
+    bookSort === "size" ? b.size - a.size : bookSort === "date" ? String(b.date).localeCompare(String(a.date)) : a.title.localeCompare(b.title));
+}
+function bookSortControl() {
+  const sel = el("select", { "aria-label": "Sort books" },
+    el("option", { value: "title", textContent: "Title", selected: bookSort === "title" }),
+    el("option", { value: "size", textContent: "Largest", selected: bookSort === "size" }),
+    el("option", { value: "date", textContent: "Newest", selected: bookSort === "date" }));
+  sel.addEventListener("change", () => { bookSort = sel.value; renderBooks(bookData); });
+  return sel;
+}
 
 async function loadBooks() {
   try {
@@ -1231,11 +1242,70 @@ async function loadBooks() {
   }
 }
 
+// More than nine: Mock controls' short list, with a tick in the line and the bulk actions for that view only.
+function bookTick(b) {
+  const input = el("input", {
+    type: "checkbox",
+    checked: bookSel.has(b.name),
+    ariaLabel: `Select ${b.title}`,
+    onchange: (event) => {
+      if (event.target.checked) bookSel.add(b.name);
+      else bookSel.delete(b.name);
+      paintBookBulk();
+    },
+  });
+  return el("label", { className: "setting source-tick" }, input, el("span", { className: "setting-name", textContent: " Select" }));
+}
+function paintBookBulk() {
+  const bar = document.querySelector("#books-cards .books-bulk");
+  if (!bar) return;
+  bar.querySelector(".books-bulk-count").textContent = bookSel.size ? `${bookSel.size} selected` : "No books selected";
+  bar.querySelectorAll("[data-book-bulk]").forEach((b) => { b.hidden = !bookSel.size; });
+}
+function renderBooksList(data) {
+  const items = sortBooks(data.books).map((b) => {
+    const p = bookParts(b);
+    return {
+      id: `book-${b.name}`,
+      title: p.title,
+      summary: p.source,
+      pill: p.pill,
+      badges: [b.source ? (STATE_WORDS[b.state] || b.state) : "Managed updates: none", b.language || "no language", b.kept ? "managed" : "by hand"],
+      tick: bookTick(b),
+      actions: p.actions,
+      body: p.body,
+    };
+  });
+  const bar = el("div", { className: "books-bulk source-bulk" },
+    el("span", { className: "books-bulk-count" }),
+    actionButton("Check", () => libAct("all", { action: "check", names: [...bookSel] }), { className: "small", dataset: { bookBulk: "check" } }),
+    actionButton("Update", () => libAct("all", { action: "update", names: [...bookSel] }), { className: "small", dataset: { bookBulk: "update" } }),
+    actionButton("Stop tracking", async () => {
+      for (const name of [...bookSel]) {
+        try { await libPost({ action: "remove", name }); } catch (_) { /* not tracked */ }
+      }
+      bookSel.clear();
+      loadLibrary();
+      loadBooks();
+    }, { className: "small", dataset: { bookBulk: "untrack" } }));
+  bk.cards.className = "books-list-view";
+  bk.cards.replaceChildren(bar, AW.sourceList(items, { id: "books-source-list", sort: bookSortControl() }));
+  paintBookBulk();
+}
+
 function renderBooks(data) {
   bookData = data;
   bookPage = data.page;
-  renderBookSources(data);
   const sm = data.summary;
+  // The Books top line reads the same checks as the cards, not the app-only snapshot.
+  const looked = data.books
+    .map((b) => Date.parse((b.status || {}).last_check))
+    .filter((n) => !Number.isNaN(n));
+  const top = document.querySelector('.library-state[data-job-kind="books"]');
+  if (top && !libBusy) {
+    const last = looked.length ? new Date(Math.max(...looked)).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    top.textContent = libBusy ? top.textContent : last ? `Idle. Last checked ${last}.` : "Idle. Not checked yet.";
+  }
   setupStep(
     "books",
     sm.kept
@@ -1254,134 +1324,23 @@ function renderBooks(data) {
       .filter((k) => st[k])
       .map((k) => ` ${st[k]} ${STATE_WORDS[k]}.`)
       .join("");
-  const langs = Object.keys(sm.languages).sort();
-  if (bk.language.dataset.langs !== langs.join(",")) {
-    const was = bk.language.value;
-    bk.language.dataset.langs = langs.join(",");
-    bk.language.replaceChildren(
-      el("option", { value: "", textContent: "any" }),
-      ...langs.map((l) =>
-        el("option", { value: l, textContent: `${l} (${sm.languages[l]})` }),
-      ),
+  renderBookAddCard();
+  if (data.matching > 9) {
+    renderBooksList(data);
+  } else {
+    bk.cards.className = "card-grid source-grid";
+    const cards = sortBooks(data.books).map(bookCard);
+    bk.cards.replaceChildren(
+      ...(cards.length
+        ? cards
+        : [el("p", { className: "setting-desc", textContent: sm.count ? "No book matches." : "No books yet." })]),
     );
-    bk.language.value = langs.includes(was) ? was : "";
   }
-  const rows = [];
-  for (const b of data.books) {
-    const box = el("input", {
-      type: "checkbox",
-      checked: bookSel.has(b.name),
-      ariaLabel: `Select ${b.title}`,
-      onchange: (event) => {
-        if (event.target.checked) bookSel.add(b.name);
-        else bookSel.delete(b.name);
-        renderBookBulk();
-      },
-    });
-    const open = false; // the source is the card in the Book sources grid above
-    rows.push(
-      el(
-        "tr",
-        { className: `book-row state-${b.state.replace(" ", "-")}` },
-        el("td", {}, box),
-        el(
-          "td",
-          {},
-          el("button", {
-            type: "button",
-            className: "link-button",
-            textContent: b.title,
-            ariaExpanded: String(open),
-            onclick: () => {
-              bookOpen = open ? null : b.name;
-              renderBooks(bookData);
-            },
-          }),
-          b.title !== b.name
-            ? el("span", {
-                className: "setting-desc",
-                textContent: ` ${b.name}.zim`,
-              })
-            : null,
-        ),
-        el("td", { textContent: b.language || "—" }),
-        el("td", { textContent: b.size ? size(b.size) : "—" }),
-        el("td", { textContent: b.date || "—" }),
-        el("td", { textContent: b.kept ? `yes (${b.source.type})` : "no" }),
-        el("td", {
-          className: b.state === "ok" ? "" : "bad",
-          textContent: STATE_WORDS[b.state] || b.state,
-        }),
-      ),
-    );
-    if (open) {
-      rows.push(
-        el(
-          "tr",
-          { className: "book-card" },
-          el(
-            "td",
-            { colSpan: 7 },
-            b.source
-              ? sourceRow(b.source, b.status || {}, libBusy)
-              : el("p", {
-                  className: "setting-desc",
-                  textContent:
-                    `${b.name}.zim was put here by hand or from a USB drive. The librarian does not change it. ` +
-                    (b.description ? `“${b.description}”` : ""),
-                }),
-          ),
-        ),
-      );
-    }
-  }
-  bk.body.replaceChildren(
-    ...(rows.length
-      ? rows
-      : [
-          el(
-            "tr",
-            {},
-            el("td", {
-              colSpan: 7,
-              className: "setting-desc",
-              textContent: sm.count ? "No book matches." : "No books yet.",
-            }),
-          ),
-        ]),
-  );
-  bk.pageAll.checked =
-    data.books.length > 0 && data.books.every((b) => bookSel.has(b.name));
   bk.page.textContent = `Page ${data.page} of ${data.pages} (${data.matching} matching)`;
   bk.prev.disabled = data.page <= 1;
   bk.next.disabled = data.page >= data.pages;
-  renderBookBulk();
 }
 
-function renderBookBulk() {
-  const n = bookSel.size;
-  bk.bulk.hidden =
-    !n && !(bookData && bookData.matching > bookData.books.length);
-  bk.selected.textContent = n ? `${n} selected:` : "";
-  bk.bulk.querySelectorAll("[data-bulk]").forEach((b) => {
-    b.hidden = !n;
-  });
-  bk.matching.textContent = bookData
-    ? `Select all ${bookData.matching} matching`
-    : "";
-  bk.matching.hidden = !bookData || bookData.matching <= n;
-  bk.none.hidden = !n;
-}
-
-const rebook = () => {
-  bookPage = 1;
-  clearTimeout(bookTimer);
-  bookTimer = setTimeout(loadBooks, 250);
-};
-bk.q.addEventListener("input", rebook);
-[bk.language, bk.state, bk.kept, bk.sort].forEach((filterEl) =>
-  filterEl.addEventListener("change", rebook),
-);
 bk.prev.addEventListener("click", () => {
   bookPage -= 1;
   loadBooks();
@@ -1390,47 +1349,6 @@ bk.next.addEventListener("click", () => {
   bookPage += 1;
   loadBooks();
 });
-bk.pageAll.addEventListener("change", () => {
-  (bookData ? bookData.books : []).forEach((b) => {
-    if (bk.pageAll.checked) bookSel.add(b.name);
-    else bookSel.delete(b.name);
-  });
-  renderBooks(bookData);
-});
-bk.matching.addEventListener("click", async () => {
-  try {
-    (await getJSON(`/admin/books?${bookQuery({ names: "1" })}`)).names.forEach(
-      (n) => bookSel.add(n),
-    );
-    renderBooks(bookData);
-  } catch (err) {
-    say(err.message, false, lib.allNote);
-  }
-});
-bk.none.addEventListener("click", () => {
-  bookSel.clear();
-  renderBooks(bookData);
-});
-document.querySelectorAll("[data-bulk]").forEach((b) =>
-  b.addEventListener("click", async () => {
-    // Every selected name, on any page: the librarian skips one with no source (put here by hand).
-    const names = [...bookSel];
-    if (b.dataset.bulk === "untrack") {
-      for (const name of names) {
-        try {
-          await libPost({ action: "remove", name });
-        } catch (_) {
-          /* not tracked: nothing to stop */
-        }
-      }
-      bookSel.clear();
-      loadLibrary();
-      loadBooks();
-      return;
-    }
-    libAct("all", { action: b.dataset.bulk, names }, event.currentTarget);
-  }),
-);
 
 // --- Kiwix's catalogue (/admin/catalogue), online only ------------------------------------------
 const cat = {
@@ -13955,27 +13873,9 @@ function repoCard(repo, data) {
         : null,
     ],
     body: [
-      el("p", { className: "setting-desc", textContent: accessSentence(repo) }),
-      el("p", {
-        className: "setting-desc",
-        textContent: repo.mirror_of
-          ? "Schedule: the librarian checks this mirror at the interval set under Mirrors."
-          : "Schedule: none. A local repository is pushed to; Builds follows pushes.",
-      }),
-      el("p", {
-        className: "setting-desc",
-        textContent: `Space: ${size(repo.size)} on the card; there is no budget of its own.`,
-      }),
-      el("p", {
-        className: "setting-desc",
-        textContent: checked
-          ? `Last checked ${new Date(checked * 1000).toLocaleString()}: ${ms.outcome || "up to date"}.`
-          : "Not checked yet.",
-      }),
       repo.description
         ? el("p", { className: "setting-desc" }, el("span", { className: "git-label", textContent: "About " }), repo.description)
         : null,
-      el("p", { className: "setting-desc git-facts", textContent: facts.filter(Boolean).join(" · ") }),
       repo.mirror_of ? null : managePanel(repo, data, "source-drawer-manage"),
     ],
     open,
@@ -14009,44 +13909,42 @@ function managePanel(repo, data, cls) {
       return false;
     }
   };
-  const radio = (group, value, label, checked, onpick) =>
-    el(
-      "label",
-      { className: "inline" },
-      el("input", {
-        type: "radio",
-        name: `${group}-${repoKey(repo)}`,
-        value,
-        checked,
-        onchange: onpick,
-      }),
-      ` ${label}`,
-    );
+  // A choice is a chip, as every other choice on these cards: not a radio button.
+  const chip = (label, checked, onpick, title) =>
+    el("button", {
+      type: "button",
+      className: `chip${checked ? " selected" : ""}`,
+      role: "radio",
+      "aria-checked": String(checked),
+      title: title || null,
+      textContent: label,
+      onclick: onpick,
+    });
   // Who can see it: the area. Moving changes the clone URL, said under the choices.
   const see = el(
     "fieldset",
     { className: "git-q" },
     el("legend", { textContent: "Who can see it?" }),
-    radio(
-      "see",
-      "public",
-      "Everyone on the network",
-      repo.area === "public",
-      act(
-        { action: "move", area: repo.area, name: repo.name, to: "public" },
-        null,
-        `${repo.name}.git is now visible to guests.`,
+    el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Who can see it?" },
+      chip(
+        "Guests",
+        repo.area === "public",
+        act(
+          { action: "move", area: repo.area, name: repo.name, to: "public" },
+          null,
+          `${repo.name}.git is now visible to guests.`,
+        ),
+        "Everyone on the network can browse and clone it.",
       ),
-    ),
-    radio(
-      "see",
-      "private",
-      "Only administrators",
-      repo.area === "private",
-      act(
-        { action: "move", area: repo.area, name: repo.name, to: "private" },
-        null,
-        `${repo.name}.git is now visible to administrators only.`,
+      chip(
+        "Administrators",
+        repo.area === "private",
+        act(
+          { action: "move", area: repo.area, name: repo.name, to: "private" },
+          null,
+          `${repo.name}.git is now visible to administrators only.`,
+        ),
+        "Only administrators can browse and clone it.",
       ),
     ),
     el("p", {
@@ -14062,22 +13960,29 @@ function managePanel(repo, data, cls) {
     admin: "Only administrators",
     nobody: "Nobody (read-only)",
   };
+  const CHIP_WHO = {
+    everyone: "Anyone",
+    users: "Users",
+    admin: "Administrators",
+    nobody: "Nobody",
+  };
   const push = el(
     "fieldset",
     { className: "git-q" },
     el("legend", { textContent: "Who can push?" }),
+    el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Who can push?" },
     ...presets.map((preset) =>
-      radio(
-        "push",
-        preset.name,
-        WHO[preset.write],
+      chip(
+        CHIP_WHO[preset.write] || WHO[preset.write],
         preset.name === repo.preset,
         act(
           { action: "preset", area: repo.area, name: repo.name, preset: preset.name },
           null,
           `${repo.name}.git: ${preset.text}.`,
         ),
+        preset.text,
       ),
+    ),
     ),
     el("p", {
       className: "setting-desc",
@@ -14452,23 +14357,6 @@ function renderMirrors(data) {
                 textContent: m.description || st.described || "",
                 hidden: !(m.description || st.described),
               }),
-              el("p", {
-                className: "setting-desc",
-                textContent:
-                  `Access: ${m.area === "public" ? "Guests" : "Administrators"}. ` +
-                  (m.area === "public"
-                    ? "Anyone on the network can browse and clone it."
-                    : "Only administrators can browse and clone it."),
-              }),
-              el("p", {
-                className: "setting-desc",
-                textContent:
-                  "Schedule: the Check interval and When something newer is found under Mirrors, above, for every mirror.",
-              }),
-              el("p", {
-                className: "setting-desc",
-                textContent: `Space: budget ${m.budget_mb} MB; ${st.size != null ? size(st.size) : "nothing"} kept.`,
-              }),
               el("p", { className: "setting-desc", textContent: `keeps ${keeps}` }),
               subs.length
                 ? el("p", { className: "setting-desc", textContent: `submodules: ${subs.join(", ")}` })
@@ -14479,10 +14367,9 @@ function renderMirrors(data) {
                     textContent: relNote,
                   })
                 : null,
-              el("p", {
-                className: `setting-desc${st.error || st.over_budget ? " bad" : ""}`,
-                textContent: state,
-              }),
+              st.error || st.over_budget
+                ? el("p", { className: "setting-desc bad", textContent: state })
+                : null,
               st.tags
                 ? el("p", {
                     className: `setting-desc${(st.tags.moved || []).length ? " bad" : ""}`,
@@ -14765,8 +14652,13 @@ function renderFirmware(data) {
   const record = document.getElementById("fw-record");
   if (record) {
     const move = (...ids) => ids.map((id) => document.getElementById(id)).filter(Boolean);
+    // The head already says what it is, who may open it, the check's state and the space: the old notes stay
+    // hidden rather than repeated in the drawer.
+    ["fw-source", "fw-access-note", "fw-status", "fw-space-note"].forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) node.hidden = true;
+    });
     const body = [
-      ...move("fw-source", "fw-access-note", "fw-status"),
       ...move("fw-policy"),
       ...move("fw-policy-note"),
       ...move("fw-settings-head", "fw-form", "fw-note"),
@@ -15156,11 +15048,12 @@ function asFirmware(fw) {
     id: "firmware-holder",
     title: "Meshtastic firmware",
     source: "Firmware page",
-    state: `${fw.versions} versions · ${fw.boards} boards · ${size(fw.bytes)}`,
+    pill: AW.pill("kept", "ok"),
+    state: "Managed on Firmware",
     facts: ["Access: Administrators", "Schedule: shared", `${size(fw.bytes)}`],
     actions: [el("a", { href: fw.href, className: "button-link small", textContent: "Open Firmware" })],
     body: [
-      el("p", { className: "setting-desc", textContent: "Set on the Firmware page; the App store only lists it." }),
+      el("p", { className: "setting-desc", textContent: "The App store only lists it; its check and its settings are on the Firmware page." }),
     ],
   });
 }
@@ -15176,48 +15069,28 @@ function asCard(holder) {
   const pol = (asData && asData.policy) || {};
   const when = checked || "";
   const body = [
-    el("p", { className: `setting-desc${failed ? " bad" : ""}` },
-      ...(failed
-        ? [
-            `Last checked ${checked}: the check failed. ${sentence(st.error)} `,
-            el("a", { href: "#updoctor", textContent: "Open the Updates doctor for the reason and a fix." }),
-          ]
-        : [!checked ? "Not checked yet." : `Last checked ${checked}: ${sentence(st.outcome || "nothing")}`]),
-    ),
-    el("p", { className: "setting-desc" },
-      `Access: ${holder.visibility === "members" ? "Users" : "Guests"}. ` +
-      (holder.visibility === "members"
-        ? "Signed-in accounts see this project and download its files."
-        : "Every device on the box's network sees this project and can download its files.")),
-    el("p", { className: "setting-desc" },
-      `Schedule: ${AW.patternSays(pol.holders_every_hours, pol.holders_auto)} ` +
-      "Set for every project, under App store, above."),
-    el("p", { className: "setting-desc" },
-      `Space: ${holder.budget_mb ? `${holder.budget_mb} MB` : "the free limit"}; ` +
-      `${holder.kept.length} version${holder.kept.length === 1 ? "" : "s"}, ${size(holder.bytes)} kept.`),
+    failed
+      ? el("p", { className: "setting-desc bad" },
+          `The check failed: ${sentence(st.error)} `,
+          el("a", { href: "#updoctor", textContent: "Open the Updates doctor." }))
+      : null,
     el("div", { className: "admin-list" },
       ...(holder.kept.length
         ? holder.kept.map((v) => el("p", { className: "setting-desc" },
             el("strong", { textContent: `${v.tag} (${v.channel})` }),
             ` ${v.files.length} file${v.files.length === 1 ? "" : "s"}, ${size(v.bytes)}.`))
         : [el("p", { className: "setting-desc", textContent: "Nothing kept yet." })])),
-    el("p", { className: "library-buttons appstore-actions" },
-      asRun("Delete the kept files", "remove-files", holder.id, note,
-        `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download gets the files again.`),
-      asRun("Remove this project", "remove-holder", holder.id, note,
-        `Remove ${holder.title || holder.id} from the App store? Its settings and its kept files go too.`,
-        { className: "danger" })),
-    el("p", { className: "setting-desc" },
-      "Checking, downloading and reading the releases each ask GitHub, which answers 60 requests an hour " +
-        "without a token. For more, ",
-      el("a", { href: "#library-access", textContent: "add a GitHub token in Librarian" }),
-      "."),
-    note,
     asSettingsForm(holder),
   ];
   const survey = el("div", {});
   asSurveyTable(holder, survey);
-  body.push(survey);
+  body.push(survey, note,
+    el("p", { className: "library-buttons source-danger" },
+      asRun("Delete the kept files", "remove-files", holder.id, note,
+        `Delete the files kept for ${holder.title || holder.id}? The project and its settings stay, and the next download gets the files again.`),
+      asRun("Remove this project", "remove-holder", holder.id, note,
+        `Remove ${holder.title || holder.id} from the App store? Its settings and its kept files go too.`,
+        { className: "danger" })));
   return AW.sourceCard({
     id: `holder-${holder.id}`,
     title: holder.title || holder.id,
@@ -15257,12 +15130,25 @@ function asRun(label, action, id, note, ask, extra = {}) {
 function asAddFlow(data) {
   asEl.add.replaceChildren();
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
-  const mode = el("select", { name: "mode", "aria-label": "What to add" });
-  mode.append(
-    el("option", { value: "", textContent: "Select what to add" }),
-    ...(data.presets || []).map((p) => el("option", { value: `preset:${p.id}`, textContent: `Preset: ${p.title || p.id}` })),
-    el("option", { value: "recipe", textContent: "Paste an Obtainium recipe" }),
-    el("option", { value: "repo", textContent: "A GitHub repository" }));
+  const mode = { value: "" };
+  const modes = [
+    ["", "Select what to add"],
+    ...(data.presets || []).map((p) => [`preset:${p.id}`, `Preset: ${p.title || p.id}`]),
+    ["recipe", "Paste an Obtainium recipe"],
+    ["repo", "A GitHub repository"],
+  ];
+  const modeGroup = el("div", { className: "chip-group", role: "radiogroup", "aria-label": "What to add" });
+  const drawMode = () => modeGroup.replaceChildren(...modes.map(([value, text]) => {
+    const chip = el("button", {
+      type: "button",
+      className: `chip${mode.value === value ? " selected" : ""}`,
+      role: "radio",
+      "aria-checked": String(mode.value === value),
+      textContent: text,
+    });
+    chip.addEventListener("click", () => { mode.value = value; drawMode(); draw(); });
+    return chip;
+  }));
   const part = el("div", { className: "appstore-add-part" });
   const add = actionButton("Add", async () => {
     const presetId = mode.value.startsWith("preset:") ? mode.value.slice(7) : null;
@@ -15299,7 +15185,7 @@ function asAddFlow(data) {
       part.append(el("label", {}, "Name", id), el("label", {}, "Repository", repo));
     }
   };
-  mode.addEventListener("change", draw);
+  drawMode();
   draw();
   asEl.add.replaceChildren(AW.sourceCard({
     id: "appstore-add",
@@ -15307,7 +15193,7 @@ function asAddFlow(data) {
     source: "a GitHub repository",
     state: "A preset, a recipe, or a repository",
     facts: ["Access: Guests", "Schedule: shared"],
-    body: [el("label", {}, "What to add", mode), part],
+    body: [modeGroup, part],
     actions: [add],
   }));
 }
@@ -15335,7 +15221,10 @@ function renderAppstore(data, statusOnly = false) {
     );
     asAddFlow(data);
     // The add form is a mini-card in the same grid as the projects.
-    if (asEl.add.firstElementChild) asEl.holders.append(asEl.add.firstElementChild);
+    if (asEl.add.firstElementChild) {
+      asEl.holders.append(asEl.add.firstElementChild);
+      AW.chipSelects(asEl.holders);
+    }
   }
   clearTimeout(asPoll);
   if (data.running) asPoll = setTimeout(() => loadAppstore(true), 2000);
@@ -15512,25 +15401,34 @@ function renderKits(data) {
     const gridKey = JSON.stringify([kits, st.kits, st.installed, cfg.kits, data.flag_details || {}]);
     const drew = AW.redrawIfChanged(kitsEl.grid, gridKey, () => {
       kitsHome.append(...kitsFormNodes);
-      return AW.cards(
-        [
-          ...kits.map((k) => kitItem(k, st)),
-          {
-            id: "kit-custom",
-            title: "+ Custom toolkit",
-            summary: "Your own packages, managed by the librarian",
-            badges: [],
-          },
-        ],
-        {
-          id: "kits-cards",
-          body: (it, setDirty) =>
-            it.id === "kit-custom"
-              ? customBody()
-              : kitBody(it.kit, st, cfg, setDirty),
-          save: (it) => kitSave(it),
-        },
-      );
+      const items = kits.map((k) => {
+        const info = kitItem(k, st);
+        const c = ((st.kits || {})[k.id] || {}).cached;
+        return {
+          id: info.id,
+          title: k.title,
+          summary: info.tagline || k.summary || "",
+          pill: c ? AW.pill("cached", "ok") : AW.pill("not cached", "info"),
+          badges: info.badges,
+          body: [
+            el("p", { className: "setting-desc", textContent: k.summary || "" }),
+            ...(k.notes || []).map((note) => el("p", { className: "setting-desc", textContent: note })),
+            kitBody(k, st, cfg, () => {}),
+          ],
+        };
+      });
+      const add = AW.sourceCard({
+        id: "kit-custom",
+        title: "+ Custom toolkit",
+        source: "your own packages",
+        state: "Managed by the librarian",
+        facts: [],
+        body: [customBody()],
+      });
+      kitsEl.grid.className = "";
+      return el("div", { className: "kits-list-view" },
+        AW.sourceList(items, { id: "kits-source-list" }),
+        el("div", { className: "card-grid source-grid" }, add));
     });
     const again =
       drew && openId &&
@@ -15563,7 +15461,8 @@ function kitItem(k, st) {
   return {
     id: "kit-" + k.id,
     title: k.title,
-    summary: k.summary || "",
+    summary: k.tagline || k.summary || "",
+    tagline: k.tagline || "",
     badges,
     kit: k,
   };

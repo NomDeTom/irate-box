@@ -22,5 +22,6 @@
   "wavemon shows the signal and the rate of the link as they change. iw dev <iface> station dump lists the signal and the rate of each guest.",
   "hostapd runs the hotspot where NetworkManager does not run the radio. The hotspot installs it when it is switched on, from Debian or this toolkit's cache."
  ],
- "remove_after_hours": 24
+ "remove_after_hours": 24,
+ "tagline": "Network diagnostics without internet"
 }

@@ -35,5 +35,6 @@
  ],
  "feeds": [
   "debsecan"
- ]
+ ],
+ "tagline": "Security auditing"
 }

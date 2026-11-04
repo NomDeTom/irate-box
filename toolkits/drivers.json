@@ -1,46 +1,77 @@
-{"id": "drivers", "title": "Driver resources",
+{
+ "id": "drivers",
+ "title": "Driver resources",
  "summary": "For a WiFi adapter whose driver is not in the kernel, or that starts as a USB drive: DKMS and the kernel's headers to build a driver on the box, usb-modeswitch, firmware for common adapters, and where the drivers come from.",
- "packages": ["dkms", "usb-modeswitch", "usb-modeswitch-data"],
- "kernel_headers": true,
- "alternatives": ["firmware-atheros", "firmware-realtek", "firmware-misc-nonfree"],
- "consent": "A driver built here runs inside the kernel as root, with full control of the box. irate-box has tested only the versions linked below. DKMS brings a compiler with it, so any user with a shell can build and run programs on the box.",
- "notes": ["The Network page names each WiFi adapter's chip, and says when its driver is not in the kernel.",
-           "To build a driver: download its source (a link below), then follow its instructions. DKMS builds it for this kernel and builds it again for each new kernel.",
-           "While DKMS has a driver registered, the box keeps the packages that driver needs when the toolkit is removed. Removing dkms by hand (apt-get remove dkms) also removes the driver.",
-           "The kernel's headers come with the toolkit: the package that holds them on this board, found when the toolkit is fetched.",
-           "Firmware for common adapters is cached with the toolkit. Install the one an adapter needs: firmware-atheros (AR9271), firmware-realtek (RTL8188, RTL8192 and RTL88xx), firmware-misc-nonfree (MediaTek, Ralink).",
-           "An AIC8800 adapter that shows as a USB drive (USB ID a69c:5721): run sudo eject on its drive (lsblk lists it as a small flash drive). It then shows as a WiFi adapter.",
-           "An AIC8800D80 seen as USB ID 368b:8d81 with no WiFi interface: its driver lacks that ID (Radxa's own package does; the linked branches have it). With Radxa's package, run echo '368b 8d81 ff a69c 8d81' | sudo tee /sys/bus/usb/drivers/aic8800_fdrv/new_id after the driver is loaded. It lasts until the next restart."],
- "links": [
-  {"title": "USB WiFi adapters on Linux (morrownr)", "url": "https://github.com/morrownr/USB-WiFi",
-   "note": "The best-known community list of which USB WiFi adapters work on Linux, and with which driver. Read it before you buy an adapter."},
-  {"title": "AIC8800 driver, community (NomDeTom/aic8800d80, irate/box)", "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
-   "version": "8e84f8d", "licence": "GPL-2.0",
-   "note": "The one irate-box uses: the community driver with recovery from a firmware that stops answering. Tested on the Luckfox Lyra Zero W (AIC8800DC) and a Raspberry Pi 3B+ (AIC8800D80). Build it with DKMS from its folder, and copy its fw/ folders to /lib/firmware."},
-  {"title": "AIC8800 driver, Radxa's package (NomDeTom/aic8800, irate/box)", "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
-   "version": "9e9f00f", "licence": "GPL-2.0",
-   "note": "Radxa's aic8800-usb-dkms with the same fixes as patches, including the 1 November port-reboot fix, the D80's 368b:8d81 and an eject rule: for a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."},
-  {"title": "USB gadget functions (Armbian linux-rockchip v6.1.115)", "url": "https://github.com/armbian/linux-rockchip/tree/v6.1.115",
-   "version": "7c15117", "licence": "GPL-2.0",
-   "note": "NCM, ACM and mass storage, built out of tree by the box's USB networking service for the Lyra's vendor kernel. The toolkit pins each source file's sha256; the service fetches and checks them before DKMS builds them."}
+ "packages": [
+  "dkms",
+  "usb-modeswitch",
+  "usb-modeswitch-data"
  ],
- "gadget": {"repo": "https://github.com/armbian/linux-rockchip",
-            "tag": "v6.1.115",
-            "tag_object": "8f84d3b6f69e7527efacf0c1bd7c0f2d1c4b44d3",
-            "commit": "7c15117f9468c7395ce3fd0892a6f909b91d9005",
-            "files": {
-              "drivers/usb/gadget/function/f_ncm.c": "916acc2712a474e7c3f5530b0358435b590692a3d4e65aa062b7ce74772f4bdb",
-              "drivers/usb/gadget/function/f_acm.c": "2800b3763d6f35021e52c6e5eb2028c3dd86c060f478b33cbea7289239cd3b6c",
-              "drivers/usb/gadget/function/f_mass_storage.c": "c3df45de239ae976a4d132282c7606cccc22659b1e271d63b20dd43679255ec9",
-              "drivers/usb/gadget/function/f_mass_storage.h": "cf6ee3b19ad154ae08a9a4c1add6198a83d3d2ff6713147841baa812db3852c8",
-              "drivers/usb/gadget/function/storage_common.c": "d85db1025afc6c46f028eac75720da191cd982cc5c969fc7c309c8873c1a4167",
-              "drivers/usb/gadget/function/storage_common.h": "c1745bc93de9d488fecce70bfc2f3532bbd33c831e7cb18774c7e4f67b3aa493",
-              "drivers/usb/gadget/function/u_ether.c": "4b24e7ee9c30fe5632d6122caace4a835d64bad01ee740e67f24ad4142391810",
-              "drivers/usb/gadget/function/u_serial.c": "7801d91b06e9d8a1395344c33cdf5b0c6ac3b14e17a6dba2d1852ec71d1a8408",
-              "drivers/usb/gadget/function/u_ether.h": "be629f6e64de23f1ab0a0e7208280122ceaba67b8e6c7d288e6a16cf20d49ffe",
-              "drivers/usb/gadget/function/u_ether_configfs.h": "bbd1a651edf2147f006a3acf5c5931c9ee71a974b70ba419c93ef1fedb62f24c",
-              "drivers/usb/gadget/function/u_ncm.h": "937fb2b87325b2e8b0ddbdc32ffc5e691c029512b2d06441fcd2eafb8058b4fe",
-              "drivers/usb/gadget/function/u_serial.h": "7b9789de69b7030151e9158251a1ba31e0e6acf675ef2e6d7e01d18c60b0b08e",
-              "drivers/usb/gadget/configfs.h": "a680515bf7a3f2a897283ffd104d8b8482eed6ecbdaf694f3fdef71b5abecb52"
-            }},
- "remove_after_hours": 24}
+ "kernel_headers": true,
+ "alternatives": [
+  "firmware-atheros",
+  "firmware-realtek",
+  "firmware-misc-nonfree"
+ ],
+ "consent": "A driver built here runs inside the kernel as root, with full control of the box. irate-box has tested only the versions linked below. DKMS brings a compiler with it, so any user with a shell can build and run programs on the box.",
+ "notes": [
+  "The Network page names each WiFi adapter's chip, and says when its driver is not in the kernel.",
+  "To build a driver: download its source (a link below), then follow its instructions. DKMS builds it for this kernel and builds it again for each new kernel.",
+  "While DKMS has a driver registered, the box keeps the packages that driver needs when the toolkit is removed. Removing dkms by hand (apt-get remove dkms) also removes the driver.",
+  "The kernel's headers come with the toolkit: the package that holds them on this board, found when the toolkit is fetched.",
+  "Firmware for common adapters is cached with the toolkit. Install the one an adapter needs: firmware-atheros (AR9271), firmware-realtek (RTL8188, RTL8192 and RTL88xx), firmware-misc-nonfree (MediaTek, Ralink).",
+  "An AIC8800 adapter that shows as a USB drive (USB ID a69c:5721): run sudo eject on its drive (lsblk lists it as a small flash drive). It then shows as a WiFi adapter.",
+  "An AIC8800D80 seen as USB ID 368b:8d81 with no WiFi interface: its driver lacks that ID (Radxa's own package does; the linked branches have it). With Radxa's package, run echo '368b 8d81 ff a69c 8d81' | sudo tee /sys/bus/usb/drivers/aic8800_fdrv/new_id after the driver is loaded. It lasts until the next restart."
+ ],
+ "links": [
+  {
+   "title": "USB WiFi adapters on Linux (morrownr)",
+   "url": "https://github.com/morrownr/USB-WiFi",
+   "note": "The best-known community list of which USB WiFi adapters work on Linux, and with which driver. Read it before you buy an adapter."
+  },
+  {
+   "title": "AIC8800 driver, community (NomDeTom/aic8800d80, irate/box)",
+   "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
+   "version": "8e84f8d",
+   "licence": "GPL-2.0",
+   "note": "The one irate-box uses: the community driver with recovery from a firmware that stops answering. Tested on the Luckfox Lyra Zero W (AIC8800DC) and a Raspberry Pi 3B+ (AIC8800D80). Build it with DKMS from its folder, and copy its fw/ folders to /lib/firmware."
+  },
+  {
+   "title": "AIC8800 driver, Radxa's package (NomDeTom/aic8800, irate/box)",
+   "url": "https://github.com/NomDeTom/aic8800/tree/irate/box",
+   "version": "9e9f00f",
+   "licence": "GPL-2.0",
+   "note": "Radxa's aic8800-usb-dkms with the same fixes as patches, including the 1 November port-reboot fix, the D80's 368b:8d81 and an eject rule: for a board that installs Radxa's Debian packages. Built and loaded by irate-box on a Raspberry Pi 3B+."
+  },
+  {
+   "title": "USB gadget functions (Armbian linux-rockchip v6.1.115)",
+   "url": "https://github.com/armbian/linux-rockchip/tree/v6.1.115",
+   "version": "7c15117",
+   "licence": "GPL-2.0",
+   "note": "NCM, ACM and mass storage, built out of tree by the box's USB networking service for the Lyra's vendor kernel. The toolkit pins each source file's sha256; the service fetches and checks them before DKMS builds them."
+  }
+ ],
+ "gadget": {
+  "repo": "https://github.com/armbian/linux-rockchip",
+  "tag": "v6.1.115",
+  "tag_object": "8f84d3b6f69e7527efacf0c1bd7c0f2d1c4b44d3",
+  "commit": "7c15117f9468c7395ce3fd0892a6f909b91d9005",
+  "files": {
+   "drivers/usb/gadget/function/f_ncm.c": "916acc2712a474e7c3f5530b0358435b590692a3d4e65aa062b7ce74772f4bdb",
+   "drivers/usb/gadget/function/f_acm.c": "2800b3763d6f35021e52c6e5eb2028c3dd86c060f478b33cbea7289239cd3b6c",
+   "drivers/usb/gadget/function/f_mass_storage.c": "c3df45de239ae976a4d132282c7606cccc22659b1e271d63b20dd43679255ec9",
+   "drivers/usb/gadget/function/f_mass_storage.h": "cf6ee3b19ad154ae08a9a4c1add6198a83d3d2ff6713147841baa812db3852c8",
+   "drivers/usb/gadget/function/storage_common.c": "d85db1025afc6c46f028eac75720da191cd982cc5c969fc7c309c8873c1a4167",
+   "drivers/usb/gadget/function/storage_common.h": "c1745bc93de9d488fecce70bfc2f3532bbd33c831e7cb18774c7e4f67b3aa493",
+   "drivers/usb/gadget/function/u_ether.c": "4b24e7ee9c30fe5632d6122caace4a835d64bad01ee740e67f24ad4142391810",
+   "drivers/usb/gadget/function/u_serial.c": "7801d91b06e9d8a1395344c33cdf5b0c6ac3b14e17a6dba2d1852ec71d1a8408",
+   "drivers/usb/gadget/function/u_ether.h": "be629f6e64de23f1ab0a0e7208280122ceaba67b8e6c7d288e6a16cf20d49ffe",
+   "drivers/usb/gadget/function/u_ether_configfs.h": "bbd1a651edf2147f006a3acf5c5931c9ee71a974b70ba419c93ef1fedb62f24c",
+   "drivers/usb/gadget/function/u_ncm.h": "937fb2b87325b2e8b0ddbdc32ffc5e691c029512b2d06441fcd2eafb8058b4fe",
+   "drivers/usb/gadget/function/u_serial.h": "7b9789de69b7030151e9158251a1ba31e0e6acf675ef2e6d7e01d18c60b0b08e",
+   "drivers/usb/gadget/configfs.h": "a680515bf7a3f2a897283ffd104d8b8482eed6ecbdaf694f3fdef71b5abecb52"
+  }
+ },
+ "remove_after_hours": 24,
+ "tagline": "Drivers outside the kernel"
+}

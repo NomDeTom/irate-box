@@ -77,18 +77,25 @@ sources = {"policy": {"keep_old": 1, "check_every_hours": 24, "min_free_mb": 512
     {"name": "wikipedia_en_top_mini", "type": "kiwix", "kiwix_name": "wikipedia_en_top_mini"},
     {"name": "meshtastic-docs", "type": "nightly-link", "repo": "NomDeTom/meshtasticDocs", "workflow": "docs-zim.yml", "pattern": "*.zim"},
     {"name": "mermaid-docs", "type": "release", "repo": "NomDeTom/mermaid", "pattern": "*.zim"},
+    *({"name": f"extra-book-{i}", "type": "release", "repo": f"example/docs-{i}", "pattern": "*.zim"} for i in range(1, 12)),
 ]}
 (state / "library" / "sources.json").write_text(json.dumps(sources, indent=2))
 (state / "library" / "status.json").write_text(json.dumps({
     "wikipedia_en_top_mini": {"last_check": iso(now - 600), "outcome": "up to date", "current": {"version": "2026-10", "label": "October 2026", "size": 48_000_000, "installed": "2026-10-28"}, "latest": {"version": "2026-10", "label": "October 2026", "size": 48_000_000}},
     "meshtastic-docs": {"last_check": iso(now - 1200), "outcome": "newer version found", "current": {"version": "2026-09-29", "label": "29 September", "size": 59_500_000, "installed": "2026-10-01"}, "latest": {"version": "2026-11-04", "label": "4 November", "size": 61_000_000}},
     "mermaid-docs": {"last_check": iso(now - 1800), "outcome": "error: HTTP 404", "error": "HTTP 404: the release asset was not found"},
+    **{f"extra-book-{i}": {"last_check": iso(now - 600 - i * 300),
+        "outcome": ("error: HTTP 404" if i == 3 else "up to date"),
+        **({"error": "HTTP 404: the release asset was not found"} if i == 3 else {}),
+        "current": {"version": "2026-10", "label": "October 2026", "size": 2_000_000 + i, "installed": "2026-10-28"},
+        "latest": {"version": "2026-10", "label": "October 2026", "size": 2_000_000 + i}}
+        for i in range(1, 12)},
 }, indent=2))
 (state / "zim" / "library.xml").write_text("<library>" + "".join(
     f'<book id="{i}" path="{name}.zim" title="{title}" language="eng" date="2026-10" description=""/>'
-    for i, (name, title) in enumerate([("wikipedia_en_top_mini", "Wikipedia (top mini)"), ("meshtastic-docs", "Meshtastic docs"), ("mermaid-docs", "Mermaid docs")], 1)
+    for i, (name, title) in enumerate([("wikipedia_en_top_mini", "Wikipedia (top mini)"), ("meshtastic-docs", "Meshtastic docs"), ("mermaid-docs", "Mermaid docs"), ("handbook", "A handbook copied in by hand")] + [(f"extra-book-{j}", f"Extra book {j}") for j in range(1, 12)], 1)
 ) + "</library>")
-for name in ("wikipedia_en_top_mini", "meshtastic-docs", "mermaid-docs"):
+for name in ["wikipedia_en_top_mini", "meshtastic-docs", "mermaid-docs", "handbook"] + [f"extra-book-{i}" for i in range(1, 12)]:
     (state / "zim" / f"{name}.zim").write_bytes(b"ZIM sample")
 (state / "library" / "firmware.json").write_text(json.dumps({
     "enabled": True, "boards": "all", "keep_alpha": 2, "keep_beta": 1, "cache": "discard", "configs": True,

@@ -17,5 +17,6 @@
  "remove_after_hours": null,
  "services": [
   "bluetooth.service"
- ]
+ ],
+ "tagline": "Bluetooth and WiFi tools"
 }

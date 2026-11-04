@@ -362,22 +362,11 @@
         el('button', { type: 'button', className: 'action-btn', textContent: 'Update', onclick: (event) => run('fetch', event) }),
       ],
       body: [
-        el('p', { className: 'setting-desc' },
-          'Access: Administrators. This page and the image files are behind the administrator sign-in.'),
-        el('p', { className: 'setting-desc' },
-          `Schedule: every ${cfg.check_every_hours || 24} hours, set in rk-images.json; the librarian syncs it. There is no schedule control on this page.`),
-        el('p', { className: 'setting-desc' },
-          'Space: no budget of its own; the images are files on the box.'),
-        el('p', { className: `setting-desc${st.error ? ' bad' : ''}` },
-          ...(checked
-            ? [
-                st.error
-                  ? `Last checked ${checked}: the check failed. ${st.error} `
-                  : `Last checked ${checked}: ${st.outcome || 'nothing newer'}. `,
-                el('a', { href: '/admin/#updoctor', textContent: 'Open the Updates doctor.' }),
-              ]
-            : ['Not checked yet.']),
-        ),
+        st.error
+          ? el('p', { className: 'setting-desc bad' },
+              `The check failed: ${st.error} `,
+              el('a', { href: '/admin/#updoctor', textContent: 'Open the Updates doctor.' }))
+          : null,
         note,
         ...(images.length
           ? images.map((image) => el('p', { className: 'setting-desc' },

@@ -201,13 +201,13 @@ const AL = (() => {
           const ids = [];
           if (!app.folder) ids.push(made('app-head-' + app.id, 'app-head', 'Status', () => el('div', { class: 'head-block', 'data-app': app.id })));
           if (app.folder) ids.push(made('folder-' + app.id, 'folder-section', 'Folder contents', () => el('div', { class: 'folder-block', 'data-folder': app.id })));
-          // An app drawn on the hub page: its width, before what it owns.
-          if (app.width) ids.push(made('app-width-' + app.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': app.width })));
-          ids.push(...app.sections);
-          // What was reported there, for an app drawn on the hub page.
-          if (app.page) ids.push(made('app-flagged-' + app.id, 'app-flagged', 'Reported content', () => el('div', { class: 'flagged-block', 'data-app': app.id })));
+          // The page-wide settings first: who may open it, then its hub tile. Then its own settings and
+          // content (a source's schedule), then anything reported, and maintenance last.
           if (app.switch) ids.push(made('app-access-' + app.id, 'app-access', 'Access', () => el('div', { class: 'access-block', 'data-app': app.id }), true));
           if (app.switch || app.seen) ids.push(made('app-tile-' + app.id, 'app-tile', 'Hub tile', () => el('div', { class: 'tile-block', 'data-app': app.id }), true));
+          if (app.width) ids.push(made('app-width-' + app.id, 'app-width', 'Width', () => el('div', { class: 'width-block', 'data-key': app.width })));
+          ids.push(...app.sections);
+          if (app.page) ids.push(made('app-flagged-' + app.id, 'app-flagged', 'Reported content', () => el('div', { class: 'flagged-block', 'data-app': app.id })));
           // Maintenance: its own updates and its installation, each where admin.js draws it.
           if (app.updates || app.addon) {
             ids.push(made('app-maint-' + app.id, 'app-maint', 'Maintenance', () => el('div', {},

@@ -858,150 +858,7 @@
           </p>
           <!-- The books, a page at a time (/admin/books); a book's card opens from its row. -->
           <p class="setting-desc" id="books-summary"></p>
-          <div class="books-tools">
-            <label data-i18n="admin.books.label-search-books"
-              >Search books
-              <input
-                type="search"
-                id="books-q"
-                placeholder="title or name"
-                aria-label="Search books"
-                data-i18n-aria-label="admin.books.aria-search-books"
-                data-i18n-placeholder="admin.books.placeholder-title-name"
-            /></label>
-            <label data-i18n="admin.books.label-language"
-              >Language
-              <select id="books-language">
-                <option value="" data-i18n="admin.books.opt-any">any</option>
-              </select></label
-            >
-            <label data-i18n="admin.books.label-state"
-              >State
-              <select id="books-state">
-                <option value="" data-i18n="admin.books.opt-any">any</option>
-                <option
-                  value="newer"
-                  data-i18n="admin.books.opt-newer-available"
-                >
-                  newer available
-                </option>
-                <option value="failed" data-i18n="admin.books.opt-check-failed">
-                  check failed
-                </option>
-                <option
-                  value="not installed"
-                  data-i18n="admin.books.opt-not-installed"
-                >
-                  not installed
-                </option>
-                <option
-                  value="unreadable"
-                  data-i18n="admin.books.opt-unreadable"
-                >
-                  unreadable
-                </option>
-                <option value="ok" data-i18n="admin.books.opt-up-date">
-                  up to date
-                </option>
-              </select></label
-            >
-            <label data-i18n="admin.books.label-managed-updates"
-              >Managed updates
-              <select id="books-kept">
-                <option value="" data-i18n="admin.books.opt-either">
-                  either
-                </option>
-                <option value="yes" data-i18n="admin.books.opt-enabled">
-                  enabled
-                </option>
-                <option
-                  value="no"
-                  data-i18n="admin.books.opt-disabled-added-hand-usb"
-                >
-                  disabled (added by hand, or by USB)
-                </option>
-              </select></label
-            >
-            <label data-i18n="admin.books.label-sort"
-              >Sort
-              <select id="books-sort">
-                <option value="title" data-i18n="admin.books.opt-title">
-                  by title
-                </option>
-                <option value="size" data-i18n="admin.books.opt-largest-first">
-                  largest first
-                </option>
-                <option value="date" data-i18n="admin.books.opt-newest-first">
-                  newest first
-                </option>
-              </select></label
-            >
-          </div>
-          <div class="books-bulk" id="books-bulk" hidden>
-            <span id="books-selected"></span>
-            <button
-              class="action-btn"
-              type="button"
-              data-bulk="check"
-              data-i18n="admin.books.btn-check"
-            >
-              Check
-            </button>
-            <button
-              class="action-btn"
-              type="button"
-              data-bulk="update"
-              data-i18n="admin.books.btn-update"
-            >
-              Update
-            </button>
-            <button
-              class="action-btn"
-              type="button"
-              data-bulk="untrack"
-              data-i18n="admin.books.btn-stop-tracking"
-            >
-              Stop tracking
-            </button>
-            <button
-              type="button"
-              id="books-select-matching"
-              class="link-button"
-            ></button>
-            <button
-              type="button"
-              id="books-select-none"
-              class="link-button"
-              data-i18n="admin.books.select-none"
-            >
-              Clear the selection
-            </button>
-          </div>
-          <div class="scroll-x">
-            <table class="admin-table books-table" id="books-table">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      id="books-page-all"
-                      aria-label="Select this page"
-                      data-i18n-aria-label="admin.books.aria-select-page"
-                    />
-                  </th>
-                  <th data-i18n="admin.books.col-book">Book</th>
-                  <th data-i18n="admin.books.col-language">Language</th>
-                  <th data-i18n="admin.books.col-size">Size</th>
-                  <th data-i18n="admin.books.col-date">Date</th>
-                  <th data-i18n="admin.books.col-managed-updates">
-                    Managed updates
-                  </th>
-                  <th data-i18n="admin.books.col-state">State</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+          <div id="books-cards" class="card-grid source-grid"></div>
           <p class="books-pager">
             <button
               class="action-btn"
@@ -1021,7 +878,6 @@
               Next
             </button>
           </p>
-          <div id="library-sources" class="card-grid source-grid"></div>
           <div class="library-actions">
             <button
               class="action-btn"
@@ -1034,18 +890,9 @@
             <button
               class="action-btn"
               type="button"
-              data-all="fetch"
-              data-i18n="admin.books.btn-download-all"
-            >
-              Download all
-            </button>
-            <button
-              class="action-btn"
-              type="button"
               data-all="update"
-              data-i18n="admin.books.btn-install-all"
             >
-              Install all
+              Update all
             </button>
           </div>
           <p
@@ -1179,35 +1026,7 @@
               aria-labelledby="tab-books-other"
               hidden
             >
-              <p class="setting-desc" data-i18n="admin.books.source-templates">
-                Source templates:
-                <button
-                  type="button"
-                  class="link-button"
-                  data-preset="release"
-                  data-i18n="admin.books.btn-project-releases"
-                >
-                  a project's releases
-                </button>
-                ·
-                <button
-                  type="button"
-                  class="link-button"
-                  data-preset="actions"
-                  data-i18n="admin.books.btn-fork-actions-builds"
-                >
-                  a fork's Actions builds
-                </button>
-                ·
-                <button
-                  type="button"
-                  class="link-button"
-                  data-preset="nightly-link"
-                  data-i18n="admin.books.btn-actions-builds-via-nightly"
-                >
-                  Actions builds via nightly.link
-                </button>
-              </p>
+              <div id="book-add-card"></div>
               <form id="library-add" class="library-form">
                 <label data-i18n="admin.books.label-book-name"
                   >Book name

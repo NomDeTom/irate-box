@@ -3534,28 +3534,29 @@ body.drop > section + section {
   padding: 0;
   gap: 0;
 }
-.source-fold {
-  margin-bottom: 0.6rem;
-}
-.source-fold > .source-head {
+.source-head {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  width: 100%;
   padding: 0.7rem 0.9rem;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  list-style: none;
+  position: relative;
+  margin-bottom: 0.35rem;
 }
-.source-fold > .source-head::-webkit-details-marker {
-  display: none;
-}
-.source-fold > .source-head::after {
+.source-head::after {
   content: "▸";
   position: absolute;
   top: 0.65rem;
   right: 0.8rem;
   color: var(--muted);
 }
-.source-fold[open] > .source-head::after {
+.source-card.open .source-head::after {
   content: "▾";
 }
 .source-title-line {
@@ -3592,23 +3593,52 @@ body.drop > section + section {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.source-drawer {
-  margin-top: 0.3rem;
-  padding: 0.65rem 0.9rem 0.8rem;
+.source-panel {
+  grid-column: 1 / -1;
+}
+.source-panel > .source-drawer {
+  margin-top: -0.35rem;
+  padding: 0.7rem 0.9rem 0.8rem;
+  border: 1px solid var(--accent);
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: var(--bg);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0.55rem 0.9rem;
+  align-items: start;
+}
+.source-panel > .source-drawer > :is(p, div, form, section, .admin-list, h3, h4, .library-buttons, .settings) {
+  grid-column: 1 / -1;
+}
+.source-panel .appstore-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 0.5rem 0.9rem;
+}
+.source-panel .appstore-settings .aw-field {
+  border-top: 0;
+  padding: 0;
+}
+.source-panel .appstore-settings .aw-foot {
+  grid-column: 1 / -1;
+}
+.source-panel .source-danger {
+  padding-top: 0.6rem;
   border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
+}
+.source-panel input[type="number"] {
+  width: 6.5rem;
 }
 @keyframes source-open {
   from { opacity: 0; transform: translateY(-0.2rem); }
   to { opacity: 1; transform: none; }
 }
-.source-fold[open] > .source-drawer {
+.source-panel .source-drawer {
   animation: source-open 0.18s ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
-  .source-fold[open] > .source-drawer { animation: none; }
+  .source-panel .source-drawer { animation: none; }
 }
 .source-drawer > p {
   margin: 0;
@@ -3936,6 +3966,14 @@ button.danger {
   display: flex;
   gap: 0.35rem;
   align-items: center;
+}
+.aw-filter-sort {
+  margin-left: auto;
+}
+.aw-filter-sort select {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.4rem;
 }
 .books-bulk {
   display: flex;
@@ -4504,6 +4542,59 @@ label > .select-chips {
 .aw-row-detail {
   padding: 0.2rem 0.9rem 0.7rem 1.9rem;
   font-size: 0.85rem;
+}
+/* A list of many books: the bulk bar of that view, then Mock controls' short list. */
+.books-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.kits-list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.books-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.source-tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+/* The short-list view of a source: the line's actions beside its head, the same drawer under it, full width. */
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.source-row .source-row-head {
+  grid-column: 1;
+}
+.source-row-actions {
+  grid-column: 2;
+  margin: 0;
+  padding: 0.2rem 0.6rem;
+  flex-wrap: nowrap;
+}
+.source-row-detail {
+  grid-column: 1 / -1;
+  padding-left: 1.9rem;
+}
+@media (max-width: 40rem) {
+  .source-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .source-row-actions {
+    grid-column: 1;
+    padding: 0 0.7rem 0.45rem 1.9rem;
+    flex-wrap: wrap;
+  }
 }
 .aw-dl {
   display: grid;
