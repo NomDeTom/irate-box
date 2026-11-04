@@ -1,0 +1,12 @@
+Pinmux settings per pin
+Format: pin (name): mux_owner|gpio_owner (strict) hog?
+pin 0 (gpio0): UNCLAIMED
+pin 28 (gpio28): GPIO pinctrl-bcm2835:540
+pin 29 (gpio29): GPIO pinctrl-bcm2835:541
+pin 30 (gpio30): device 3f201000.serial function alt3 group gpio30
+pin 31 (gpio31): device 3f201000.serial function alt3 group gpio31
+pin 32 (gpio32): device 3f201000.serial function alt3 group gpio32
+pin 33 (gpio33): device 3f201000.serial function alt3 group gpio33
+pin 34 (gpio34): device 3f300000.mmcnr function alt3 group gpio34
+pin 40 (gpio40): device 3f00b840.mailbox function alt0 group gpio40
+pin 48 (gpio48): device 3f202000.mmc function alt0 group gpio48

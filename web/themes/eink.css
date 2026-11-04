@@ -70,3 +70,18 @@
 
 /* The scanline-style effects other themes add stay off. */
 [data-theme="eink"] body::before { display: none; }
+
+/* The pin map on e-paper: no hue, so the square's mark (3V3, 5V, GND, the taken dot) and the legend carry the
+   meaning. Free is white, taken is black; power and ground have their own dark greys. */
+:root[data-theme="eink"] {
+  --pin-3v3: #fff;
+  --pin-3v3-ink: #000;
+  --pin-5v: #000;
+  --pin-5v-ink: #fff;
+  --pin-gnd: #333;
+  --pin-gnd-ink: #fff;
+  --pin-free: #fff;
+  --pin-free-ink: #000;
+  --pin-taken: #000;
+  --pin-taken-ink: #fff;
+}

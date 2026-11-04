@@ -6459,13 +6459,22 @@ label > .aw-onoff-box ~ .chip-group,
   gap: 0.1rem 0.5rem;
   padding: 0.4rem 0.55rem;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--ok);
+  border-left: 4px solid var(--pin-free);
   border-radius: 6px;
   background: var(--surface);
   font-size: 0.85rem;
 }
 .pin.used {
-  border-left-color: var(--bad);
+  border-left-color: var(--pin-taken);
+}
+.pin.power {
+  border-left-color: var(--pin-gnd);
+}
+.pin.pin-3v3 {
+  border-left-color: var(--pin-3v3);
+}
+.pin.pin-5v {
+  border-left-color: var(--pin-5v);
 }
 .pin b {
   grid-row: span 2;
@@ -6480,37 +6489,84 @@ label > .aw-onoff-box ~ .chip-group,
   color: var(--muted);
 }
 
-/* --- Pin map: the header drawing --- */
+/* --- Pin map: the header drawing, a narrow strip with the words outward --- */
 .pinheader {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.25rem;
   margin: 0.8rem 0;
-  max-width: 64rem;
+  max-width: 48rem;
 }
 .pinrow {
-  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1.8rem;
+  grid-template-columns: minmax(0, 1fr) 2.15rem 2.15rem minmax(0, 1fr);
+  gap: 0.15rem 0.35rem;
+  align-items: center;
 }
-.pinrow::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 50%;
-  border-left: 1px solid var(--border);
+.pin-side {
+  min-width: 0;
+  font-size: 0.85rem;
 }
-.pin {
-  border-left-color: var(--ok);
+.pin-side.left {
+  text-align: right;
 }
-.pin.used {
-  border-left-color: var(--bad);
+.pin-side.right {
+  text-align: left;
 }
-.pin.power {
-  border-left-color: var(--muted);
-}
-.pin small {
+.pin-side span,
+.pin-side small {
   display: block;
+  overflow-wrap: anywhere;
+}
+.pin-side small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.pin-square {
+  width: 2.15rem;
+  height: 2.15rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--pin-free);
+  color: var(--pin-free-ink);
+  font-size: 0.62rem;
+  line-height: 1.05;
+  font-weight: 700;
+}
+.pin-square b {
+  font-size: 0.9rem;
+}
+.pin-square small {
+  font-size: 0.55rem;
+  font-weight: 700;
+}
+.pin-square.pin-3v3 {
+  background: var(--pin-3v3);
+  color: var(--pin-3v3-ink);
+}
+.pin-square.pin-5v {
+  background: var(--pin-5v);
+  color: var(--pin-5v-ink);
+}
+.pin-square.pin-gnd {
+  background: var(--pin-gnd);
+  color: var(--pin-gnd-ink);
+}
+.pin-square.pin-free {
+  background: var(--pin-free);
+  color: var(--pin-free-ink);
+}
+.pin-square.pin-taken {
+  background: var(--pin-taken);
+  color: var(--pin-taken-ink);
+}
+.pin-square.pin-empty {
+  border-color: transparent;
+  background: transparent;
 }
 .pin-legend {
   display: flex;
@@ -6525,14 +6581,23 @@ label > .aw-onoff-box ~ .chip-group,
   width: 0.75rem;
   height: 0.75rem;
   border: 1px solid var(--border);
-  border-left: 4px solid var(--ok);
   border-radius: 3px;
+  background: var(--pin-free);
 }
-.pin-key.used {
-  border-left-color: var(--bad);
+.pin-key.pin-3v3 {
+  background: var(--pin-3v3);
 }
-.pin-key.power {
-  border-left-color: var(--muted);
+.pin-key.pin-5v {
+  background: var(--pin-5v);
+}
+.pin-key.pin-gnd {
+  background: var(--pin-gnd);
+}
+.pin-key.pin-free {
+  background: var(--pin-free);
+}
+.pin-key.pin-taken {
+  background: var(--pin-taken);
 }
 
 

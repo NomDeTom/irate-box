@@ -18,21 +18,63 @@
   }
 
   function pinLabel(pin) {
+    if (pin.label) return pin.label;
     return pin.name || (pin.gpio === null || pin.gpio === undefined ? 'power' : `GPIO${pin.gpio}`);
   }
   function pinDetails(pin) {
-    const bits = [];
-    if (pin.type !== 'gpio') bits.push(pin.type === 'gnd' ? 'ground' : 'power');
-    else if (pin.used) bits.push(pin.consumer || 'taken');
-    else bits.push('free');
+    if (pin.type !== 'gpio') return pin.type === 'gnd' ? 'ground' : 'power';
+    const bits = [pin.used ? pin.consumer || 'taken' : 'free'];
     if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
     return bits.join(' · ');
+  }
+  function pinTypeClass(pin) {
+    if (pin.type === '3v3') return 'pin-3v3';
+    if (pin.type === '5v') return 'pin-5v';
+    if (pin.type === 'gnd') return 'pin-gnd';
+    return pin.used ? 'pin-taken' : 'pin-free';
+  }
+  function pinMark(pin) {
+    if (pin.type === '3v3') return '3V3';
+    if (pin.type === '5v') return '5V';
+    if (pin.type === 'gnd') return 'GND';
+    if (pin.type === 'gpio' && pin.used) return '●';
+    return '';
+  }
+  function pinTitle(pin) {
+    const bits = [`Pin ${pin.pin}`, pinLabel(pin)];
+    if (pin.type !== 'gpio') bits.push(pin.type === 'gnd' ? 'ground' : 'power');
+    else bits.push(pin.used ? `taken by ${pin.consumer || 'a function'}` : 'free');
+    return bits.join(', ');
+  }
+  function pinSquare(pin) {
+    const square = document.createElement('div');
+    square.className = `pin-square ${pin ? pinTypeClass(pin) : 'pin-empty'}`;
+    if (!pin) return square;
+    square.title = pinTitle(pin);
+    square.setAttribute('aria-label', pinTitle(pin));
+    const number = document.createElement('b');
+    number.textContent = String(pin.pin);
+    const mark = document.createElement('small');
+    mark.textContent = pinMark(pin);
+    square.append(number, mark);
+    return square;
+  }
+  function pinSide(pin, side) {
+    const box = document.createElement('div');
+    box.className = `pin-side ${side}`;
+    if (!pin) return box;
+    const name = document.createElement('span');
+    name.textContent = pinLabel(pin);
+    const detail = document.createElement('small');
+    detail.textContent = pinDetails(pin);
+    box.append(name, detail);
+    return box;
   }
   function pinCard(pin) {
     const cls = pin.type === 'gpio' ? (pin.used ? 'used' : 'free') : 'power';
     const card = document.createElement('div');
-    card.className = `pin ${cls}`;
-    card.title = pin.role ? `${pinLabel(pin)}: now ${pin.used ? pin.consumer || 'taken' : 'free'}; the board pinout names it ${pin.role}` : '';
+    card.className = `pin ${cls} ${pinTypeClass(pin)}`;
+    card.title = pinTitle(pin);
     const number = document.createElement('b');
     number.textContent = String(pin.pin);
     const name = document.createElement('span');
@@ -61,8 +103,7 @@
       row.className = 'pinrow';
       const left = byPin.get(n);
       const right = byPin.get(n + 1);
-      row.append(left ? pinCard(left) : document.createElement('span'));
-      row.append(right ? pinCard(right) : document.createElement('span'));
+      row.append(pinSide(left, 'left'), pinSquare(left), pinSquare(right), pinSide(right, 'right'));
       map.append(row);
     }
   }

@@ -206,7 +206,7 @@ V2_RE = re.compile(r'^\s*line\s+(\d+):\s+(?:"([^"]*)"|(\S+))\s+(input|output)\b(
 # libgpiod v1: name, consumer, direction, bias, and [used] when a consumer holds it.
 V1_RE = re.compile(r'^\s*line\s+(\d+):\s+(?:"([^"]*)"|(\S+))\s+(?:"([^"]*)"|(\S+))\s+(input|output)\b(.*)$')
 CONSUMER_RE = re.compile(r"consumer=(?:\"([^\"]*)\"|(\S+))")
-PINMUX_RE = re.compile(r"^pin\s+\d+\s+\(gpio(\d+)-(\d+)\):\s+(.*)$")
+PINMUX_RE = re.compile(r"^pin\s+(\d+)\s+\(([^)]+)\):\s+(.*)$")
 PINMUX_GPIO_RE = re.compile(r"gpio\d+:\d+")
 
 
@@ -268,23 +268,41 @@ def line_count(text):
 
 
 def parse_pinmux(text):
-    """{(chip, line): owner} for pins a function holds, from pinctrl's pinmux-pins."""
+    """{key: {owner, function, group, name, pin}} for pins a function holds, from pinctrl's pinmux-pins.
+    The key is (chip, line) for a gpioX-Y name, ("gpio", N) for gpioN, ("port", "PA12") for a sunxi port, else
+    ("pin", N). The function and group are kept, so a claimed pin can be named by what it does."""
     out = {}
     for raw in text.splitlines():
         found = PINMUX_RE.match(raw)
         if not found:
             continue
-        chip, line, rest = f"gpiochip{int(found.group(1))}", int(found.group(2)), found.group(3).split()
+        pin_no, name, rest = int(found.group(1)), found.group(2).strip(), found.group(3).split()
         if not rest:
             continue
-        if not " ".join(rest).startswith("(MUX UNCLAIMED)"):
-            out[(chip, line)] = rest[0]
+        function = group = ""
+        if " ".join(rest).startswith("(MUX UNCLAIMED)"):
+            # A GPIO requested through gpiolib (a hog): pinmux-pins names it gpioN:M after the mux owner.
+            owner = next((token for token in rest[1:] if PINMUX_GPIO_RE.fullmatch(token)), "")
+        else:
+            owner = rest[1] if rest[0] == "device" and len(rest) > 1 else rest[0]
+            if "function" in rest:
+                at = rest.index("function")
+                function = rest[at + 1] if at + 1 < len(rest) else ""
+            if "group" in rest:
+                at = rest.index("group")
+                group = rest[at + 1] if at + 1 < len(rest) else ""
+        if not owner or owner in ("UNCLAIMED", "GPIO"):
             continue
-        # A GPIO requested through gpiolib (a hog): pinmux-pins names it gpioN:M after the mux owner.
-        for token in rest[1:]:
-            if PINMUX_GPIO_RE.fullmatch(token):
-                out[(chip, line)] = token
-                break
+        banked = re.fullmatch(r"gpio(\d+)-(\d+)", name)
+        if banked:
+            key = (f"gpiochip{int(banked.group(1))}", int(banked.group(2)))
+        elif re.fullmatch(r"gpio\d+", name):
+            key = ("gpio", int(name[4:]))
+        elif re.fullmatch(r"P[A-GL]\d+", name.upper()):
+            key = ("port", name.upper())
+        else:
+            key = ("pin", pin_no)
+        out[key] = {"owner": owner, "function": function, "group": group, "name": name, "pin": pin_no}
     return out
 
 
@@ -302,13 +320,117 @@ def pinmux_claims():
 
 
 def apply_pinmux(lines, claims):
-    """Mark the lines a pinmux function holds, where gpioinfo did not already name a consumer."""
-    for line in lines:
-        who = claims.get((line["chip"], line["line"]))
-        if who and not line["used"]:
-            line["consumer"] = who
+    """Mark the lines a pinmux function holds, where gpioinfo did not already name a consumer. A claim is matched
+    by its chip and line (Rockchip), its GPIO number (the Pi), its port name (sunxi), or its pin number."""
+    for key, claim in claims.items():
+        if str(key[0]).startswith("gpiochip"):
+            line = next((row for row in lines if row["chip"] == key[0] and row["line"] == key[1]), None)
+        elif key[0] == "gpio":
+            line = next((row for row in lines if row["line"] == key[1]), None)
+        elif key[0] == "port":
+            line = next((row for row in lines if _port_key(row["name"]) == key[1]), None)
+        else:
+            line = next((row for row in lines if row["line"] == claim["pin"]), None)
+        if line and not line["used"]:
+            line["consumer"] = claim["owner"]
             line["used"] = True
+            line["function"] = claim["function"]
+            line["group"] = claim["group"]
     return lines
+
+
+def parse_aliases(text):
+    """{name: path} from a device tree aliases file, either name=path or name = "path";."""
+    out = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        found = re.match(r'([A-Za-z0-9_-]+)\s*=\s*"?([^";]+)"?;?$', line)
+        if found:
+            out[found.group(1)] = found.group(2).strip()
+    return out
+
+
+def aliases():
+    """The device tree's aliases, {name: path}: a directory of files on this kernel, a file of name = "path"; on
+    others."""
+    path = DT / "aliases"
+    out = {}
+    try:
+        if path.is_dir():
+            for entry in path.iterdir():
+                if entry.name == "name":
+                    continue
+                try:
+                    out[entry.name] = entry.read_bytes().rstrip(b"\0\n").decode(errors="replace")
+                except OSError:
+                    continue
+        else:
+            out = parse_aliases(path.read_text(errors="replace"))
+    except OSError:
+        pass
+    return out
+
+
+def _of_node_name(owner):
+    """The device tree node a platform, SPI or I2C device's of_node points at, by its last name (serial@7e201000)."""
+    for base in (Path("/sys/bus/platform/devices"), Path("/sys/bus/spi/devices"), Path("/sys/bus/i2c/devices")):
+        try:
+            return (base / owner / "of_node").resolve(strict=True).name
+        except OSError:
+            continue
+    return ""
+
+
+def alias_for(owner, table=None, of_node=None):
+    """The alias for an owner's address, or through its of_node where the addresses differ (the Pi's 3f…/7e…)."""
+    table = aliases() if table is None else table
+    address = owner.split(".", 1)[0].lower()
+    for name, value in table.items():
+        if re.search(rf"@{re.escape(address)}$", value, re.I):
+            return name
+    node = of_node if of_node is not None else _of_node_name(owner)
+    if node:
+        for name, value in table.items():
+            if value.rstrip("/").endswith("/" + node) or value.rstrip("/") == node:
+                return name
+    return ""
+
+
+def bus_occupant(bus):
+    """What sits on a SPI bus: its first device's modalias without the "spi:" prefix (spidev, spi-nand)."""
+    if not bus.lower().startswith("spi"):
+        return ""
+    try:
+        devices = sorted(Path("/sys/bus/spi/devices").glob(f"{bus.lower()}.*"))
+    except OSError:
+        return ""
+    for device in devices:
+        try:
+            modalias = (device / "modalias").read_text().strip()
+        except OSError:
+            continue
+        if modalias.startswith("spi:"):
+            return modalias[4:]
+    return ""
+
+
+def name_for(claim, table=None, of_node=None):
+    """A claimed pin's name, best first: the pinmux group (SPI0 MOSI), the owner's alias (SERIAL1), then the owner."""
+    group = claim.get("group") or ""
+    found = re.match(r"rm-io\d+-(.+)$", group)
+    if found:
+        parts = found.group(1).split("-")
+        bus = parts[0].upper()
+        signal = "-".join(parts[1:]).upper().replace("CSN", "CS")
+        name = f"{bus} {signal}".strip()
+        occupant = bus_occupant(bus)
+        return f"{name} ({occupant})" if occupant else name
+    alias = alias_for(claim.get("owner") or "", table, of_node=of_node)
+    if alias:
+        return alias.upper()
+    return claim.get("owner") or ""
 
 
 def model():
@@ -418,6 +540,8 @@ def board_lines(board, lines, model_name=""):
                 "role": PI_ALT.get(gpio, "") if gpio is not None else "",
                 "consumer": found.get("consumer", ""),
                 "used": found.get("used", False),
+                "function": found.get("function", ""),
+                "group": found.get("group", ""),
             }
             row["type"] = _pin(row)
             out.append(row)
@@ -442,6 +566,8 @@ def board_lines(board, lines, model_name=""):
                 "role": role,
                 "consumer": found.get("consumer", ""),
                 "used": found.get("used", False),
+                "function": found.get("function", ""),
+                "group": found.get("group", ""),
             }
             row["type"] = _pin(row)
             out.append(row)
@@ -462,6 +588,8 @@ def board_lines(board, lines, model_name=""):
                 "role": role,
                 "consumer": found.get("consumer", ""),
                 "used": found.get("used", False),
+                "function": found.get("function", ""),
+                "group": found.get("group", ""),
             }
             row["type"] = _pin(row)
             out.append(row)
@@ -478,6 +606,8 @@ def board_lines(board, lines, model_name=""):
             "role": "",
             "consumer": line["consumer"],
             "used": line["used"],
+            "function": line.get("function", ""),
+            "group": line.get("group", ""),
         }
         for line in lines
     ]
@@ -510,11 +640,18 @@ def snapshot(board=None):
                 "so a pin that a function such as SPI or I2C holds may show as free."
             )
             note = f"{note} {pinmux}".strip()
+    header = board_lines(board, lines, model_name)
+    table = aliases()
+    for row in header:
+        if row.get("used") and row.get("consumer"):
+            row["label"] = name_for(
+                {"owner": row["consumer"], "function": row.get("function", ""), "group": row.get("group", "")}, table
+            )
     return {
         "board": board,
         "model": model_name,
         "lines": lines,
-        "header": board_lines(board, lines, model_name),
+        "header": header,
         "note": note,
     }
 
