@@ -3596,6 +3596,30 @@ body.drop > section + section {
 .source-panel {
   grid-column: 1 / -1;
 }
+/* An open source card: the small card keeps its space, and the larger card takes the next row under it. */
+.source-panel.source-expanded {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  min-width: 0;
+}
+.source-expanded > .source-head {
+  margin-bottom: 0;
+}
+.source-expanded > .source-actions {
+  margin-top: auto;
+}
+.source-expanded > .source-drawer {
+  margin-top: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+}
+.source-panel.open .source-head::after {
+  content: "▾";
+}
 .source-panel > .source-drawer {
   margin-top: -0.35rem;
   padding: 0.7rem 0.9rem 0.8rem;
@@ -4569,6 +4593,7 @@ label > .select-chips {
 }
 /* The podcast settings: one compact row per setting, the caption and its control on one line, left-aligned. */
 #podcasts-panel .settings .aw-field {
+  flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-start;
@@ -4581,6 +4606,16 @@ label > .select-chips {
 #podcasts-panel .settings .aw-field input[type="number"] {
   flex: 0 0 auto;
   width: 6.5rem;
+}
+#podcasts-panel .settings .podcast-toggle {
+  flex-wrap: nowrap;
+}
+#podcasts-panel .settings .podcast-toggle input[type="checkbox"] {
+  order: -1;
+  margin: 0;
+}
+#podcasts-panel .settings .podcast-toggle .aw-label {
+  flex: 1 1 auto;
 }
 #podcasts-panel .settings .aw-field .chip-group {
   flex: 0 1 auto;
@@ -4807,8 +4842,9 @@ label > .select-chips {
   color: var(--muted);
 }
 .aw-field select {
-  padding: 0.35rem 0.5rem;
+  padding: 0.2rem 0.4rem;
   font: inherit;
+  font-size: 0.88rem;
   color: inherit;
   background: var(--bg);
   border: 1px solid var(--border);

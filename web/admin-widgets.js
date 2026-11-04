@@ -359,7 +359,10 @@ const AW = (() => {
         : null);
     const body = h('div', { class: 'source-drawer' },
       ...[opts.body].flat(Infinity).filter((node) => node !== null && node !== undefined));
-    const panel = h('div', { class: 'source-panel' }, body);
+    const actionsNode = opts.actions && opts.actions.length
+      ? h('p', { class: 'library-buttons source-actions' }, ...opts.actions.filter(Boolean))
+      : null;
+    const panel = h('div', { class: 'source-panel source-expanded' });
     let onResize = null;
     const place = () => {
       if (!panel.isConnected) {
@@ -371,23 +374,32 @@ const AW = (() => {
       }
     };
     const setOpen = (open) => {
-      card.classList.toggle('open', open);
       head.setAttribute('aria-expanded', String(open));
       if (open) {
+        // The small card gives its space to the grid, but is no longer drawn: the larger card takes the next
+        // row's gap under it. Mock controls' open card does the same.
+        const height = card.getBoundingClientRect().height;
+        card.style.minHeight = `${height}px`;
+        card.style.visibility = 'hidden';
+        panel.classList.add('open');
+        panel.replaceChildren(head, actionsNode || '', body);
         place();
         onResize = () => place();
         window.addEventListener('resize', onResize);
       } else {
         panel.remove();
+        card.append(head);
+        if (actionsNode) card.append(actionsNode);
+        card.style.minHeight = '';
+        card.style.visibility = '';
         if (onResize) window.removeEventListener('resize', onResize);
         onResize = null;
       }
       if (opts.onToggle) opts.onToggle(open);
     };
-    head.addEventListener('click', () => setOpen(!card.classList.contains('open')));
+    head.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
     card.append(head);
-    if (opts.actions && opts.actions.length)
-      card.append(h('p', { class: 'library-buttons source-actions' }, ...opts.actions.filter(Boolean)));
+    if (actionsNode) card.append(actionsNode);
     if (opts.open) setTimeout(() => setOpen(true), 0);
     return card;
   }

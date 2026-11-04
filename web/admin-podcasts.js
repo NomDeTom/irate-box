@@ -55,8 +55,7 @@
     };
     const toggleRow = (name, label, value) => {
       const input = el("input", { name, type: "checkbox", checked: !!value });
-      box.append(el("label", { className: "aw-field" }, input, el("span", { className: "aw-label", textContent: label })));
-      AW.onOff(input, label);
+      box.append(el("label", { className: "aw-field podcast-toggle" }, input, el("span", { className: "aw-label", textContent: label })));
     };
     const settings = snap.settings;
     toggleRow("enabled", "Follow podcasts", settings.enabled);
