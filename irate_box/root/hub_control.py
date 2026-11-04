@@ -9372,7 +9372,7 @@ def main():
     policy_publish()
     # The pages read one hardware status: publish it when the helper starts, so a boot needs no scan.
     try:
-        hardware.write_status()
+        hardware.write_status_on_boot()
     except Exception:  # noqa: BLE001 - a hardware read must not stop the helper from answering its queue # nosec B110
         pass
     # A request that arrives while this runs is picked up by the same loop.

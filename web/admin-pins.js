@@ -322,20 +322,24 @@
     const select = $('pins-gpio-pin');
     if (!select) return;
     const chosen = select.value;
-    const free = header.filter((pin) => pin.type === 'gpio' && pinState(pin) === 'free');
+    const offered = header.filter((pin) => {
+      if (pin.type !== 'gpio') return false;
+      const assigned = assignmentFor(pin);
+      return pinState(pin) === 'free' || (assigned && assigned.source === 'pinhog' && !assigned.removed);
+    });
     select.replaceChildren(
-      ...(free.length
-        ? free.map((pin) => {
+      ...(offered.length
+        ? offered.map((pin) => {
             const option = document.createElement('option');
+            const assigned = assignmentFor(pin);
             option.value = String(pin.pin);
-            option.textContent = `Pin ${pin.pin} — ${pinLabel(pin)}`;
+            option.textContent = `Pin ${pin.pin} — ${pinLabel(pin)}${assigned && assigned.source === 'pinhog' ? ' (hog)' : ''}`;
             return option;
           })
         : [Object.assign(document.createElement('option'), { value: '', textContent: 'No free pin' })]),
     );
-    if (free.some((pin) => String(pin.pin) === chosen)) select.value = chosen;
-    $('pins-gpio-read').disabled = !free.length;
-    $('pins-gpio-hog').disabled = !free.length;
+    if (offered.some((pin) => String(pin.pin) === chosen)) select.value = chosen;
+    syncPinChoice();
   }
   function renderHogs(assignments) {
     const host = $('pins-hogs');
@@ -366,7 +370,15 @@
       const tr = document.createElement('tr');
       const how = hog.mode === 'output' ? `Output ${hog.value ? 'high' : 'low'}` : 'Input';
       const pull = hog.bias && hog.bias !== 'none' ? `, pull-${hog.bias}` : '';
-      const when = hog.pending ? 'After a restart' : hog.state === 'conflict' ? 'Conflict' : hog.state === 'holding' ? 'Held from boot' : 'Now';
+      const when = hog.pending
+        ? hog.removed
+          ? 'Removing after a restart'
+          : 'After a restart'
+        : hog.state === 'conflict'
+          ? 'Conflict'
+          : hog.state === 'holding'
+            ? 'Held from boot'
+            : 'Did not apply';
       for (const value of [String(hog.pin), how + pull, when]) {
         const td = document.createElement('td');
         td.textContent = value;
@@ -410,6 +422,14 @@
     }
     gpioSay('The pin action was not confirmed in time.', false);
     if (button) button.disabled = false;
+  }
+  function syncPinChoice() {
+    const assigned = lastAssignments.get(Number($('pins-gpio-pin').value));
+    if (!assigned || assigned.source !== 'pinhog' || assigned.removed) return;
+    $('pins-gpio-mode').value = assigned.mode === 'output' ? 'out' : 'in';
+    $('pins-gpio-bias').value = assigned.bias || 'none';
+    $('pins-gpio-value').value = String(assigned.value ? 1 : 0);
+    $('pins-gpio-value-box').hidden = assigned.mode !== 'output';
   }
   function pinChoice() {
     const mode = $('pins-gpio-mode').value;
@@ -495,6 +515,7 @@
     renderOverlay(lastOverlay);
     dispSay('The display change was not confirmed in time.', false);
   }
+  $('pins-gpio-pin').addEventListener('change', syncPinChoice);
   $('pins-gpio-mode').addEventListener('change', () => {
     $('pins-gpio-value-box').hidden = $('pins-gpio-mode').value !== 'out';
   });

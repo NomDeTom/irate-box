@@ -83,8 +83,8 @@ usbgadget.status = lambda: {
 }
 led.status = lambda: {"settings": {}, "found": ["ACT"], "led": "ACT", "show": "alive", "off": False}
 rfkill.status = lambda: {"settings": {"wifi": "on", "bluetooth": "leave"}}
-clock.status = lambda: {"service": "chrony", "daemon": "chrony", "pool": "pool.ntp.org", "local": ""}
-rtc.status = lambda: None
+clock.load = lambda: {"service": "chrony", "pool": "pool.ntp.org", "local": ""}
+rtc.load_config = lambda: None
 
 pins = {
     "board": "lyra",
@@ -182,7 +182,7 @@ check(
 hardening.board = lambda: "other"
 pinmap.model = lambda: "Acme Widget"
 lcdtouch.status = lambda: {"supported": False}
-rtc.status = lambda: {"config": {"chip": "ds3231"}}
+rtc.load_config = lambda: {"chip": "ds3231"}
 data = hardware.status()
 check(
     "an unknown board: its kind and that the header is not known",
@@ -215,6 +215,10 @@ check("  and it is back when the module answers again", data["errors"] == [] and
 # The published answer says when it could not read everything.
 M = hardware.publish()
 check("publish: one message, and the file written again", M["id"] == "control.hardware.published", M)
+real_status = hardware.status
+hardware.status = lambda: (_ for _ in ()).throw(AssertionError("read again"))
+check("this boot's file is not read again on a later helper start", hardware.write_status_on_boot() is None)
+hardware.status = real_status
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

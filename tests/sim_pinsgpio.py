@@ -4,6 +4,7 @@
 high, the line opened once and released, and a claimed, hogged, power or unknown pin refused.
 python3 tests/sim_pinsgpio.py"""
 
+import json
 import os
 import sys
 import tempfile
@@ -15,7 +16,7 @@ T = Path(tempfile.mkdtemp(prefix="pinsgpio-"))
 os.environ.update(HUB_STATE_DIR=str(T / "state"), HUB_ETC_DIR=str(T / "etc"))
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
-from irate_box.root import pinmap, pinsgpio
+from irate_box.root import lcdtouch, ownserial, pinmap, pinsgpio
 
 fails = 0
 
@@ -37,7 +38,27 @@ def refused(fn, *a, **k):
 header = [
     {"pin": 1, "type": "3v3", "name": "3V3_OUT", "used": False},
     {"pin": 18, "type": "gpio", "name": "GPIO0_B4", "chip": "gpiochip0", "line": 12, "used": False, "consumer": ""},
+    {
+        "pin": 20,
+        "type": "gpio",
+        "name": "GPIO0_A4",
+        "chip": "gpiochip0",
+        "line": 4,
+        "used": True,
+        "consumer": "irate-box-pin20",
+    },
+    {
+        "pin": 21,
+        "type": "gpio",
+        "name": "GPIO0_A5",
+        "chip": "gpiochip0",
+        "line": 5,
+        "used": True,
+        "consumer": "other-driver",
+    },
     {"pin": 22, "type": "gpio", "name": "GPIO0_B3", "chip": "gpiochip0", "line": 11, "used": False, "consumer": ""},
+    {"pin": 26, "type": "gpio", "name": "GPIO0_B1", "chip": "gpiochip0", "line": 9, "used": False, "consumer": ""},
+    {"pin": 28, "type": "gpio", "name": "GPIO1_D3", "chip": "gpiochip1", "line": 27, "used": False, "consumer": ""},
     {
         "pin": 35,
         "type": "gpio",
@@ -47,16 +68,12 @@ header = [
         "used": True,
         "consumer": "spidev",
     },
-    {
-        "pin": 36,
-        "type": "gpio",
-        "name": "GPIO0_C1",
-        "chip": "gpiochip0",
-        "line": 17,
-        "used": True,
-        "consumer": "irate-box-pin36",
-    },
+    {"pin": 36, "type": "gpio", "name": "GPIO0_C1", "chip": "gpiochip0", "line": 17, "used": False, "consumer": ""},
 ]
+lcdtouch.status = lambda: {"supported": True, "active": False}
+ownserial.status = lambda: {"supported": False, "on": False}
+(T / "state" / "control").mkdir(parents=True)
+(T / "state" / "control" / "pins.json").write_text(json.dumps({"header": header}))
 pinmap.snapshot = lambda: {"header": header}
 reads = []
 requests = []
@@ -105,7 +122,7 @@ check(
     "a pull-up read: one request, the line read and released",
     said["id"] == "pins-gpio.in.high"
     and device == "/dev/gpiochip0"
-    and consumer == "irate-box-pin"
+    and consumer == "irate-box-poll"
     and config[12].fields["direction"] == "input"
     and config[12].fields["bias"] == "pull-up"
     and request.released,
@@ -137,8 +154,9 @@ check(
 said = pinsgpio.set_pin(18, "out", "none", 0)
 check("an output low: INACTIVE", requests[-1][2][12].fields["output_value"] == "inactive", said)
 
-check("a claimed pin is refused", refused(pinsgpio.set_pin, 35, "in", "none") == "pins-gpio.used")
-check("a pin hog's pin is refused", refused(pinsgpio.set_pin, 36, "in", "none") == "pins-gpio.hogged")
+check("a claimed pin is refused", refused(pinsgpio.set_pin, 21, "in", "none") == "pins-gpio.used")
+check("a pin hog's pin is refused", refused(pinsgpio.set_pin, 20, "in", "none") == "pins-gpio.hogged")
+check("an assigned display pin is refused", refused(pinsgpio.set_pin, 26, "in", "none") == "pins-gpio.assigned")
 check("a power pin is refused", refused(pinsgpio.set_pin, 1, "in", "none") == "pins-gpio.not-gpio")
 check("an unknown pin is refused", refused(pinsgpio.set_pin, 99, "in", "none") == "pins-gpio.unknown-pin")
 check("a bad mode is refused", refused(pinsgpio.set_pin, 18, "sideways", "none") == "pins-gpio.mode")

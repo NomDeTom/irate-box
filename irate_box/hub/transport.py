@@ -73,6 +73,6 @@ def allowed(action, over):
 
 def allowed_choice(action, choice, over):
     """allowed(), and for hw-set a boot-file choice needs HTTPS too."""
-    if action == "hw-set" and BOOT_CHOICES_RE.fullmatch(str(choice or "")):
+    if action in ("hw-set", "health-fix") and BOOT_CHOICES_RE.fullmatch(str(choice or "")):
         return over in TRUSTED
     return allowed(action, over)

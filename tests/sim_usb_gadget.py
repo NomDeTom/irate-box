@@ -233,6 +233,30 @@ check(
     (said, ran),
 )
 
+# A service look between the save and the helper's apply must not compose twice.
+usbgadget.save_settings(on=False)
+usbgadget._tick([], sleep=lambda _: None)
+real_compose = usbgadget._compose
+count = {"n": 0}
+
+
+def counting_compose(*args, **kwargs):
+    count["n"] += 1
+    return real_compose(*args, **kwargs)
+
+
+usbgadget._compose = counting_compose
+usbgadget.save_settings(on=True)
+usbgadget._tick([], sleep=lambda _: None)
+after_service = count["n"]
+usbgadget.apply(sleep=lambda _: None)
+check(
+    "a service look between the save and apply: one compose, and the helper's apply does not make a second",
+    after_service == 1 and count["n"] == 1,
+    (after_service, count["n"]),
+)
+usbgadget._compose = real_compose
+
 # While usb0 is not back, the status says pending rather than up.
 usb0 = T / "sys/class/net/usb0"
 usb0.rename(T / "sys/class/net/usb0.away")
@@ -240,6 +264,11 @@ check("a gadget still coming up: status says pending", usbgadget.status()["pendi
 usb0 = T / "sys/class/net/usb0.away"
 usb0.rename(T / "sys/class/net/usb0")
 check("  and no longer pending once usb0 is back", usbgadget.status()["pending"] is False)
+udc = T / "sys/class/udc/ff740000.usb"
+udc.rename(T / "sys/class/udc/ff740000.usb.away")
+check("  no peripheral port: not pending for ever", usbgadget.status()["pending"] is False)
+udc = T / "sys/class/udc/ff740000.usb.away"
+udc.rename(T / "sys/class/udc/ff740000.usb")
 
 
 # A change that cannot be made puts the previous configfs tree back.

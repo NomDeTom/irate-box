@@ -30,7 +30,7 @@ os.environ.update(
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
-from irate_box.root import pinhog, pinmap
+from irate_box.root import lcdtouch, ownserial, pinhog, pinmap
 
 fails = 0
 
@@ -54,6 +54,16 @@ header = [
     {"pin": 18, "type": "gpio", "name": "GPIO0_B4", "chip": "gpiochip0", "line": 12, "used": False, "consumer": ""},
     {"pin": 22, "type": "gpio", "name": "GPIO0_B3", "chip": "gpiochip0", "line": 11, "used": False, "consumer": ""},
     {
+        "pin": 21,
+        "type": "gpio",
+        "name": "GPIO0_A5",
+        "chip": "gpiochip0",
+        "line": 5,
+        "used": True,
+        "consumer": "other-driver",
+    },
+    {"pin": 26, "type": "gpio", "name": "GPIO0_B1", "chip": "gpiochip0", "line": 9, "used": False, "consumer": ""},
+    {
         "pin": 35,
         "type": "gpio",
         "name": "GPIO0_C0",
@@ -65,6 +75,8 @@ header = [
 ]
 (T / "state" / "control" / "pins.json").write_text(json.dumps({"header": header}))
 pinmap.snapshot = lambda: {"header": header}
+lcdtouch.status = lambda: {"supported": True, "active": False}
+ownserial.status = lambda: {"supported": False, "on": False}
 
 compiled = []
 
@@ -85,10 +97,10 @@ check(
     said["id"] == "pinhog.added.in"
     and pinhog.DTBO.is_file()
     and 'target-path = "/soc/gpio@ff120000"' in text
-    and "gpios = <12 0>" in text
+    and "gpios = <12 16>" in text
     and 'line-name = "irate-box-pin18"' in text
     and "input;" in text
-    and "bias-pull-up;" in text
+    and "bias-pull-up;" not in text
     and "user_overlays=mine irate-box-pin-hogs" in env.read_text(),
     (compiled[-1], env.read_text()),
 )
@@ -125,6 +137,16 @@ check(
     and hogs[22]["state"] == "idle",
     hogs,
 )
+pinhog.add(22, "out", "none", 1)
+hogs = {item["pin"]: item for item in pinhog.assignments()}
+check(
+    "  a held hog stays holding when another is added; only the new one waits",
+    hogs[18]["state"] == "holding"
+    and hogs[18]["pending"] is False
+    and hogs[22]["state"] == "idle"
+    and hogs[22]["pending"] is True,
+    hogs,
+)
 said = pinhog.add(18, "out", "none", 0)
 check(
     "  our own applied hog can be changed",
@@ -150,12 +172,28 @@ check(
     not pinhog.load() and not pinhog.DTBO.exists() and "user_overlays=mine\n" in env.read_text(),
     env.read_text(),
 )
+removed = {item["pin"]: item for item in pinhog.assignments()}
+check(
+    "  a held hog removed last stays pending removal until the next boot",
+    pinhog.pending() is True
+    and removed[18]["removed"] is True
+    and removed[18]["state"] == "holding"
+    and removed[18]["pending"] is True,
+    removed,
+)
+(T / "boot_id").write_text("boot-three\n")
+check(
+    "  after the next boot the removal is gone",
+    pinhog.pending() is False and pinhog.assignments() == [],
+    pinhog.assignments(),
+)
 
 check(
     "a pin another function claims is refused",
-    refused(pinhog.add, 35, "in", "none") == "pinhog.claimed",
+    refused(pinhog.add, 21, "in", "none") == "pinhog.claimed",
 )
 check("a power pin is refused", refused(pinhog.add, 1, "in", "none") == "pinhog.not-gpio")
+check("an assigned display pin is refused", refused(pinhog.add, 26, "in", "none") == "pinhog.assigned")
 check("an unknown pin is refused", refused(pinhog.add, 99, "in", "none") == "pinhog.unknown-pin")
 check("a bad pull or level is refused", refused(pinhog.add, 18, "in", "sideways") == "pinhog.bias")
 check("  and an output with no level", refused(pinhog.add, 18, "out", "none") == "pinhog.value")

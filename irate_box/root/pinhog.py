@@ -48,8 +48,12 @@ def boot_id():
     return _read(BOOT_ID).strip()
 
 
-def load():
-    """{pin: {"mode": "input"|"output", "bias": "none"|"up"|"down", "value": 0|1}}"""
+def _entries():
+    """Every saved pin, including a removal waiting for the next boot.
+
+    A removal is dropped once the box has booted without it. Each spec keeps the boot id it was
+    written in, so a hog that held from an earlier boot is not called pending by a later change.
+    """
     try:
         data = json.loads(STATE.read_text())
     except (OSError, ValueError):
@@ -60,8 +64,15 @@ def load():
     out = {}
     for pin, spec in hogs.items():
         if str(pin).isdigit() and isinstance(spec, dict):
+            if spec.get("removed") and spec.get("boot_id") != boot_id():
+                continue
             out[int(pin)] = spec
     return out
+
+
+def load():
+    """The hogs that are still wanted: {pin: {"mode", "bias", "value", "boot_id"}}."""
+    return {pin: spec for pin, spec in _entries().items() if not spec.get("removed")}
 
 
 def _state_boot():
@@ -72,22 +83,35 @@ def _state_boot():
     return data.get("boot_id") if isinstance(data, dict) else ""
 
 
-def _save(hogs):
+def _save(entries):
     safeio.mkdir(ETC, mode=0o755)
-    if not hogs:
+    if not entries:
         STATE.unlink(missing_ok=True)
         return
     safeio.write(
         STATE,
-        json.dumps({"boot_id": boot_id(), "hogs": {str(pin): spec for pin, spec in sorted(hogs.items())}}, indent=1)
+        json.dumps({"boot_id": boot_id(), "hogs": {str(pin): spec for pin, spec in sorted(entries.items())}}, indent=1)
         + "\n",
         0o600,
     )
 
 
-def pending():
-    """The overlay is written but the box has not restarted with it yet."""
-    return DTBO.is_file() and _state_boot() == boot_id()
+def _held(pin):
+    row = _row(pin) or {}
+    return bool(row.get("used")) and str(row.get("consumer") or "") == f"irate-box-pin{pin}"
+
+
+def _pending(pin, spec):
+    """A hog changed this boot, or a removal this boot, waits for the restart."""
+    return spec.get("boot_id") == boot_id()
+
+
+def pending(pin=None):
+    """Any (or one pin's) change is waiting for the next boot."""
+    entries = _entries()
+    if pin is not None:
+        return bool(pin in entries and _pending(pin, entries[pin]))
+    return any(_pending(pin, spec) for pin, spec in entries.items())
 
 
 def _row(pin):
@@ -117,6 +141,18 @@ def _validate(pin):
         raise Refused(M("pinhog.unknown-pin", "Pin {pin} is not in this board's header map.", pin=pin))
     if row.get("type") != "gpio":
         raise Refused(M("pinhog.not-gpio", "Pin {pin} is power or ground, not a GPIO.", pin=pin))
+    from irate_box.root import hardware
+
+    assigned = hardware.assignment_for(pin, include_pinhog=False)
+    if assigned:
+        raise Refused(
+            M(
+                "pinhog.assigned",
+                "Pin {pin} is assigned to {role}.",
+                pin=pin,
+                role=assigned.get("role") or assigned.get("owner") or "another owner",
+            )
+        )
     consumer = str(row.get("consumer") or "")
     if row.get("used") and consumer != f"irate-box-pin{pin}":
         raise Refused(
@@ -163,19 +199,20 @@ def dts(hogs):
                 level = "output-high" if spec.get("value") else "output-low"
             else:
                 level = "input"
-            bias = {"up": "bias-pull-up", "down": "bias-pull-down"}.get(spec.get("bias") or "none")
+            # The kernel's hog parser reads the pull from the flags cell of gpios, not a pinconf
+            # property: 0x10 is GPIO_PULL_UP, 0x20 GPIO_PULL_DOWN.
+            flags = {"up": 0x10, "down": 0x20}.get(spec.get("bias") or "none", 0)
             nodes.append(
                 "\t\t\tirate-box-hog@{pin} {{\n"
                 "\t\t\t\tgpio-hog;\n"
-                "\t\t\t\tgpios = <{line} 0>;\n"
+                "\t\t\t\tgpios = <{line} {flags}>;\n"
                 '\t\t\t\tline-name = "irate-box-pin{pin}";\n'
                 "\t\t\t\t{level};\n"
-                "{bias}"
                 "\t\t\t}};".format(
                     pin=pin,
                     line=line,
+                    flags=flags,
                     level=level,
-                    bias=f"\t\t\t\t{bias};\n" if bias else "",
                 )
             )
         fragments.append(
@@ -190,14 +227,10 @@ def _dtc(argv, inp=None):
     return subprocess.run(argv, capture_output=True, text=True, input=inp)  # noqa: TID251
 
 
-def _write(hogs):
+def _write(entries):
     from irate_box.root import hardware
 
-    old = None
-    try:
-        old = DTBO.read_bytes()
-    except OSError:
-        pass
+    hogs = {pin: spec for pin, spec in entries.items() if not spec.get("removed")}
     try:
         hardware.write_dtbo(OVERLAY, dts(hogs), run=_dtc, boot=BOOT)
         if hogs:
@@ -205,18 +238,12 @@ def _write(hogs):
         else:
             hardware.remove_overlay(OVERLAY, boot=BOOT)
     except hardware.OverlayError as exc:
-        # A failed compile leaves the tree the box had, never half of a new one.
-        if old is None:
-            DTBO.unlink(missing_ok=True)
-        else:
-            DTBO.parent.mkdir(parents=True, exist_ok=True)
-            DTBO.write_bytes(old)
         if exc.kind == "dtc-missing":
             raise Refused(M("pinhog.dtc-missing", "The device tree compiler (dtc) is not installed.")) from None
         raise Refused(
             M("pinhog.dtc-failed", "The device tree compiler (dtc) failed: {detail}", detail=exc.detail)
         ) from None
-    _save(hogs)
+    _save(entries)
 
 
 def add(pin, mode, bias="none", value=None):
@@ -230,9 +257,14 @@ def add(pin, mode, bias="none", value=None):
         value = None
     elif value not in (0, 1):
         raise Refused(M("pinhog.value", "An output is either 0 or 1."))
-    hogs = load()
-    hogs[pin] = {"mode": "input" if mode == "in" else "output", "bias": bias, "value": value}
-    _write(hogs)
+    entries = _entries()
+    entries[pin] = {
+        "mode": "input" if mode == "in" else "output",
+        "bias": bias,
+        "value": value,
+        "boot_id": boot_id(),
+    }
+    _write(entries)
     level = "high" if value else "low"
     if mode == "in":
         said = M("pinhog.added.in", "Pin {pin} is held as an input. Restart the box to apply it.", pin=pin)
@@ -247,33 +279,43 @@ def add(pin, mode, bias="none", value=None):
 
 
 def remove(pin):
-    """Take one pin's hog away; removing the last one removes the overlay too."""
-    hogs = load()
-    if pin not in hogs:
+    """Take one pin's hog away; a line it still holds waits for the restart to be released."""
+    entries = _entries()
+    spec = entries.get(pin)
+    if not spec or spec.get("removed"):
         raise Refused(M("pinhog.not-set", "Pin {pin} has no pin hog.", pin=pin))
-    del hogs[pin]
-    _write(hogs)
-    if hogs:
+    held = _held(pin)
+    if held:
+        entries[pin] = {**spec, "removed": True, "boot_id": boot_id()}
+    else:
+        del entries[pin]
+    _write(entries)
+    wanted = [p for p, item in entries.items() if not item.get("removed")]
+    if wanted:
         return M("pinhog.removed.more", "Pin {pin} is no longer held. Restart the box to apply it.", pin=pin)
-    return M(
-        "pinhog.removed.last", "Pin {pin} is no longer held. The pin-hog overlay is gone after a restart.", pin=pin
-    )
+    if held:
+        return M(
+            "pinhog.removed.pending",
+            "Pin {pin} is released after the next restart. The pin-hog overlay is gone then.",
+            pin=pin,
+        )
+    return M("pinhog.removed.last", "Pin {pin} is no longer held. The pin-hog overlay is gone.", pin=pin)
 
 
 def assignments():
-    """For hardware.json: each hog's pin, held after a restart, idle until then, or a conflict."""
+    """For hardware.json: each saved hog, per pin, held now or waiting for the next boot."""
     out = []
-    waiting = pending()
-    for pin, spec in sorted(load().items()):
+    for pin, spec in sorted(_entries().items()):
         row = _row(pin) or {}
         consumer = str(row.get("consumer") or "")
-        ours = row.get("used") and consumer == f"irate-box-pin{pin}"
+        ours = _held(pin)
         if row.get("used") and not ours:
             state = "conflict"
-        elif waiting or not ours:
-            state = "idle"
-        else:
+        elif ours:
             state = "holding"
+        else:
+            state = "idle"
+        removed = bool(spec.get("removed"))
         out.append(
             {
                 "pin": pin,
@@ -283,8 +325,9 @@ def assignments():
                 "state": state,
                 "source": "pinhog",
                 "active_owner": consumer,
-                "holding": state == "holding",
-                "pending": waiting,
+                "holding": state == "holding" and not removed,
+                "pending": _pending(pin, spec),
+                "removed": removed,
                 "mode": spec.get("mode"),
                 "bias": spec.get("bias"),
                 "value": spec.get("value"),
@@ -294,7 +337,7 @@ def assignments():
 
 
 def status():
-    return {"pending": pending(), "hogs": {str(pin): spec for pin, spec in sorted(load().items())}}
+    return {"pending": pending(), "hogs": {str(pin): spec for pin, spec in sorted(_entries().items())}}
 
 
 def main(argv):

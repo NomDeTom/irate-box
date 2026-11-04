@@ -217,7 +217,7 @@ def status():
     state = gadget_state()
     saved = read_status()
     settings = load_settings()
-    pending = bool((settings["on"] or settings["drive"]) and not state["up"])
+    pending = bool(udcs and (settings["on"] or settings["drive"]) and not state["up"])
     return {
         "model": model(),
         "peripheral": bool(udcs),
@@ -744,11 +744,11 @@ def setup(log=print, sleep=time.sleep):
     if not settings["on"] and not settings["drive"]:
         return False, "off", []
     RUN.mkdir(parents=True, exist_ok=True)
-    ACTIVE.write_text(json.dumps(settings))
-    udcs, why = _prepare(settings, log)
-    if not udcs:
-        return False, why, []
     with _applying():
+        ACTIVE.write_text(json.dumps(settings))
+        udcs, why = _prepare(settings, log)
+        if not udcs:
+            return False, why, []
         return _compose(settings, udcs, log, sleep)
 
 
@@ -761,21 +761,24 @@ def apply(settings=None, log=print, sleep=time.sleep):
     old = active_settings() or load_settings()
     new = load_settings() if settings is None else dict(settings)
     RUN.mkdir(parents=True, exist_ok=True)
-    if not new["on"] and not new["drive"]:
-        with _applying():
+    with _applying():
+        # The service may have made this change already between the save and this call.
+        if active_settings() == new and gadget_state()["up"]:
+            write_status(True, None)
+            return True, None
+        if not new["on"] and not new["drive"]:
             _teardown_tree()
             ACTIVE.write_text(json.dumps(new))
             if old.get("on"):
                 run(["ip", "addr", "flush", "dev", IFACE], timeout=30)
-        write_status(True, "off")
-        return True, None
-    udcs, why = _prepare(new, log)
-    if not udcs:
-        write_status(False, why)
-        return False, why
-    ACTIVE.write_text(json.dumps(new))
-    write_status(False, "changing", pending=True)
-    with _applying():
+            write_status(False, "off")
+            return True, None
+        udcs, why = _prepare(new, log)
+        if not udcs:
+            write_status(False, why)
+            return False, why
+        ACTIVE.write_text(json.dumps(new))
+        write_status(False, "changing", pending=True)
         ok, why, _children = _compose(new, udcs, log, sleep, children=False)
         if not ok:
             # Put the tree the box had back, so a failed change is not a lost gadget.
@@ -785,6 +788,37 @@ def apply(settings=None, log=print, sleep=time.sleep):
             return False, why
     write_status(True, None)
     return True, None
+
+
+def _tick(children, log=print, sleep=time.sleep):
+    """One look by the service: apply a changed setting, or repair a gadget that fell over."""
+    settings = load_settings()
+    if not settings["on"] and not settings["drive"]:
+        stop_children(children)
+        if active_settings() != settings:
+            ok, why = apply(settings, log=log, sleep=sleep)
+            write_status(ok, why)
+        else:
+            write_status(False, "off")
+        return [], False
+    if active_settings() != settings:
+        ok, why = apply(settings, log=log, sleep=sleep)
+        write_status(ok, why, pending=not ok)
+        log(f"usbgadget: {'changed' if ok else 'not changed'}" + (f": {why}" if why else ""))
+        return children, True
+    if not gadget_state()["up"]:
+        stop_children(children)
+        write_status(False, "starting", pending=True)
+        ok, why, children = setup(log, sleep)
+        write_status(ok, why, pending=not ok)
+        log(f"usbgadget: {'up' if ok else 'not up'}" + (f": {why}" if why else ""))
+        return children, True
+    if settings["on"] and not children:
+        return start_children(), True
+    if any(child.poll() is not None for child in children):
+        stop_children(children)
+        return start_children(), True
+    return children, False
 
 
 def teardown(children=()):
@@ -814,23 +848,7 @@ def serve(log=print):
     signal.signal(signal.SIGINT, stop)
     children = []
     while not stopping["now"]:
-        settings = load_settings()
-        if not settings["on"] and not settings["drive"]:
-            stop_children(children)
-            children = []
-            write_status(False, "off")
-        elif not gadget_state()["up"]:
-            stop_children(children)
-            children = []
-            write_status(False, "starting", pending=True)
-            ok, why, children = setup(log)
-            write_status(ok, why, pending=not ok and why == "changing")
-            log(f"usbgadget: {'up' if ok else 'not up'}" + (f": {why}" if why else ""))
-        elif settings["on"] and not children:
-            children = start_children()
-        elif any(child.poll() is not None for child in children):
-            stop_children(children)
-            children = start_children()
+        children, _changed = _tick(children, log)
         time.sleep(LOOK)
     teardown(children)
     return 0

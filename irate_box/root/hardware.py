@@ -77,15 +77,17 @@ def _optional(name):
         return None
 
 
-def _assignment(pin, role, by, source, row, active=False, tokens=()):
+def _assignment(pin, role, by, source, row, active=False, tokens=(), own=()):
     """One intended pin: idle when nothing claims it, active when the claim is ours, conflict when not."""
     state = "idle"
     active_owner = ""
+    mine = False
     if row and row.get("used"):
         consumer = str(row.get("consumer") or row.get("label") or "").lower()
         function = " ".join(str(row.get(key) or "") for key in ("function", "group", "name")).lower()
         active_owner = consumer or str(row.get("function") or row.get("name") or "")
-        if "irate-box" in consumer or any(token in consumer for token in tokens):
+        mine = any(name in consumer for name in own)
+        if mine or any(token in consumer for token in tokens):
             state = "active"
         elif not consumer and active and any(token in function for token in tokens):
             state = "active"
@@ -99,11 +101,11 @@ def _assignment(pin, role, by, source, row, active=False, tokens=()):
         "state": state,
         "source": source,
         "active_owner": active_owner,
-        "holding": state == "active" and "irate-box" in active_owner.lower(),
+        "holding": state == "active" and bool(mine),
     }
 
 
-def assignments():
+def assignments(include_pinhog=True):
     """The header pins something means to use, separate from what claims them now.
 
     The display's overlay names its SPI and touch pins and its plain D/C, RST, PEN and backlight lines;
@@ -128,6 +130,7 @@ def assignments():
                 header.get(item.get("pin")),
                 active=bool(lcd_state.get("active")),
                 tokens=("spidev", "ili9488", "ads7846", "xpt2046", "spi1"),
+                own=("irate-box-lcd",),
             )
             for item in (getattr(lcd, "PINS", []) or [])
             if isinstance(item, dict) and isinstance(item.get("pin"), int)
@@ -144,12 +147,23 @@ def assignments():
                     header.get(pin),
                     active=not serial.get("pending"),
                     tokens=("serial", "uart", "tty"),
+                    own=("irate-box-serial",),
                 )
             )
-    pinhog = _optional("pinhog")
-    if pinhog is not None and hasattr(pinhog, "assignments"):
-        out.extend(a for a in pinhog.assignments() if isinstance(a, dict))
+    if include_pinhog:
+        pinhog = _optional("pinhog")
+        if pinhog is not None and hasattr(pinhog, "assignments"):
+            out.extend(a for a in pinhog.assignments() if isinstance(a, dict))
     return out
+
+
+def assignment_for(pin, include_pinhog=False):
+    """The intended owner of one header pin, or None; pinhog is left out unless asked, so a hog can
+    change or remove its own without the check going round in a circle."""
+    for item in assignments(include_pinhog=include_pinhog):
+        if item.get("pin") == pin:
+            return item
+    return None
 
 
 def overlays():
@@ -230,17 +244,14 @@ def radios():
 
 
 def clock():
-    """The time source: the image's own daemon, chrony, or the clock module."""
-    st = _module("clock").status()
-    source = st.get("daemon") or st.get("service") or "image"
-    servers = st.get("pool") or st.get("local") or ""
-    return {"source": source, "servers": servers}
+    """The saved time source, without asking chrony or systemd: the image's, or the chosen service."""
+    rec = _module("clock").load()
+    return {"source": rec.get("service") or "image", "servers": rec.get("pool") or rec.get("local") or ""}
 
 
 def rtc():
-    """The I2C clock module, when one is set up."""
-    st = _module("rtc").status()
-    return {"found": bool(st)}
+    """The I2C clock module, when one is set up: the saved config, not a systemctl call."""
+    return {"found": bool(_module("rtc").load_config())}
 
 
 def serial():
@@ -301,6 +312,22 @@ def write_status(data=None):
     safeio.mkdir(CONTROL, mode=0o755)
     safeio.write(STATUS, json.dumps(data, indent=1, sort_keys=True) + "\n", 0o644)
     return data
+
+
+def status_is_current_boot():
+    """The published file is this boot's, so a root helper start need not read the parts again."""
+    try:
+        data = json.loads(STATUS.read_text())
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("boot_id") == boot_id() and bool(data.get("at"))
+
+
+def write_status_on_boot():
+    """Publish once for this boot; a root helper started for a later request leaves the file alone."""
+    if not status_is_current_boot():
+        return write_status()
+    return None
 
 
 def publish():
@@ -522,13 +549,27 @@ def write_dtbo(name, dts, run=None, boot=None):
     tmp = path.with_name(path.name + ".new")
     tmp.unlink(missing_ok=True)
     argv = ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(tmp), "-"]
-    said = (run or _dtc)(argv, dts)
+    try:
+        said = (run or _dtc)(argv, dts)
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise OverlayError("dtc-missing", str(exc)[:160]) from None
     if said.returncode:
         tmp.unlink(missing_ok=True)
         if said.returncode == 127:
             raise OverlayError("dtc-missing", said.stderr.strip()[:160])
         raise OverlayError("dtc-failed", said.stderr.strip()[:160])
+    with open(tmp, "rb") as fh:
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass
     return path
 
 

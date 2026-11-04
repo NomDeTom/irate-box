@@ -357,10 +357,14 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     results: [{ id: 'p9', ok: true, msg: { id: 'pinhog.added.in', en: 'Pin 7 is held as an input. Restart the box to apply it.' } }],
   };
   await wait(700);
+  const hogOption = [...pinSelect.options].find((option) => option.value === '7');
   check(
-    '  the hog is listed, waiting for a restart, and the pin is no longer free',
-    /After a restart/.test(text('pins-hogs')) && ![...pinSelect.options].some((option) => option.value === '7'),
-    [text('pins-hogs'), pinSelect.textContent],
+    '  the hog is listed, waiting for a restart, and its pin can be chosen to change it',
+    /After a restart/.test(text('pins-hogs'))
+      && hogOption
+      && /\(hog\)/.test(hogOption.textContent)
+      && d.getElementById('pins-gpio-mode').value === 'in',
+    [text('pins-hogs'), pinSelect.textContent, hogOption && hogOption.textContent],
   );
   posted.length = 0;
   const remove = [...d.querySelectorAll('#pins-hogs button')].find((button) => button.textContent === 'Remove');

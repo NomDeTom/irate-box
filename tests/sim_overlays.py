@@ -114,6 +114,14 @@ try:
 except hardware.OverlayError as exc:
     kind = exc.kind
 check("  dtc missing is its own kind", kind == "dtc-missing", kind)
+try:
+    hardware.write_dtbo(
+        "irate-box-serial", "dts", run=lambda argv, inp=None: (_ for _ in ()).throw(FileNotFoundError("dtc"))
+    )
+    kind = None
+except hardware.OverlayError as exc:
+    kind = exc.kind
+check("  a compiler that cannot run at all is the same refusal", kind == "dtc-missing", kind)
 
 try:
     hardware.write_dtbo("../escape", "dts", run=fake_dtc(True))

@@ -143,6 +143,12 @@ try:
         status == 403 and (said or {}).get("message", {}).get("id") == "hub.https-only" and not queued(),
         (status, said),
     )
+    status, said = go("POST", "/admin/health", "http", {"action": "fix", "choice": "crashwatch-watchdog:on"})
+    check(
+        "health-fix of the watchdog choice over plain HTTP: refused, nothing queued",
+        status == 403 and (said or {}).get("message", {}).get("id") == "hub.https-only" and not queued(),
+        (status, said),
+    )
     status, _ = go("POST", "/admin/hardware", "http", {"action": "set", "choice": "usb-gadget:on"})
     q = queued()
     check(

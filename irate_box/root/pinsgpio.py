@@ -45,6 +45,18 @@ def set_pin(pin, mode, bias="none", value=None):
         raise Refused(M("pins-gpio.unknown-pin", "Pin {pin} is not in this board's header map.", pin=pin))
     if row.get("type") != "gpio":
         raise Refused(M("pins-gpio.not-gpio", "Pin {pin} is power or ground, not a GPIO.", pin=pin))
+    from irate_box.root import hardware
+
+    assigned = hardware.assignment_for(pin, include_pinhog=False)
+    if assigned:
+        raise Refused(
+            M(
+                "pins-gpio.assigned",
+                "Pin {pin} is assigned to {role}.",
+                pin=pin,
+                role=assigned.get("role") or assigned.get("owner") or "another owner",
+            )
+        )
     consumer = str(row.get("consumer") or "")
     if row.get("used"):
         if consumer.startswith("irate-box-pin"):
@@ -82,7 +94,7 @@ def set_pin(pin, mode, bias="none", value=None):
                     direction=gpiod.line.Direction.INPUT,
                     bias=gpiod.line.Bias.PULL_UP if bias == "up" else gpiod.line.Bias.PULL_DOWN,
                 )
-            request = gpiod.request_lines(device, consumer="irate-box-pin", config={line: settings})
+            request = gpiod.request_lines(device, consumer="irate-box-poll", config={line: settings})
             try:
                 read = request.get_value(line)
             finally:
@@ -97,7 +109,7 @@ def set_pin(pin, mode, bias="none", value=None):
             direction=gpiod.line.Direction.OUTPUT,
             output_value=gpiod.line.Value.ACTIVE if value else gpiod.line.Value.INACTIVE,
         )
-        request = gpiod.request_lines(device, consumer="irate-box-pin", config={line: settings})
+        request = gpiod.request_lines(device, consumer="irate-box-poll", config={line: settings})
         request.release()
     except OSError as exc:
         raise Refused(M("pins-gpio.failed", "The pin could not be opened: {detail}", detail=str(exc)[:160])) from None
