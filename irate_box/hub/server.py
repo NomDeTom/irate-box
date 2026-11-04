@@ -3534,12 +3534,22 @@ def update_progress():
 
 
 def pins_snapshot():
-    """/admin/pins: the last pin map read (root/pinmap.py's control/pins.json), or none yet."""
+    """/admin/pins: the last pin map read (root/pinmap.py's control/pins.json), or none yet; the SPI1 LCD and touch
+    overlay's state (root/lcdtouch.py's control/lcdtouch.json) too."""
     try:
         data = json.loads((CONTROL_DIR / "pins.json").read_text())
     except (OSError, ValueError):
         data = None
-    return {"pins": data, "pending": _pending_actions("pins"), "results": control_results(10)}
+    try:
+        overlay = json.loads((CONTROL_DIR / "lcdtouch.json").read_text())
+    except (OSError, ValueError):
+        overlay = None
+    return {
+        "pins": data,
+        "overlay": overlay,
+        "pending": _pending_actions("pins"),
+        "results": control_results(10),
+    }
 
 
 def rkboard_snapshot():
@@ -7741,8 +7751,15 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/pins":
-            if payload.get("action") == "pins":
+            act = payload.get("action")
+            if act == "pins":
                 self.send_json(202, {"id": control_request({"action": "pins"})})
+            elif act == "pins-overlay" and type(payload.get("on")) is bool:
+                self.send_json(202, {"id": control_request({"action": "pins-overlay", "on": payload["on"]})})
+            elif act == "pins-display" and type(payload.get("on")) is bool:
+                self.send_json(202, {"id": control_request({"action": "pins-display", "on": payload["on"]})})
+            elif act == "pins-test":
+                self.send_json(202, {"id": control_request({"action": "pins-test"})})
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return

@@ -309,7 +309,32 @@
       "policy": false,
       "reads": [],
       "writes": [
-        "control/pins.json"
+        "control/pins.json",
+        "control/lcdtouch.json"
+      ]
+    },
+    "pins-display": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/lcdtouch.json"
+      ]
+    },
+    "pins-overlay": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/lcdtouch.json"
+      ]
+    },
+    "pins-test": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/lcdtouch.json"
       ]
     },
     "pkg-check": {
