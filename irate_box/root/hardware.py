@@ -69,6 +69,76 @@ def pins():
     return data
 
 
+def _optional(name):
+    """A module this layer uses when it is there (pinhog, before its own stage), or None."""
+    try:
+        return _module(name)
+    except ImportError:
+        return None
+
+
+def _assignment(pin, role, by, source, row, active=False, tokens=()):
+    """One intended pin: idle when nothing claims it, active when the claim is ours, conflict when not."""
+    state = "idle"
+    if row and row.get("used"):
+        consumer = str(row.get("consumer") or row.get("label") or "").lower()
+        function = " ".join(str(row.get(key) or "") for key in ("function", "group", "name")).lower()
+        if "irate-box" in consumer or any(token in consumer for token in tokens):
+            state = "active"
+        elif not consumer and active and any(token in function for token in tokens):
+            state = "active"
+        else:
+            state = "conflict"
+    return {"pin": pin, "role": role, "by": by, "state": state, "source": source}
+
+
+def assignments():
+    """The header pins something means to use, separate from what claims them now.
+
+    The display's overlay names its SPI and touch pins and its plain D/C, RST, PEN and backlight lines;
+    those stay assigned while nothing requests them, so a released D/C is not drawn as free. The serial
+    pins are assigned while own serial is on. pinhog adds its own once that stage is installed.
+    """
+    header = {
+        row.get("pin"): row
+        for row in (pins().get("header") or [])
+        if isinstance(row, dict) and isinstance(row.get("pin"), int)
+    }
+    lcd = _module("lcdtouch")
+    lcd_state = lcd.status()
+    out = [
+        _assignment(
+            item.get("pin"),
+            item.get("signal") or item.get("role") or "display",
+            "display",
+            "lcdtouch",
+            header.get(item.get("pin")),
+            active=bool(lcd_state.get("active")),
+            tokens=("spidev", "ili9488", "ads7846", "xpt2046", "spi1"),
+        )
+        for item in (getattr(lcd, "PINS", []) or [])
+        if isinstance(item, dict) and isinstance(item.get("pin"), int)
+    ]
+    serial = _module("ownserial").status()
+    if serial.get("on"):
+        for pin, role in ((8, "UART TX"), (10, "UART RX")):
+            out.append(
+                _assignment(
+                    pin,
+                    role,
+                    "serial",
+                    "ownserial",
+                    header.get(pin),
+                    active=not serial.get("pending"),
+                    tokens=("serial", "uart", "tty"),
+                )
+            )
+    pinhog = _optional("pinhog")
+    if pinhog is not None and hasattr(pinhog, "assignments"):
+        out.extend(a for a in pinhog.assignments() if isinstance(a, dict))
+    return out
+
+
 def overlays():
     """The names in user_overlays= and the three overlays irate-box can put there."""
     names = overlay_names()
@@ -185,6 +255,7 @@ def watchdog():
 SECTIONS = (
     ("board", board),
     ("pins", pins),
+    ("assignments", assignments),
     ("overlays", overlays),
     ("display", display),
     ("usb_gadget", usb),
