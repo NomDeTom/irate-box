@@ -760,6 +760,16 @@
             reading width at every page width setting. On a phone, the page uses
             the width of the screen. Select the emoji sets below.
           </p>
+          <p
+            class="setting-desc"
+            id="appearance-names"
+            data-i18n="admin.appearance.other-names"
+          >
+            The box's other names: the
+            <a href="#net-hostname-card">name on its networks</a> and the
+            <a href="#network/hotspot">hotspot's name</a>. The hub's own display
+            name is set below.
+          </p>
           <div id="appearance-box" class="appearance-box"></div>
         </section>
 
@@ -3751,6 +3761,13 @@
                     reach it as name.local, and your router lists it by this
                     name. Use lowercase letters, digits and hyphens.
                   </p>
+                  <p
+                    class="setting-desc"
+                    data-i18n="admin.network.hub-name-set-on-appearance"
+                  >
+                    The hub's own display name is set on
+                    <a href="#appearance">Appearance</a>.
+                  </p>
                   <div id="net-hostname"></div>
                 </div>
                 <div
@@ -4217,6 +4234,13 @@
               >
                 Checking…
               </p>
+              <p
+                class="setting-desc"
+                data-i18n="admin.network.hub-name-set-on-appearance"
+              >
+                The hub's own display name is set on
+                <a href="#appearance">Appearance</a>.
+              </p>
               <form class="net-settings" id="ap-form">
                 <label
                   class="setting-name"
@@ -4240,6 +4264,63 @@
                     Automatic
                   </option>
                 </select>
+                <label
+                  class="setting-name"
+                  for="ap-ssid"
+                  id="ap-ssid-label"
+                  data-i18n="admin.network.ap-ssid-label"
+                  >Hotspot name</label
+                >
+                <input
+                  id="ap-ssid"
+                  class="net-input"
+                  type="text"
+                  maxlength="32"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocomplete="off"
+                />
+                <p
+                  class="setting-desc"
+                  id="ap-ssid-note"
+                  data-i18n="admin.network.ap-ssid-note"
+                >
+                  1 to 32 bytes on one line. Devices on the hotspot rejoin under
+                  the new name when you save it.
+                </p>
+                <label
+                  class="setting-name"
+                  for="ap-second"
+                  id="ap-second-label"
+                  hidden
+                  data-i18n="admin.network.ap-second-label"
+                  >Encrypted network name</label
+                >
+                <input
+                  id="ap-second"
+                  class="net-input"
+                  type="text"
+                  maxlength="32"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocomplete="off"
+                  hidden
+                />
+                <p
+                  class="setting-desc"
+                  id="ap-second-note"
+                  hidden
+                  data-i18n="admin.network.ap-second-note"
+                >
+                  Left empty, it is the hotspot name with " (encrypted)" after
+                  it.
+                </p>
+                <p
+                  class="setting-desc action-note"
+                  id="ap-name-note"
+                  role="status"
+                  hidden
+                ></p>
                 <label
                   class="inline"
                   id="ap-take-label"
@@ -4277,6 +4358,14 @@
                     data-i18n="admin.network.ap-confirm"
                   >
                     Keep hotspot settings
+                  </button>
+                  <button
+                    class="action-btn"
+                    type="button"
+                    id="ap-save-names"
+                    data-i18n="admin.network.ap-apply-names"
+                  >
+                    Apply name
                   </button>
                 </span>
               </form>
