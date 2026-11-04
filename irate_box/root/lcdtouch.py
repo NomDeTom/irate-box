@@ -240,7 +240,7 @@ def set_display(on):
             lcdpanel.show_card()
         else:
             lcdpanel.off()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - the panel driver says why
         raise Refused(
             M("lcdtouch.display-failed", "The display could not be changed: {detail}", detail=str(exc)[:160])
         ) from None
@@ -256,7 +256,7 @@ def run_screen_test(seconds=60):
     _require_display()
     try:
         lcdpanel.run_test(seconds)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - the panel driver says why
         raise Refused(
             M("lcdtouch.display-failed", "The display could not be changed: {detail}", detail=str(exc)[:160])
         ) from None
@@ -271,7 +271,7 @@ def undo_all():
     if _active():
         try:
             lcdpanel.off()
-        except Exception:
+        except Exception:  # noqa: BLE001, B110 - the overlay is removed either way # nosec B110
             pass
     if _overlays() or DTBO.exists():
         set_overlay(False)

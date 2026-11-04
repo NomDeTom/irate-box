@@ -117,7 +117,7 @@ class Panel:
             self.cmd(0x28)
             time.sleep(0.05)
             self.cmd(0x10)
-        except Exception:
+        except Exception:  # noqa: BLE001, B110 - blanking is best effort # nosec B110
             pass
 
     def close(self):

@@ -342,11 +342,11 @@
   $('pins-overlay-toggle').addEventListener('click', async (event) => {
     if (!lastOverlay || !lastOverlay.supported) return;
     const on = !lastOverlay.on;
+    const button = event.currentTarget;
     const question = on
       ? 'Enable the SPI1 display and touch overlay? A restart applies it.'
       : 'Disable the SPI1 display and touch overlay? A restart removes it.';
-    if (!(await AW.confirmHere(question, { anchor: event.currentTarget, label: on ? 'Enable' : 'Disable' }))) return;
-    const button = event.currentTarget;
+    if (!(await AW.confirmHere(question, { anchor: button, label: on ? 'Enable' : 'Disable' }))) return;
     button.disabled = true;
     ovSay(on ? 'Saving the overlay…' : 'Turning the overlay off…', true);
     try {
@@ -360,9 +360,9 @@
   $('pins-display-toggle').addEventListener('click', async (event) => {
     if (!lastOverlay || !lastOverlay.supported || !lastOverlay.active) return;
     const on = !lastOverlay.display_on;
-    const question = on ? 'Turn the display on and show the test card?' : 'Turn the display off?';
-    if (!(await AW.confirmHere(question, { anchor: event.currentTarget, label: on ? 'Turn on' : 'Turn off' }))) return;
     const button = event.currentTarget;
+    const question = on ? 'Turn the display on and show the test card?' : 'Turn the display off?';
+    if (!(await AW.confirmHere(question, { anchor: button, label: on ? 'Turn on' : 'Turn off' }))) return;
     button.disabled = true;
     dispSay(on ? 'Turning the display on…' : 'Turning the display off…', true);
     try {

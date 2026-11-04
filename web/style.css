@@ -6895,8 +6895,8 @@ label > .aw-onoff-box ~ .chip-group,
 
 /* --- Pin map: the SPI1 LCD and touch overlay --- */
 .pin-overlay {
-  margin: 1rem 0;
-  padding: 0.8rem 0;
+  margin: 0.5rem 0;
+  padding: 0.6rem 0;
   border-top: 1px solid var(--border);
 }
 .pin-overlay h3 {
