@@ -64,9 +64,9 @@ lcdtouch.status = lambda: {
 ownserial.status = lambda: {
     "board": "lyra",
     "supported": True,
-    "on": False,
+    "on": True,
     "pending": False,
-    "device": "",
+    "device": "/dev/ttyS1",
     "warning": "",
 }
 crashwatch.status = lambda: {
@@ -88,7 +88,14 @@ rtc.status = lambda: None
 pins = {
     "board": "lyra",
     "model": "Luckfox Lyra Zero W",
-    "header": [{"pin": 1, "type": "3v3", "name": "3V3_OUT", "used": False}],
+    "header": [
+        {"pin": 1, "type": "3v3", "name": "3V3_OUT", "used": False},
+        {"pin": 8, "type": "gpio", "name": "GPIO0_C6", "used": True, "consumer": "serial1", "function": "uart"},
+        {"pin": 10, "type": "gpio", "name": "GPIO0_C7", "used": False},
+        {"pin": 18, "type": "gpio", "name": "GPIO0_B4", "used": False},
+        {"pin": 27, "type": "gpio", "name": "GPIO1_B1", "used": True, "consumer": "spidev", "function": "spi1"},
+        {"pin": 35, "type": "gpio", "name": "GPIO0_C0", "used": True, "consumer": "other-driver", "function": "spi1"},
+    ],
     "lines": [{"chip": "gpiochip0", "line": 6, "used": True, "consumer": "ff120000.spi"}],
     "note": "",
 }
@@ -110,12 +117,28 @@ check("the pins are the last read, not a new gpioinfo run", data["pins"] == pins
 check(
     "the overlays: the boot line, the serial, the watchdog and the LCD",
     data["overlays"]["user_overlays"] == ["irate-box-watchdog", "luckfox-lyra-zero-w-spi1-lcd-touch"]
-    and data["overlays"]["items"]["serial"]["enabled"] is False
+    and data["overlays"]["items"]["serial"]["enabled"] is True
     and data["overlays"]["items"]["watchdog"]["enabled"] is True
     and data["overlays"]["items"]["watchdog"]["active"] is True
     and data["overlays"]["items"]["lcd"]["on"] is True
     and data["overlays"]["items"]["lcd"]["pending"] is True,
     data["overlays"],
+)
+bypin = {item["pin"]: item for item in data["assignments"]}
+check(
+    "assignments: the display's pins stay assigned while D/C and RST are released",
+    bypin[18]["role"] == "Display D/C"
+    and bypin[18]["state"] == "idle"
+    and bypin[22]["state"] == "idle"
+    and bypin[27]["state"] == "active"
+    and bypin[35]["state"] == "conflict"
+    and bypin[35]["source"] == "lcdtouch",
+    [bypin.get(n) for n in (18, 22, 27, 35)],
+)
+check(
+    "  own serial: its TX taken and active, RX assigned but free",
+    bypin[8]["role"] == "UART TX" and bypin[8]["state"] == "active" and bypin[10]["state"] == "idle",
+    [bypin.get(n) for n in (8, 10)],
 )
 check(
     "the display: on, waiting for a restart, its pixels and driver",
@@ -134,7 +157,7 @@ check(
     and data["radios"] == {"wifi": "on", "bluetooth": "leave"}
     and data["clock"] == {"source": "chrony", "servers": "pool.ntp.org"}
     and data["rtc"] == {"found": False}
-    and data["serial"] == {"supported": True, "on": False, "pending": False, "device": ""}
+    and data["serial"] == {"supported": True, "on": True, "pending": False, "device": "/dev/ttyS1"}
     and data["watchdog"] == {"supported": True, "mode": "hardware", "enabled": True, "pending": False}
     and data["errors"] == [],
     {k: data[k] for k in ("led", "radios", "clock", "rtc", "serial", "watchdog", "errors")},
