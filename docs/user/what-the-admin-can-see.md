@@ -21,9 +21,9 @@ An administrator cannot see your password. The box keeps a hash of it, not the p
 - The shared notebook is one notebook for everyone who may open it. An administrator can download all of it, with every page and attachment, as a zip.
 - Your private notebook, if the box gives you one, is kept apart by name while it runs. It is not encrypted on the box. The administrator pages do not offer another person's notebook. A person with the box's console or root access, or a full copy of the box's storage, can read it.
 - Saved work, the gallery, drawings and the file drop are shared. An administrator can see the files, their sizes, and delete them.
-- The shoutbox and the board are public to the box. An administrator can read them and delete messages. Your account name is shown with a message if you were signed in when you posted it.
+- The shoutbox and the message board are public to the box. An administrator can read them and delete messages. Your account name is shown with a message if you were signed in when you posted it.
 - Files in the box's git repositories can be read by whoever may open the repository. An administrator manages the repositories.
-- Full backups can include these files. The settings-and-data backup includes the shared notes, saved work, the file drop, the shoutbox and board, and the git repositories. It leaves out private notebooks. The full card image includes everything, including private notebooks.
+- Full backups can include these files. The settings-and-data backup includes the shared notes, saved work, the file drop, the shoutbox and message board, and the git repositories. It leaves out private notebooks. The full card image includes everything, including private notebooks.
 
 ## What the box says about people
 

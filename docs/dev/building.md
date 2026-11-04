@@ -28,7 +28,7 @@ cd ~/irate-box
 ./irate-box server
 ```
 
-That already gives you the landing page, shoutbox, board, blob store and `/status` on
+That already gives you the landing page, shoutbox, message board, blob store and `/status` on
 <http://localhost:8000>. State (`messages.json`, `board.json`, `clock.json`, `store/`)
 appears in the checkout unless `HUB_STATE_DIR` says otherwise. Leave it running; the apps below are served *around* it, not by it.
 

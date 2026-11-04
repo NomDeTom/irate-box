@@ -12,7 +12,7 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - **Memory and disk history** (folded) shows the last day or week of both, with a point every five minutes.
   - **Trends**: administrators see a **▸ Trends** triangle on the memory and disk tile of the hub. It opens the last day below the tiles. Other users cannot open or request it.
   - **Setup steps** stays beside it until you hide it.
-- **Apps**: one page for each app on the box. Examples are Excalidraw, the file drop, Kiwix, Git, Notes, the shoutbox, the board, the App store, Mesh and the Firmware Factory.
+- **Apps**: one page for each app on the box. Examples are Excalidraw, the file drop, Kiwix, Git, Notes, the Hub shoutbox, the Hub board, the App store, Mesh and the Firmware Factory.
   - Each page starts with the name of the app and its state. It shows **Open**, **Add** or the **Start** and **Stop** of its service where they apply.
   - Next are the settings and the content of the app.
   - The folded sections follow: **Access** (who can open the app), **Hub tile** (a summary, with a link to arrange it on Home tiles) and **Maintenance**.
@@ -27,9 +27,10 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - The box checks the text and background pairs of each palette against the 4.5:1 contrast ratio of the accessibility guidelines. A pair below the ratio is listed with its ratio. The box saves it only after you confirm.
   - Visitors select light, dark or Auto for themselves. They see your colours as the **Box palette**. They can select **Standard palette**, **Increased contrast**, E-ink or Cybercore in the 🎨 menu.
 - **Moderation**: **Reports** (content that users reported) and **User data**. Look at them and remove items.
-- **System**: Accounts, Network, Security, the librarian, Toolkits, Clock, **Recovery and monitoring**, Updates, and Backup and transfer.
+- **System**: Accounts, Network, Security, the librarian, Toolkits, Clock, **Recovery and monitoring**, Updates, Backup and transfer, and Pin map.
   - The librarian page shows what the librarian is doing and the schedule for books and apps. It shows the storage limit for books and apps. It links to the schedules of other updates and holds the GitHub token.
   - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card writes**. **SD card writes** chooses where the log, the box's own state and apt's cache live, and whether the onboard flash's data is checked as it is read. **Hardening** holds the two choices that change how the card is laid out or updated: **Filesystem for a fresh install** and **A/B system updates**. Neither repartitions a running card: a fresh install applies them.
+  - **Pin map** shows the board's GPIO header: which pins are in use and by what, and which are free. **Read the pins** reads them, and **Copy as text** copies the map.
 - **Doctors**: the Box doctor, the Security doctor and the Updates doctor. Each doctor checks one part of the box and lists the problems in plain words. Where a repair exists, the doctor shows a button for it.
 - **Mock controls**: every control the pages use, with sample data, at the bottom. It is for copying a control into a page and for comparing them. It changes nothing.
 
