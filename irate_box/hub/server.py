@@ -907,7 +907,7 @@ ICON_TEXT = re.compile(r"^[A-Za-z0-9]{1,4}$")
 def valid_icon(s):
     """Up to four letters and digits; or emoji (up to 16 code points, none of them ASCII, so no
     letters, markup or spaces among them)."""
-    return isinstance(s, str) and (bool(ICON_TEXT.match(s)) or (0 < len(s) <= 16 and all(ord(c) > 0x7F for c in s)))
+    return isinstance(s, str) and (bool(ICON_TEXT.fullmatch(s)) or (0 < len(s) <= 16 and all(ord(c) > 0x7F for c in s)))
 
 
 def tiles_state():
@@ -961,7 +961,7 @@ def icon_html(icon):
         return (
             f'        <span class="icon"><span class="svg-icon" data-icon="{name}" aria-hidden="true"></span></span>\n'
         )
-    cls = "icon icon-text" if ICON_TEXT.match(icon) else "icon"
+    cls = "icon icon-text" if ICON_TEXT.fullmatch(icon) else "icon"
     return f'        <span class="{cls}">{html.escape(icon)}</span>\n'
 
 
@@ -2637,11 +2637,11 @@ def _queue_item(raw):
     kind = raw.get("kind")
     ident = str(raw.get("id") or "")
     if kind == "app":
-        if not manifests.ID_RE.match(ident):
+        if not manifests.ID_RE.fullmatch(ident):
             return None
         return {"kind": kind, "id": ident, "title": str(raw.get("title") or ident)[:120]}
     if kind == "addon":
-        if not manifests.ID_RE.match(ident):
+        if not manifests.ID_RE.fullmatch(ident):
             return None
         entry = manifests.addons(MANIFESTS).get(ident)
         if not entry:
@@ -2653,7 +2653,7 @@ def _queue_item(raw):
             **({"consent": entry["addon"]["consent"]} if entry["addon"].get("consent") else {}),
         }
     if kind == "local":
-        if not manifests.ID_RE.match(ident):
+        if not manifests.ID_RE.fullmatch(ident):
             return None
         entry = manifests.catalogue().get(ident)
         if not entry:
@@ -3701,7 +3701,7 @@ def security_accepted():
 
 
 def security_accept(key, title, yes):
-    if not isinstance(key, str) or not ACCEPT_KEY_RE.match(key):
+    if not isinstance(key, str) or not ACCEPT_KEY_RE.fullmatch(key):
         raise refused.Refused(M("accept.key.invalid", "Invalid item. Reload the page and try again."))
     return _accept(SECURITY_ACCEPTED, security_accepted(), key, title, yes)
 
@@ -3740,7 +3740,7 @@ def health_accepted():
 
 
 def health_accept(key, title, yes):
-    if not isinstance(key, str) or not HEALTH_KEY_RE.match(key):
+    if not isinstance(key, str) or not HEALTH_KEY_RE.fullmatch(key):
         raise refused.Refused(M("accept.key.invalid", "Invalid item. Reload the page and try again."))
     return _accept(HEALTH_ACCEPTED, health_accepted(), key, title, yes)
 
@@ -4428,7 +4428,11 @@ def local_addons_action(payload):
             # changes on /admin and takes it. It replaces the copy, with a new consent record.
             i = str(payload.get("id", ""))
             cat = manifests.catalogue()
-            if not LOCAL_ID_RE.match(i) or i not in cat or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
+            if (
+                not LOCAL_ID_RE.fullmatch(i)
+                or i not in cat
+                or not confine.under(manifests.LOCAL_D, f"{i}.json").exists()
+            ):
                 return 400, refused.say(
                     M(
                         "addons.catalogue.not-added",
@@ -4457,7 +4461,7 @@ def local_addons_action(payload):
             return 200, {"accepted": i}
         if action == "remove":
             i = str(payload.get("id", ""))
-            if not LOCAL_ID_RE.match(i) or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
+            if not LOCAL_ID_RE.fullmatch(i) or not confine.under(manifests.LOCAL_D, f"{i}.json").exists():
                 return 400, refused.say(
                     M(
                         "addons.not-added",
@@ -4583,7 +4587,7 @@ def delete_message(created, name):
 
 def moderation_action(payload):
     action = payload.get("action")
-    if action == "keep" and isinstance(payload.get("key"), str) and REPORT_KEY_RE.match(payload["key"]):
+    if action == "keep" and isinstance(payload.get("key"), str) and REPORT_KEY_RE.fullmatch(payload["key"]):
         # Looked at and kept: out of the queue, and shown again if it was hidden.
         with _reports_lock:
             data = reports()
@@ -4690,7 +4694,7 @@ def reports():
     except (OSError, ValueError):
         return {}
     return (
-        {k: v for k, v in data.items() if REPORT_KEY_RE.match(k) and isinstance(v, dict)}
+        {k: v for k, v in data.items() if REPORT_KEY_RE.fullmatch(k) and isinstance(v, dict)}
         if isinstance(data, dict)
         else {}
     )
@@ -4715,7 +4719,7 @@ def report_key(app, ref):
         key = f"notes:{ref['page'].strip('/')}"
     else:
         return None
-    return key if REPORT_KEY_RE.match(key) else None
+    return key if REPORT_KEY_RE.fullmatch(key) else None
 
 
 def report(app, ref, reason, identity):
@@ -4829,7 +4833,7 @@ def store_snapshot():
 
 def store_action(payload):
     action, key = payload.get("action"), str(payload.get("id", ""))
-    if action in ("rename", "delete") and not store.ID_RE.match(key):
+    if action in ("rename", "delete") and not store.ID_RE.fullmatch(key):
         return 400, refused.say(store.BAD_ID)
     try:
         if action == "rename":
@@ -7331,7 +7335,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if action == "build":
                     name = str(payload.get("repo", ""))
-                    if not gitrepos.NAME_RE.match(name):
+                    if not gitrepos.NAME_RE.fullmatch(name):
                         raise refused.Refused(
                             M(
                                 "ci.repo.invalid",
@@ -7386,7 +7390,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "filesystems" and payload.get("level") in ("common", "linux", "all"):
                 # Which filesystems root mounts from USB drives (root/usbstick.py LEVELS): the administrator's.
                 self.send_json(202, {"id": control_request({"action": "usb-filesystems", "level": payload["level"]})})
-            elif action == "import" and USB_DEVICE_RE.match(device) and isinstance(payload.get("file"), str):
+            elif action == "import" and USB_DEVICE_RE.fullmatch(device) and isinstance(payload.get("file"), str):
                 self.send_json(
                     202,
                     {
@@ -7399,7 +7403,7 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     },
                 )
-            elif action == "export" and USB_DEVICE_RE.match(device) and isinstance(payload.get("book"), str):
+            elif action == "export" and USB_DEVICE_RE.fullmatch(device) and isinstance(payload.get("book"), str):
                 self.send_json(
                     202,
                     {
@@ -7414,7 +7418,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif (
                 action in ("kit-import", "kit-export")
-                and USB_DEVICE_RE.match(device)
+                and USB_DEVICE_RE.fullmatch(device)
                 and isinstance(payload.get("kit"), str)
             ):
                 self.send_json(
@@ -7434,7 +7438,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif (
                 action == "export-many"
-                and USB_DEVICE_RE.match(device)
+                and USB_DEVICE_RE.fullmatch(device)
                 and _str_list(payload.get("books"))
                 and _str_list(payload.get("kits"))
                 and _str_list(payload.get("repos", []))
@@ -7456,7 +7460,7 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     },
                 )
-            elif action == "image" and USB_DEVICE_RE.match(device):
+            elif action == "image" and USB_DEVICE_RE.fullmatch(device):
                 self.send_json(
                     202,
                     {"id": control_request({"action": "backup-image", "device": device})},
@@ -7651,7 +7655,7 @@ class Handler(BaseHTTPRequestHandler):
                 isinstance(switch, list)
                 and len(switch) == 2
                 and all(
-                    isinstance(x, str) and ADDON_ID_RE.match(x) and x in manifests.addons(MANIFESTS) for x in switch
+                    isinstance(x, str) and ADDON_ID_RE.fullmatch(x) and x in manifests.addons(MANIFESTS) for x in switch
                 )
             ):
                 self.send_json(
@@ -7659,7 +7663,7 @@ class Handler(BaseHTTPRequestHandler):
                     {"id": control_request({"action": "addon-switch", "addon": switch[1], "replace": switch[0]})},
                 )
             elif (
-                not ADDON_ID_RE.match(aid)
+                not ADDON_ID_RE.fullmatch(aid)
                 or aid not in manifests.addons(MANIFESTS)
                 or type(payload.get("on")) is not bool
             ):
@@ -7874,7 +7878,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/admin/health":
             if payload.get("action") == "scan":
                 self.send_json(202, {"id": control_request({"action": "health-scan"})})
-            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.match(str(payload.get("choice", ""))):
+            elif payload.get("action") == "fix" and HEALTH_CHOICE_RE.fullmatch(str(payload.get("choice", ""))):
                 self.send_json(
                     202,
                     {"id": control_request({"action": "health-fix", "choice": payload["choice"]})},
@@ -7996,7 +8000,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/network":
             act = payload.get("action")
-            if act == "scan" and (payload.get("iface") in (None, "") or IFACE_NAME_RE.match(str(payload["iface"]))):
+            if act == "scan" and (payload.get("iface") in (None, "") or IFACE_NAME_RE.fullmatch(str(payload["iface"]))):
                 self.send_json(
                     202,
                     {
@@ -8097,7 +8101,7 @@ class Handler(BaseHTTPRequestHandler):
             elif (
                 act == "radiotest"
                 and payload.get("exp") in ("follows-roam", "radio-reset", "driver-reset")
-                and IFACE_NAME_RE.match(str(payload.get("iface") or ""))
+                and IFACE_NAME_RE.fullmatch(str(payload.get("iface") or ""))
             ):
                 self.send_json(
                     202,
@@ -8335,7 +8339,7 @@ class Handler(BaseHTTPRequestHandler):
                         accepted=data,
                     ),
                 )
-            elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.match(str(payload.get("choice", ""))):
+            elif payload.get("action") == "fix" and SECURITY_CHOICE_RE.fullmatch(str(payload.get("choice", ""))):
                 self.send_json(
                     202,
                     {"id": control_request({"action": "security-fix", "choice": payload["choice"]})},
@@ -8531,7 +8535,7 @@ class Handler(BaseHTTPRequestHandler):
         the feed and file names are checked, and the resolved path must stay under the root."""
         rest = unquote(path[len("/podcasts/") :])
         parts = rest.split("/")
-        if len(parts) != 2 or not podcast.NAME_RE.match(parts[0]) or "/" in parts[1] or parts[1].startswith("."):
+        if len(parts) != 2 or not podcast.NAME_RE.fullmatch(parts[0]) or "/" in parts[1] or parts[1].startswith("."):
             self._not_found()
             return
         root = podcast.ROOT.resolve()
