@@ -47,9 +47,12 @@ jobs:
         run: JSDOM_CACHE="$RUNNER_TEMP/jsdom" tests/jsdom/run.sh
   spacing:
     # The vertical-spacing audit over every admin pane, in headless Chromium (tests/browser/spacing-audit.sh): about
-    # two minutes once Chromium is installed, so it is a job of its own. No accepted findings: the sweep's eight were
-    # fixed; add one only for a false positive, with why, and keep the list short.
+    # two minutes once Chromium is installed, so it is a job of its own. It must measure: a missing Playwright is a
+    # failure here, not a skip. No accepted findings: the sweep's eight were fixed; add one only for a false positive,
+    # with why, and keep the list short.
     runs-on: ubuntu-latest
+    env:
+      SPACING_REQUIRED: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
