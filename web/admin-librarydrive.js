@@ -52,7 +52,7 @@
           ...snap.drives.map((d) => el("li", { textContent: `${d.device || "drive"} · ${d.fstype || ""} · ${d.mount || ""} · ${gb(d.total || 0)} (${gb(d.free || 0)} free)` })),
         )
       : el("p", { className: "setting-desc", textContent: "No USB drive is mounted now." });
-    const kinds = el("div", { className: "library-buttons" });
+    const kinds = el("div", { className: "settings" });
     for (const kind of ["podcasts", "books"]) {
       const select = el("select", { dataset: { kind } });
       for (const place of ["card", "drive"]) {
@@ -60,7 +60,7 @@
         if ((snap.kinds || {})[kind] === place) option.selected = true;
         select.append(option);
       }
-      kinds.append(el("label", { className: "setting" }, el("span", { className: "setting-name", textContent: kind }), select));
+      kinds.append(el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: kind }), select));
     }
     const save = el("button", { type: "button", className: "action-btn primary", textContent: "Save drive and places" });
     save.addEventListener("click", () => {

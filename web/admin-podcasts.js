@@ -45,7 +45,7 @@
     return response.json();
   }
 
-  const field = (label, input) => el("label", { className: "setting" }, el("span", { className: "setting-name", textContent: label }), input);
+  const field = (label, input) => el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: label }), input);
 
   function number(key, label, min, max, value) {
     const input = el("input", { type: "number", min, max, value, dataset: { key } });
@@ -55,12 +55,12 @@
   function check(key, label, value) {
     const input = el("input", { type: "checkbox", checked: !!value, dataset: { key } });
     input.addEventListener("change", () => post({ action: "settings", [key]: input.checked }).catch((e) => say(fault(e), true)));
-    return el("label", { className: "setting" }, input, el("span", { className: "setting-name", textContent: ` ${label}` }));
+    return el("label", { className: "aw-field" }, input, el("span", { className: "aw-label", textContent: label }));
   }
 
   function settingsForm() {
     const settings = snap.settings;
-    const box = el("div", { className: "settings-block" });
+    const box = el("div", { className: "settings" });
     box.append(check("enabled", "Follow podcasts", settings.enabled));
     box.append(
       number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours),
@@ -158,7 +158,7 @@
         say(fault(e), true);
       }
     });
-    return el("div", {}, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doImport, doExport));
+    return el("div", { className: "opml" }, el("h3", { textContent: "OPML" }), text, el("div", { className: "library-buttons" }, doImport, doExport));
   }
 
   function draw() {

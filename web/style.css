@@ -350,6 +350,25 @@ summary + .view-switch {
 .net-card + p.setting-desc {
   margin-top: 0.7rem;
 }
+/* A settings group's own gap spaces its rows: the field's margin would double it. */
+.settings > .aw-field + .aw-field,
+.settings > .library-buttons {
+  margin-top: 0;
+}
+.settings + .library-buttons {
+  margin-top: 0.7rem;
+}
+/* A settings group under a pane's words stands apart from them. */
+.admin-pane p.setting-desc + .settings {
+  margin-top: 0.7rem;
+}
+/* The OPML block under the feeds: its own heading is the space below it. */
+.opml {
+  margin-top: 1rem;
+}
+.opml > h3:first-child {
+  margin-top: 0;
+}
 /* A settings group's footer. */
 .settings + .aw-foot {
   margin-top: 0.6rem;
