@@ -6209,8 +6209,8 @@ const hardeningSettings = doctorSection({
 // USB, from the hardware status the root helper publishes: the gadget, its drive and the drive's writes,
 // without waiting for a Box doctor scan. The same choices go back through the hardware action gate.
 function usbHardwareGroups(hw) {
-  const u = hw && hw.usb_gadget;
-  if (!u || !u.supported) return [];
+  const usb = hw && hw.usb_gadget;
+  if (!usb || !usb.supported) return [];
   const onOff = (key, label, desc, current, base) => ({
     key,
     label,
@@ -6225,25 +6225,25 @@ function usbHardwareGroups(hw) {
     onOff(
       "usb-gadget",
       "USB networking",
-      `The box offers a network link and a serial console over its USB port: the hub at ${u.address}. On by default on a Lyra, as a way in when the WiFi is down.`,
-      u.on ? "on" : "off",
+      `The box offers a network link and a serial console over its USB port: the hub at ${usb.address}. On by default on a Lyra, as a way in when the WiFi is down.`,
+      usb.on ? "on" : "off",
       "usb-gadget",
     ),
     onOff(
       "usb-gadget-drive",
       "USB drive",
       "A USB drive made from the file drop. Read-only unless writes are on. Files added to a writable drive are copied into the file drop when it stops.",
-      u.drive ? "on" : "off",
+      usb.drive ? "on" : "off",
       "usb-gadget-drive",
     ),
   ];
-  if (u.drive) {
+  if (usb.drive) {
     groups.push(
       onOff(
         "usb-gadget-drive-write",
         "USB drive writes",
         "Off: the computer can read the drive but not change it. On: it can add files, which are copied into the file drop when the drive stops. Changes to existing files stay on the drive.",
-        u.drive_write ? "on" : "off",
+        usb.drive_write ? "on" : "off",
         "usb-gadget-drive-write",
       ),
     );
