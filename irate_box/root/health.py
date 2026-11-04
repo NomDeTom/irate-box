@@ -7077,7 +7077,7 @@ def usb_gadget_groups(st):
             "desc": M(
                 "hs.usb-gadget.desc",
                 "The box offers a network link and a serial console over its USB port: the hub at {address} "
-                "and a sign-in on /dev/{tty}. On by default on a Lyra, which has no other way in.",
+                "and a sign-in on /dev/{tty}. On by default on a Lyra, as a way in when the WiFi is down.",
                 address=usbgadget.ADDRESS,
                 tty=usbgadget.TTY,
             ),
@@ -7113,6 +7113,23 @@ def check_usb_gadget(st=None):
                 glance=M("usb-gadget.starting.glance", "USB networking is starting."),
             )
         ]
+    if not st.get("dnsmasq", True):
+        return [
+            finding(
+                "usb-gadget:dnsmasq",
+                title,
+                "problem",
+                M(
+                    "usb-gadget.dnsmasq",
+                    "USB networking needs dnsmasq (the dnsmasq-base package), which is not installed.",
+                ),
+                fix=M("usb-gadget.dnsmasq.fix", "Install dnsmasq-base, or run the installer again."),
+                commands=["apt-get install -y dnsmasq-base"],
+                actions=[RERUN],
+                go=go,
+                glance=M("usb-gadget.dnsmasq.glance", "dnsmasq is missing."),
+            )
+        ]
     if st["up"]:
         return [
             finding(
@@ -7128,7 +7145,8 @@ def check_usb_gadget(st=None):
                 notes=[
                     M(
                         "usb-gadget.ok.note",
-                        "The link hands out {first} to {last} over DHCP. The serial console uses the same cable.",
+                        "The link hands out an address from {first} to {last} over DHCP, with no router or DNS, "
+                        "so a plugged-in computer keeps its own internet. The serial console uses the same cable.",
                         first=usbgadget.DHCP_FIRST,
                         last=usbgadget.DHCP_LAST,
                     )

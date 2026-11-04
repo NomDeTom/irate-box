@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
 """USB networking (root/usbgadget.py), offline: a fake configfs and /sys, the gadget tree the
-service writes (NCM plus ACM, the fixed MAC, the UDC), the owner's setting (on by default on a
+service writes (NCM plus ACM, the machine's MACs, the UDC), the owner's setting (on by default on a
 Lyra, off elsewhere), the pinned source fetch and its sha256 check, and the Box doctor's finding
 when it is on but the gadget did not come up. python3 tests/sim_usb_gadget.py"""
 
@@ -26,6 +26,8 @@ os.environ.update(
     HUB_KITS_ROOT=str(T / "kits"),
     HUB_CODE_DIR=str(T / "code"),
     HUB_GADGET_SRC=str(T / "src"),
+    HUB_MACHINE_ID=str(T / "machine-id"),
+    HUB_DNSMASQ_BIN=str(T / "dnsmasq"),
 )
 for d in (
     "etc",
@@ -43,6 +45,8 @@ for d in (
 ):
     (T / d).mkdir(parents=True, exist_ok=True)
 (T / "dt" / "model").write_bytes(b"Luckfox Lyra Zero W\x00")
+(T / "machine-id").write_text("machine-one\n")
+(T / "dnsmasq").write_text("")
 (T / "sys/class/udc/ff740000.usb").write_text("")
 for m in ("u_ether", "usb_f_ncm", "u_serial", "usb_f_acm"):
     (T / "sys/module" / m).mkdir(parents=True)
@@ -95,6 +99,8 @@ check("  and it is not yet an administrator's choice", usbgadget.chosen() is Fal
 (T / "dt" / "model").write_bytes(b"Some other board\x00")
 check("another board: off by default", usbgadget.load_settings()["on"] is False)
 (T / "dt" / "model").write_bytes(b"Luckfox Lyra Zero W\x00")
+(T / "machine-id").write_text("machine-one\n")
+(T / "dnsmasq").write_text("")
 
 # The gadget tree the service writes.
 ok, why, children = usbgadget.setup(sleep=lambda _: None)
@@ -111,11 +117,26 @@ check(
     (g / "configs/c.1/MaxPower").read_text() == "250"
     and (g / "configs/c.1/strings/0x409/configuration").read_text() == "USB networking",
 )
+dev, host = usbgadget.macs()
 check(
-    "  NCM with a fixed locally administered MAC",
-    (g / "functions/ncm.usb0/dev_addr").read_text() == usbgadget.DEV_ADDR
-    and (g / "functions/ncm.usb0/host_addr").read_text() == usbgadget.HOST_ADDR
-    and usbgadget.DEV_ADDR.startswith("02:"),
+    "  NCM with the machine's own locally administered MACs",
+    (g / "functions/ncm.usb0/dev_addr").read_text() == dev
+    and (g / "functions/ncm.usb0/host_addr").read_text() == host
+    and dev != host
+    and all(int(m.split(":")[0], 16) & 0x03 == 0x02 for m in (dev, host)),
+    (dev, host),
+)
+other = usbgadget.macs("machine-two")
+check("  another machine id: another pair", other != (dev, host) and other[0] != other[1], other)
+conf = usbgadget.dnsmasq_conf()
+check(
+    "  the DHCP answer is an address only: no router, no DNS, no wildcard",
+    "option:router" not in conf
+    and "option:dns-server" not in conf
+    and "address=/#/" not in conf
+    and "dhcp-option=3" in conf
+    and "dhcp-option=6" in conf,
+    conf,
 )
 check("  ACM too", (g / "functions/acm.usb0").is_dir())
 check(
@@ -166,6 +187,13 @@ off = dict(st, settings={"on": False})
 check(
     "  off: no finding, and the group still offers it",
     health.check_usb_gadget(off) == [] and health.usb_gadget_groups(off)[0]["current"] == "off",
+)
+nodns = dict(st, dnsmasq=False)
+found = health.check_usb_gadget(nodns)
+check(
+    "  dnsmasq missing: a problem naming dnsmasq-base",
+    found and found[0]["status"] == "problem" and "usb-gadget.dnsmasq" in message_ids(found[0]),
+    found,
 )
 starting = dict(st, up=False, why="starting")
 found = health.check_usb_gadget(starting)

@@ -61,8 +61,6 @@ NETMASK = "255.255.255.0"
 DHCP_FIRST = "192.168.7.10"
 DHCP_LAST = "192.168.7.50"
 TTY = "ttyGS0"
-DEV_ADDR = "02:00:00:00:01:01"
-HOST_ADDR = "02:00:00:00:01:02"
 VENDOR = "0x1d6b"
 PRODUCT = "0x0104"
 BCD_USB = "0x0200"
@@ -72,6 +70,8 @@ LOOK = 10  # seconds between looks at the gadget
 WAIT = 15  # seconds for usb0 and the ACM port to appear after the UDC is bound
 FETCH_TIMEOUT = 30
 BUILD_TIMEOUT = 900
+MACHINE_ID = Path(os.environ.get("HUB_MACHINE_ID", "/etc/machine-id"))
+DNSMASQ = Path(os.environ.get("HUB_DNSMASQ_BIN", "/usr/sbin/dnsmasq"))
 
 
 def read(path):
@@ -174,6 +174,7 @@ def status():
         "settings": load_settings(),
         "chosen": chosen(),
         "modules": modules_loaded(),
+        "dnsmasq": dnsmasq_present(),
         "gadget": state,
         "up": state["up"],
         "why": saved.get("why"),
@@ -354,22 +355,40 @@ def _link(function):
 
 
 def _serial():
-    return (read("/etc/machine-id") or "irate-box")[:16]
+    return (read(MACHINE_ID) or "irate-box")[:16]
+
+
+def macs(seed=None):
+    """The NCM pair's locally administered MACs, from the machine id: stable per box, and two Lyras
+    on one computer do not collide. The locally administered bit is set and the multicast bit clear."""
+    seed = seed if seed is not None else (read(MACHINE_ID) or model() or "irate-box")
+    digest = hashlib.sha256(str(seed).encode()).digest()
+
+    def one(offset):
+        octets = bytearray(digest[offset : offset + 6])
+        octets[0] = (octets[0] | 0x02) & 0xFE
+        return ":".join(f"{b:02x}" for b in octets)
+
+    return one(0), one(6)
+
+
+def dnsmasq_present():
+    return DNSMASQ.is_file()
 
 
 def dnsmasq_conf():
     return "\n".join(
         [
-            "# Written by irate-box (root/usbgadget.py): DHCP and DNS on the USB network only.",
+            "# Written by irate-box (root/usbgadget.py): an address on the USB network only. No router and",
+            "# no DNS: a computer that plugs in keeps its own internet and name service.",
             f"interface={IFACE}",
             "bind-dynamic",
             "except-interface=lo",
             "no-resolv",
             "no-hosts",
             f"dhcp-range={DHCP_FIRST},{DHCP_LAST},{NETMASK},12h",
-            f"dhcp-option=option:router,{ADDRESS}",
-            f"dhcp-option=option:dns-server,{ADDRESS}",
-            f"address=/#/{ADDRESS}",
+            "dhcp-option=3",
+            "dhcp-option=6",
             f"dhcp-leasefile={RUN / 'dnsmasq.leases'}",
             "dhcp-authoritative",
             "",
@@ -385,7 +404,7 @@ def start_children():
     log = (RUN / "dnsmasq.log").open("ab")
     children = [
         subprocess.Popen(  # noqa: TID251 - dnsmasq runs for the service's lifetime
-            ["/usr/sbin/dnsmasq", "--keep-in-foreground", f"--conf-file={conf}", "--pid-file="],
+            [str(DNSMASQ), "--keep-in-foreground", f"--conf-file={conf}", "--pid-file="],
             stdout=log,
             stderr=subprocess.STDOUT,
         )
@@ -420,6 +439,8 @@ def setup(log=print, sleep=time.sleep):
     ok, why = ensure_modules(log)
     if not ok:
         return False, why, []
+    if not dnsmasq_present():
+        return False, "dnsmasq is not installed (the dnsmasq-base package)", []
     _teardown_tree()
     try:
         write(GADGET / "idVendor", VENDOR)
@@ -432,8 +453,9 @@ def setup(log=print, sleep=time.sleep):
         write(CONFIGS / "c.1" / "strings" / "0x409" / "configuration", "USB networking")
         write(CONFIGS / "c.1" / "MaxPower", MAX_POWER)
         write(CONFIGS / "c.1" / "bmAttributes", "0x80")
-        write(FUNCTIONS / "ncm.usb0" / "dev_addr", DEV_ADDR)
-        write(FUNCTIONS / "ncm.usb0" / "host_addr", HOST_ADDR)
+        dev_addr, host_addr = macs()
+        write(FUNCTIONS / "ncm.usb0" / "dev_addr", dev_addr)
+        write(FUNCTIONS / "ncm.usb0" / "host_addr", host_addr)
         (FUNCTIONS / "acm.usb0").mkdir(parents=True, exist_ok=True)
         _link("ncm.usb0")
         _link("acm.usb0")
