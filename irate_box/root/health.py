@@ -7070,7 +7070,8 @@ def usb_gadget_groups(st):
         return []
     from irate_box.root import usbgadget
 
-    return [
+    settings = st.get("settings") or {}
+    groups = [
         {
             "key": "usb-gadget",
             "label": M("hs.usb-gadget", "USB networking"),
@@ -7081,23 +7082,107 @@ def usb_gadget_groups(st):
                 address=usbgadget.ADDRESS,
                 tty=usbgadget.TTY,
             ),
-            "current": "on" if st["settings"]["on"] else "off",
+            "current": "on" if settings.get("on") else "off",
             "options": [
                 {"value": "on", "label": ON, "choice": "usb-gadget:on"},
                 {"value": "off", "label": OFF, "choice": "usb-gadget:off"},
             ],
-        }
+        },
+        {
+            "key": "usb-gadget-drive",
+            "label": M("hs.usb-gadget-drive", "USB drive"),
+            "desc": M(
+                "hs.usb-gadget-drive.desc",
+                "A USB drive made from the file drop. Read-only unless writes are on. Files added to a "
+                "writable drive are copied into the file drop when it stops.",
+            ),
+            "current": "on" if settings.get("drive") else "off",
+            "options": [
+                {"value": "on", "label": ON, "choice": "usb-gadget-drive:on"},
+                {"value": "off", "label": OFF, "choice": "usb-gadget-drive:off"},
+            ],
+        },
     ]
+    if settings.get("drive"):
+        groups.append(
+            {
+                "key": "usb-gadget-drive-write",
+                "label": M("hs.usb-gadget-drive-write", "USB drive writes"),
+                "desc": M(
+                    "hs.usb-gadget-drive-write.desc",
+                    "Off: the computer can read the drive but not change it. On: it can add files, which "
+                    "are copied into the file drop when the drive stops. Changes to existing files stay on the drive.",
+                ),
+                "current": "on" if settings.get("drive_write") else "off",
+                "options": [
+                    {"value": "on", "label": ON, "choice": "usb-gadget-drive-write:on"},
+                    {"value": "off", "label": OFF, "choice": "usb-gadget-drive-write:off"},
+                ],
+            }
+        )
+    return groups
 
 
 def check_usb_gadget(st=None):
-    """USB networking: on and up, or on and not up; nothing when it is off or the port is a host port."""
+    """USB networking and the USB drive: on and up, or on and not up; nothing when both are off."""
     st = usb_gadget_status() if st is None else st
-    if not st or not st.get("peripheral") or not st["settings"]["on"]:
+    if not st or not st.get("peripheral"):
+        return []
+    settings = st.get("settings") or {}
+    if not settings.get("on") and not settings.get("drive"):
         return []
     from irate_box.root import usbgadget
 
     title = M("usb-gadget.title", "USB networking")
+    drive = st.get("drive") or {}
+    if settings.get("drive"):
+        missing = [name for name, present in (drive.get("tools") or {}).items() if not present]
+        if missing:
+            return [
+                finding(
+                    "usb-gadget:tools",
+                    title,
+                    "problem",
+                    M(
+                        "usb-gadget.tools",
+                        "The USB drive needs {tools} (dosfstools and mtools), which are not installed.",
+                        tools=", ".join(missing),
+                    ),
+                    fix=M("usb-gadget.tools.fix", "Install dosfstools and mtools, or run the installer again."),
+                    commands=["apt-get install -y dosfstools mtools"],
+                    glance=M("usb-gadget.tools.glance", "The USB drive tools are missing."),
+                )
+            ]
+        if not (st.get("up") and drive.get("file")):
+            return [
+                finding(
+                    "usb-gadget:drive",
+                    title,
+                    "problem",
+                    M("usb-gadget.drive-down", "The USB drive is on, but it did not come up."),
+                    M("usb-gadget.drive-down.why", "The computer cannot see the drive."),
+                    M(
+                        "usb-gadget.drive-down.fix",
+                        "Start it again. The service's log says whether the image or the LUN failed.",
+                    ),
+                    commands=[
+                        "systemctl status irate-box-usb-gadget.service",
+                        "journalctl -u irate-box-usb-gadget.service -n 50",
+                    ],
+                    actions=[action("unit-restart:irate-box-usb-gadget.service", RESTART)],
+                    glance=M("usb-gadget.drive-down.glance", "The USB drive did not come up."),
+                )
+            ]
+        if not settings.get("on"):
+            return [
+                finding(
+                    "usb-gadget-drive",
+                    title,
+                    "ok",
+                    M("usb-gadget.drive-ok", "The file drop is on the box's USB port as a drive."),
+                    glance=M("usb-gadget.drive-ok.glance", "The USB drive is up."),
+                )
+            ]
     go = _go("health-settings", RECOVERY, "hs-usb-gadget")
     if st.get("why") == "starting":
         return [
@@ -8786,6 +8871,14 @@ def fix(choice):
         from irate_box.root import usbgadget
 
         return usbgadget.set_option(arg)
+    if kind == "usb-gadget-drive":
+        from irate_box.root import usbgadget
+
+        return usbgadget.set_drive(arg)
+    if kind == "usb-gadget-drive-write":
+        from irate_box.root import usbgadget
+
+        return usbgadget.set_drive_write(arg)
     if kind == "rfkill-apply":
         from irate_box.root import rfkill
 

@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""USB networking for a board whose USB port is a device: NCM (a network link Linux, macOS and recent
-Windows drive without a driver) and ACM (a serial console) over the same cable.
+"""USB networking and a USB drive for a board whose USB port is a device: NCM (a network link Linux,
+macOS and recent Windows drive without a driver), ACM (a serial console) and mass storage (the file
+drop as a FAT drive) over the same cable.
 
 irate-box-usb-gadget.service runs this as root (`usbgadget run`). The vendor kernel builds the
-gadget framework and configfs but not the NCM and ACM functions, so the service fetches the four
-function sources pinned in the Driver resources toolkit (`toolkits/drivers.json`'s `gadget`), checks
-each file's sha256, builds them with DKMS from `gadget/`, loads them, composes the gadget through
-configfs, gives `usb0` a fixed locally administered MAC and a small private subnet with DHCP, and
-puts a getty on the ACM port. Only on a board whose UDC is in peripheral mode.
+gadget framework and configfs but not the NCM, ACM and mass-storage functions, so the service
+fetches the function sources pinned in the Driver resources toolkit (`toolkits/drivers.json`'s
+`gadget`), checks each file's sha256, builds them with DKMS from `gadget/`, loads them, composes the
+gadget through configfs, gives `usb0` a fixed locally administered MAC and a small private subnet
+with DHCP, puts a getty on the ACM port, and gives the drive a FAT image of the file drop. Only on a
+board whose UDC is in peripheral mode.
 
-  usbgadget.py run                 the service: set it up, keep it up, tear it down on stop
-  usbgadget.py status              what is there, as JSON
-  usbgadget.py set on|off          the owner's choice, applied at once
+  usbgadget.py run                      the service: set it up, keep it up, tear it down on stop
+  usbgadget.py status                   what is there, as JSON
+  usbgadget.py set on|off               USB networking, applied at once
+  usbgadget.py drive on|off             the USB drive, applied at once
+  usbgadget.py drive-write on|off       read-only or writable, applied at once
+  usbgadget.py drive-refresh            rebuild the drive image from the file drop
 
-The choice is on Recovery and monitoring, on by default on a Lyra (it is how a headless board is
-reached). Settings in /etc/hub/usb-gadget.json (root's). Stdlib only.
+The choices are on Recovery and monitoring; networking is on by default on a Lyra (it is how a
+headless board is reached), the drive is off. Settings in /etc/hub/usb-gadget.json (root's).
+Stdlib only.
 """
 
 import hashlib
@@ -29,6 +35,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from io import BytesIO
 from pathlib import Path
 
 from irate_box.msg import M, Refused
@@ -41,9 +48,10 @@ DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
 RUN = Path(os.environ.get("HUB_USB_GADGET_RUN", "/run/irate-box-usb-gadget"))
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 KITS = Path(os.environ.get("HUB_KITS_ROOT", "/var/cache/irate-box/kits"))
-SRC = Path(os.environ.get("HUB_GADGET_SRC", "/usr/src/usb-gadget-1.0.0"))
+SRC = Path(os.environ.get("HUB_GADGET_SRC", "/usr/src/usb-gadget-1.1.0"))
 SETTINGS = ETC / "usb-gadget.json"
 STATUS = RUN / "status.json"
+ACTIVE = RUN / "active.json"
 GADGET = CONFIGFS / "usb_gadget" / "irate"
 FUNCTIONS = GADGET / "functions"
 CONFIGS = GADGET / "configs"
@@ -52,8 +60,8 @@ UDC_DIR = SYS / "class/udc"
 
 UNIT = "irate-box-usb-gadget.service"
 PACKAGE = "usb-gadget"
-VERSION = "1.0.0"
-MODULES = ("u_ether", "usb_f_ncm", "u_serial", "usb_f_acm")
+VERSION = "1.1.0"
+MODULES = ("u_ether", "usb_f_ncm", "u_serial", "usb_f_acm", "usb_f_mass_storage")
 IFACE = "usb0"
 ADDRESS = "192.168.7.1"
 PREFIX = 24
@@ -66,12 +74,22 @@ PRODUCT = "0x0104"
 BCD_USB = "0x0200"
 BCD_DEVICE = "0x0100"
 MAX_POWER = "250"
+DRIVE_FUNCTION = "mass_storage.usb0"
+DRIVE_LUN = FUNCTIONS / DRIVE_FUNCTION / "lun.0"
+DRIVE_IMAGE = STATE / "drop" / ".usb-drive.img"
+DRIVE_MANIFEST = STATE / "drop" / ".usb-drive-manifest.json"
+DRIVE_MIN_BYTES = 16 * 1024 * 1024
+DRIVE_FREE_MIN = 64 * 1024 * 1024
+DRIVE_SOURCE = "drop"
 LOOK = 10  # seconds between looks at the gadget
 WAIT = 15  # seconds for usb0 and the ACM port to appear after the UDC is bound
 FETCH_TIMEOUT = 30
 BUILD_TIMEOUT = 900
 MACHINE_ID = Path(os.environ.get("HUB_MACHINE_ID", "/etc/machine-id"))
 DNSMASQ = Path(os.environ.get("HUB_DNSMASQ_BIN", "/usr/sbin/dnsmasq"))
+MKFS_VFAT = os.environ.get("HUB_MKFS_VFAT", "mkfs.vfat")
+MCOPY = os.environ.get("HUB_MCOPY", "mcopy")
+MDIR = os.environ.get("HUB_MDIR", "mdir")
 
 
 def read(path):
@@ -104,8 +122,13 @@ def load_settings():
         raw = json.loads(SETTINGS.read_text())
     except (OSError, ValueError):
         raw = {}
-    on = raw.get("on") if isinstance(raw, dict) and isinstance(raw.get("on"), bool) else default_on()
-    return {"on": on}
+    if not isinstance(raw, dict):
+        raw = {}
+    on = raw.get("on") if isinstance(raw.get("on"), bool) else default_on()
+    drive = raw.get("drive") if isinstance(raw.get("drive"), bool) else False
+    drive_write = raw.get("drive_write") if isinstance(raw.get("drive_write"), bool) else False
+    source = raw.get("drive_source") if raw.get("drive_source") == DRIVE_SOURCE else DRIVE_SOURCE
+    return {"on": on, "drive": drive, "drive_write": drive_write, "drive_source": source}
 
 
 def chosen():
@@ -117,11 +140,13 @@ def chosen():
     return isinstance(raw, dict) and isinstance(raw.get("on"), bool)
 
 
-def save_settings(on):
+def save_settings(**changes):
     from irate_box.root import safeio
 
+    current = load_settings()
+    current.update(changes)
     ETC.mkdir(parents=True, exist_ok=True)
-    safeio.write(SETTINGS, json.dumps({"on": bool(on)}))
+    safeio.write(SETTINGS, json.dumps(current))
 
 
 def peripherals():
@@ -137,8 +162,12 @@ def modules_loaded():
 
 
 def gadget_state():
+    settings = load_settings()
     functions = sorted(p.name for p in FUNCTIONS.glob("*")) if FUNCTIONS.is_dir() else []
     bound = bool(read(GADGET / "UDC"))
+    drive_file = read(DRIVE_LUN / "file") or ""
+    network_up = not settings["on"] or ((SYS / "class/net" / IFACE).exists() and (SYS / "class/tty" / TTY).exists())
+    drive_up = not settings["drive"] or bool(drive_file)
     return {
         "present": GADGET.is_dir(),
         "bound": bound,
@@ -146,8 +175,19 @@ def gadget_state():
         "iface": IFACE,
         "address": f"{ADDRESS}/{PREFIX}",
         "tty": TTY,
-        "up": bool(bound and (SYS / "class/net" / IFACE).exists() and (SYS / "class/tty" / TTY).exists()),
+        "network": settings["on"],
+        "drive": settings["drive"],
+        "drive_file": drive_file,
+        "up": bool(bound and network_up and drive_up),
     }
+
+
+def active_settings():
+    try:
+        data = json.loads(ACTIVE.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def read_status():
@@ -176,6 +216,7 @@ def status():
         "modules": modules_loaded(),
         "dnsmasq": dnsmasq_present(),
         "gadget": state,
+        "drive": drive_state(),
         "up": state["up"],
         "why": saved.get("why"),
     }
@@ -337,6 +378,7 @@ def _teardown_tree():
     for folder in (
         FUNCTIONS / "ncm.usb0",
         FUNCTIONS / "acm.usb0",
+        FUNCTIONS / DRIVE_FUNCTION,
         CONFIGS / "c.1" / "strings" / "0x409",
         CONFIGS / "c.1",
         STRINGS / "0x409",
@@ -396,8 +438,160 @@ def dnsmasq_conf():
     )
 
 
+def drive_tools():
+    """The image tools, or the names that are missing."""
+    found = {
+        "mkfs.vfat": os.environ.get("HUB_MKFS_VFAT") or shutil.which(MKFS_VFAT),
+        "mcopy": os.environ.get("HUB_MCOPY") or shutil.which(MCOPY),
+        "mdir": os.environ.get("HUB_MDIR") or shutil.which(MDIR),
+    }
+    return {name: bool(path) for name, path in found.items()}
+
+
+def fat_name(name):
+    """A display name a FAT filesystem and mtools accept."""
+    name = "".join(c if c.isprintable() and c not in '<>:"/\\|?*' else "_" for c in str(name))
+    return name.strip().rstrip(".") or "file"
+
+
+def drive_groups():
+    """The drive's file-drop source, as {name: {id, size}}; the image uses the display names."""
+    from irate_box.hub import store
+
+    drop = store.Drop(DRIVE_IMAGE.parent)
+    used = set()
+    out = []
+    for meta in drop.list():
+        data = DRIVE_IMAGE.parent / (meta["id"] + ".data")
+        if not data.is_file():
+            continue
+        name = fat_name(store.clean_filename(meta.get("name") or "file"))
+        base, n = name, 2
+        while name in used:
+            stem, dot, ext = base.rpartition(".")
+            name = (stem or base) + f" ({n})" + (f".{ext}" if dot else "")
+            n += 1
+        used.add(name)
+        out.append((name, data, int(meta.get("size") or data.stat().st_size), meta["id"]))
+    return out
+
+
+def drive_manifest():
+    try:
+        data = json.loads(DRIVE_MANIFEST.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def build_drive_image(log=print):
+    """A FAT image of the file drop, ready for the mass-storage LUN: (ok, why)."""
+    tools = drive_tools()
+    missing = [name for name, ok in tools.items() if not ok]
+    if missing:
+        return False, f"the USB drive needs {', '.join(missing)} (dosfstools and mtools)"
+    files = drive_groups()
+    total = sum(size for _, _, size, _ in files)
+    size = max(DRIVE_MIN_BYTES, total + total // 10 + 1024 * 1024)
+    size = (size + (1 << 20) - 1) // (1 << 20) * (1 << 20)
+    if size > 2 * 1024**3:
+        return False, "the file drop is too large for one USB drive"
+    DRIVE_IMAGE.parent.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(DRIVE_IMAGE.parent).free < size + DRIVE_FREE_MIN:
+        return False, "not enough free space for the USB drive image"
+    tmp = DRIVE_IMAGE.with_name(DRIVE_IMAGE.name + ".new")
+    tmp.unlink(missing_ok=True)
+    try:
+        with open(tmp, "wb") as fh:
+            fh.truncate(size)
+        ok = run([MKFS_VFAT, "-F", "16" if size <= 2 * 1024**3 else "32", "-n", "IRATE-BOX", str(tmp)], timeout=120)
+        if ok.returncode:
+            return False, (ok.stderr or ok.stdout or "mkfs.vfat failed").strip().splitlines()[-1]
+        for name, data, _, _ in files:
+            log(f"usbgadget: adding {name} to the USB drive")
+            copied = run([MCOPY, "-o", "-i", str(tmp), str(data), "::" + name], timeout=120)
+            if copied.returncode:
+                return False, (copied.stderr or copied.stdout or "mcopy failed").strip().splitlines()[-1]
+        os.replace(tmp, DRIVE_IMAGE)
+    finally:
+        tmp.unlink(missing_ok=True)
+    manifest = {name: {"id": ident, "size": size} for name, _, size, ident in files}
+    DRIVE_MANIFEST.write_text(json.dumps(manifest))
+    return True, None
+
+
+def refresh_drive(log=print):
+    ok, why = build_drive_image(log)
+    if not ok:
+        return False, why
+    return True, None
+
+
+def import_drive(log=print):
+    """Bring files the host added to the USB drive into the file drop. Existing names are left
+    alone; the drive is a copy, not a two-way mirror. Returns how many were added."""
+    if not DRIVE_IMAGE.is_file():
+        return 0
+    tools = drive_tools()
+    if not tools["mdir"] or not tools["mcopy"]:
+        return 0
+    known = set(drive_manifest())
+    tmp = RUN / "drive-import"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True, exist_ok=True)
+    listed = run([MDIR, "-b", "-i", str(DRIVE_IMAGE), "::/"], timeout=120)
+    if listed.returncode:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return 0
+    from irate_box.hub import store
+
+    drop = store.Drop(DRIVE_IMAGE.parent)
+    manifest = drive_manifest()
+    added = 0
+    for raw in (line.strip() for line in (listed.stdout or "").splitlines()):
+        name = raw[3:] if raw.startswith("::/") else raw
+        if not name or name in known or name in (".", "..") or "/" in name:
+            continue
+        one = tmp / "one"
+        one.unlink(missing_ok=True)
+        got = run([MCOPY, "-n", "-i", str(DRIVE_IMAGE), "::" + name, str(one)], timeout=120)
+        if got.returncode or not one.is_file():
+            continue
+        data = one.read_bytes()
+        one.unlink(missing_ok=True)
+        if len(data) > store.DROP_MAX_FILE:
+            continue
+        try:
+            meta = drop.receive(BytesIO(data), len(data), name, by="USB drive")
+        except (OSError, ValueError, Refused) as exc:
+            log(f"usbgadget: skipped {name} from the USB drive: {exc}")
+        else:
+            manifest[name] = {"id": meta["id"], "size": len(data)}
+            known.add(name)
+            added += 1
+    if added:
+        DRIVE_MANIFEST.write_text(json.dumps(manifest))
+    shutil.rmtree(tmp, ignore_errors=True)
+    log(f"usbgadget: imported {added} file(s) from the USB drive")
+    return added
+
+
+def drive_state():
+    settings = load_settings()
+    return {
+        "on": settings["drive"],
+        "write": settings["drive_write"],
+        "source": settings["drive_source"],
+        "image": DRIVE_IMAGE.is_file(),
+        "file": read(DRIVE_LUN / "file") or "",
+        "tools": drive_tools(),
+    }
+
+
 def start_children():
     """dnsmasq for the USB network and a getty on the ACM port; they live and die with the service."""
+    if not load_settings()["on"]:
+        return []
     RUN.mkdir(parents=True, exist_ok=True)
     conf = RUN / "dnsmasq.conf"
     conf.write_text(dnsmasq_conf())
@@ -430,17 +624,28 @@ def stop_children(children):
 
 
 def setup(log=print, sleep=time.sleep):
-    """Compose the gadget and bring its network up: (ok, why, children)."""
-    if not load_settings()["on"]:
+    """Compose the gadget, build the drive image and bring the network up: (ok, why, children)."""
+    settings = load_settings()
+    if not settings["on"] and not settings["drive"]:
         return False, "off", []
+    RUN.mkdir(parents=True, exist_ok=True)
+    ACTIVE.write_text(json.dumps(settings))
     udcs = peripherals()
     if not udcs:
         return False, "the board's USB port is not in peripheral mode", []
     ok, why = ensure_modules(log)
     if not ok:
         return False, why, []
-    if not dnsmasq_present():
+    if settings["on"] and not dnsmasq_present():
         return False, "dnsmasq is not installed (the dnsmasq-base package)", []
+    if settings["drive"]:
+        missing = [name for name, present in drive_tools().items() if not present]
+        if missing:
+            return False, f"the USB drive needs {', '.join(missing)} (dosfstools and mtools)", []
+        if not (settings["drive_write"] and DRIVE_IMAGE.is_file()):
+            built, why = build_drive_image(log)
+            if not built:
+                return False, why, []
     _teardown_tree()
     try:
         write(GADGET / "idVendor", VENDOR)
@@ -449,39 +654,60 @@ def setup(log=print, sleep=time.sleep):
         write(GADGET / "bcdDevice", BCD_DEVICE)
         write(STRINGS / "0x409" / "serialnumber", _serial())
         write(STRINGS / "0x409" / "manufacturer", "irate-box")
-        write(STRINGS / "0x409" / "product", "irate-box USB networking")
-        write(CONFIGS / "c.1" / "strings" / "0x409" / "configuration", "USB networking")
+        if settings["on"] and settings["drive"]:
+            product, config = "irate-box USB networking and drive", "USB networking and drive"
+        elif settings["on"]:
+            product, config = "irate-box USB networking", "USB networking"
+        else:
+            product, config = "irate-box USB drive", "USB drive"
+        write(STRINGS / "0x409" / "product", product)
+        write(CONFIGS / "c.1" / "strings" / "0x409" / "configuration", config)
         write(CONFIGS / "c.1" / "MaxPower", MAX_POWER)
         write(CONFIGS / "c.1" / "bmAttributes", "0x80")
-        dev_addr, host_addr = macs()
-        write(FUNCTIONS / "ncm.usb0" / "dev_addr", dev_addr)
-        write(FUNCTIONS / "ncm.usb0" / "host_addr", host_addr)
-        (FUNCTIONS / "acm.usb0").mkdir(parents=True, exist_ok=True)
-        _link("ncm.usb0")
-        _link("acm.usb0")
+        if settings["on"]:
+            dev_addr, host_addr = macs()
+            write(FUNCTIONS / "ncm.usb0" / "dev_addr", dev_addr)
+            write(FUNCTIONS / "ncm.usb0" / "host_addr", host_addr)
+            (FUNCTIONS / "acm.usb0").mkdir(parents=True, exist_ok=True)
+            _link("ncm.usb0")
+            _link("acm.usb0")
+        if settings["drive"]:
+            (FUNCTIONS / DRIVE_FUNCTION / "lun.0").mkdir(parents=True, exist_ok=True)
+            write(DRIVE_LUN / "file", str(DRIVE_IMAGE))
+            write(DRIVE_LUN / "ro", "0" if settings["drive_write"] else "1")
+            write(DRIVE_LUN / "removable", "1")
+            write(DRIVE_LUN / "cdrom", "0")
+            _link(DRIVE_FUNCTION)
         write(GADGET / "UDC", udcs[0])
     except OSError as exc:
         _teardown_tree()
         return False, f"configfs: {exc}", []
-    for _ in range(WAIT):
-        if (SYS / "class/net" / IFACE).exists() and (SYS / "class/tty" / TTY).exists():
-            break
-        sleep(1)
-    if not (SYS / "class/net" / IFACE).exists():
-        return False, f"{IFACE} did not appear", []
-    run(["ip", "addr", "replace", f"{ADDRESS}/{PREFIX}", "dev", IFACE], timeout=30)
-    run(["ip", "link", "set", IFACE, "up"], timeout=30)
+    if settings["on"]:
+        for _ in range(WAIT):
+            if (SYS / "class/net" / IFACE).exists() and (SYS / "class/tty" / TTY).exists():
+                break
+            sleep(1)
+        if not (SYS / "class/net" / IFACE).exists():
+            return False, f"{IFACE} did not appear", []
+        run(["ip", "addr", "replace", f"{ADDRESS}/{PREFIX}", "dev", IFACE], timeout=30)
+        run(["ip", "link", "set", IFACE, "up"], timeout=30)
     return True, None, start_children()
 
 
 def teardown(children=()):
     stop_children(children)
-    run(["ip", "addr", "flush", "dev", IFACE], timeout=30)
+    settings = active_settings() or load_settings()
+    if settings.get("on"):
+        run(["ip", "addr", "flush", "dev", IFACE], timeout=30)
     _teardown_tree()
-    try:
-        STATUS.unlink()
-    except OSError:
-        pass
+    if settings.get("drive") and settings.get("drive_write") and DRIVE_IMAGE.is_file():
+        os.sync()
+        import_drive()
+    for path in (STATUS, ACTIVE):
+        try:
+            path.unlink()
+        except OSError:
+            pass
 
 
 def serve(log=print):
@@ -493,8 +719,10 @@ def serve(log=print):
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    if not load_settings()["on"] or not peripherals():
-        write_status(False, "off" if not load_settings()["on"] else "no peripheral controller")
+    settings = load_settings()
+    if not (settings["on"] or settings["drive"]) or not peripherals():
+        why = "off" if not (settings["on"] or settings["drive"]) else "no peripheral controller"
+        write_status(False, why)
         return 0
     children = []
     while not stopping["now"]:
@@ -516,9 +744,12 @@ def serve(log=print):
 def set_option(value):
     if value not in ("on", "off"):
         raise Refused(M("usb-gadget-set.unknown", "USB networking has no setting {value}.", value=value))
-    save_settings(value == "on")
-    if value == "on":
+    save_settings(on=(value == "on"))
+    if value == "on" or load_settings()["drive"]:
         run(["systemctl", "restart", UNIT], timeout=60)
+    else:
+        run(["systemctl", "stop", UNIT], timeout=60)
+    if value == "on":
         return M(
             "usb-gadget-set.on",
             "USB networking is on. The box offers a network link at {address} and a console on /dev/{tty} "
@@ -526,8 +757,38 @@ def set_option(value):
             address=ADDRESS,
             tty=TTY,
         )
-    run(["systemctl", "stop", UNIT], timeout=60)
     return M("usb-gadget-set.off", "USB networking is off. The USB port is left alone.")
+
+
+def set_drive(value):
+    if value not in ("on", "off"):
+        raise Refused(M("usb-gadget-set.unknown", "USB networking has no setting {value}.", value=value))
+    save_settings(drive=(value == "on"))
+    if value == "on" or load_settings()["on"]:
+        run(["systemctl", "restart", UNIT], timeout=60)
+    else:
+        run(["systemctl", "stop", UNIT], timeout=60)
+    if value == "on":
+        return M(
+            "usb-gadget-drive-set.on",
+            "The USB drive is on. Its image comes from the file drop. Connect the USB port to a computer to use it.",
+        )
+    return M("usb-gadget-drive-set.off", "The USB drive is off.")
+
+
+def set_drive_write(value):
+    if value not in ("on", "off"):
+        raise Refused(M("usb-gadget-set.unknown", "USB networking has no setting {value}.", value=value))
+    save_settings(drive_write=(value == "on"))
+    if load_settings()["on"] or load_settings()["drive"]:
+        run(["systemctl", "restart", UNIT], timeout=60)
+    if value == "on":
+        return M(
+            "usb-gadget-drive-write.on",
+            "The USB drive is writable. Files added to it are copied into the file drop when the drive stops. "
+            "Changes to files already on it are not copied back.",
+        )
+    return M("usb-gadget-drive-write.off", "The USB drive is read-only.")
 
 
 def main(argv):
@@ -538,6 +799,14 @@ def main(argv):
         print(json.dumps(status(), indent=1))
     elif cmd == "set" and len(argv) == 2:
         print(set_option(argv[1]))
+    elif cmd == "drive" and len(argv) == 2:
+        print(set_drive(argv[1]))
+    elif cmd == "drive-write" and len(argv) == 2:
+        print(set_drive_write(argv[1]))
+    elif cmd == "drive-refresh":
+        ok, why = refresh_drive()
+        print("ok" if ok else f"failed: {why}")
+        return 0 if ok else 1
     elif cmd == "build":
         ok, why = build_modules()
         print("ok" if ok else f"failed: {why}")
