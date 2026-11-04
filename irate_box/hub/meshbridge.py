@@ -24,7 +24,7 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box import durable
+from irate_box import durable, validate
 from irate_box.hub import meshdecode
 from irate_box.hub.refused import Refused, Said
 from irate_box.msg import M
@@ -72,9 +72,18 @@ def _save_channels(chs):
     durable.write_checked(CHANNELS, json.dumps({"channels": chs}), 0o600)
 
 
-def add_channel(name, key):
-    name = str(name or "").strip()
-    if not (1 <= len(name) <= 11) or any(c in name for c in "/#+\0"):
+def _channel_name(name):
+    """A channel's name as Meshtastic shows it: 1 to 11 characters, no control characters and
+    none of /, # or +."""
+    raw = str(name or "")
+    try:
+        validate.text(raw, "The channel name", 64)
+    except ValueError:
+        raw = ""
+    name = raw.strip()
+    if len(name) > 11:
+        name = ""
+    if not name or any(c in name for c in "/#+"):
         raise Refused(
             M(
                 "mesh.channel.name-invalid",
@@ -82,6 +91,11 @@ def add_channel(name, key):
                 "1 to 11 characters, without /, #, + or null characters.",
             )
         )
+    return name
+
+
+def add_channel(name, key):
+    name = _channel_name(name)
     try:
         meshdecode.expand_key(key)
     except (ValueError, TypeError) as exc:
@@ -101,6 +115,7 @@ def add_channel(name, key):
 
 
 def remove_channel(name):
+    name = _channel_name(name)
     _save_channels([c for c in channels() if c["name"] != name])
 
 

@@ -19,6 +19,8 @@ os.environ.update(HUB_STATE_DIR=str(T), GITHUB_TOKEN="")
 sys.path.insert(0, str(REPO))
 from irate_box.hub import gitrepos
 from irate_box.library import librarian as L
+
+L.RESOLVE = lambda host, *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))]
 from irate_box.library import mirrors, toolkits
 
 fails = 0

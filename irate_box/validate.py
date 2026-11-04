@@ -290,6 +290,27 @@ def url(value, schemes=("https",), hosts=None, what="The address", allow_ip=Fals
     return value
 
 
+def public_url(value, what="The address", resolve=None):
+    """An address from an answer or a redirect: https, a host name (never an IP literal), and one
+    whose addresses are all public, so a project's answer cannot send the box to its own network."""
+    import socket
+
+    value = url(value, schemes=("https",), what=what)
+    host = urlsplit(value).hostname or ""
+    try:
+        infos = (resolve or socket.getaddrinfo)(host, None)
+    except OSError:
+        raise Invalid(f"{what} does not resolve.") from None
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if not address.is_global or address.is_multicast:
+            raise Invalid(f"{what} resolves to an address inside the box's own networks.")
+    return value
+
+
 def hostapd_ssid(value):
     """hostapd's own safe spelling of any name: ssid2=<hex bytes>."""
     return "ssid2=" + ssid(value).encode("utf-8").hex()

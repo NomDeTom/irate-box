@@ -66,6 +66,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -77,7 +78,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from irate_box import confine
+from irate_box import confine, validate
 from irate_box.hub import manifests
 from irate_box.hub.refused import Said
 from irate_box.library import zimcheck
@@ -394,13 +395,15 @@ def validate_source(src):
         return out
     if out["type"] == "url":
         url = str(src.get("url", "")).strip()
-        if urllib.parse.urlparse(url).scheme != "https":
+        try:
             # A book over plain HTTP can be swapped on the way, and its pages are served on the
-            # hub's own origin.
+            # hub's own origin. A LAN address is allowed; a user name, a control character or a
+            # non-web scheme is not.
+            out["url"] = validate.url(url, schemes=("https",), what="The source URL", allow_ip=True)
+        except ValueError:
             raise LibrarianError(
                 M("library.source.url-not-https", "Invalid source settings. The URL must start with https://.")
-            )
-        out["url"] = url
+            ) from None
     else:
         repo = str(src.get("repo", "")).strip()
         if not REPO_RE.match(repo):
@@ -751,7 +754,7 @@ def fetch_app(src, cand):
         if src["type"] == "git":
             _pack_git(src, cand, part)
         else:
-            _download(cand["url"], part, cand["auth"], name, cand["size"])
+            _download(cand["url"], part, cand["auth"], name, cand["size"], allow_local=cand.get("allow_local", False))
             _verify_sha256(part, cand.get("sha256"), name)
         meta = check_bundle(part, name)
         os.replace(part, dest)
@@ -1026,15 +1029,47 @@ class _Answer:
         return False
 
 
-def _open(url, auth=None, method="GET", timeout=60, extra=None):
-    if urllib.parse.urlparse(url).scheme not in ("https", "http"):
-        # urllib would also open file: and ftp: addresses; nothing here is fetched that way.
-        raise LibrarianError(M("library.download.not-web", "Download rejected. {url} is not a web address.", url=url))
+RESOLVE = socket.getaddrinfo
+
+
+class _CheckedRedirect(urllib.request.HTTPRedirectHandler):
+    """Every redirect an answer sends the box on is checked again: https, a host name, and an
+    address outside the box's own networks (validate.public_url)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate.public_url(newurl, "The redirect address", resolve=RESOLVE)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_ORIGINAL_URLOPEN = urllib.request.urlopen
+_URLOPENER = urllib.request.build_opener(_CheckedRedirect())
+
+
+def _urlopen(request, timeout=None):
+    """The one place a download opens. A test that stands the network in by replacing
+    urllib.request.urlopen is answered by its stand-in; the real one follows checked redirects."""
+    if urllib.request.urlopen is not _ORIGINAL_URLOPEN:
+        return urllib.request.urlopen(request, timeout=timeout)  # nosec B310 - a test's stand-in, not a URL
+    return _URLOPENER.open(request, timeout=timeout)
+
+
+def _open(url, auth=None, method="GET", timeout=60, extra=None, allow_local=False):
+    try:
+        if allow_local:
+            # An address the owner entered: https, but a LAN address of their own is allowed.
+            validate.url(url, schemes=("https",), what="The download address", allow_ip=True)
+        else:
+            # An address from an answer: https, a host name, and nothing inside the box's networks.
+            validate.public_url(url, "The download address", resolve=RESOLVE)
+    except ValueError:
+        raise LibrarianError(
+            M("library.download.not-web", "Download rejected. {url} is not a web address.", url=url)
+        ) from None
     if urllib.parse.urlparse(url).hostname == "api.github.com" and not url.endswith("/rate_limit"):
         _pace_hit()
     try:
         # Web addresses only, checked above; https never downgraded below.
-        resp = urllib.request.urlopen(_request(url, auth, method, extra), timeout=timeout)  # nosec B310
+        resp = _urlopen(_request(url, auth, method, extra), timeout=timeout)  # nosec B310
         if (
             urllib.parse.urlparse(url).scheme == "https"
             and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https"
@@ -1534,7 +1569,7 @@ def _resolve_nightly(src, auth):
 
 
 def _resolve_url(src, auth):
-    with _open(src["url"], method="HEAD") as resp:
+    with _open(src["url"], method="HEAD", allow_local=src.get("type") == "url") as resp:
         headers = resp.headers
         final = resp.geturl()
     version = headers.get("ETag") or headers.get("Last-Modified")
@@ -1553,6 +1588,7 @@ def _resolve_url(src, auth):
         "zip": urllib.parse.urlparse(final).path.lower().endswith(".zip"),
         "label": src["url"],
         "auth": None,
+        "allow_local": src.get("type") == "url",
     }
 
 
@@ -1733,7 +1769,7 @@ def _verify_sha256(path, expected, what):
         )
 
 
-def _download(url, dest, auth=None, name=None, expected=0, resume=False):
+def _download(url, dest, auth=None, name=None, expected=0, resume=False, allow_local=False):
     """Stream url to dest. While it runs, progress.json says how far it has got (written at
     most once a second), so /admin can show a 60 MB book arriving at hotspot speed. With resume,
     a part already at dest (from a run the hub's restart cut off) is continued with a range request when the server allows one."""
@@ -1743,7 +1779,13 @@ def _download(url, dest, auth=None, name=None, expected=0, resume=False):
     if not 0 < have < expected:
         have = 0
     try:
-        resp = _open(url, auth, timeout=120, extra={"Range": f"bytes={have}-"} if have else None)
+        resp = _open(
+            url,
+            auth,
+            timeout=120,
+            extra={"Range": f"bytes={have}-"} if have else None,
+            allow_local=allow_local,
+        )
         go_on = have and getattr(resp, "status", None) == 206  # a server that ignores Range sends it all (200)
         done = have if go_on else 0
         with resp, open(dest, "ab" if go_on else "wb") as out:
@@ -2027,12 +2069,12 @@ def fetch_book(src, cand, policy, status_entry):
             # Rolled back earlier, now rolling forward: the version is already on the card.
             shutil.copyfile(archived, zim_tmp)
         elif cand["zip"]:
-            _download(cand["url"], part, cand["auth"], name, cand["size"])
+            _download(cand["url"], part, cand["auth"], name, cand["size"], allow_local=cand.get("allow_local", False))
             _verify_sha256(part, cand.get("sha256"), name)
             _extract_zim(part, name, zim_tmp)
             part.unlink(missing_ok=True)
         else:
-            _download(cand["url"], part, cand["auth"], name, cand["size"])
+            _download(cand["url"], part, cand["auth"], name, cand["size"], allow_local=cand.get("allow_local", False))
             _verify_sha256(part, cand.get("sha256"), name)
             os.replace(part, zim_tmp)
         _check_zim(zim_tmp)
