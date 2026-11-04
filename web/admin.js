@@ -15508,31 +15508,28 @@ function kitBody(k, st, cfg, setDirty) {
         : null,
     ),
   );
-  // Save is on only while the drawer differs from what is saved: changing a setting back turns it off again.
-  const saved = JSON.stringify(draft);
-  const saveB = actionButton("Save", async (event) => {
-    const ch = {};
-    if (draft.keep_current !== mine.keep_current) ch.keep_current = draft.keep_current;
-    if (draft.remove_after !== mine.remove_after) ch.remove_after = draft.remove_after;
-    const extra = draft.extra.trim().split(/[\s,]+/).filter(Boolean);
-    if (Object.keys(ch).length && !(await kitAct({ action: "settings", kits: { [k.id]: ch } }, false, event.currentTarget))) return;
-    if (!k.owner && extra.join(" ") !== (k.extra || []).join(" ") &&
-      !(await kitAct({ action: "extra", kit: k.id, packages: extra }, false, event.currentTarget))) return;
-  }, { className: "small aw-save", disabled: true });
-  const discardB = actionButton("Discard", () => {
-    draft.keep_current = mine.keep_current;
-    draft.remove_after = mine.remove_after;
-    draft.extra = (k.extra || []).join(" ");
-    drawKeep();
-    def.value = mine.remove_after == null ? "never" : String(mine.remove_after);
-    if (extra) extra.value = draft.extra;
-    changed();
-  }, { className: "small aw-discard", disabled: true });
+  // Save and Discard are the section's: compared with what is saved, and one question at Save.
+  const sec = AW.section({
+    id: `kit-${k.id}`,
+    label: k.title,
+    saved: { ...draft },
+    save: async (changes) => {
+      const ch = {};
+      if ("keep_current" in changes) ch.keep_current = changes.keep_current;
+      if ("remove_after" in changes) ch.remove_after = changes.remove_after;
+      const extraList = String(sec.get("extra") || "").trim().split(/[\s,]+/).filter(Boolean);
+      const saveButton = sec.foot.querySelector(".aw-save");
+      if (Object.keys(ch).length && !(await kitAct({ action: "settings", kits: { [k.id]: ch } }, false, saveButton))) return false;
+      if (!k.owner && extraList.join(" ") !== (k.extra || []).join(" ") &&
+        !(await kitAct({ action: "extra", kit: k.id, packages: extraList }, false, saveButton))) return false;
+      return true;
+    },
+  });
   const changed = () => {
-    const dirty = JSON.stringify(draft) !== saved;
-    saveB.disabled = !dirty;
-    discardB.disabled = !dirty;
-    setDirty(dirty);
+    sec.set("keep_current", draft.keep_current, true);
+    sec.set("remove_after", draft.remove_after, true);
+    sec.set("extra", draft.extra, true);
+    setDirty(sec.dirty());
   };
   // Automatic cache refresh: On and Off.
   let keepChips;
@@ -15570,6 +15567,15 @@ function kitBody(k, st, cfg, setDirty) {
       el("span", { className: "aw-label", textContent: label }),
       ...kids,
     );
+  sec.opts.onChange = () => {
+    draft.keep_current = sec.get("keep_current");
+    draft.remove_after = sec.get("remove_after");
+    draft.extra = sec.get("extra");
+    drawKeep();
+    def.value = draft.remove_after == null ? "never" : String(draft.remove_after);
+    if (extra) extra.value = draft.extra;
+    setDirty(sec.dirty());
+  };
   changed();
   return [
     el("p", { className: "setting-desc kit-facts", textContent: kitFacts(k, st) }),
@@ -15643,7 +15649,7 @@ function kitBody(k, st, cfg, setDirty) {
           textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, "")}, a mirror)`).join(", ")}.`,
         })
       : null,
-    el("p", { className: "aw-foot" }, discardB, saveB),
+    sec.foot,
   ];
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
