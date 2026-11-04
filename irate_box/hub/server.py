@@ -31,9 +31,9 @@ import zipfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
-from irate_box import confine, durable, finding, presets, security_levels, setup_code
+from irate_box import confine, durable, finding, presets, security_levels, setup_code, validate
 from irate_box.choices import CHOICE_RE as HEALTH_CHOICE_RE
 from irate_box.hub import (
     access,
@@ -3686,6 +3686,8 @@ def setup_blocked():
 AUDIT_STATE = CONTROL_DIR / "security-audit.json"
 SECURITY_LOG = CONTROL_DIR / "security-updates.log"
 IFACE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,15}$")
+MAX_QUERY = 2048
+MAX_QUERY_FIELDS = 64
 SECURITY_CHOICE_RE = re.compile(
     r"^[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._/-]*)?$"
 )  # tcp/8123: a port the hotspot firewall opens
@@ -5220,16 +5222,15 @@ class Handler(BaseHTTPRequestHandler):
         an unclaimed box there: Caddy's /admin lets that through itself, and the shell and Syncthing
         must not be."""
         me = accounts.session(self._session_token())
-        query = self.path.partition("?")[2].split("&")
         admin = me is not None and me.get("role") == "admin"
-        if path == "/_irate/admin" and ("soft=1" in query or "redirect=1" in query):
+        if path == "/_irate/admin" and (self._query_one("soft") == "1" or self._query_one("redirect") == "1"):
             # basic=1 (Caddy, the box's own login on and an admin account ready): a request carrying a
             # login of its own (a script's) goes on to Caddy's basic_auth, which checks it; anyone else
             # without an admin session is sent to the standard sign-in rather than asked for that login.
             if (
                 admin
-                or "soft=1" in query
-                or ("basic=1" in query and self.headers.get("Authorization", "").startswith("Basic "))
+                or self._query_one("soft") == "1"
+                or (self._query_one("basic") == "1" and self.headers.get("Authorization", "").startswith("Basic "))
             ):
                 self.send_response(204)
                 self.send_header("X-Irate-Session", "admin" if admin else "")  # always: see git-access
@@ -5253,7 +5254,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(204)
             self.send_header("Content-Length", "0")
             self.end_headers()
-        elif "redirect=1" in query:
+        elif self._query_one("redirect") == "1":
             back = self.headers.get("X-Forwarded-Uri", "/")
             nxt = back if back.startswith("/") and not back.startswith("//") else "/"
             self.send_response(302)
@@ -5378,6 +5379,41 @@ class Handler(BaseHTTPRequestHandler):
             f"{SESSION_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict"
             + ("; Secure" if self._https() else ""),
         )
+
+    def _query(self):
+        """The request's query, decoded, with at most MAX_QUERY characters and MAX_QUERY_FIELDS fields.
+        A query over either is empty, never half-read."""
+        if getattr(self, "_query_for", None) is not self.path:
+            raw = self.path.partition("?")[2]
+            try:
+                self._query_args = (
+                    parse_qs(raw, keep_blank_values=True, max_num_fields=MAX_QUERY_FIELDS)
+                    if len(raw) <= MAX_QUERY
+                    else {}
+                )
+            except ValueError:
+                self._query_args = {}
+            self._query_for = self.path
+        return self._query_args
+
+    def _query_one(self, name, default="", most=None):
+        values = self._query().get(name)
+        value = values[0] if values else default
+        return value[:most] if most is not None and isinstance(value, str) else value
+
+    def _query_flag(self, name):
+        return self._query_one(name) in ("1", "true", "yes", "on")
+
+    def _query_int(self, name, default=0, low=None, high=None):
+        try:
+            value = int(self._query_one(name, str(default)))
+        except (TypeError, ValueError):
+            return default
+        if low is not None and value < low:
+            return default
+        if high is not None and value > high:
+            return default
+        return value
 
     def _forwarded(self, name, default=""):
         """A header the front sets: read only beside its VIA_SECRET when one is configured. The hub run
@@ -5628,7 +5664,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Length", str(size))
-            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             try:
@@ -5655,7 +5691,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/x-tar")
             self.send_header("Content-Length", str(size))
-            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             try:
@@ -5688,7 +5724,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/gzip")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("Content-Disposition", validate.content_disposition(name))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(data)
@@ -5710,7 +5746,7 @@ class Handler(BaseHTTPRequestHandler):
 
         path = self.path.split("?")[0]
         if path in ("/http-admin-warning", "/http-admin-continue"):
-            nxt = self.path.partition("?next=")[2]
+            nxt = self._query_one("next", "/", 2048)
             if not nxt.startswith("/") or nxt.startswith("//") or "\\" in nxt or any(ord(char) < 32 for char in nxt):
                 nxt = "/admin/"
             # The test above lets no CR or LF through; made plain beside the header.
@@ -5845,8 +5881,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/setup" and "?" in self.path:
             # The first use's request, followed (?id=); without a query, the page itself (below).
-            query = dict(p.partition("=")[::2] for p in self.path.partition("?")[2].split("&") if p)
-            self.send_json(200, setup_status(query.get("id", "")[:40]))
+            self.send_json(200, setup_status(self._query_one("id", "", 40)))
             return
 
         if path == "/api/podcasts":
@@ -5955,7 +5990,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/library":
             snap = library_snapshot()
-            if "books=0" in self.path.partition("?")[2].split("&"):
+            if self._query_one("books") == "0":
                 # The Books page asks for its books a page at a time (/admin/books): leave them out.
                 snap["sources"] = [x for x in snap["sources"] if x.get("kind") == "app"]
                 snap["status"] = {k: v for k, v in snap["status"].items() if k in {x["name"] for x in snap["sources"]}}
@@ -5964,18 +5999,14 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/catalogue":
             # Kiwix's online catalogue, to pick books from (librarian.catalogue_search): online only.
-            query = {
-                k: unquote(v.replace("+", " "))
-                for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
-            }
             try:
                 self.send_json(
                     200,
                     librarian.catalogue_search(
-                        q=query.get("q", ""),
-                        language=query.get("language", ""),
-                        category=query.get("category", ""),
-                        start=int(query.get("start") or 0),
+                        q=self._query_one("q", "", 200),
+                        language=self._query_one("language", "", 20),
+                        category=self._query_one("category", "", 40),
+                        start=self._query_int("start", 0, 0, 1_000_000),
                     ),
                 )
             except ValueError:
@@ -5994,22 +6025,19 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/books":
-            query = {
-                k: unquote(v.replace("+", " "))
-                for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
-            }
+            state = self._query_one("state", "", 20)
             try:
                 self.send_json(
                     200,
                     librarian.books_page(
-                        q=query.get("q", "")[:100],
-                        language=query.get("language", "")[:20],
-                        state=(query.get("state", "") if query.get("state") in librarian.BOOK_STATES else ""),
-                        kept=query.get("kept", ""),
-                        sort=query.get("sort", "title"),
-                        page=int(query.get("page") or 1),
-                        per_page=int(query.get("per_page") or librarian.PER_PAGE),
-                        names_only=query.get("names") == "1",
+                        q=self._query_one("q", "", 100),
+                        language=self._query_one("language", "", 20),
+                        state=state if state in librarian.BOOK_STATES else "",
+                        kept=self._query_one("kept", "", 100),
+                        sort=self._query_one("sort", "title", 20),
+                        page=self._query_int("page", 1, 1, 100_000),
+                        per_page=self._query_int("per_page", librarian.PER_PAGE, 1, 1000),
+                        names_only=self._query_flag("names"),
                     ),
                 )
             except ValueError:
@@ -6029,10 +6057,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/backup":
-            q = self.path.partition("?")[2].split("&")
             self._send_backup(
-                with_syncthing="syncthing=1" in q,
-                level="settings" if "level=settings" in q else "data",
+                with_syncthing=self._query_flag("syncthing"),
+                level="settings" if self._query_one("level") == "settings" else "data",
             )
             return
 
@@ -6226,12 +6253,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/factory/targets":
             # A source's refs, and its targets at one (factory.py): read from its local copy.
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
             try:
-                src = factory.source(unquote(query.get("source", "")))
+                src = factory.source(self._query_one("source", "", 200))
                 out = {"source": src["name"], "refs": factory.refs(src)}
-                if query.get("ref"):
-                    out.update(factory.targets(src, unquote(query["ref"])))
+                ref = self._query_one("ref", "", 200)
+                if ref:
+                    out.update(factory.targets(src, ref))
                     out["suggested"] = factory.suggested(out["targets"], factory._flasher_boards())
                 self.send_json(200, out)
             except ValueError as exc:
@@ -6239,12 +6266,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/ci/run":
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
-            try:
-                offset = int(query.get("from", "0"))
-            except ValueError:
-                offset = 0
-            view = ci.run_view(unquote(query.get("run", "")), offset)
+            view = ci.run_view(self._query_one("run", "", 200), self._query_int("from", 0, 0, 1_000_000_000))
             self.send_json(
                 *(
                     (200, view)
@@ -6259,9 +6281,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/ci/file":
             # A build's log (shown as text) or one of its artifacts (a download, never shown).
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
-            name = unquote(query.get("name", ""))
-            f = ci.run_file(unquote(query.get("run", "")), name)
+            name = self._query_one("name", "", 200)
+            f = ci.run_file(self._query_one("run", "", 200), name)
             if not f:
                 self.send_json(
                     404,
@@ -6273,13 +6294,23 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
                 return
+            try:
+                f = validate.path(f, ci.RUNS, "The build file", must_exist=True)
+            except ValueError:
+                self.send_json(
+                    404,
+                    refused.say(
+                        M("ci.file.not-found", "File not found. The build was deleted, or it did not make this file.")
+                    ),
+                )
+                return
             body = f.read_bytes()
             self.send_response(200)
             if name == "log.txt":
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
             else:
                 self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+                self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))
@@ -6379,7 +6410,7 @@ class Handler(BaseHTTPRequestHandler):
                 mode,
                 account,
             )
-            if "soft=1" in self.path.partition("?")[2].split("&"):
+            if self._query_one("soft") == "1":
                 # Caddy's git routes (no satisfy any): always 204, saying "ok" when the box's own login
                 # isn't needed, and the account's name for the push hook's REMOTE_USER (nginx passes
                 # $remote_user). Credentials that aren't an account's (the box's own) aren't
@@ -6468,9 +6499,8 @@ class Handler(BaseHTTPRequestHandler):
                 show_releases = access.mode_of(access.read(ACCESS_STATE), "flasher") == "public"
                 self.send_json(200, factory.public_view(releases=show_releases))
                 return
-            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
-            name = unquote(query.get("name", ""))
-            f = factory.public_file(unquote(query.get("run", "")), name)
+            name = self._query_one("name", "", 200)
+            f = factory.public_file(self._query_one("run", "", 200), name)
             if not f:
                 self.send_json(
                     404,
@@ -6482,10 +6512,17 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
                 return
+            try:
+                f = validate.path(f, ci.RUNS, "The firmware file", must_exist=True)
+            except ValueError:
+                self.send_json(
+                    404, refused.say(M("factory.file.not-found", "File not found. The firmware was unpublished."))
+                )
+                return
             body = f.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+            self.send_header("Content-Disposition", validate.content_disposition(name))
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(len(body)))

@@ -252,7 +252,7 @@ check(
 srv = (REPO / "irate_box/hub/server.py").read_text()
 check(
     "the hub: the level from the address, the plan at /admin/backup/plan, no list of its own left",
-    "level=settings" in srv and '"/admin/backup/plan"' in srv and "BACKUP_SKIP" not in srv,
+    'self._query_one("level") == "settings"' in srv and '"/admin/backup/plan"' in srv and "BACKUP_SKIP" not in srv,
 )
 
 # The root's half: the kit's choices checked, and refused over budget before anything is made.

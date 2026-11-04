@@ -33,7 +33,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from irate_box import confine
+from irate_box import confine, validate
 from irate_box.hub import ci, flasher, gitrepos
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
@@ -72,14 +72,14 @@ def sources():
     for m in mirrors:
         name, area = str(m.get("name", "")), m.get("area", "public")
         path = gitrepos.ROOT / area / f"{name}.git"
-        if gitrepos.NAME_RE.match(name) and area in gitrepos.AREAS and (path / "HEAD").exists():
+        if gitrepos.NAME_RE.fullmatch(name) and area in gitrepos.AREAS and (path / "HEAD").exists():
             out.append(
                 {"name": name, "area": area, "path": str(path), "mirror": True, "upstream": m.get("upstream", "")}
             )
             seen.add(str(path))
     private = gitrepos.ROOT / "private"
     for p in sorted(private.glob("*.git")) if private.is_dir() else []:
-        if str(p) not in seen and gitrepos.NAME_RE.match(p.name[:-4]) and (p / "HEAD").exists():
+        if str(p) not in seen and gitrepos.NAME_RE.fullmatch(p.name[:-4]) and (p / "HEAD").exists():
             out.append({"name": p.name[:-4], "area": "private", "path": str(p), "mirror": False, "upstream": ""})
     return out
 
@@ -114,7 +114,7 @@ def refs(src):
 
 
 def resolve(src, ref):
-    if not REF_RE.match(ref or "") or ".." in ref:
+    if not REF_RE.fullmatch(ref or "") or ".." in ref:
         raise Refused(M("factory.ref.invalid", "Select a valid branch or tag."))
     for kind in ("tags", "heads"):
         out = _git("rev-parse", "--verify", "--quiet", f"refs/{kind}/{ref}^{{commit}}", cwd=src["path"])
@@ -208,7 +208,7 @@ def targets(src, ref):
                 parser.set(sec, k, v)
     out = []
     for sec in parser.sections():
-        if not sec.startswith("env:") or not ENV_RE.match(sec[4:]):
+        if not sec.startswith("env:") or not ENV_RE.fullmatch(sec[4:]):
             continue
         g = lambda k, sec=sec: parser.get(sec, k, fallback="").strip()  # noqa: E731
         out.append(
@@ -541,8 +541,8 @@ def again(run_number):
         raise Refused(M("factory.run.not-again", "Only a build that did not pass can run again."))
     src = source(str(st.get("source", "")))
     if not (
-        ci.ENV_RE.match(str(st.get("env", "")))
-        and ci.FAMILY_RE.match(str(st.get("family", "")))
+        ci.ENV_RE.fullmatch(str(st.get("env", "")))
+        and ci.FAMILY_RE.fullmatch(str(st.get("family", "")))
         and re.fullmatch(r"[0-9a-f]{40}", str(st.get("commit", "")))
     ):
         raise Refused(M("factory.run.not-found", "Run not found."))
@@ -719,7 +719,7 @@ def public_files(run):
     return [
         n
         for n in run.get("artifacts") or []
-        if PUBLIC_RE["any"].match(n) or (fam.startswith("esp32") and PUBLIC_RE["esp32"].match(n))
+        if PUBLIC_RE["any"].fullmatch(n) or (fam.startswith("esp32") and PUBLIC_RE["esp32"].fullmatch(n))
     ]
 
 
@@ -805,15 +805,17 @@ def public_file(run_number, name):
     """A built file a guest may download, or None."""
     if not re.fullmatch(r"[0-9]{1,6}", run_number or ""):
         return None
-    run = ci.RUNS / RUNS_NAME / run_number
     try:
+        run = validate.path(run_number, ci.RUNS / RUNS_NAME, "The factory run", must_exist=True)
         st = json.loads((run / "status.json").read_text())
     except (OSError, ValueError):
         return None
     if st.get("state") != "passed" or name not in public_files(st):
         return None
-    f = run / "artifacts" / name
-    return f if f.is_file() and not f.is_symlink() else None
+    try:
+        return validate.path(name, run / "artifacts", "The built file", must_exist=True)
+    except ValueError:
+        return None
 
 
 # --- the web flasher (the owner's choice, build by build) ------------------------------------------
@@ -873,7 +875,7 @@ def publish(run_number):
     except (OSError, ValueError) as exc:
         raise Refused(M("factory.publish.manifest-unreadable", "The manifest cannot be read.")) from exc
     env, version = st.get("env"), str(mt.get("version", ""))
-    if not VERSION_RE.match(version) or mt.get("platformioTarget") != env or not ENV_RE.match(env or ""):
+    if not VERSION_RE.fullmatch(version) or mt.get("platformioTarget") != env or not ENV_RE.fullmatch(env or ""):
         raise Refused(M("factory.publish.manifest-other", "The manifest does not belong to this build."))
     # Each file the manifest names, as kept: the nRF52 update zip is named -ota.zip in the manifest
     # (bin/platformio-custom.py) but built as .zip. The .elf (debug only) and the bare program are
@@ -882,7 +884,7 @@ def publish(run_number):
     for entry in mt.get("files") or []:
         name = str(entry.get("name", ""))
         kept = name if name in arts else name[: -len("-ota.zip")] + ".zip" if name.endswith("-ota.zip") else None
-        if not FILE_RE.match(name) or kept not in arts:
+        if not FILE_RE.fullmatch(name) or kept not in arts:
             continue
         data = confine.under(run, "artifacts", kept).read_bytes()
         if entry.get("md5") and hashlib.md5(data, usedforsecurity=False).hexdigest() != entry["md5"]:
@@ -926,7 +928,9 @@ def publish(run_number):
 def unpublish(version, env):
     """Take one target out of a release built here; the release goes with its last target. A file
     another target's manifest also names (an ESP32's shared OTA loader) stays."""
-    if not (version.endswith(BUILT) and VERSION_RE.match(version[: -len(BUILT)])) or not ENV_RE.match(env or ""):
+    if not (version.endswith(BUILT) and VERSION_RE.fullmatch(version[: -len(BUILT)])) or not ENV_RE.fullmatch(
+        env or ""
+    ):
         raise Refused(M("factory.unpublish.not-built", "This release was not built on this box."))
     folder = confine.under(FIRMWARE, version)
     mt_path = confine.under(folder, f"firmware-{env}-{version}.mt.json")
@@ -949,7 +953,7 @@ def unpublish(version, env):
         except (OSError, ValueError):
             pass
     for name in mine - others:
-        if isinstance(name, str) and FILE_RE.match(name):
+        if isinstance(name, str) and FILE_RE.fullmatch(name):
             confine.under(folder, name).unlink(missing_ok=True)
     board_list = _board_list(folder)
     board_list["targets"] = [t for t in board_list.get("targets", []) if t.get("board") != env]
@@ -967,7 +971,7 @@ def published():
     platform, run, ref}]}]."""
     out = []
     for folder in FIRMWARE.glob("*" + BUILT) if FIRMWARE.is_dir() else []:
-        if not (folder.is_dir() and VERSION_RE.match(folder.name[: -len(BUILT)])):
+        if not (folder.is_dir() and VERSION_RE.fullmatch(folder.name[: -len(BUILT)])):
             continue
         targets = []
         for t in _board_list(folder).get("targets", []):
