@@ -322,28 +322,7 @@ const PRESETS = {
 };
 let libPoll = null;
 
-// Props that would run or parse text as markup: a handler only as a function, and never innerHTML and its kind,
-// so a spread of the hub's data into props can never become script.
-const MARKUP_PROP = /^(innerhtml|outerhtml|srcdoc)$/i;
-const el = (tag, props = {}, ...kids) => {
-  // A button with no class of its own is an action button (rule 6a: the control vocabulary).
-  if (tag === "button" && !props.className)
-    props = { ...props, className: "action-btn" };
-  const { dataset, ...rest } = props;
-  for (const [k, v] of Object.entries(rest))
-    if (MARKUP_PROP.test(k) || (/^on/i.test(k) && v != null && typeof v !== "function"))
-      throw new TypeError(`el(): ${k} is not set from props`);
-  const node = document.createElement(tag);
-  for (const [k, v] of Object.entries(rest)) {
-    // aria-* and role are attributes, not properties: Object.assign would leave them as stray JS fields
-    // that assistive technology never sees.
-    if (k === "role" || k.startsWith("aria-")) node.setAttribute(k, String(v));
-    else node[k] = v;
-  }
-  if (dataset) Object.assign(node.dataset, dataset);
-  node.append(...kids.filter((k) => k !== null && k !== undefined));
-  return node;
-};
+const el = AW.el;
 // A label holding a yes/no checkbox, drawn as On and Off chips at its end (AW.onOff): el()'s arguments.
 const onOffLine = (tag, props, ...kids) => {
   const line = el(tag, props, ...kids);
@@ -15055,7 +15034,7 @@ function asCard(holder) {
     el("p", { className: "setting-desc" },
       "Checking, downloading and reading the releases each ask GitHub, which answers 60 requests an hour " +
         "without a token. For more, ",
-      el("a", { href: "#library-access", textContent: "add a GitHub token in The librarian" }),
+      el("a", { href: "#library-access", textContent: "add a GitHub token in Librarian" }),
       "."),
     note,
     asSettingsForm(holder),
@@ -15719,7 +15698,9 @@ function kitBody(k, st, cfg, setDirty) {
     c && c.left_out && c.left_out.length
       ? el("p", {
           className: "setting-desc",
-          textContent: `Omitted on this ${c.arch || ""} board because they need a 64-bit board: ${c.left_out.join(", ")}.`,
+          textContent: c.left_out_why
+            ? `Omitted on this ${c.arch || ""} board: ${c.left_out_why}.`
+            : `Omitted on this ${c.arch || ""} board because they need a 64-bit board: ${c.left_out.join(", ")}.`,
         })
       : null,
     (k.git || []).length

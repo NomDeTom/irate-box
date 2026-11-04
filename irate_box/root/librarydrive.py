@@ -21,12 +21,12 @@ for it. Stdlib only.
 import json
 import os
 import pwd
-import re
 import stat
 import subprocess
 import time
 from pathlib import Path
 
+from irate_box import validate
 from irate_box.msg import M, Refused
 from irate_box.root import safeio, usbstick
 
@@ -39,7 +39,6 @@ UNIT_DIR = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd/system"))
 UNIT_NAME = "media-irate-box-library.mount"
 UNIT = UNIT_DIR / UNIT_NAME
 HUB_USER = os.environ.get("HUB_USER", "hub")
-UUID_RE = re.compile(r"^[A-Za-z0-9.-]{1,64}$")
 KINDS = ("podcasts", "books")
 PLACES = ("card", "drive")
 FOLDERS = {"podcasts": "podcasts", "books": "zim"}
@@ -130,6 +129,8 @@ def _find(uuid):
 
 
 def _unit_text(uuid, fstype):
+    uuid = validate.fs_uuid(uuid)
+    fstype = validate.name(fstype, "The filesystem", 32)
     owner = ""
     if fstype in OWNERLESS:
         # FAT and exFAT have no owners: the mount gives every file to the hub user, as usbstick.py does.
@@ -142,10 +143,14 @@ def _unit_text(uuid, fstype):
         "After=local-fs.target\n"
         "\n"
         "[Mount]\n"
-        f"What=/dev/disk/by-uuid/{uuid}\n"
-        f"Where={MOUNT}\n"
-        f"Type={fstype}\n"
-        f"Options=nosuid,nodev,noexec,nofail,x-systemd.device-timeout=10s{owner}\n"
+        + validate.config_line("What", f"/dev/disk/by-uuid/{uuid}")
+        + "\n"
+        + validate.config_line("Where", str(MOUNT))
+        + "\n"
+        + validate.config_line("Type", fstype)
+        + "\n"
+        + validate.config_line("Options", f"nosuid,nodev,noexec,nofail,x-systemd.device-timeout=10s{owner}")
+        + "\n"
         "\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
@@ -188,8 +193,10 @@ def choose(req):
         _run("systemctl", "daemon-reload")
         _save({"uuid": "", "kinds": {k: "card" for k in KINDS}}, mounted=False)
         return M("library-drive.none", "The box no longer uses a library drive.")
-    if not UUID_RE.match(uuid):
-        raise Refused(M("library-drive.uuid", "That is not a filesystem UUID."))
+    try:
+        uuid = validate.fs_uuid(uuid)
+    except ValueError:
+        raise Refused(M("library-drive.uuid", "That is not a filesystem UUID.")) from None
     dev = _find(uuid)
     if MOUNT.is_symlink():
         raise Refused(M("library-drive.mount-link", "The library drive's mount point is a link. Mount refused."))

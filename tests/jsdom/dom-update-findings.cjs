@@ -105,7 +105,7 @@ setTimeout(() => {
     sch && /^Scheduled run failed\. The run of \d+ \w+ at \d\d:\d\d stopped with an error\.$/.test(t(sch.querySelector('.fdetail')))
     && [...sch.querySelectorAll('.fevidence li')].map(t).some((e) => /AttributeError/.test(e))
     && [...sch.querySelectorAll('.fdo-cmd code')].map(t).join() === 'journalctl -u irate-box-librarian -n 80'
-    && [...sch.querySelectorAll('a.go-btn')].some((a) => t(a) === 'Go to The librarian →'), sch && t(sch));
+    && [...sch.querySelectorAll('a.go-btn')].some((a) => t(a) === 'Go to Librarian →'), sch && t(sch));
 
   const lc = row('last-check');
   check('the last download\'s failed check: counted, then said by its own name and sentence, Updates the place',

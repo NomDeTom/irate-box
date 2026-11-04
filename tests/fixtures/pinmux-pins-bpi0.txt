@@ -1,0 +1,5 @@
+# The sunxi shape: the board's own file needs root, so this is the same line shape (pin N (port): owner ...).
+Pinmux settings per pin
+Format: pin (name): mux_owner|gpio_owner (strict) hog?
+pin 12 (PA12): 1c20800.pinctrl 12
+pin 13 (PA13): 1c20800.pinctrl 13

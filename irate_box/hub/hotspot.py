@@ -26,6 +26,7 @@ import re
 from pathlib import Path
 
 from irate_box import durable
+from irate_box import validate as checks
 from irate_box.hub.refused import Refused
 from irate_box.msg import M
 
@@ -295,15 +296,16 @@ def snapshot():
 
 
 def _ssid_ok(ssid):
-    if not ssid or len(ssid.encode()) > 32 or any(c in ssid for c in "\n\r\0"):
+    try:
+        return checks.ssid(ssid)
+    except ValueError:
         raise Refused(
             M(
                 "hotspot.ssid.invalid",
                 "The hotspot name (SSID) must have 1 to 32 bytes on one line. "
                 "A letter with an accent or an emoji uses more than 1 byte.",
             )
-        )
-    return ssid
+        ) from None
 
 
 def _with_suffix(ssid, suffix=" (encrypted)"):
@@ -341,9 +343,11 @@ def nm_properties(settings, kind):
                     "on this box. To start the hotspot, clear the option that lets older WPA2 devices join.",
                 )
             )
+        if not PASSWORD_RE.match(str(settings.get("password", ""))):
+            raise Refused(BAD_PASSWORD)
         return {
             "802-11-wireless-security.key-mgmt": "sae",
-            "802-11-wireless-security.psk": settings["password"],
+            "802-11-wireless-security.psk": str(settings["password"]),
             "802-11-wireless-security.pmf": "3",
         }
     raise Refused(M("hotspot.security.unknown", "Unknown hotspot security mode {kind}.", kind=kind))
@@ -351,7 +355,7 @@ def nm_properties(settings, kind):
 
 def hostapd_lines(settings, kind, ssid):
     """hostapd.conf lines for one network (the add-on adds interface, channel and the rest)."""
-    lines = [f"ssid2={ssid.encode().hex()}"]  # hex form: any byte in the name is safe
+    lines = [checks.hostapd_ssid(ssid)]  # hex form: any byte in the name is safe
     if kind == "open":
         return lines
     lines += ["wpa=2", "rsn_pairwise=CCMP"]

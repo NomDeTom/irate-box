@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const WEB = path.resolve(__dirname, '../../web');
 const html = fs.readFileSync(`${WEB}/addon-bridge.html`, 'utf8');
-const js = fs.readFileSync(`${WEB}/addon-bridge.js`, 'utf8');
+const js = ['admin-widgets.js', 'addon-bridge.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const wait = (ms = 20) => new Promise((r) => setTimeout(r, ms));

@@ -16,6 +16,7 @@ import ipaddress
 import os
 from pathlib import Path
 
+from irate_box import validate
 from irate_box.hub import apmode, hotspot
 from irate_box.msg import M, Refused
 from irate_box.root import secmanifest
@@ -110,15 +111,15 @@ def hostapd_conf(plan, settings, ssid=None, second_ssid=None, country=None):
     _, net = nets[0]
     lines = [
         "# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
-        f"interface={ap_iface(plan)}",
+        validate.config_line("interface", ap_iface(plan)),
         "driver=nl80211",
-        f"hw_mode={'a' if plan.get('band') == '5 GHz' else 'g'}",
-        f"channel={int(plan['channel'])}",
+        validate.config_line("hw_mode", "a" if plan.get("band") == "5 GHz" else "g"),
+        validate.config_line("channel", str(int(plan["channel"]))),
         "wmm_enabled=1",
         "ieee80211n=1",
     ]
     if country and len(country) == 2 and country.isalpha():
-        lines += [f"country_code={country.upper()}", "ieee80211d=1"]
+        lines += [validate.config_line("country_code", country.upper()), "ieee80211d=1"]
     lines += hotspot.hostapd_lines(settings, net["kind"], net["ssid"])
     return "\n".join(lines) + "\n"
 
@@ -169,7 +170,7 @@ def _names(settings, ssid=None, second_ssid=None):
 
 
 def _keyfile_value(v):
-    return str(v).replace("\n", "")
+    return validate.keyfile_value(v)
 
 
 def keyfile(plan, settings, ssid=None, second_ssid=None):
@@ -191,7 +192,7 @@ def keyfile(plan, settings, ssid=None, second_ssid=None):
         "",
         "[wifi]",
         "mode=ap",
-        f"ssid={_keyfile_value(net['ssid'])}",
+        validate.keyfile_ssid(net["ssid"]),
         f"band={band}",
         f"channel={int(plan['channel'])}",
         "",
@@ -220,16 +221,16 @@ def dnsmasq_conf(plan):
     return "\n".join(
         [
             "# Written by irate-box (root/ap.py): DHCP and DNS on the hotspot only. Edits are overwritten.",
-            f"interface={ap_iface(plan)}",
+            validate.config_line("interface", ap_iface(plan)),
             "bind-dynamic",
             "except-interface=lo",
             "no-resolv",
             "no-hosts",
-            f"dhcp-range={first},{last},{NETWORK.netmask},12h",
-            f"dhcp-option=option:router,{apmode.ADDRESS}",
-            f"dhcp-option=option:dns-server,{apmode.ADDRESS}",
-            f"address=/#/{apmode.ADDRESS}",
-            f"dhcp-leasefile={LEASES}",
+            validate.config_line("dhcp-range", f"{first},{last},{NETWORK.netmask},12h"),
+            validate.config_line("dhcp-option", f"option:router,{apmode.ADDRESS}"),
+            validate.config_line("dhcp-option", f"option:dns-server,{apmode.ADDRESS}"),
+            validate.config_line("address", f"/#/{apmode.ADDRESS}"),
+            validate.config_line("dhcp-leasefile", LEASES),
             "dhcp-authoritative",
             "",
         ]

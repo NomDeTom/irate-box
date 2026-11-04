@@ -71,8 +71,8 @@ const onOffChip = (scope, name, word) => [...scope.querySelectorAll(`.chip-group
   const pills = (title) => t(head(title).querySelector('.aw-card-head .p'));
   const button = (root, label) => [...root.querySelectorAll('button')].find((b) => t(b) === label);
   const save = (title) => button(card(title).querySelector('.aw-drawer'), 'Save');
-  check('Toolkits has its page under System, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
-    return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('System') && links.indexOf('Toolkits') < links.indexOf('Doctors'); })());
+  check('Toolkits has its page under Content, the workbench behind it', (() => { const p = d.getElementById('toolkits').closest('.admin-page'), links = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
+    return p && p.dataset.art === 'workbench' && links.indexOf('Toolkits') > links.indexOf('Librarian') && links.indexOf('Toolkits') < links.indexOf('Moderation'); })());
   check('the summary: how many cached, the size against the budget, the newest fetch, the feed',
     /^3 of 5 toolkits cached, 91\.0 MB of 500 MB\. Newest download: \d{4}-\d\d-\d\d\. Cached toolkits install without internet access\. debsecan's data: \d{4}-/.test(t(d.getElementById('kits-summary'))),
     t(d.getElementById('kits-summary')));

@@ -180,6 +180,30 @@ def _packages(kit, fetching=False):
     return pkgs, left, covered
 
 
+def _no_candidate(packages):
+    """The package names this box's package sources have no candidate for. Asked one by one with apt-cache
+    policy, not read from apt-get's failure: one name a source lacks must not fail a whole kit."""
+    out = []
+    for name in packages:
+        result = run(["apt-cache", "policy", name], check=False, timeout=120)
+        # Only apt-cache itself failing means "we cannot tell": keep the name. An empty answer (exit 0, no output)
+        # is the Pi's own answer for platformio: it is not in this box's sources at all, so leave it out.
+        if result.returncode != 0:
+            continue
+        out_text = result.stdout.strip()
+        if not out_text:
+            out.append(name)
+            continue
+        candidate = None
+        for line in out_text.splitlines():
+            if line.strip().startswith("Candidate:"):
+                candidate = line.split(":", 1)[1].strip()
+                break
+        if candidate is None or candidate in ("", "(none)"):
+            out.append(name)
+    return out
+
+
 def _kernel_headers():
     """The package with the running kernel's headers (DKMS builds a driver against them): the one that already owns
     /lib/modules/<release>/build (a vendor's, as the Lyra's linux-headers-vendor-rockchip), else
@@ -469,7 +493,11 @@ def _check(kit_id, kit, lists_max_hours, ram):
         _base_status(status, leave_out)
         archives = ram / "check-archives"
         archives.mkdir(exist_ok=True)
-        packages, _left_out, covered = _packages(kit, fetching=True)
+        packages, left_out, covered = _packages(kit, fetching=True)
+        no_candidate = _no_candidate(packages)
+        if no_candidate:
+            packages = [p for p in packages if p not in no_candidate]
+            left_out = left_out + no_candidate
         options = [
             "--no-install-recommends",
             "-o",
@@ -518,6 +546,11 @@ def _check(kit_id, kit, lists_max_hours, ram):
                 "packages": len(wanted),
                 "download_bytes": sum(size for size, _sha in wanted.values()),
                 **extra,
+                **(
+                    {"left_out": left_out, "left_out_why": kitdefs.why_left_out(kit, left_out, no_candidate)}
+                    if left_out
+                    else {}
+                ),
             },
         )
     old = {p["name"]: p for p in cur.get("packages", [])}
@@ -595,6 +628,10 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
         _base_status(status, leave_out)
         base = {ln[len("Package: ") :] for ln in status.read_text().splitlines() if ln.startswith("Package: ")}
         packages, left_out, covered = _packages(kit, fetching=True)
+        no_candidate = _no_candidate(packages)
+        if no_candidate:
+            packages = [p for p in packages if p not in no_candidate]
+            left_out = left_out + no_candidate
         for alt, by in sorted(covered.items()):
             log(f"{kit_id}: {alt} is covered by {by}; not fetched")
         options = [
@@ -723,6 +760,7 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
             "wheels": wheels,
             "on_box": on_box,
             "left_out": left_out,
+            "left_out_why": kitdefs.why_left_out(kit, left_out, no_candidate) if left_out else "",
             **({"covered": [{"package": alt, "by": by} for alt, by in sorted(covered.items())]} if covered else {}),
             **({"alternatives_skipped": sorted(skipped)} if skipped else {}),
             "arch": arch(),
@@ -768,7 +806,7 @@ def _fetch(kit_id, budget_mb, lists_max_hours, log, ram):
                 "kits.fetch.left-out",
                 "Left out on this {arch} board: {why}.",
                 arch=new["arch"],
-                why=kitdefs.why_left_out(kit, left_out),
+                why=kitdefs.why_left_out(kit, left_out, no_candidate),
             ),
         )
     finally:
@@ -1951,6 +1989,7 @@ def status():
                 "wheels": len(cur.get("wheels", [])),
                 "on_box": cur.get("on_box", []),
                 "left_out": cur.get("left_out", []),
+                "left_out_why": cur.get("left_out_why", ""),
                 "arch": cur.get("arch"),
                 "versions": {p["name"]: p["version"] for p in cur["packages"]},
             },

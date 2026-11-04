@@ -8,11 +8,7 @@
   let addonOrigin = null;
   let pendingTitle = "An add-on";
 
-  const el = (tag, props = {}, ...kids) => {
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  };
+  const el = AW.el;
   const tell = (text, bad = false) => {
     say.hidden = false;
     say.textContent = text;

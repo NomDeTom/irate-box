@@ -50,6 +50,7 @@ run sim_space.py
 run sim_front_writes.py
 run sim_write_checked.py
 run write_guard.py
+run subprocess_guard.py
 run sim_retain.py
 run sim_nand_health.py
 run sim_led.py
@@ -142,6 +143,8 @@ run sim_setup_code.py
 run sim_accounts.py
 run sim_selfupdate.py
 run sim_configs.py
+run sim_validate.py
+run sim_root_configs.py
 run sim_inspircd.py
 run sim_irc_group.py
 run sim_irc_app.py

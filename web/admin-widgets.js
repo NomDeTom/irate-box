@@ -82,6 +82,28 @@ const AW = (() => {
   }
   const btn = (label, props = {}) => h('button', { type: 'button', class: 'action-btn', ...props }, label);
 
+  // Props that would run or parse text as markup: a handler only as a function, and never innerHTML and its kind,
+  // so a spread of the hub's data into props can never become script.
+  const EL_MARKUP_PROP = /^(innerhtml|outerhtml|srcdoc)$/i;
+  // The one element builder the admin pages share: el(tag, props, ...children). A button with no class of its
+  // own is an action button (rule 6a, the control vocabulary); role and aria-* are attributes, not properties;
+  // dataset is written through node.dataset.
+  function el(tag, props = {}, ...kids) {
+    if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
+    const { dataset, ...rest } = props;
+    for (const [k, v] of Object.entries(rest))
+      if (EL_MARKUP_PROP.test(k) || (/^on/i.test(k) && v != null && typeof v !== 'function'))
+        throw new TypeError(`el(): ${k} is not set from props`);
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(rest)) {
+      if (k === 'role' || k.startsWith('aria-')) node.setAttribute(k, String(v));
+      else node[k] = v;
+    }
+    if (dataset) Object.assign(node.dataset, dataset);
+    node.append(...kids.filter((k) => k !== null && k !== undefined));
+    return node;
+  }
+
   // An action button's wait, drawn by CSS: the faster ring for a click still in flight, the slower one for a
   // button waiting on the root helper. Everything else (the sentence under the button, its title) still says
   // what is happening. Returns a function that clears both classes and aria-busy.
@@ -1080,7 +1102,7 @@ const AW = (() => {
     };
     if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
   }
-  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
+  return { FILTER_AT, BOUND_AT, CHIPS_AT, single: true, confirmHere, asking: () => asked !== null, drawKept, redrawIfChanged, say, localise, h, el, btn, setBusy, busy, pill, updatePill, updatePattern, updatePatterns, updateButtons, patternSays, UPDATE_OFTEN: OFTEN, UPDATE_ACT: ACT, dl, onOff, onOffChips, shortList, records, cards, settings, findings, filterBar, closeCard, foldRow, bound, section, unsaved, job, choices, chipSelect, chipSelects, form };
 })();
 // Scripts evaluated one by one (the jsdom tests) see it too.
 if (typeof window !== 'undefined') window.AW = AW;
