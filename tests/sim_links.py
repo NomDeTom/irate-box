@@ -527,9 +527,9 @@ check(
     "  set not to be watched under the name it had (the same hardware): not said", health.link_findings(renamed) == []
 )
 for good in ("uplink-reconnect:wlan0", "uplink-reconnect:enx00e04c680001"):
-    check(f"the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
+    check(f"the doctor takes {good}", bool(health.CHOICES_RE.match(good)))
 for bad in ("uplink-reconnect:a;b", "uplink-reconnect:", "uplink-reconnect:-x"):
-    check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
+    check(f"  and refuses {bad}", not health.CHOICES_RE.match(bad))
 
 # --- saved on /admin: each named link's hardware recorded ---
 from irate_box.hub import roaming

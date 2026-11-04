@@ -42,7 +42,7 @@ for name in (
     "REPORT_KEY_RE",
     "USB_DEVICE_RE",
     "ADDON_ID_RE",
-    "HEALTH_CHOICE_RE",
+    "HEALTH_CHOICES_RE",
     "IFACE_NAME_RE",
     "SECURITY_CHOICE_RE",
 ):
@@ -59,7 +59,7 @@ for pattern, value in (
     (server.REPORT_KEY_RE, "drop:abc\n"),
     (server.USB_DEVICE_RE, "sda\n"),
     (server.ADDON_ID_RE, "draw\n"),
-    (server.HEALTH_CHOICE_RE, "x\n"),
+    (server.HEALTH_CHOICES_RE, "x\n"),
     (server.IFACE_NAME_RE, "wlan0\n"),
     (server.SECURITY_CHOICE_RE, "tcp/80\n"),
 ):

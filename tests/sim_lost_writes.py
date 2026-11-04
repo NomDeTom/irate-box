@@ -179,9 +179,9 @@ check(
 health.set_canary(False)
 
 for good in ("health-timer:on", "health-timer:off", "lost-writes:on", "canary:off"):
-    check(f"the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
+    check(f"the doctor takes {good}", bool(health.CHOICES_RE.match(good)))
 for bad in ("health-timer:always", "lost-writes:yes", "canary:10min"):
-    check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
+    check(f"  and refuses {bad}", not health.CHOICES_RE.match(bad))
 
 # A timer run: the quick checks, the full one once a week, the report /admin reads, its timings kept.
 seen = []

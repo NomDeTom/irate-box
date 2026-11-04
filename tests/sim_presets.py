@@ -190,7 +190,7 @@ except Exception as exc:  # noqa: BLE001
 
 check(
     "every choice in the shipped presets passes the shared pattern",
-    all(choices.CHOICE_RE.match(e["choice"]) for p in all_presets for e in p["entries"] if e.get("type") == "choice"),
+    all(choices.CHOICES_RE.match(e["choice"]) for p in all_presets for e in p["entries"] if e.get("type") == "choice"),
 )
 
 # The setup tour: a completed preset marks the steps it answered done.

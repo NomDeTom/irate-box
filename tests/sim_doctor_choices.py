@@ -31,7 +31,7 @@ def check(name, ok, extra=None):
 
 check(
     "one shared pattern: the hub and the root helper use the same object",
-    health.CHOICE_RE is choices.CHOICE_RE and server.HEALTH_CHOICE_RE is choices.CHOICE_RE,
+    health.CHOICES_RE is choices.CHOICES_RE and server.HEALTH_CHOICES_RE is choices.CHOICES_RE,
 )
 led_state = {
     "found": ["ACT", "PWR"],
@@ -59,8 +59,8 @@ groups = (
 group_choices = [option["choice"] for group in groups for option in group.get("options", [])]
 check(
     "every choice a settings group offers passes the shared pattern (and the groups were found)",
-    "card-set:journal:memory" in group_choices and all(choices.CHOICE_RE.match(choice) for choice in group_choices),
-    [choice for choice in group_choices if not choices.CHOICE_RE.match(choice)],
+    "card-set:journal:memory" in group_choices and all(choices.CHOICES_RE.match(choice) for choice in group_choices),
+    [choice for choice in group_choices if not choices.CHOICES_RE.match(choice)],
 )
 source = ast.parse((REPO / "irate_box" / "root" / "health.py").read_text())
 actions = {
@@ -82,8 +82,8 @@ def action_choice(choice):
 
 check(
     "every literal finding action passes the shared pattern (and the actions were found)",
-    "net-scan" in actions and all(choices.CHOICE_RE.match(action_choice(choice)) for choice in actions),
-    sorted(choice for choice in actions if not choices.CHOICE_RE.match(action_choice(choice))),
+    "net-scan" in actions and all(choices.CHOICES_RE.match(action_choice(choice)) for choice in actions),
+    sorted(choice for choice in actions if not choices.CHOICES_RE.match(action_choice(choice))),
 )
 offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog", "undervoltage") for v in ("on", "off")] + [
     "crashwatch-undervoltage-mv:4630",
@@ -119,7 +119,7 @@ offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog", "un
 for c in offered:
     check(
         f"{c}: the doctor does it, and the hub lets it through",
-        bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)),
+        bool(health.CHOICES_RE.match(c)) and bool(server.HEALTH_CHOICES_RE.match(c)),
     )
 for bad in (
     "clock-sources:chrony:1:0:1:1:-:pool,disk",
@@ -134,6 +134,6 @@ for bad in (
     "idle-off:ssh.service",
     "idle-off:meshtasticd",
 ):
-    check(f"{bad}: refused by the hub", not server.HEALTH_CHOICE_RE.match(bad))
+    check(f"{bad}: refused by the hub", not server.HEALTH_CHOICES_RE.match(bad))
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

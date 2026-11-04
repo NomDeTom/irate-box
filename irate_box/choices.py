@@ -5,7 +5,7 @@ it again. Both import this, so a new choice is added once and cannot be accepted
 
 import re
 
-CHOICE_RE = re.compile(
+CHOICES_RE = re.compile(
     r"^(unit-restart|unit-enable|kiwix-quarantine):[A-Za-z0-9@._-]{1,80}$"
     r"|^(kiwix-rebuild|kiwix-off|rerun-install|rerun-install-port-80|net-scan|nm-install|nm-revert|syncthing-password)$"
     r"|^other-restart:[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]{0,200}$"

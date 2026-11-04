@@ -118,7 +118,7 @@ health.card_set("flash_crc", "on")
 check("  its repair runs nand-logs.sh crc on", calls == [("crc", "on")], calls)
 check(
     "  the doctor takes the choice, and refuses others",
-    bool(health.CHOICE_RE.match("card-set:flash_crc:off")) and not health.CHOICE_RE.match("card-set:flash_crc:maybe"),
+    bool(health.CHOICES_RE.match("card-set:flash_crc:off")) and not health.CHOICES_RE.match("card-set:flash_crc:maybe"),
 )
 conf.write_text("mtd=0\ncrc=1\n")
 check("  a flash with the setting on reads as on", health.nand_crc_on() is True)

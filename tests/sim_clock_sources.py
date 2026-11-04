@@ -501,10 +501,10 @@ from irate_box.hub import server
 for c in ("clock-sources:chrony:1:1:1:1:192.168.1.1", "clock-sources:image:0:0:0:0:router.lan", "clock-undo"):
     check(
         f"accepted by the doctor and the hub: {c}",
-        bool(health.CHOICE_RE.match(c)) and bool(server.HEALTH_CHOICE_RE.match(c)),
+        bool(health.CHOICES_RE.match(c)) and bool(server.HEALTH_CHOICES_RE.match(c)),
     )
 for c in ("clock-sources:chrony:1:1:0:0:$(reboot)", "clock-sources:chrony:2:0:0:0:-", "clock-undo:x"):
-    check(f"refused by both: {c}", not health.CHOICE_RE.match(c) and not server.HEALTH_CHOICE_RE.match(c))
+    check(f"refused by both: {c}", not health.CHOICES_RE.match(c) and not server.HEALTH_CHOICES_RE.match(c))
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

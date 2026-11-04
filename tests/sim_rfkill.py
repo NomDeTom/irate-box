@@ -197,15 +197,15 @@ check("only other types: no finding", health.check_rfkill() == [])
 
 # --- the choices, as the doctor and the hub take them -----------------------------------------------------------
 for good in ("rfkill:wifi:on", "rfkill:bluetooth:leave", "rfkill-apply"):
-    check(f"the doctor takes {good}", bool(health.CHOICE_RE.match(good)))
+    check(f"the doctor takes {good}", bool(health.CHOICES_RE.match(good)))
 for bad in ("rfkill:wwan:on", "rfkill:wifi:maybe", "rfkill-apply:x"):
-    check(f"  and refuses {bad}", not health.CHOICE_RE.match(bad))
+    check(f"  and refuses {bad}", not health.CHOICES_RE.match(bad))
 from irate_box.hub import server
 
 check(
     "the hub passes the same choices on",
-    all(server.HEALTH_CHOICE_RE.match(c) for c in ("rfkill:wifi:off", "rfkill-apply"))
-    and not server.HEALTH_CHOICE_RE.match("rfkill:wifi:x"),
+    all(server.HEALTH_CHOICES_RE.match(c) for c in ("rfkill:wifi:off", "rfkill-apply"))
+    and not server.HEALTH_CHOICES_RE.match("rfkill:wifi:x"),
 )
 
 print("ok" if not fails else f"{fails} failure(s)")
