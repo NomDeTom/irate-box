@@ -57,6 +57,29 @@
       const input = el("input", { name, type: "checkbox", checked: !!value });
       box.append(el("label", { className: "aw-field podcast-toggle" }, input, el("span", { className: "aw-label", textContent: label })));
     };
+    const yesNoRow = (name, label, value) => {
+      const input = el("input", { name, type: "checkbox", checked: !!value, hidden: true });
+      const group = el("div", { className: "chip-group", role: "radiogroup", "aria-label": label });
+      const draw = () => group.replaceChildren(...[[true, "Yes"], [false, "No"]].map(([v, text]) => {
+        const chip = el("button", {
+          type: "button",
+          className: `chip${input.checked === v ? " selected" : ""}`,
+          role: "radio",
+          "aria-checked": String(input.checked === v),
+          textContent: text,
+        });
+        chip.addEventListener("click", () => {
+          if (input.checked === v) return;
+          input.checked = v;
+          draw();
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        return chip;
+      }));
+      draw();
+      box.append(el("div", { className: "aw-field podcast-toggle" },
+        el("span", { className: "aw-label", textContent: label }), input, group));
+    };
     const settings = snap.settings;
     toggleRow("enabled", "Follow podcasts", settings.enabled);
     const often = el("input", { type: "hidden", name: "check_every_hours", value: String(settings.check_every_hours) });
@@ -86,8 +109,8 @@
     numberRow("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, settings.cap_mb);
     numberRow("leave_free_mb", "Leave free on the card in MB", 0, 10000000, settings.leave_free_mb);
     numberRow("max_episode_mb", "Largest single episode in MB", 1, 4096, settings.max_episode_mb);
-    toggleRow("keep_played", "Keep played episodes", settings.keep_played);
-    toggleRow("video", "Allow video enclosures", settings.video);
+    yesNoRow("keep_played", "Keep played episodes", settings.keep_played);
+    yesNoRow("video", "Allow video enclosures", settings.video);
     const sec = AW.form(form, {
       label: "Podcast settings",
       save: async (changes) => {

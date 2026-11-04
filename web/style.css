@@ -4638,7 +4638,12 @@ label > .select-chips {
   margin: 0;
 }
 /* The podcast settings: one compact row per setting, the caption and its control on one line, left-aligned. */
+#podcasts-panel .settings {
+  gap: 0.35rem;
+}
 #podcasts-panel .settings .aw-field {
+  border-top: 0;
+  padding: 0.15rem 0;
   flex-direction: row;
   flex-wrap: nowrap;
   align-items: center;
