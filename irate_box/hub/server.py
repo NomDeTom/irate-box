@@ -7767,8 +7767,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/hardware":
-            if payload.get("action") == "status":
+            act = payload.get("action")
+            if act == "status":
                 self.send_json(202, {"id": control_request({"action": "hw-status"})})
+            elif act == "set" and HEALTH_CHOICES_RE.fullmatch(str(payload.get("choice", ""))):
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "hw-set", "choice": payload["choice"]})},
+                )
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return

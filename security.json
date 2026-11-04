@@ -160,6 +160,14 @@
       "reads": [],
       "writes": []
     },
+    "hw-set": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json"
+      ]
+    },
     "hw-status": {
       "https_only": false,
       "policy": false,

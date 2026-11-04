@@ -45,6 +45,7 @@ run sim_pinmap.py
 run sim_lcdtouch.py
 run sim_hardware.py
 run sim_overlays.py
+run sim_hardware_set.py
 run sim_lost_writes.py
 run sim_bootkey.py
 run sim_powerwatch.py

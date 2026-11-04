@@ -17,7 +17,7 @@ import re
 import time
 from pathlib import Path
 
-from irate_box.msg import M
+from irate_box.msg import M, Refused
 from irate_box.root import safeio
 
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -226,6 +226,134 @@ def publish():
             n=len(data["errors"]),
         )
     return M("control.hardware.published", "The hardware status is up to date.")
+
+
+# --- the one action gate ------------------------------------------------------------------------
+# Every admin choice about a hardware part goes through here: the doctor's settings groups and the
+# hardware page both end at set(), which checks the shared pattern and then calls the module that owns
+# the part. The dedicated pins actions stay as their own root actions (they carry a bool or a pin), and
+# the Box doctor's health-fix keeps working as an alias.
+
+_HARDWARE_KINDS = frozenset(
+    {
+        "rfkill",
+        "rfkill-apply",
+        "usb-gadget",
+        "usb-gadget-drive",
+        "usb-gadget-drive-write",
+        "clock-sources",
+        "clock-undo",
+        "clock-set",
+        "rtc-find",
+        "rtc-look",
+        "rtc-save",
+        "rtc-remove",
+    }
+)
+
+
+def handles(choice):
+    """Whether this choice concerns a hardware part this layer owns."""
+    if not isinstance(choice, str):
+        return False
+    kind = choice.partition(":")[0]
+    return kind in _HARDWARE_KINDS or kind.startswith(("crashwatch-", "led-", "rtc-setup"))
+
+
+def set(choice):
+    """One hardware choice, checked against the shared pattern, carried out by the module that owns it."""
+    from irate_box import choices
+
+    if not isinstance(choice, str) or not choices.CHOICES_RE.fullmatch(choice):
+        raise Refused(
+            M(
+                "hardware.set.unknown",
+                "The hardware layer does not know the setting {choice}.",
+                choice=str(choice)[:80],
+            )
+        )
+    if not handles(choice):
+        raise Refused(
+            M(
+                "hardware.set.not-hardware",
+                "{choice} is not a hardware setting. Use the page that offers it.",
+                choice=choice[:80],
+            )
+        )
+    kind, _, arg = choice.partition(":")
+    if kind == "clock-sources":
+        return _module("clock").apply(choice)
+    if kind == "clock-undo":
+        return _module("clock").undo()
+    if kind == "clock-set":
+        return _module("health").set_clock(int(arg))
+    if kind.startswith("crashwatch-"):
+        from irate_box.root import recommended
+
+        said = _module("crashwatch").set_option(kind[len("crashwatch-") :], arg)
+        recommended.record(kind, arg)  # the owner's own choice: never offered back
+        return said
+    if kind.startswith("led-"):
+        led_module = _module("led")
+        return led_module.flash(arg) if kind == "led-flash" else led_module.set_option(kind[len("led-") :], arg)
+    if kind == "rfkill":
+        radio, _, value = arg.partition(":")
+        return _module("rfkill").set_option(radio, value)
+    if kind == "rfkill-apply":
+        rfkill_module = _module("rfkill")
+        changed = rfkill_module.apply()
+        failed = [switch["name"] for switch, _, error in changed if error]
+        if failed:
+            return M("repair.rfkill.failed", "These switches could not be changed: {names}.", names=", ".join(failed))
+        return M("repair.rfkill.done", "Every radio switch is as set.")
+    if kind == "usb-gadget":
+        return _module("usbgadget").set_option(arg)
+    if kind == "usb-gadget-drive":
+        return _module("usbgadget").set_drive(arg)
+    if kind == "usb-gadget-drive-write":
+        return _module("usbgadget").set_drive_write(arg)
+    rtc_module = _module("rtc")
+    if kind == "rtc-find":
+        found = rtc_module.find()
+        if found["found"]:
+            return M(
+                "repair.rtc.found",
+                "The search found {modules}.",
+                modules=[
+                    M(
+                        "repair.rtc.found-one",
+                        "the {chip} on bus {bus} at {addr}",
+                        chip=x["label"],
+                        bus=x["bus"],
+                        addr=x["addr"],
+                    )
+                    for x in found["found"]
+                ],
+            )
+        return (
+            M("repair.rtc.none", "The search found no clock module.")
+            if found["buses"]
+            else M("repair.rtc.no-bus", "The search found no clock module. No I2C bus is enabled.")
+        )
+    try:
+        if kind == "rtc-look":
+            return rtc_module.look(asked=True)
+        if kind == "rtc-setup":
+            chip, bus, addr = arg.split(":")
+            return rtc_module.setup(chip, int(bus), addr)
+        if kind == "rtc-save":
+            return rtc_module.save()
+        if kind == "rtc-remove":
+            return rtc_module.remove()
+    except rtc_module.RtcError as exc:
+        raise Refused(exc.message) from exc
+    raise Refused(
+        M(
+            "hardware.set.unknown",
+            "The hardware layer does not know the setting {choice}.",
+            choice=str(choice)[:80],
+        )
+    )
 
 
 # --- the one overlay writer ---------------------------------------------------------------------

@@ -8833,6 +8833,10 @@ def doctor_settings():
 def fix(choice):
     if not CHOICES_RE.match(choice):
         raise Refused(M("repair.unknown", "The Box doctor has no repair called {choice}.", choice=choice))
+    from irate_box.root import hardware
+
+    if hardware.handles(choice):
+        return hardware.set(choice)
     kind, _, arg = choice.partition(":")
     if kind == "nm-install":
         from irate_box.root import nmrepair
@@ -8842,20 +8846,6 @@ def fix(choice):
         from irate_box.root import nmrepair
 
         return nmrepair.revert()
-    if kind == "clock-sources":
-        from irate_box.root import clock
-
-        return clock.apply(choice)
-    if kind == "clock-undo":
-        from irate_box.root import clock
-
-        return clock.undo()
-    if kind.startswith("crashwatch-"):
-        from irate_box.root import crashwatch, recommended
-
-        said = crashwatch.set_option(kind[len("crashwatch-") :], arg)
-        recommended.record(kind, arg)  # the owner's own choice: never offered back
-        return said
     if kind in ("image-lookup", "image-age"):
         from irate_box.root import recommended
 
@@ -8893,39 +8883,6 @@ def fix(choice):
             {"one": "One recommended setting applied.", "other": "{n} recommended settings applied."},
             n=len(done),
         )
-    if kind in ("led-show", "led-led", "led-off"):
-        from irate_box.root import led
-
-        return led.set_option(kind[len("led-") :], arg)
-    if kind == "led-flash":
-        from irate_box.root import led
-
-        return led.flash(arg)
-    if kind == "rfkill":
-        from irate_box.root import rfkill
-
-        radio, _, value = arg.partition(":")
-        return rfkill.set_option(radio, value)
-    if kind == "usb-gadget":
-        from irate_box.root import usbgadget
-
-        return usbgadget.set_option(arg)
-    if kind == "usb-gadget-drive":
-        from irate_box.root import usbgadget
-
-        return usbgadget.set_drive(arg)
-    if kind == "usb-gadget-drive-write":
-        from irate_box.root import usbgadget
-
-        return usbgadget.set_drive_write(arg)
-    if kind == "rfkill-apply":
-        from irate_box.root import rfkill
-
-        changed = rfkill.apply()
-        failed = [sw["name"] for sw, _, error in changed if error]
-        if failed:
-            return M("repair.rfkill.failed", "These switches could not be changed: {names}.", names=", ".join(failed))
-        return M("repair.rfkill.done", "Every radio switch is as set.")
     if kind == "armbian-led":
         if not armbian_led_state() and arg == "off":
             raise Refused(
@@ -9064,8 +9021,6 @@ def fix(choice):
                 "No readable book is left. The box emptied the library and stopped Kiwix until someone adds a book.",
             ),
         )
-    if kind == "clock-set":
-        return set_clock(int(arg))
     if kind in ("idle-off", "idle-on"):
         return idle_switch(arg, kind == "idle-on")
     if kind == "card-accounting-on":
@@ -9189,40 +9144,6 @@ def fix(choice):
             iface=iface,
             step=STEP_LABEL.get(step, step),
         )
-    try:
-        if choice == "rtc-find":
-            f = rtc.find()
-            if f["found"]:
-                return M(
-                    "repair.rtc.found",
-                    "The search found {modules}.",
-                    modules=[
-                        M(
-                            "repair.rtc.found-one",
-                            "the {chip} on bus {bus} at {addr}",
-                            chip=x["label"],
-                            bus=x["bus"],
-                            addr=x["addr"],
-                        )
-                        for x in f["found"]
-                    ],
-                )
-            return (
-                M("repair.rtc.none", "The search found no clock module.")
-                if f["buses"]
-                else M("repair.rtc.no-bus", "The search found no clock module. No I2C bus is enabled.")
-            )
-        if choice == "rtc-look":
-            return rtc.look(asked=True)
-        if kind == "rtc-setup":
-            chip, bus, addr = arg.split(":")
-            return rtc.setup(chip, int(bus), addr)
-        if choice == "rtc-save":
-            return rtc.save()
-        if choice == "rtc-remove":
-            return rtc.remove()
-    except rtc.RtcError as exc:
-        raise Refused(exc.message) from exc
     if kind == "kiwix-rebuild":
         return kiwix_rebuild()
     if kind == "kiwix-off":

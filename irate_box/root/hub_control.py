@@ -83,6 +83,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "hw-status"}
       Every hardware part this box owns read again and published to control/hardware.json
       (hardware.py): the pages read that one file instead of waiting for a Box doctor scan.
+  {"id": ..., "action": "hw-set", "choice": "<one of the Box doctor's hardware choices>"}
+      One hardware setting (USB gadget, drive, LED, radios, clock, RTC, serial pins, watchdog) through
+      the same gate the Box doctor uses, then the published hardware status again.
   {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
@@ -8230,6 +8233,14 @@ def hardware_status(_req):
     return hardware.publish()
 
 
+def hardware_set(req):
+    """One hardware setting, checked and carried out by hardware.set(); the published status follows."""
+    try:
+        return hardware.set(str(req.get("choice", "")))
+    finally:
+        hardware.write_status()
+
+
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
     from irate_box.root import lcdtouch, pinmap
@@ -9219,6 +9230,7 @@ ACTIONS = {
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
     "hw-status": hardware_status,
+    "hw-set": hardware_set,
     "pins": pins,
     "pins-overlay": pins_overlay,
     "pins-display": pins_display,
