@@ -60,6 +60,7 @@ for f in ("Makefile", "dkms.conf"):
 
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
+from irate_box.hub import store
 from irate_box.root import health, usbgadget
 
 fails = 0
@@ -270,6 +271,33 @@ check(
     "  the manifest remembers it, so it is not imported twice",
     json.loads((drop / ".usb-drive-manifest.json").read_text()).get("new.txt", {}).get("size") == 3,
 )
+# A host file that would not fit: the import stops and the guests' files stay.
+old_total = store.DROP_MAX_TOTAL
+store.DROP_MAX_TOTAL = 10
+
+
+def fake_full_run(cmd, timeout=120):
+    if cmd[0] == usbgadget.MDIR:
+        return mock.Mock(returncode=0, stdout="hello.txt\nnew.txt\nfull.txt\n", stderr="")
+    if cmd[0] == usbgadget.MCOPY:
+        Path(cmd[-1]).write_bytes(b"0123456789")
+        return mock.Mock(returncode=0, stdout="", stderr="")
+    return fake_run(cmd, timeout)
+
+
+logs = []
+usbgadget.run = fake_full_run
+added = usbgadget.import_drive(log=logs.append)
+check(
+    "  a file that would not fit: nothing is added, and the guests' files stay",
+    added == 0 and (drop / "one.data").is_file() and any("stopped importing at full.txt" in line for line in logs),
+    (added, logs),
+)
+check(
+    "  the manifest is unchanged by the refused import",
+    set(json.loads((drop / ".usb-drive-manifest.json").read_text())) == {"hello.txt", "new.txt"},
+)
+store.DROP_MAX_TOTAL = old_total
 usbgadget.run = fake_run
 st_drive = usbgadget.status()
 st_drive["drive"]["tools"]["mkfs.vfat"] = False

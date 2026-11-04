@@ -555,9 +555,10 @@ class Drop:
                 pass
         return found
 
-    def _prune(self, keep=None):
-        """Expired files go; then the oldest, until the rest fit DROP_MAX_TOTAL. Lock held.
-        Pinned files (the box's own source, put there by install.sh) never expire or go."""
+    def _prune(self, keep=None, evict=True):
+        """Expired files go; then, unless `evict` is off, the oldest until the rest fit
+        DROP_MAX_TOTAL. Lock held. Pinned files (the box's own source, put there by
+        install.sh) never expire or go."""
         now = self.clock.ticks()
         metas = []
         for meta in self._metas():
@@ -566,6 +567,8 @@ class Drop:
             else:
                 metas.append(meta)
         metas.sort(key=lambda m: m.get("created", 0))
+        if not evict:
+            return metas
         total = sum(m.get("size", 0) for m in metas)
         files = len(metas)
         for meta in metas:
@@ -615,14 +618,21 @@ class Drop:
             "ttl": DROP_TTL,
         }
 
-    def receive(self, stream, length, name, by="", lock=None, marks=None):
+    def receive(self, stream, length, name, by="", lock=None, marks=None, evict=True):
         """Stream `length` bytes from `stream` into a new drop. Returns its meta; raises
-        ValueError (too large, not enough free storage) or OSError (the body stopped short)."""
+        ValueError (too large, not enough free storage) or OSError (the body stopped short).
+        A caller that must not push other files out passes `evict=False`: it refuses when the
+        drop is full instead of removing the oldest file."""
         if length > DROP_MAX_FILE:
             raise Refused(file_too_large())
         self.dir.mkdir(parents=True, exist_ok=True)
         if shutil.disk_usage(self.dir).free < length + DROP_MIN_FREE:
             raise Refused(NO_SPACE)
+        if not evict:
+            with self._lock:
+                metas = self._prune(evict=False)
+                if len(metas) + 1 > DROP_MAX_FILES or sum(m.get("size", 0) for m in metas) + length > DROP_MAX_TOTAL:
+                    raise Refused(NO_SPACE)
         key = secrets.token_urlsafe(12)
         tmp = confine.under(self.dir, key + ".tmp")
         try:
@@ -649,7 +659,7 @@ class Drop:
             with self._lock:
                 os.replace(tmp, confine.under(self.dir, key + ".data"))
                 (confine.under(self.dir, key + ".meta")).write_text(json.dumps(meta))
-                self._prune(keep=key)
+                self._prune(keep=key, evict=evict)
             return meta
         finally:
             tmp.unlink(missing_ok=True)

@@ -35,7 +35,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from io import BytesIO
 from pathlib import Path
 
 from irate_box.msg import M, Refused
@@ -557,18 +556,26 @@ def import_drive(log=print):
         got = run([MCOPY, "-n", "-i", str(DRIVE_IMAGE), "::" + name, str(one)], timeout=120)
         if got.returncode or not one.is_file():
             continue
-        data = one.read_bytes()
-        one.unlink(missing_ok=True)
-        if len(data) > store.DROP_MAX_FILE:
+        size = one.stat().st_size
+        if size > store.DROP_MAX_FILE:
+            one.unlink(missing_ok=True)
+            log(f"usbgadget: skipped {name} from the USB drive: larger than the file drop allows")
             continue
         try:
-            meta = drop.receive(BytesIO(data), len(data), name, by="USB drive")
-        except (OSError, ValueError, Refused) as exc:
+            with one.open("rb") as fh:
+                meta = drop.receive(fh, size, name, by="USB drive", evict=False)
+        except Refused as exc:
+            one.unlink(missing_ok=True)
+            log(f"usbgadget: stopped importing at {name}: {exc}")
+            break
+        except (OSError, ValueError) as exc:
+            one.unlink(missing_ok=True)
             log(f"usbgadget: skipped {name} from the USB drive: {exc}")
-        else:
-            manifest[name] = {"id": meta["id"], "size": len(data)}
-            known.add(name)
-            added += 1
+            continue
+        one.unlink(missing_ok=True)
+        manifest[name] = {"id": meta["id"], "size": size}
+        known.add(name)
+        added += 1
     if added:
         DRIVE_MANIFEST.write_text(json.dumps(manifest))
     shutil.rmtree(tmp, ignore_errors=True)
