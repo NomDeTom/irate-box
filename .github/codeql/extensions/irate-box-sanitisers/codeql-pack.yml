@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+name: irate-box/irate-box-sanitisers
+version: 0.0.1
+library: true
+extensionTargets:
+  codeql/python-all: "*"
+dataExtensions:
+  - sanitisers.model.yml

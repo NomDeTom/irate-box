@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: 2026 NomDeTom
+extensions:
+  - addsTo:
+      pack: codeql/python-all
+      extensible: barrierModel
+    data:
+      - - irate_box.validate
+        - Member[path].ReturnValue
+        - path-injection
+      - - irate_box.validate
+        - Member[content_disposition].ReturnValue
+        - http-response-splitting
+      - - irate_box.validate
+        - Member[content_disposition].ReturnValue
+        - header-injection
+      - - irate_box.validate
+        - Member[log_text].ReturnValue
+        - log-injection
