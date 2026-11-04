@@ -47,12 +47,14 @@ rfkill_state = {
     ],
     "power_line": None,
 }
+usb_state = {"peripheral": True, "settings": {"on": True, "drive": True, "drive_write": False}}
 groups = (
     health.card_groups()
     + health.hardening_groups()
     + health.setting_groups(crashwatch.load_settings(), None)
     + health.led_groups(led_state, "failed")
     + health.rfkill_groups(rfkill_state)
+    + health.usb_gadget_groups(usb_state)
 )
 group_choices = [option["choice"] for group in groups for option in group.get("options", [])]
 check(
