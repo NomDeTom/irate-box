@@ -132,6 +132,9 @@ check(
     and bypin[18]["state"] == "idle"
     and bypin[22]["state"] == "idle"
     and bypin[27]["state"] == "active"
+    and bypin[27]["owner"] == "display"
+    and bypin[27]["active_owner"] == "spidev"
+    and bypin[27]["holding"] is False
     and bypin[35]["state"] == "conflict"
     and bypin[35]["source"] == "lcdtouch",
     [bypin.get(n) for n in (18, 22, 27, 35)],

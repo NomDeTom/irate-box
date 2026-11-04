@@ -80,16 +80,27 @@ def _optional(name):
 def _assignment(pin, role, by, source, row, active=False, tokens=()):
     """One intended pin: idle when nothing claims it, active when the claim is ours, conflict when not."""
     state = "idle"
+    active_owner = ""
     if row and row.get("used"):
         consumer = str(row.get("consumer") or row.get("label") or "").lower()
         function = " ".join(str(row.get(key) or "") for key in ("function", "group", "name")).lower()
+        active_owner = consumer or str(row.get("function") or row.get("name") or "")
         if "irate-box" in consumer or any(token in consumer for token in tokens):
             state = "active"
         elif not consumer and active and any(token in function for token in tokens):
             state = "active"
         else:
             state = "conflict"
-    return {"pin": pin, "role": role, "by": by, "state": state, "source": source}
+    return {
+        "pin": pin,
+        "role": role,
+        "by": by,
+        "owner": by,
+        "state": state,
+        "source": source,
+        "active_owner": active_owner,
+        "holding": False,
+    }
 
 
 def assignments():

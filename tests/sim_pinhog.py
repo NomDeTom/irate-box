@@ -112,7 +112,16 @@ check(
     compiled[-1],
 )
 (T / "boot_id").write_text("boot-two\n")
-check("  a restart makes them active, not pending", pinhog.pending() is False, pinhog.pending())
+hogs = {item["pin"]: item for item in pinhog.assignments()}
+check(
+    "  a restart makes them held, not pending, and not merely an active owner",
+    pinhog.pending() is False
+    and hogs[18]["state"] == "holding"
+    and hogs[18]["holding"] is True
+    and hogs[18]["owner"] == "pinhog"
+    and hogs[22]["state"] == "holding",
+    hogs,
+)
 pinhog.remove(18)
 check(
     "remove one: its node gone, the other kept, the overlay still on",

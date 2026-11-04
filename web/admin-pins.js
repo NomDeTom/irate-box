@@ -89,13 +89,23 @@
     if (pin.type !== 'gpio') return pin.type;
     const assigned = assignmentFor(pin);
     if (assigned && assigned.state === 'conflict') return 'conflict';
+    if (assigned && (assigned.state === 'holding' || assigned.holding)) return 'taken';
     if (assigned && !pin.used) return 'assigned';
     return pin.used ? 'taken' : 'free';
   }
   function pinDetails(pin) {
     if (pin.type !== 'gpio') return pin.type === 'gnd' ? 'ground' : 'power';
     const assigned = assignmentFor(pin);
-    const bits = [pin.used ? pin.consumer || 'taken' : assigned ? `assigned ${assigned.role}` : 'free'];
+    const held = assigned && (assigned.state === 'holding' || assigned.holding);
+    const bits = [
+      held
+        ? `held by ${assigned.active_owner || assigned.role}`
+        : pin.used
+          ? pin.consumer || 'taken'
+          : assigned
+            ? `assigned ${assigned.role}`
+            : 'free',
+    ];
     if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
     return bits.join(' · ');
   }
@@ -121,7 +131,16 @@
     if (pin.type !== 'gpio') bits.push(pin.type === 'gnd' ? 'ground' : 'power');
     else {
       const assigned = assignmentFor(pin);
-      bits.push(pin.used ? `taken by ${pin.consumer || 'a function'}` : assigned ? `assigned to ${assigned.role}` : 'free');
+      const held = assigned && (assigned.state === 'holding' || assigned.holding);
+      bits.push(
+        held
+          ? `held by ${assigned.active_owner || assigned.role}`
+          : pin.used
+            ? `taken by ${pin.consumer || 'a function'}`
+            : assigned
+              ? `assigned to ${assigned.role}`
+              : 'free',
+      );
     }
     return bits.join(', ');
   }
@@ -347,7 +366,8 @@
       const tr = document.createElement('tr');
       const how = hog.mode === 'output' ? `Output ${hog.value ? 'high' : 'low'}` : 'Input';
       const pull = hog.bias && hog.bias !== 'none' ? `, pull-${hog.bias}` : '';
-      for (const value of [String(hog.pin), how + pull, hog.pending ? 'After a restart' : hog.state === 'conflict' ? 'Conflict' : 'Now']) {
+      const when = hog.pending ? 'After a restart' : hog.state === 'conflict' ? 'Conflict' : hog.state === 'holding' ? 'Held from boot' : 'Now';
+      for (const value of [String(hog.pin), how + pull, when]) {
         const td = document.createElement('td');
         td.textContent = value;
         tr.append(td);

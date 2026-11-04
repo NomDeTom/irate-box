@@ -261,23 +261,29 @@ def remove(pin):
 
 
 def assignments():
-    """For hardware.json: each hog's pin, with idle until a restart and a conflict if another owner has it."""
+    """For hardware.json: each hog's pin, held after a restart, idle until then, or a conflict."""
     out = []
+    waiting = pending()
     for pin, spec in sorted(load().items()):
         row = _row(pin) or {}
         consumer = str(row.get("consumer") or "")
-        if row.get("used"):
-            state = "active" if consumer == f"irate-box-pin{pin}" else "conflict"
-        else:
+        if row.get("used") and consumer != f"irate-box-pin{pin}":
+            state = "conflict"
+        elif waiting:
             state = "idle"
+        else:
+            state = "holding"
         out.append(
             {
                 "pin": pin,
                 "role": "Pin hog",
                 "by": "pinhog",
+                "owner": "pinhog",
                 "state": state,
                 "source": "pinhog",
-                "pending": pending(),
+                "active_owner": consumer,
+                "holding": state == "holding",
+                "pending": waiting,
                 "mode": spec.get("mode"),
                 "bias": spec.get("bias"),
                 "value": spec.get("value"),
