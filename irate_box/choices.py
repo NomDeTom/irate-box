@@ -16,6 +16,7 @@ CHOICE_RE = re.compile(
     r"|^idle-(off|on):(meshtasticd|ModemManager|bluetooth)\.service$"
     r"|^led-show:(leave|alive|network|all)$|^led-(led|flash):[A-Za-z0-9:._@-]{1,64}$|^led-off:(drive|float)$|^armbian-led:(on|off)$"
     r"|^rfkill:(wifi|bluetooth):(on|off|leave)$|^rfkill-apply$"
+    r"|^(usb-gadget|usb-gadget-drive|usb-gadget-drive-write):(on|off)$"
     r"|^uplink-reconnect:[A-Za-z0-9_][A-Za-z0-9._-]{0,14}$"
     r"|^card-accounting-on$|^arch-remove:[a-z0-9-]{1,20}$"
     r"|^card-set:(apt_cache:(card|memory)|apt_languages:(download|none)|journal:(card|card5|memory|flash)|writeback:(standard|longer)|box_state:(card|flash)|flash_crc:(on|off)|filesystem:(ext4|btrfs|f2fs|btrfs[+]f2fs)|ab:(off|tryboot|uboot)|card_accounting:(on|off))$"
