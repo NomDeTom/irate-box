@@ -6871,6 +6871,12 @@ label > .aw-onoff-box ~ .chip-group,
 .pin.used {
   border-left-color: var(--pin-taken);
 }
+.pin.assigned {
+  border-left-color: var(--pin-assigned, #f59e0b);
+}
+.pin.conflict {
+  border-left-color: var(--pin-conflict, #ef4444);
+}
 .pin.power {
   border-left-color: var(--pin-gnd);
 }
@@ -6978,6 +6984,14 @@ label > .aw-onoff-box ~ .chip-group,
   background: var(--pin-taken);
   color: var(--pin-taken-ink);
 }
+.pin-square.pin-assigned {
+  background: var(--pin-assigned, #f59e0b);
+  color: var(--pin-assigned-ink, #0f1117);
+}
+.pin-square.pin-conflict {
+  background: var(--pin-conflict, #ef4444);
+  color: var(--pin-conflict-ink, #fff);
+}
 .pin-square.pin-empty {
   border-color: transparent;
   background: transparent;
@@ -7012,6 +7026,12 @@ label > .aw-onoff-box ~ .chip-group,
 }
 .pin-key.pin-taken {
   background: var(--pin-taken);
+}
+.pin-key.pin-assigned {
+  background: var(--pin-assigned, #f59e0b);
+}
+.pin-key.pin-conflict {
+  background: var(--pin-conflict, #ef4444);
 }
 
 

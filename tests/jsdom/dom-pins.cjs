@@ -38,6 +38,7 @@ w.fetch = async (u, opts = {}) => {
         overlays: { items: { lcd: state.overlay } },
         display: state.overlay ? { on: !!state.overlay.display_on } : { supported: false },
         pins: state.pins,
+        assignments: state.assignments || [],
       }),
       { status: 200 },
     );
@@ -130,8 +131,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     /\.pinrow\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 2\.15rem 2\.15rem minmax\(0, 1fr\)/.test(css),
   );
   check(
-    '  the legend uses the same five squares',
-    ['pin-3v3', 'pin-5v', 'pin-gnd', 'pin-free', 'pin-taken'].every((name) => d.querySelector(`#pins .pin-key.${name}`)),
+    '  the legend uses the same seven squares',
+    ['pin-3v3', 'pin-5v', 'pin-gnd', 'pin-free', 'pin-assigned', 'pin-taken', 'pin-conflict'].every((name) =>
+      d.querySelector(`#pins .pin-key.${name}`),
+    ),
   );
   check(
     '  the header does not mix in the board role; the roles table has it separately',
@@ -144,6 +147,29 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     text('pins-claims'),
   );
   check('  copy is offered once a map is drawn', !d.getElementById('pins-copy').disabled);
+  // An assignment means a free pin is not free: assigned-idle is its own state, and a live stranger is a conflict.
+  const assigned = map(Date.now() / 1000);
+  assigned.header = [
+    { pin: 5, type: 'gpio', name: 'GPIO0_A1', gpio: 5, rmio: 5, role: '', consumer: '', used: false },
+    { pin: 6, type: 'gpio', name: 'GPIO0_B6', gpio: 6, rmio: 6, role: '', consumer: '', used: false },
+  ];
+  w.rkRenderPins({
+    pins: assigned,
+    assignments: [
+      { pin: 5, role: 'Display D/C', by: 'display', state: 'idle', source: 'lcdtouch' },
+      { pin: 6, role: 'UART TX', by: 'serial', state: 'conflict', source: 'ownserial' },
+    ],
+  });
+  const states = [...d.querySelectorAll('#pins-map .pin-square')].filter((square) => !square.classList.contains('pin-empty'));
+  check(
+    'an assignment not in use: assigned, not free; a foreign claim: conflict',
+    states[0].classList.contains('pin-assigned')
+      && /○/.test(states[0].textContent)
+      && /assigned to Display D\/C/.test(states[0].title)
+      && states[1].classList.contains('pin-conflict')
+      && /!/.test(states[1].textContent),
+    states.map((square) => [square.className, square.textContent, square.title]),
+  );
   state = { ...state, pending: 1, results: [] };
   d.getElementById('pins-scan').click();
   await wait(100);
