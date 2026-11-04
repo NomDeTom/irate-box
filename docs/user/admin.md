@@ -26,9 +26,11 @@ Sign in as an administrator. Then select **⚙️ Admin**. The sidebar has these
   - **Colours**: the box has one light palette and one dark palette. Presets set both.
   - The box checks the text and background pairs of each palette against the 4.5:1 contrast ratio of the accessibility guidelines. A pair below the ratio is listed with its ratio. The box saves it only after you confirm.
   - Visitors select light, dark or Auto for themselves. They see your colours as the **Box palette**. They can select **Standard palette**, **Increased contrast**, E-ink or Cybercore in the 🎨 menu.
-- **Moderation**: **Reports** (content that users reported) and **User data**. Look at them and remove items.
-- **System**: Accounts, Network, Security, the librarian, Toolkits, Clock, **Recovery and monitoring**, Updates, Backup and transfer, and Pin map.
-  - The librarian page shows what the librarian is doing and the schedule for books and apps. It shows the storage limit for books and apps. It links to the schedules of other updates and holds the GitHub token.
+- **Content**: the **Librarian**, **Toolkits**, **Moderation** and **User data**.
+  - The **Librarian** page shows what the librarian is doing and the schedule for books and apps. It shows the storage limit for books and apps. It links to the schedules of other updates and holds the GitHub token.
+  - **Toolkits** keeps the build tools and their cache current.
+  - **Moderation** holds **Reports** (content that users reported) and **User data**. Look at them and remove items.
+- **System**: Accounts, Network, Security, Clock, **Recovery and monitoring**, Updates, Backup and transfer, and Pin map.
   - **Recovery and monitoring** sets what crash watch keeps, what restarts a frozen box, and **SD card writes**. **SD card writes** chooses where the log, the box's own state and apt's cache live, and whether the onboard flash's data is checked as it is read. **Hardening** holds the two choices that change how the card is laid out or updated: **Filesystem for a fresh install** and **A/B system updates**. Neither repartitions a running card: a fresh install applies them.
   - **Pin map** shows the board's GPIO header: which pins are in use and by what, and which are free. **Read the pins** reads them, and **Copy as text** copies the map.
 - **Doctors**: the Box doctor, the Security doctor and the Updates doctor. Each doctor checks one part of the box and lists the problems in plain words. Where a repair exists, the doctor shows a button for it.

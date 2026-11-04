@@ -7,11 +7,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const view = { state: $('mesh-heard-state'), counts: $('mesh-heard-counts'), packets: $('mesh-heard-packets') };
-  const el = (tag, props = {}, ...kids) => {
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  };
+  const el = AW.el;
   let poll = null;
 
   function render(data) {

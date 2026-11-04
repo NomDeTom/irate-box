@@ -7,13 +7,16 @@
   if (!panel) return;
   let snap = null;
 
-  const el = (tag, props = {}, ...kids) => {
-    const node = Object.assign(document.createElement(tag), props);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  };
+  const el = AW.el;
   const gb = (n) => `${(n / (1024 ** 3)).toFixed(1)} GB`;
   const note = el("p", { className: "setting-desc action-note", role: "status", hidden: true });
+  // A fault in this page's own script is not the box talking: say so plainly, and keep the box's own words.
+  const fault = (e) => {
+    const text = e && e.message ? String(e.message) : String(e);
+    return /^the box answered/i.test(text)
+      ? text
+      : "This part of the page could not be drawn: a fault in the page, not the box. Reload; if it stays, it is a bug.";
+  };
   const say = (text, bad = false) => {
     note.hidden = !text;
     note.textContent = text;
@@ -63,12 +66,12 @@
     save.addEventListener("click", () => {
       const chosen = {};
       for (const select of kinds.querySelectorAll("select[data-kind]")) chosen[select.dataset.kind] = select.value;
-      post({ action: "choose", uuid: uuid.value.trim(), kinds: chosen }).catch((e) => say(e.message, true));
+      post({ action: "choose", uuid: uuid.value.trim(), kinds: chosen }).catch((e) => say(fault(e), true));
     });
     const none = el("button", { type: "button", className: "action-btn", textContent: "No library drive" });
-    none.addEventListener("click", () => post({ action: "choose", uuid: "", kinds: { podcasts: "card", books: "card" } }).catch((e) => say(e.message, true)));
+    none.addEventListener("click", () => post({ action: "choose", uuid: "", kinds: { podcasts: "card", books: "card" } }).catch((e) => say(fault(e), true)));
     const eject = el("button", { type: "button", className: "action-btn", textContent: "Eject" });
-    eject.addEventListener("click", () => post({ action: "eject" }).catch((e) => say(e.message, true)));
+    eject.addEventListener("click", () => post({ action: "eject" }).catch((e) => say(fault(e), true)));
     const state = snap.uuid
       ? `Using ${snap.uuid}${snap.mounted ? `, mounted (${gb(snap.total || 0)}, ${gb(snap.free || 0)} free)` : ", not plugged in"}.`
       : "No library drive is set.";
@@ -96,11 +99,11 @@
           if (last && last.message) say(last.message, !last.ok);
         }
       })
-      .catch((e) => say(e.message, true));
+      .catch((e) => say(fault(e), true));
   }
 
   get().then((data) => {
     snap = data;
     render();
-  }).catch((e) => panel.replaceChildren(el("p", { className: "setting-desc bad", textContent: e.message })));
+  }).catch((e) => panel.replaceChildren(el("p", { className: "setting-desc bad", textContent: fault(e) })));
 })();

@@ -148,21 +148,30 @@ setTimeout(() => {
     addMode && addMode.outerHTML.slice(0, 120),
   );
   const side = [...d.querySelectorAll('.admin-side-list .admin-side-group, .admin-side-list a')].map((n) => n.textContent.trim());
-  // The app-first menu: Overview, Apps (a page per app, from the manifests), Moderation, System
+  // The app-first menu: Overview, Apps (a page per app, from the manifests), Content, System
   // (accounts under System, not Box), the Doctors, then Mock controls last; nothing left over.
   const groups = t('.admin-side-group');
-  check('sidebar: the groups in order, the Doctors, then Mock controls last', groups.join('|') === 'Apps|Hub layout|Moderation|System|Doctors|Mock controls', groups.join('|'));
+  check('sidebar: the groups in order, the Doctors, then Mock controls last', groups.join('|') === 'Apps|Hub layout|Content|System|Doctors|Mock controls', groups.join('|'));
   check('sidebar: Overview and Setup steps stand first, with no group head to fold', side.slice(0, 2).join('|') === 'Overview|Setup steps' && !d.querySelector('[data-group="Overview"]'), side.slice(0, 3).join('|'));
   const hi = side.indexOf('Doctors');
   check('sidebar: the four doctors under Doctors', side.slice(hi + 1, hi + 5).join('|') === 'Box doctor|Security doctor|Updates doctor|Housecall doctor' && side[hi + 5] === 'Mock controls', side.join('|'));
-  check('sidebar: Clock under System; Appearance under Hub layout, before Moderation', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Clock') < hi
-    && side.indexOf('Appearance') > side.indexOf('Hub layout') && side.indexOf('Appearance') < side.indexOf('Moderation'));
+  check('sidebar: Clock under System; Appearance under Hub layout, before Content', side.indexOf('Clock') > side.indexOf('System') && side.indexOf('Clock') < hi
+    && side.indexOf('Appearance') > side.indexOf('Hub layout') && side.indexOf('Appearance') < side.indexOf('Content'));
   check('sidebar: Pin map under System, a page of its own', side.indexOf('Pin map') > side.indexOf('System') && side.indexOf('Pin map') < hi
     && d.querySelector('.admin-side-list a[href="#pins"]'));
+  const content = side.slice(side.indexOf('Content') + 1, side.indexOf('System'));
+  check('sidebar: Content holds Librarian, then Toolkits, then Moderation and User data',
+    content.join('|') === 'Librarian|Toolkits|Moderation|User data', content.join('|'));
+  check('sidebar: the old librarian addresses land on Librarian', ['#sources', '#podcasts', '#library-drive'].every((h) => {
+    w.location.hash = h; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
+    const page = d.getElementById(h.slice(1)).closest('.admin-page');
+    return !page.hidden && page.getAttribute('aria-label') === 'Librarian';
+  }));
+  w.location.hash = '#clock'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   check('Hub layout: Home tiles, Folders, Status widgets, Appearance, and no folder of its own in the sidebar',
     ['Home tiles', 'Folders', 'Status widgets', 'Appearance'].every((x, i, all) => side.indexOf(x) > (i ? side.indexOf(all[i - 1]) : side.indexOf('Hub layout')))
     && !d.querySelector('.admin-side-list a[href="#page-app-calculators"]'));
-  check('sidebar: a page per app that owns sections, in the hub\'s order', (() => { const at = (n) => side.findIndex((x) => x.endsWith(n)); return ['Kiwix', 'Git', 'Web flasher', 'Mesh', 'Firmware Factory'].every((a, i, all) => at(a) > side.indexOf('Apps') && at(a) < side.indexOf('Moderation') && (!i || at(a) > at(all[i - 1]))); })(), side.join('|'));
+  check('sidebar: a page per app that owns sections, in the hub\'s order', (() => { const at = (n) => side.findIndex((x) => x.endsWith(n)); return ['Kiwix', 'Git', 'Web flasher', 'Mesh', 'Firmware Factory'].every((a, i, all) => at(a) > side.indexOf('Apps') && at(a) < side.indexOf('Content') && (!i || at(a) > at(all[i - 1]))); })(), side.join('|'));
   const sections = [...d.querySelectorAll('.admin-pane')];
   check('every section on exactly one page, none left over', sections.every((x) => x.parentElement.classList.contains('admin-page')) && !groups.includes('More'), sections.filter((x) => !x.parentElement.classList.contains('admin-page')).map((x) => x.id));
   const pageOf = (id) => d.getElementById(id).closest('.admin-page');
