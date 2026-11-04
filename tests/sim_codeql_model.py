@@ -164,20 +164,22 @@ for name, row in BAD.items():
 check(
     "the fixture has one control per kind",
     all(
-        f"# control: {kind}" in (REPO / "tests/codeql_fixture/flows.py").read_text()
+        f"# control: {kind}" in (REPO / "tests/codeql_fixture/flows.py.txt").read_text()
         for kind in {row[2] for row in rows}
     ),
 )
 
 # The stand-in module of the fixture has the real functions' names and signatures.
-import importlib.util
 import inspect
+import types
 
 from irate_box import validate as real_validate
 
-spec = importlib.util.spec_from_file_location("stub_validate", REPO / "tests/codeql_fixture/stub/irate_box/validate.py")
-stub_validate = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(stub_validate)
+stub_validate = types.ModuleType("stub_validate")
+exec(
+    compile((REPO / "tests/codeql_fixture/stub/irate_box/validate.py.txt").read_text(), "validate.py.txt", "exec"),
+    stub_validate.__dict__,
+)  # nosec B102 - this repository's own file
 for function in ("path", "log_text"):
     check(
         f"stub: {function} has the real signature",

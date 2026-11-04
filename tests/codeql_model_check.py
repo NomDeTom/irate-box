@@ -6,7 +6,7 @@ CLI. It builds two small databases and runs the path-injection and log-injection
 with the pack:
 
   * "model": a stand-in irate_box/validate.py whose checks do nothing CodeQL can see, and the
-    fixture flows (tests/codeql_fixture/flows.py). A flow through a shared check can only be
+    fixture flows (tests/codeql_fixture/flows.py.txt). A flow through a shared check can only be
     cleared by the pack's rows, so a respelled row, a renamed function or a kind no query reads
     leaves it flagged.
   * "real": the real irate_box/ and the same flows. Nothing inside irate_box/validate.py may be
@@ -41,6 +41,9 @@ PACK = "irate-box/irate-box-sanitisers"
 QUERIES = {
     "path-injection": "codeql/python-queries:Security/CWE-022/PathInjection.ql",
     "log-injection": "codeql/python-queries:Security/CWE-117/LogInjection.ql",
+    # No model can clear a header flow (python-all reads no barrier kind for one); the shared writers
+    # are written in the shape its query recognises, so none may be left open in the real code.
+    "header-injection": "codeql/python-queries:Security/CWE-113/HeaderInjection.ql",
 }
 MEMORY = "1500"
 
@@ -68,6 +71,19 @@ def results(csv_path):
         return {(row[4].lstrip("/"), int(row[5])) for row in csv.reader(handle)}
 
 
+def lay_out(destination, stub):
+    """The fixture's files under `destination`: flows in fixture/, and with `stub` the stand-in
+    irate_box package. They are kept as *.py.txt in the repository so that code scanning does not
+    read the deliberate control flow as a finding; they are given back their .py here."""
+    sources = {REPO / "tests/codeql_fixture/flows.py.txt": destination / "fixture/flows.py"}
+    if stub:
+        for found in (REPO / "tests/codeql_fixture/stub/irate_box").glob("*.py.txt"):
+            sources[found] = destination / "irate_box" / found.name.removesuffix(".txt")
+    for source, target in sources.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+
+
 def analyse(codeql, work, label, source, model_dir, judged):
     """Build a database of `source`, run both queries with the pack, and judge the fixture's lines
     and, when `judged` is true, the real irate_box/validate.py. Returns the number of failures."""
@@ -90,6 +106,8 @@ def analyse(codeql, work, label, source, model_dir, judged):
     fixture_lines = (source / "fixture/flows.py").read_text().splitlines()
     failed = 0
     for kind, query in QUERIES.items():
+        if kind == "header-injection" and not judged:
+            continue
         output = work / f"{label}-{kind}.csv"
         run(
             [
@@ -126,6 +144,8 @@ def analyse(codeql, work, label, source, model_dir, judged):
             problems.append(f"sanitised flow still flagged: {sorted(flagged_fixture - expected)}")
         if inside_validate:
             problems.append(f"flagged inside irate_box/validate.py: {sorted(inside_validate)}")
+        if kind == "header-injection" and elsewhere:
+            problems.append(f"an HTTP header still built from a user value: {sorted(elsewhere)}")
         print(
             f"{'FAIL' if problems else 'PASS'} {label}, {kind}: {len(expected)} control(s) flagged, "
             f"{len(flagged_fixture - expected)} sanitised flow(s) still flagged"
@@ -152,13 +172,12 @@ def main():
         failed = 0
         # 1. The stand-in module: only the model pack can clear a flow through it.
         stub = work / "src-stub"
-        shutil.copytree(REPO / "tests/codeql_fixture/stub/irate_box", stub / "irate_box")
-        shutil.copytree(REPO / "tests/codeql_fixture", stub / "fixture", ignore=shutil.ignore_patterns("stub"))
+        lay_out(stub, stub=True)
         failed += analyse(codeql, work, "model", stub, model_dir, judged=False)
         # 2. The real module: the same flows, and nothing flagged inside validate.py.
         real = work / "src-real"
         shutil.copytree(arguments.package, real / "irate_box", ignore=shutil.ignore_patterns("__pycache__"))
-        shutil.copytree(REPO / "tests/codeql_fixture", real / "fixture", ignore=shutil.ignore_patterns("stub"))
+        lay_out(real, stub=False)
         failed += analyse(codeql, work, "real", real, model_dir, judged=True)
         return 1 if failed else 0
     finally:

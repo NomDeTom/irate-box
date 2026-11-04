@@ -152,6 +152,10 @@ check(
     "keyfile: leading spaces and line breaks escaped", V.keyfile_value("  a\\b\nc\rd\te") == "\\s\\sa\\\\b\\nc\\rd\\te"
 )
 refused("keyfile: NUL", V.keyfile_value, "a\0b")
+check("header_value: a plain value", V.header_value("/appstore/files/x/v1/a.apk") == "/appstore/files/x/v1/a.apk")
+for bad in ("a\r\nX-Evil: 1", "a\n", "a\x00", "a\x7f"):
+    refused(f"header_value: {bad!r}", V.header_value, bad)
+refused("header_value: not text", V.header_value, None)
 refused("config line: newline", V.config_line, "ssid", "a\nb")
 refused("config line: bad key", V.config_line, "ss id", "x")
 check("config line: a plain line", V.config_line("channel", "6") == "channel=6")

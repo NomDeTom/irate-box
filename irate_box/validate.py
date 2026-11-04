@@ -388,7 +388,9 @@ def config_line(key, value, what="The setting"):
     return f"{key}={value}"
 
 
-ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))?")
+# An OSC string ends at BEL or ESC \ and holds no ESC itself, so a run of unfinished ones is read once
+# (a body that could hold ESC would be read again from each ESC: quadratic on hostile text).
+ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))?")
 
 
 def html_text(value, quote=True):
@@ -406,6 +408,22 @@ def log_text(value, what="The log line", most=300):
     return value[:most]
 
 
+def _one_line(value):
+    """`value` with any CR or LF taken out. Callers have already refused or encoded them, so this
+    changes nothing; it is written this way because it is the call CodeQL reads as a line-break
+    sanitiser for an HTTP header, and the header is then known to be one line."""
+    return value.replace("\n", "").replace("\r", "")
+
+
+def header_value(value, what="The header value"):
+    """A value for an HTTP response header: text with no control characters, so it cannot end the
+    header and add another."""
+    value = _need(value, what)
+    if CONTROL_RE.search(value):
+        raise Invalid(f"{what} cannot contain control characters.")
+    return _one_line(value)
+
+
 def content_disposition(filename, disposition="attachment"):
     """A Content-Disposition value for a download: no CR, LF or NUL; a quoted ASCII name with
     quotes and backslashes replaced; and RFC 6266's filename* for the real, UTF-8 name."""
@@ -416,4 +434,5 @@ def content_disposition(filename, disposition="attachment"):
     if not name:
         raise Invalid("The file name is empty.")
     fallback = "".join(char if 32 <= ord(char) < 127 and char not in '"\\' else "_" for char in name)
-    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
+    value = f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
+    return _one_line(value)

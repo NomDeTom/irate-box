@@ -712,8 +712,10 @@ def _latest(handler, parts, level):
             handler.send_response(302)
             handler.send_header(
                 "Location",
-                "/appstore/files/"
-                + "/".join(urllib.parse.quote(part, safe="") for part in (holder_id, version["tag"], name)),
+                validate.header_value(
+                    "/appstore/files/"
+                    + "/".join(urllib.parse.quote(part, safe="") for part in (holder_id, version["tag"], name))
+                ),
             )
             handler.send_header("Cache-Control", "no-store")
             handler.send_header("Content-Length", "0")
