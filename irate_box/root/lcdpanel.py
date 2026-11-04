@@ -225,7 +225,10 @@ def _through_service(op, **fields):
     """The display service owns the panel when it runs; None when there is no service to ask."""
     from irate_box.root import hardware_service
 
-    answer = hardware_service.request(op, **fields)
+    try:
+        answer = hardware_service.request(op, **fields)
+    except hardware_service.ServiceTimeout as exc:
+        raise RuntimeError(str(exc)) from None
     if answer is None:
         return None
     if not answer.get("ok"):

@@ -63,11 +63,19 @@ def handle(panel, request):
     return {"ok": False, "message": f"The display service has no operation {op!r}.", "on": None}
 
 
+class ServiceTimeout(Exception):
+    """The socket is there but the service did not answer in time: do not open the device behind it."""
+
+
 def request(op, **fields):
-    """Ask a running service; None when there is none, so the caller can open the device itself."""
+    """Ask a running service; None when there is none, so the caller can open the device itself.
+
+    A test runs for the whole sequence before it answers, so its wait is as long as that; a socket that
+    exists but does not answer raises ServiceTimeout rather than letting the caller open the device.
+    """
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(2)
+            client.settimeout(max(2, int(fields.get("seconds", 60)) + 15) if op == "test" else 2)
             client.connect(str(SOCKET))
             client.sendall((json.dumps({"op": op, **fields}) + "\n").encode())
             data = b""
@@ -76,6 +84,10 @@ def request(op, **fields):
                 if not chunk:
                     break
                 data += chunk
+    except (BrokenPipeError, ConnectionRefusedError, FileNotFoundError):
+        return None
+    except socket.timeout:
+        raise ServiceTimeout("The display service did not answer in time.") from None
     except OSError:
         return None
     try:
@@ -149,8 +161,26 @@ def serve(stop=None, socket_path=None):
                     continue
                 if request.get("op") == "close":
                     break
-                if panel is None:
-                    panel = Panel()
+                if request.get("op") != "status" and panel is None:
+                    try:
+                        panel = Panel()
+                    except Exception as exc:  # noqa: BLE001 - a missing or busy device must not kill the service
+                        try:
+                            conn.sendall(
+                                (
+                                    json.dumps(
+                                        {
+                                            "ok": False,
+                                            "message": f"The display could not be opened: {str(exc)[:160]}",
+                                            "on": None,
+                                        }
+                                    )
+                                    + "\n"
+                                ).encode()
+                            )
+                        except OSError:
+                            pass
+                        continue
                 _answer(conn, panel, request)
         if panel is not None:
             panel.close()
