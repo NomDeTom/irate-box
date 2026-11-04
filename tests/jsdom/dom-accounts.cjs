@@ -114,7 +114,7 @@ function page(file, url, fetcher, scripts) {
     if (o.method === 'POST' && u === '/admin/settings') { const b = JSON.parse(o.body); sposted.push(b); return json(b); }
     if (u === '/admin/settings') return json({ saves_cross_device: false });
     return json({}, 404);
-  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
+  }, ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait(300); d = a.d;
   check('admin: a side-bar entry, the levels as set, the counts', [...d.querySelectorAll('.admin-side-list a')].some((x) => x.hash === '#accounts')
     && d.getElementById('accounts-settings').elements.signup.value === 'apply' && /1 user \(1 administrator\), 1 waiting for approval, 0 disabled\./.test(t(d.getElementById('accounts-counts'))));
@@ -165,7 +165,7 @@ function page(file, url, fetcher, scripts) {
     if (u === '/admin/accounts') return json(state);
     if (u === '/admin/settings') return json({ saves_cross_device: false });
     return json({}, 404);
-  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
+  }, ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait(300);
   reachChip(a2.d, 'Local scripts only').click(); await wait();
   const save2 = a2.d.querySelector('#accounts-admin-login-choices .aw-save');

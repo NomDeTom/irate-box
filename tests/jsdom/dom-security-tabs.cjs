@@ -10,7 +10,7 @@ const fs = require('fs');
 const REPO = path.resolve(__dirname, '../..');
 const WEB = `${REPO}/web`;
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const hotspot = JSON.parse(fs.readFileSync(`${__dirname}/hotspot-fixture.json`, 'utf8'));
 const now = Math.floor(Date.now() / 1000);
 const F = (id, title, status, actions = []) => ({ id, title, status, summary: 'd', fix: '', actions });

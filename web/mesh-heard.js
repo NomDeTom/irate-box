@@ -7,7 +7,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const view = { state: $('mesh-heard-state'), counts: $('mesh-heard-counts'), packets: $('mesh-heard-packets') };
-  const el = AW.el;
+  const el = window.HubEl.el;
   let poll = null;
 
   function render(data) {

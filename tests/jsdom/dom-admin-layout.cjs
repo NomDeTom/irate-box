@@ -7,7 +7,7 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const fs = require('fs');
 const WEB = require('path').resolve(__dirname, '../../web');
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push('jsdom: ' + e.message); });

@@ -14,7 +14,7 @@ if (require('child_process').spawnSync('curl', ['-s', '-o', '/dev/null', '-m', '
   process.exit(0);
 }
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const dom = new JSDOM(html, { url: BASE + '/admin/#overview', runScripts: 'outside-only', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
 const w = dom.window, d = w.document;
 const kept = new Map();

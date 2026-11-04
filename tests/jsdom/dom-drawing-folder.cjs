@@ -111,7 +111,7 @@ function restore(file, body) { if (body === null) fs.rmSync(file, { force: true 
     if (u === '/admin/apps') return json({ apps: adminApps() });
     return json({}, 404);
   };
-  ['admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
+  ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
   await new Promise((r) => setTimeout(r, 300));
   const folder = ad.querySelector('.folder-block[data-folder="drawing"]');
   check('the Drawing entry has the folder\'s place on the hub', !!/The Drawing folder on the hub/.test(text(folder)) && !!folder.querySelector('[data-setting="shown"] .chip-group'), text(folder));

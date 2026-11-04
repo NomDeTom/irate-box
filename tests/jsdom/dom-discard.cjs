@@ -10,7 +10,7 @@ const fs = require('fs');
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const dom = new JSDOM(html, { url: 'http://box.local/admin/#overview', runScripts: 'outside-only', virtualConsole: new VirtualConsole(), pretendToBeVisual: true });
 const w = dom.window, d = w.document;
 let sent = 0;

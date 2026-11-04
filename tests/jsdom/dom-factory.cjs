@@ -11,7 +11,7 @@ const fs = require('fs');
 // The page's script tags stay: with runScripts 'outside-only' jsdom loads and runs none of them.
 // The Factory's own page: /admin/factory.html, its code in factory.js (after admin-widgets.js, as the page loads them).
 const html = fs.readFileSync(`${WEB}/admin-factory.html`, 'utf8');
-const js = ['admin-widgets.js', 'factory.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'factory.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const now = Math.floor(Date.now() / 1000);
 const snap = (over = {}) => Object.assign({
   sources: [{ name: 'meshtastic-firmware', area: 'public', mirror: true, upstream: 'https://github.com/meshtastic/firmware' },

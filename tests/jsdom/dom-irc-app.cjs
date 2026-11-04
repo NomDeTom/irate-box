@@ -65,7 +65,7 @@ async function scenario(option, id, member, desc, browser) {
     if (u === '/admin/settings') return new Response(JSON.stringify({}), { status: 200 });
     return new Response('{}', { status: 200 });
   };
-  ['admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
+  ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
   await new Promise((r) => setTimeout(r, 400));
   const links = [...d.querySelectorAll('.admin-side-list a')].filter((a) => /IRC chat/.test(text(a)));
   check('  one IRC entry in the admin menu', links.length === 1 && links[0].getAttribute('href') === `#page-app-${app[0].id}`, links.map((a) => a.outerHTML));

@@ -26,7 +26,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const seedF = crypto.randomBytes(32).toString('hex'), seedS = crypto.randomBytes(32).toString('hex');
   const f = await (await fetch(`${BASE}/api/drop`, { method: 'POST', headers: { 'X-Drop-Name': 'a.txt', 'X-Lock-New': `${walk(seedF, 4096)}:4096`, 'Content-Type': 'application/octet-stream' }, body: 'hi' })).json();
   const s = await (await fetch(`${BASE}/api/saves`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Lock-New': `${walk(seedS, 4096)}:4096` }, body: JSON.stringify({ id: 'pic1', kind: 'excalidraw', name: 'my drawing', state: {} }) })).json();
-  const A = page('locks.html', ['admin-widgets.js', 'qrcode.js', 'lock.js', 'ask.js', 'locks.js'], { [`hublock:drop:${f.id}`]: seedF, 'hublock:saves:pic1': seedS, 'hublock:drop:gone123': seedF });
+  const A = page('locks.html', ['el.js', 'qrcode.js', 'lock.js', 'ask.js', 'locks.js'], { [`hublock:drop:${f.id}`]: seedF, 'hublock:saves:pic1': seedS, 'hublock:drop:gone123': seedF });
   await sleep(800);
   const rows = [...A.document.querySelectorAll('#locks-list li')];
   rows.forEach((r) => console.log('ROW:', r.textContent.replace(/\s+/g, ' ').trim().slice(0, 110)));
@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const key = fileRow.querySelector('input').value;
   console.log('KEY shown:', /^hublock:drop:[A-Za-z0-9_-]+:[0-9a-f]{64}$/.test(key), '| QR svg:', !!fileRow.querySelector('.locks-qr svg'));
   // browser B adds the key and can then remove the file from the drop page
-  const B = page('locks.html', ['admin-widgets.js', 'qrcode.js', 'lock.js', 'ask.js', 'locks.js']);
+  const B = page('locks.html', ['el.js', 'qrcode.js', 'lock.js', 'ask.js', 'locks.js']);
   await sleep(300);
   B.document.getElementById('locks-import').value = 'hublock:drop:bad';
   B.document.getElementById('locks-add').click();
