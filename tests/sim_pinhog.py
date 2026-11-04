@@ -112,15 +112,27 @@ check(
     compiled[-1],
 )
 (T / "boot_id").write_text("boot-two\n")
+header[1].update(used=True, consumer="irate-box-pin18")
+(T / "state" / "control" / "pins.json").write_text(json.dumps({"header": header}))
 hogs = {item["pin"]: item for item in pinhog.assignments()}
 check(
-    "  a restart makes them held, not pending, and not merely an active owner",
+    "  a restart makes an applied hog held, not pending, and not merely an active owner",
     pinhog.pending() is False
     and hogs[18]["state"] == "holding"
     and hogs[18]["holding"] is True
     and hogs[18]["owner"] == "pinhog"
-    and hogs[22]["state"] == "holding",
+    and hogs[18]["active_owner"] == "irate-box-pin18"
+    and hogs[22]["state"] == "idle",
     hogs,
+)
+said = pinhog.add(18, "out", "none", 0)
+check(
+    "  our own applied hog can be changed",
+    said["id"] == "pinhog.added.out"
+    and "irate-box-pin18" in compiled[-1]
+    and "output-low;" in compiled[-1]
+    and pinhog.load()[18]["mode"] == "output",
+    (said, pinhog.load()),
 )
 pinhog.remove(18)
 check(

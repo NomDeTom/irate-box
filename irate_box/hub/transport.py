@@ -12,6 +12,8 @@ A request for root says how it came (`over`):
   hub       not from a request at all: the hub's own work
 Stdlib only."""
 
+import re
+
 # root's POLICY_ACTIONS (hub_control.py) except two: admin-gate, which takes nothing from the request (it writes the
 # gates from the accounts as they are), and share-allow, which a guest's agreement on the hotspot's sheet asks for
 # (over plain HTTP, as every guest page), within the level the administrator chose. Plus installing an update and
@@ -59,8 +61,18 @@ HTTPS_ONLY = frozenset(
     )
 )
 TRUSTED = ("https", "loopback", "hub")
+# Choices behind hw-set that change a boot file. hw-set itself stays available over plain HTTP for the
+# USB and display settings; these do not.
+BOOT_CHOICES_RE = re.compile(r"^crashwatch-watchdog:(on|off)$")
 
 
 def allowed(action, over):
     """Whether root may act on `action` from a request that came `over` this way."""
     return action not in HTTPS_ONLY or over in TRUSTED
+
+
+def allowed_choice(action, choice, over):
+    """allowed(), and for hw-set a boot-file choice needs HTTPS too."""
+    if action == "hw-set" and BOOT_CHOICES_RE.fullmatch(str(choice or "")):
+        return over in TRUSTED
+    return allowed(action, over)

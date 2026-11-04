@@ -93,7 +93,8 @@ pins = {
         {"pin": 1, "type": "3v3", "name": "3V3_OUT", "used": False},
         {"pin": 8, "type": "gpio", "name": "GPIO0_C6", "used": True, "consumer": "serial1", "function": "uart"},
         {"pin": 10, "type": "gpio", "name": "GPIO0_C7", "used": False},
-        {"pin": 18, "type": "gpio", "name": "GPIO0_B4", "used": False},
+        {"pin": 26, "type": "gpio", "name": "GPIO0_B1", "used": False},
+        {"pin": 28, "type": "gpio", "name": "GPIO1_D3", "used": True, "consumer": "irate-box-lcd"},
         {"pin": 27, "type": "gpio", "name": "GPIO1_B1", "used": True, "consumer": "spidev", "function": "spi1"},
         {"pin": 35, "type": "gpio", "name": "GPIO0_C0", "used": True, "consumer": "other-driver", "function": "spi1"},
     ],
@@ -128,16 +129,18 @@ check(
 bypin = {item["pin"]: item for item in data["assignments"]}
 check(
     "assignments: the display's pins stay assigned while D/C and RST are released",
-    bypin[18]["role"] == "Display D/C"
-    and bypin[18]["state"] == "idle"
-    and bypin[22]["state"] == "idle"
+    bypin[26]["role"] == "Display D/C"
+    and bypin[26]["state"] == "idle"
+    and bypin[28]["state"] == "active"
+    and bypin[28]["holding"] is True
+    and bypin[28]["active_owner"] == "irate-box-lcd"
     and bypin[27]["state"] == "active"
     and bypin[27]["owner"] == "display"
     and bypin[27]["active_owner"] == "spidev"
     and bypin[27]["holding"] is False
     and bypin[35]["state"] == "conflict"
     and bypin[35]["source"] == "lcdtouch",
-    [bypin.get(n) for n in (18, 22, 27, 35)],
+    [bypin.get(n) for n in (26, 28, 27, 35)],
 )
 check(
     "  own serial: its TX taken and active, RX assigned but free",
@@ -178,6 +181,7 @@ check(
 # A board without a known header, and a module that cannot read its part: the rest still arrives.
 hardening.board = lambda: "other"
 pinmap.model = lambda: "Acme Widget"
+lcdtouch.status = lambda: {"supported": False}
 rtc.status = lambda: {"config": {"chip": "ds3231"}}
 data = hardware.status()
 check(
@@ -186,6 +190,12 @@ check(
     data["board"],
 )
 check("  a clock module found", data["rtc"] == {"found": True})
+check(
+    "  a board without the panel: no display mode and no display pins",
+    data["display"] == {"supported": False, "on": False, "pending": False, "pixels": [], "driver": ""}
+    and not [item for item in data["assignments"] if item["source"] == "lcdtouch"],
+    (data["display"], data["assignments"]),
+)
 real_led = led.status
 led.status = lambda: (_ for _ in ()).throw(OSError("no LED class"))
 data = hardware.status()

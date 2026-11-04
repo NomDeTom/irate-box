@@ -99,7 +99,7 @@ def _assignment(pin, role, by, source, row, active=False, tokens=()):
         "state": state,
         "source": source,
         "active_owner": active_owner,
-        "holding": False,
+        "holding": state == "active" and "irate-box" in active_owner.lower(),
     }
 
 
@@ -117,19 +117,21 @@ def assignments():
     }
     lcd = _module("lcdtouch")
     lcd_state = lcd.status()
-    out = [
-        _assignment(
-            item.get("pin"),
-            item.get("signal") or item.get("role") or "display",
-            "display",
-            "lcdtouch",
-            header.get(item.get("pin")),
-            active=bool(lcd_state.get("active")),
-            tokens=("spidev", "ili9488", "ads7846", "xpt2046", "spi1"),
-        )
-        for item in (getattr(lcd, "PINS", []) or [])
-        if isinstance(item, dict) and isinstance(item.get("pin"), int)
-    ]
+    out = []
+    if lcd_state.get("supported"):
+        out = [
+            _assignment(
+                item.get("pin"),
+                item.get("signal") or item.get("role") or "display",
+                "display",
+                "lcdtouch",
+                header.get(item.get("pin")),
+                active=bool(lcd_state.get("active")),
+                tokens=("spidev", "ili9488", "ads7846", "xpt2046", "spi1"),
+            )
+            for item in (getattr(lcd, "PINS", []) or [])
+            if isinstance(item, dict) and isinstance(item.get("pin"), int)
+        ]
     serial = _module("ownserial").status()
     if serial.get("on"):
         for pin, role in ((8, "UART TX"), (10, "UART RX")):
@@ -181,12 +183,14 @@ def overlays():
 def display():
     """The SPI1 panel: its overlay's state and whether the test card is on it."""
     st = _module("lcdtouch").status()
+    supported = bool(st.get("supported"))
+    panel = _module("lcdpanel")
     return {
-        "supported": bool(st.get("supported")),
-        "on": bool(st.get("display_on")),
-        "pending": bool(st.get("pending")),
-        "pixels": [480, 320],
-        "driver": "ili9488",
+        "supported": supported,
+        "on": bool(st.get("display_on")) if supported else False,
+        "pending": bool(st.get("pending")) if supported else False,
+        "pixels": [panel.W, panel.H] if supported else [],
+        "driver": getattr(panel, "DRIVER", "ili9488") if supported else "",
     }
 
 
@@ -510,18 +514,21 @@ def set_overlay_names(add=None, remove=None, boot=None, path=None):
 
 
 def write_dtbo(name, dts, run=None, boot=None):
-    """Compile one overlay to /boot/overlay-user/<name>.dtbo. A failure leaves nothing behind."""
+    """Compile one overlay beside its final name, then replace it: a failure keeps the old .dtbo."""
     if not OVERLAY_RE.match(name or ""):
         raise OverlayError("bad-name", str(name))
     path = _overlay_dir(boot) / f"{name}.dtbo"
     path.parent.mkdir(parents=True, exist_ok=True)
-    argv = ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(path), "-"]
+    tmp = path.with_name(path.name + ".new")
+    tmp.unlink(missing_ok=True)
+    argv = ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(tmp), "-"]
     said = (run or _dtc)(argv, dts)
     if said.returncode:
-        path.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         if said.returncode == 127:
             raise OverlayError("dtc-missing", said.stderr.strip()[:160])
         raise OverlayError("dtc-failed", said.stderr.strip()[:160])
+    os.replace(tmp, path)
     return path
 
 

@@ -267,9 +267,10 @@ def assignments():
     for pin, spec in sorted(load().items()):
         row = _row(pin) or {}
         consumer = str(row.get("consumer") or "")
-        if row.get("used") and consumer != f"irate-box-pin{pin}":
+        ours = row.get("used") and consumer == f"irate-box-pin{pin}"
+        if row.get("used") and not ours:
             state = "conflict"
-        elif waiting:
+        elif waiting or not ours:
             state = "idle"
         else:
             state = "holding"

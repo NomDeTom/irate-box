@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 W, H = 480, 320
+DRIVER = "ili9488"
 DC_CHIP = "/dev/gpiochip0"
 DC = 9
 RST_CHIP = "/dev/gpiochip1"

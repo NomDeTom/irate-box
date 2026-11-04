@@ -9403,7 +9403,7 @@ def main():
                         )
                     )
                 policy_check(what)
-                if not transport.allowed(what, req.get("over")):
+                if not transport.allowed_choice(what, req.get("choice"), req.get("over")):
                     # The hub refuses these over plain HTTP before it queues them; this catches a route it missed.
                     raise Refused(
                         M(

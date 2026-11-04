@@ -92,10 +92,26 @@ _PRIVILEGED = [
 ]
 _PATH_ACTIONS = {
     "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
-    "hw-set": {"reads": [], "writes": ["control/hardware.json"]},
+    "hw-set": {
+        "reads": [],
+        "writes": [
+            "control/hardware.json",
+            "etc/hub/crashwatch.json",
+            "boot/overlay-user/irate-box-watchdog.dtbo",
+            "boot/armbianEnv.txt",
+        ],
+    },
     "pins": {"reads": [], "writes": ["control/pins.json", "control/lcdtouch.json"]},
     "pins-gpio": {"reads": [], "writes": ["control/hardware.json"]},
-    "pins-hog": {"reads": [], "writes": ["control/hardware.json"]},
+    "pins-hog": {
+        "reads": [],
+        "writes": [
+            "control/hardware.json",
+            "etc/hub/pin-hogs.json",
+            "boot/overlay-user/irate-box-pin-hogs.dtbo",
+            "boot/armbianEnv.txt",
+        ],
+    },
     "pins-overlay": {"reads": [], "writes": ["control/lcdtouch.json"]},
     "pins-display": {"reads": [], "writes": ["control/lcdtouch.json"]},
     "pins-test": {"reads": [], "writes": ["control/lcdtouch.json"]},

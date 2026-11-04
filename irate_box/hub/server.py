@@ -3292,7 +3292,7 @@ def control_request(req):
     """Queue a request for hub_control.py; returns its id, which its answer will carry. Raises NeedsHTTPS for an
     HTTPS-only action asked over plain HTTP, before anything is queued."""
     over = request_over()
-    if not transport.allowed(req.get("action"), over):
+    if not transport.allowed_choice(req.get("action"), req.get("choice"), over):
         raise NeedsHTTPS(req.get("action"))
     CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
     rid = secrets.token_hex(8)
@@ -7785,7 +7785,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = payload.get("mode")
             bias = payload.get("bias", "none")
             value = payload.get("value")
-            level = value is None or (type(value) is int and value in (0, 1))
+            level = (mode == "in" and value is None) or (mode == "out" and type(value) is int and value in (0, 1))
             if act == "pins":
                 self.send_json(202, {"id": control_request({"action": "pins"})})
             elif (

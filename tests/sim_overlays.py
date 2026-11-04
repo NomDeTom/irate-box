@@ -86,16 +86,25 @@ check("the compiler writes the .dtbo where the boot loader finds it", said == dt
 hardware.remove_dtbo("irate-box-serial")
 check("  and it is taken away again", not dtbo.exists())
 
+hardware.write_dtbo("irate-box-serial", "old dts", run=fake_dtc(True))
+before = dtbo.read_bytes()
 try:
     hardware.write_dtbo("irate-box-serial", "bad dts", run=fake_dtc(False))
     kind, detail = None, ""
 except hardware.OverlayError as exc:
     kind, detail = exc.kind, exc.detail
 check(
-    "a compiler failure: refused, its detail kept, nothing left behind",
-    kind == "dtc-failed" and detail == "syntax error" and not dtbo.exists(),
-    (kind, detail),
+    "a compiler failure: refused, its detail kept, and the working .dtbo still there",
+    kind == "dtc-failed" and detail == "syntax error" and dtbo.read_bytes() == before,
+    (kind, detail, dtbo.read_bytes() if dtbo.exists() else None),
 )
+hardware.remove_dtbo("irate-box-serial")
+try:
+    hardware.write_dtbo("irate-box-serial", "bad dts", run=fake_dtc(False))
+    kind = None
+except hardware.OverlayError as exc:
+    kind = exc.kind
+check("  with no previous file, a failure leaves nothing behind", kind == "dtc-failed" and not dtbo.exists(), kind)
 
 try:
     hardware.write_dtbo(

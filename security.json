@@ -165,7 +165,10 @@
       "policy": false,
       "reads": [],
       "writes": [
-        "control/hardware.json"
+        "control/hardware.json",
+        "etc/hub/crashwatch.json",
+        "boot/overlay-user/irate-box-watchdog.dtbo",
+        "boot/armbianEnv.txt"
       ]
     },
     "hw-status": {
@@ -350,7 +353,10 @@
       "policy": false,
       "reads": [],
       "writes": [
-        "control/hardware.json"
+        "control/hardware.json",
+        "etc/hub/pin-hogs.json",
+        "boot/overlay-user/irate-box-pin-hogs.dtbo",
+        "boot/armbianEnv.txt"
       ]
     },
     "pins-overlay": {
