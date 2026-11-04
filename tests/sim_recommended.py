@@ -186,7 +186,7 @@ check(
 )
 level["now"] = "gentle"
 check("  nothing left to offer: no finding", not health._recommended_findings())
-check("the choice passes the doctor's check", health.CHOICE_RE.match("recommended-apply") is not None)
+check("the choice passes the doctor's check", health.CHOICES_RE.match("recommended-apply") is not None)
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)

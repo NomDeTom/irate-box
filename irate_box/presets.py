@@ -151,7 +151,7 @@ def entry_errors(entry, hub_keys=None, addons=None, kits=None):
             out.append("a hub entry needs a value")
     elif kind == "choice":
         choice = entry.get("choice")
-        if not isinstance(choice, str) or not choices.CHOICE_RE.match(choice):
+        if not isinstance(choice, str) or not choices.CHOICES_RE.match(choice):
             out.append(f"choice {choice!r} is not one the box accepts")
     elif kind == "accounts":
         if entry.get("key") not in ("signup", "http"):

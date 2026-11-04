@@ -35,7 +35,7 @@ journal is on the onboard flash where one is free, else in memory or on the card
 minutes).
 
 A guard, `tests/sim_presets.py`, checks that every entry is a hub setting the server keeps, a
-choice `choices.CHOICE_RE` accepts, an add-on `install.sh` can add, or a toolkit this box ships.
+choice `choices.CHOICES_RE` accepts, an add-on `install.sh` can add, or a toolkit this box ships.
 The hub names the preset to root; root resolves it from `presets.d/` with its own facts, and
 checks every choice again before it acts.
 

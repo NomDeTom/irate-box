@@ -414,7 +414,7 @@ check(
 )
 check(
     "the choices pass the doctor's check",
-    all(health.CHOICE_RE.match(c) for c in ("card-accounting-on", "arch-remove:armhf")),
+    all(health.CHOICES_RE.match(c) for c in ("card-accounting-on", "arch-remove:armhf")),
 )
 ran.clear()
 said = health.fix("card-accounting-on")
@@ -438,7 +438,7 @@ check(
 )
 check(
     "  the setting's choices pass the shared pattern",
-    all(health.CHOICE_RE.match(c) for c in ("card-set:card_accounting:on", "card-set:card_accounting:off")),
+    all(health.CHOICES_RE.match(c) for c in ("card-set:card_accounting:on", "card-set:card_accounting:off")),
 )
 ran.clear()
 said = health.fix("arch-remove:armhf")
@@ -485,12 +485,12 @@ check(
 check(
     "  each option's choice passes the doctor's check and the hub's",
     all(
-        health.CHOICE_RE.match(o["choice"]) and o["choice"].startswith("card-set:")
+        health.CHOICES_RE.match(o["choice"]) and o["choice"].startswith("card-set:")
         for g in groups.values()
         for o in g["options"]
     ),
 )
-check("  a value no setting has: refused by the check", not health.CHOICE_RE.match("card-set:apt_cache:disk"))
+check("  a value no setting has: refused by the check", not health.CHOICES_RE.match("card-set:apt_cache:disk"))
 unit = T / "systemd" / "system" / health.APT_RAM_UNIT
 (T / "apt-cache" / "pkgcache.bin").write_text("old")
 ran.clear()

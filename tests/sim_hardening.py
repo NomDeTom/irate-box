@@ -317,9 +317,9 @@ check(
 # The Recovery page's choices go through the root helper's one repair route.
 check(
     "the Recovery choices are accepted by the Box doctor's repair check",
-    health.CHOICE_RE.match("card-set:filesystem:btrfs")
-    and health.CHOICE_RE.match("card-set:ab:tryboot")
-    and not health.CHOICE_RE.match("card-set:ab:never"),
+    health.CHOICES_RE.match("card-set:filesystem:btrfs")
+    and health.CHOICES_RE.match("card-set:ab:tryboot")
+    and not health.CHOICES_RE.match("card-set:ab:never"),
 )
 said = health.fix("card-set:filesystem:f2fs")
 check(
@@ -344,8 +344,8 @@ from irate_box.hub import server
 choices = [o["choice"] for g in health.card_groups() + health.hardening_groups() for o in g["options"]]
 check(
     "every choice the page offers is accepted by the hub's health check",
-    all(server.HEALTH_CHOICE_RE.match(c) for c in choices),
-    [c for c in choices if not server.HEALTH_CHOICE_RE.match(c)],
+    all(server.HEALTH_CHOICES_RE.match(c) for c in choices),
+    [c for c in choices if not server.HEALTH_CHOICES_RE.match(c)],
 )
 
 print(f"failures: {fails}")

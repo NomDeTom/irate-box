@@ -72,7 +72,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from irate_box.choices import CHOICE_RE
+from irate_box.choices import CHOICES_RE
 from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
@@ -8831,7 +8831,7 @@ def doctor_settings():
 
 
 def fix(choice):
-    if not CHOICE_RE.match(choice):
+    if not CHOICES_RE.match(choice):
         raise Refused(M("repair.unknown", "The Box doctor has no repair called {choice}.", choice=choice))
     kind, _, arg = choice.partition(":")
     if kind == "nm-install":

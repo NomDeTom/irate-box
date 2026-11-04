@@ -3,7 +3,7 @@
 """Root's half of the quick presets: apply a list of existing choices, and undo the last application.
 
 The hub decides what a preset changes and checks every entry against the shared data files
-(irate_box/presets.py); root checks each choice again with choices.CHOICE_RE and applies it
+(irate_box/presets.py); root checks each choice again with choices.CHOICES_RE and applies it
 through the same function a hand change uses (health.fix, or security.fix for the update
 pattern). One record of the whole application is kept in the box's state folder, with each
 setting's value before and after, so Undo can put it back unless the administrator has changed
@@ -139,7 +139,7 @@ def apply_choices(choices_list, save=True):
     """Apply each choice in turn. One that fails leaves the others to go ahead. Returns the record."""
     entries, said = [], []
     for choice in choices_list or []:
-        if not isinstance(choice, str) or not choices.CHOICE_RE.match(choice):
+        if not isinstance(choice, str) or not choices.CHOICES_RE.match(choice):
             entries.append(
                 {
                     "choice": str(choice)[:120],
@@ -201,7 +201,7 @@ def undo():
             kept.append({"choice": choice, "now": now, "after": after})
             continue
         inverse = _inverse(choice, before)
-        if inverse is None or not choices.CHOICE_RE.match(inverse):
+        if inverse is None or not choices.CHOICES_RE.match(inverse):
             continue
         try:
             message = _apply(inverse)

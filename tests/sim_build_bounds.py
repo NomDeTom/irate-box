@@ -154,7 +154,7 @@ check(
 )
 check(
     "the new actions pass the shared choice pattern",
-    all(health.CHOICE_RE.match(c) for c in ("build-bounds-install", "memguard-kill-builds")),
+    all(health.CHOICES_RE.match(c) for c in ("build-bounds-install", "memguard-kill-builds")),
 )
 
 print("all passed" if not fails else f"{fails} failures")
