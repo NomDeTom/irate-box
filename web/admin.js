@@ -11877,57 +11877,46 @@ async function addDoc(doc, button) {
 function docsLine(m) {
   const docs = docsOf(m);
   if (!docs.length) return null;
-  const line = el("p", { className: "inv-facts" });
+  const line = el("p", { className: "library-buttons docs-line" });
   for (const doc of docs) {
     const st = docState(doc);
-    const bits = [el("span", { className: "inv-fact", textContent: `Docs: ${doc.title}` })];
+    const bits = [el("span", { className: "setting-name", textContent: `Docs: ${doc.title}` })];
     if (st.onBox) {
       bits.push(
+        AW.pill("On the box", "ok"),
         el("a", {
-          className: "inv-fact",
+          className: "button-link small",
           href: `/wiki/content/${encodeURIComponent(doc.book)}/`,
           target: "_blank",
           rel: "noopener",
           textContent: "Open",
         }),
-        el("span", {
-          className: "inv-fact",
-          textContent: "Kept up to date with Kiwix → Books",
-        }),
+        el("span", { className: "setting-desc", textContent: "Kept up to date with Kiwix → Books" }),
       );
     } else if (st.fetching) {
-      bits.push(el("span", { className: "inv-fact", textContent: "Downloading" }));
+      bits.push(AW.pill("Downloading", "warn"));
     } else if (st.kiwixReady === false) {
-      bits.push(el("span", { className: "inv-fact bad", textContent: "Needs Kiwix" }));
-      const add = actionButton(
-        "Add Kiwix and the book",
-        (event) => addDoc(doc, event.currentTarget),
-        { dataset: { wait: `docs:${doc.book}` } },
+      bits.push(AW.pill("Needs Kiwix", "bad"));
+      bits.push(
+        actionButton("Add Kiwix and the book", (event) => addDoc(doc, event.currentTarget), {
+          className: "small",
+          dataset: { wait: `docs:${doc.book}` },
+        }),
       );
-      bits.push(add);
     } else if (st.added) {
       bits.push(
-        el("span", {
-          className: "inv-fact",
-          textContent: "Added, not downloaded yet",
+        AW.pill("Added, not downloaded yet", "info"),
+        actionButton("Download now", (event) =>
+          libAct(`docs:${doc.book}`, { action: "update", names: [doc.book] }, event.currentTarget), {
+          className: "small",
+          dataset: { wait: `docs:${doc.book}` },
         }),
-        actionButton(
-          "Download now",
-          (event) =>
-            libAct(
-              `docs:${doc.book}`,
-              { action: "update", names: [doc.book] },
-              event.currentTarget,
-            ),
-          { dataset: { wait: `docs:${doc.book}` } },
-        ),
       );
     } else {
       bits.push(
-        el("span", { className: "inv-fact", textContent: `${doc.size_mb} MB` }),
-      );
-      bits.push(
+        el("span", { className: "setting-desc", textContent: `${doc.size_mb} MB` }),
         actionButton("Add", (event) => addDoc(doc, event.currentTarget), {
+          className: "small",
           dataset: { wait: `docs:${doc.book}` },
         }),
       );
