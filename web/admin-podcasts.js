@@ -16,7 +16,7 @@
   // A fault in this page's own script is not the box talking: say so plainly, and keep the box's own words.
   const fault = (e) => {
     const text = e && e.message ? String(e.message) : String(e);
-    return /^the box answered/i.test(text)
+    return (e && e.box) || /^the box answered/i.test(text)
       ? text
       : "This part of the page could not be drawn: a fault in the page, not the box. Reload; if it stays, it is a bug.";
   };
@@ -33,7 +33,11 @@
       body: JSON.stringify(body),
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `the box answered ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(data.error || `the box answered ${response.status}`);
+      error.box = true;
+      throw error;
+    }
     snap = data.settings ? data : await get();
     draw();
     return data;
@@ -41,7 +45,11 @@
 
   async function get() {
     const response = await fetch("/admin/podcasts");
-    if (!response.ok) throw new Error(`the box answered ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(`the box answered ${response.status}`);
+      error.box = true;
+      throw error;
+    }
     return response.json();
   }
 
@@ -257,16 +265,16 @@
     const was = panel.querySelector("input:focus, textarea:focus");
     if (was) return; // do not redraw under a field being typed in: the next poll does
     note.hidden = true;
-    panel.replaceChildren(
+    panel.replaceChildren(...[
       el("p", { className: "setting-desc", textContent: `Using ${size(snap.used)} on the box; ${snap.free_mb} MB free.` }),
       settingsForm(),
       el("h3", { textContent: "Feeds" }),
       ...feedView(),
       el("p", { className: "library-actions" },
-        actionButton("Check all now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)))),
+        actionButton("Check all now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(fault(e), true)))),
       opml(),
       snap.running ? el("p", { className: "setting-desc", textContent: "The librarian is working…" }) : null,
-    );
+    ].filter((node) => node !== null && node !== undefined));
   }
 
   function poll() {
