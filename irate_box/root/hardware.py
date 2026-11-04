@@ -253,18 +253,26 @@ def _dtc(argv, inp=None):
     return subprocess.run(argv, capture_output=True, text=True, input=inp)  # noqa: TID251
 
 
-def overlay_names(path=None):
+def _env_path(boot=None):
+    return Path(boot) / "armbianEnv.txt" if boot else ENV
+
+
+def _overlay_dir(boot=None):
+    return Path(boot) / "overlay-user" if boot else OVERLAY_DIR
+
+
+def overlay_names(boot=None, path=None):
     """The names on user_overlays=, in order; the last such line wins, as the boot loader reads it."""
-    text = _read(Path(path or ENV))
+    text = _read(Path(path) if path else _env_path(boot))
     for line in reversed(text.splitlines()):
         if line.startswith("user_overlays="):
             return line.split("=", 1)[1].split()
     return []
 
 
-def set_overlay_names(add=None, remove=None, path=None):
+def set_overlay_names(add=None, remove=None, boot=None, path=None):
     """user_overlays= with `add` put in (once) or `remove` taken out (every time). Returns the names now."""
-    env = Path(path or ENV)
+    env = Path(path) if path else _env_path(boot)
     try:
         lines = env.read_text().splitlines()
     except OSError:
@@ -290,11 +298,11 @@ def set_overlay_names(add=None, remove=None, path=None):
     return names
 
 
-def write_dtbo(name, dts, run=None):
+def write_dtbo(name, dts, run=None, boot=None):
     """Compile one overlay to /boot/overlay-user/<name>.dtbo. A failure leaves nothing behind."""
     if not OVERLAY_RE.match(name or ""):
         raise OverlayError("bad-name", str(name))
-    path = OVERLAY_DIR / f"{name}.dtbo"
+    path = _overlay_dir(boot) / f"{name}.dtbo"
     path.parent.mkdir(parents=True, exist_ok=True)
     argv = ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(path), "-"]
     said = (run or _dtc)(argv, dts)
@@ -306,23 +314,23 @@ def write_dtbo(name, dts, run=None):
     return path
 
 
-def remove_dtbo(name):
+def remove_dtbo(name, boot=None):
     """Take one overlay file away, if it is there."""
-    path = OVERLAY_DIR / f"{name}.dtbo"
+    path = _overlay_dir(boot) / f"{name}.dtbo"
     path.unlink(missing_ok=True)
     return path
 
 
-def add_overlay(name, dts=None, run=None):
+def add_overlay(name, dts=None, run=None, boot=None):
     """Write the .dtbo when there is one, then add the name to user_overlays=."""
     if dts is not None:
-        write_dtbo(name, dts, run=run)
-    return set_overlay_names(add=name)
+        write_dtbo(name, dts, run=run, boot=boot)
+    return set_overlay_names(add=name, boot=boot)
 
 
-def remove_overlay(name):
+def remove_overlay(name, boot=None):
     """Take the .dtbo away and the name off user_overlays=."""
-    remove_dtbo(name)
-    if ENV.is_file():
-        return set_overlay_names(remove=name)
-    return overlay_names()
+    remove_dtbo(name, boot=boot)
+    if _env_path(boot).is_file():
+        return set_overlay_names(remove=name, boot=boot)
+    return overlay_names(boot=boot)
