@@ -3530,6 +3530,7 @@ body.drop > section + section {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 11rem;
   position: relative;
   padding: 0;
   gap: 0;
@@ -3582,6 +3583,9 @@ body.drop > section + section {
 .source-state {
   font-size: 0.82rem;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .source-head .source-facts {
   flex-wrap: nowrap;
