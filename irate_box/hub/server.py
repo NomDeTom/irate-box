@@ -3533,6 +3533,16 @@ def update_progress():
     return data
 
 
+def hardware_snapshot():
+    """/admin/hardware: the hardware status the root helper published (root/hardware.py); the pages read it
+    without asking the Box doctor for a scan."""
+    try:
+        data = json.loads((CONTROL_DIR / "hardware.json").read_text())
+    except (OSError, ValueError):
+        data = {}
+    return data if isinstance(data, dict) else {}
+
+
 def pins_snapshot():
     """/admin/pins: the last pin map read (root/pinmap.py's control/pins.json), or none yet; the SPI1 LCD and touch
     overlay's state (root/lcdtouch.py's control/lcdtouch.json) too."""
@@ -6126,6 +6136,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, rkboard_snapshot())
             return
 
+        if path == "/admin/hardware":
+            self.send_json(200, hardware_snapshot())
+            return
+
         if path == "/admin/pins":
             self.send_json(200, pins_snapshot())
             return
@@ -7750,6 +7764,13 @@ class Handler(BaseHTTPRequestHandler):
                     202,
                     {"id": control_request({"action": "addon", "addon": aid, "on": payload["on"]})},
                 )
+            return
+
+        if path == "/admin/hardware":
+            if payload.get("action") == "status":
+                self.send_json(202, {"id": control_request({"action": "hw-status"})})
+            else:
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
 
         if path == "/admin/pins":

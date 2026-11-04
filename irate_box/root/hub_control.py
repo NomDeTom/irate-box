@@ -80,6 +80,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       "rerun-install": install.sh again from a copy of the installed code, recorded options;
       "rerun-install-port-80" the same with the hub moved to port 80.
       Then the Box doctor looks again.
+  {"id": ..., "action": "hw-status"}
+      Every hardware part this box owns read again and published to control/hardware.json
+      (hardware.py): the pages read that one file instead of waiting for a Box doctor scan.
   {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
@@ -218,6 +221,7 @@ from irate_box.msg import text as paragraph
 from irate_box.root import (
     ap,
     aptram,
+    hardware,
     health,
     kits,
     librarydrive,
@@ -8221,6 +8225,11 @@ def wifi_country(req):
 # control/rkboard.json is the state after each, for the page.
 
 
+def hardware_status(_req):
+    """Every hardware part read again and published to control/hardware.json (hardware.py)."""
+    return hardware.publish()
+
+
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
     from irate_box.root import lcdtouch, pinmap
@@ -8229,6 +8238,7 @@ def pins(_req):
     data["at"] = time.time()
     safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
     lcdtouch.write_status()
+    hardware.write_status()
     return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
 
 
@@ -8243,6 +8253,7 @@ def pins_overlay(req):
         return lcdtouch.set_overlay(on)
     finally:
         lcdtouch.write_status()
+        hardware.write_status()
 
 
 def pins_display(req):
@@ -8256,13 +8267,17 @@ def pins_display(req):
         return lcdtouch.set_display(on)
     finally:
         lcdtouch.write_status()
+        hardware.write_status()
 
 
 def pins_test(_req):
     """The 60-second animation sequence (lcdtouch.py), then the panel blanked."""
     from irate_box.root import lcdtouch
 
-    return lcdtouch.run_screen_test(60)
+    try:
+        return lcdtouch.run_screen_test(60)
+    finally:
+        hardware.write_status()
 
 
 def _rk(fn):
@@ -9203,6 +9218,7 @@ ACTIONS = {
     "housecall-pair": housecall_pair,
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
+    "hw-status": hardware_status,
     "pins": pins,
     "pins-overlay": pins_overlay,
     "pins-display": pins_display,
@@ -9300,6 +9316,11 @@ def _mtime(path):
 
 def main():
     policy_publish()
+    # The pages read one hardware status: publish it when the helper starts, so a boot needs no scan.
+    try:
+        hardware.write_status()
+    except Exception:  # noqa: BLE001 - a hardware read must not stop the helper from answering its queue # nosec B110
+        pass
     # A request that arrives while this runs is picked up by the same loop.
     for _ in range(100):
         pending = sorted(REQUESTS.glob("*.json"), key=_mtime)

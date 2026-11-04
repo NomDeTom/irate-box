@@ -160,6 +160,14 @@
       "reads": [],
       "writes": []
     },
+    "hw-status": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json"
+      ]
+    },
     "kit-check": {
       "https_only": false,
       "policy": false,

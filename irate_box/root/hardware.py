@@ -1,0 +1,328 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 NomDeTom
+"""This box's hardware state, gathered from the modules that already own each part.
+
+The board and its header, the GPIO lines, the boot overlays, the SPI display, the USB gadget, the
+status light, the radios, the clock and its module, this box's own serial pins and the watchdog are
+each read from their module; this file only merges them into one document, /var/lib/hub/control/
+hardware.json, for the admin pages. It is status, not a service: the root helper publishes it when it
+starts, after a hardware action, and when a page asks, and the pages read the published file.
+
+Nothing here touches the hardware itself. The one write is the status file. Stdlib only.
+"""
+
+import json
+import os
+import re
+import time
+from pathlib import Path
+
+from irate_box.msg import M
+from irate_box.root import safeio
+
+STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
+CONTROL = STATE / "control"
+STATUS = CONTROL / "hardware.json"
+BOOT_ID = Path(os.environ.get("HUB_BOOT_ID", "/proc/sys/kernel/random/boot_id"))
+
+
+def _module(name):
+    """One of the hardware modules, imported on use: each imports only what it needs, and some import this
+    file's overlay writer, so a top-level import here would go round in a circle."""
+    module = __import__(f"irate_box.root.{name}", fromlist=[name])
+    return module
+
+
+def _read(path):
+    try:
+        return path.read_text()
+    except OSError:
+        return ""
+
+
+def _json(path, default):
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return default
+    return data if isinstance(data, type(default)) else default
+
+
+def boot_id():
+    return _read(BOOT_ID).strip()
+
+
+def board():
+    """The board's model, the kind of header it has, and whether irate-box knows that header."""
+    from irate_box.root import hardening, pinmap
+
+    model = pinmap.model()
+    kind = pinmap.board_kind(hardening.board(), model)
+    return {"model": model, "kind": kind, "supported": kind in ("pi", "lyra", "bpi")}
+
+
+def pins():
+    """The last pin map read, from control/pins.json: gpioinfo and pinmux-pins stay on that read, not here."""
+    data = _json(CONTROL / "pins.json", {})
+    if not data:
+        return {"header": [], "lines": [], "note": ""}
+    return data
+
+
+def overlays():
+    """The names in user_overlays= and the three overlays irate-box can put there."""
+    names = overlay_names()
+    lcd = _module("lcdtouch").status()
+    serial = _module("ownserial").status()
+    cw = _module("crashwatch").status()
+    watchdog_pending = bool(cw.get("watchdog_pending"))
+    watchdog_device = cw.get("watchdog_device")
+    return {
+        "user_overlays": names,
+        "items": {
+            "serial": {
+                "supported": bool(serial.get("supported")),
+                "enabled": bool(serial.get("on")),
+                "pending": bool(serial.get("pending")),
+                "device": serial.get("device") or "",
+            },
+            "watchdog": {
+                "supported": bool(watchdog_device or watchdog_pending),
+                "enabled": bool((cw.get("settings") or {}).get("watchdog") or watchdog_pending),
+                "active": bool(watchdog_device and not watchdog_pending),
+                "pending": watchdog_pending,
+            },
+            "lcd": dict(lcd),
+        },
+    }
+
+
+def display():
+    """The SPI1 panel: its overlay's state and whether the test card is on it."""
+    st = _module("lcdtouch").status()
+    return {
+        "supported": bool(st.get("supported")),
+        "on": bool(st.get("display_on")),
+        "pending": bool(st.get("pending")),
+        "pixels": [480, 320],
+        "driver": "ili9488",
+    }
+
+
+def usb():
+    """The USB gadget: on, up, and the drive made from the file drop."""
+    mod = _module("usbgadget")
+    st = mod.status()
+    settings = st.get("settings") or {}
+    drive = st.get("drive") or {}
+    return {
+        "supported": bool(st.get("peripheral")),
+        "on": bool(settings.get("on")),
+        "up": bool(st.get("up")),
+        "drive": bool(drive.get("on")),
+        "drive_write": bool(settings.get("drive_write")),
+        "address": mod.ADDRESS,
+    }
+
+
+def led():
+    """The status light: which one, and what it is showing."""
+    st = _module("led").status()
+    name = st.get("led") or ""
+    return {
+        "supported": bool(st.get("found")),
+        "on": bool(name) and not bool(st.get("off")),
+        "show": st.get("show") or "",
+        "led": name,
+    }
+
+
+def radios():
+    """The radios' switches, as rfkill keeps them."""
+    settings = _module("rfkill").status().get("settings") or {}
+    return {"wifi": settings.get("wifi", ""), "bluetooth": settings.get("bluetooth", "")}
+
+
+def clock():
+    """The time source: the image's own daemon, chrony, or the clock module."""
+    st = _module("clock").status()
+    source = st.get("daemon") or st.get("service") or "image"
+    servers = st.get("pool") or st.get("local") or ""
+    return {"source": source, "servers": servers}
+
+
+def rtc():
+    """The I2C clock module, when one is set up."""
+    st = _module("rtc").status()
+    return {"found": bool(st)}
+
+
+def serial():
+    """This box's own header pins as a serial console."""
+    st = _module("ownserial").status()
+    return {
+        "supported": bool(st.get("supported")),
+        "on": bool(st.get("on")),
+        "pending": bool(st.get("pending")),
+        "device": st.get("device") or "",
+    }
+
+
+def watchdog():
+    """The watchdog: the board's own, softdog, or none."""
+    cw = _module("crashwatch").status()
+    pending = bool(cw.get("watchdog_pending"))
+    device = cw.get("watchdog_device")
+    return {
+        "supported": bool(device or pending),
+        "mode": device or ("pending" if pending else "off"),
+        "enabled": bool((cw.get("settings") or {}).get("watchdog") or pending),
+        "pending": pending,
+    }
+
+
+SECTIONS = (
+    ("board", board),
+    ("pins", pins),
+    ("overlays", overlays),
+    ("display", display),
+    ("usb_gadget", usb),
+    ("led", led),
+    ("radios", radios),
+    ("clock", clock),
+    ("rtc", rtc),
+    ("serial", serial),
+    ("watchdog", watchdog),
+)
+
+
+def status():
+    """Every section, merged, with a section that failed named in errors rather than taking the rest down."""
+    out = {"at": time.time(), "boot_id": boot_id(), "errors": []}
+    for name, reader in SECTIONS:
+        try:
+            out[name] = reader()
+        except Exception as exc:  # noqa: BLE001 - one unreadable part must not hide the others
+            out[name] = {"supported": False, "error": f"{type(exc).__name__}: {exc}"}
+            out["errors"].append({"section": name, "error": f"{type(exc).__name__}: {exc}"})
+    return out
+
+
+def write_status(data=None):
+    """Publish the hardware status for the pages. Returns the document that was written."""
+    data = status() if data is None else data
+    safeio.mkdir(CONTROL, mode=0o755)
+    safeio.write(STATUS, json.dumps(data, indent=1, sort_keys=True) + "\n", 0o644)
+    return data
+
+
+def publish():
+    """The root helper's hw-status: read every part again and publish it."""
+    data = write_status()
+    if data.get("errors"):
+        return M(
+            "control.hardware.published.some",
+            "The hardware status is up to date, except for {n} part(s) that could not be read.",
+            n=len(data["errors"]),
+        )
+    return M("control.hardware.published", "The hardware status is up to date.")
+
+
+# --- the one overlay writer ---------------------------------------------------------------------
+# armbianEnv.txt's user_overlays= and the .dtbo files: ownserial, crashwatch and lcdtouch all use these,
+# so an overlay is added or taken away one way, and a failure leaves no half-written file behind.
+
+BOOT = Path(os.environ.get("HUB_BOOT_DIR", "/boot"))
+ENV = BOOT / "armbianEnv.txt"
+OVERLAY_DIR = BOOT / "overlay-user"
+OVERLAY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$")
+
+
+class OverlayError(Exception):
+    """The device tree compiler could not write an overlay, or there is no boot environment to add it to."""
+
+    def __init__(self, kind, detail=""):
+        super().__init__(detail or kind)
+        self.kind = kind
+        self.detail = detail
+
+
+def _dtc(argv, inp=None):
+    import subprocess  # Fixed argv, trusted executable, no shell. # nosec B404
+
+    return subprocess.run(argv, capture_output=True, text=True, input=inp)  # noqa: TID251
+
+
+def overlay_names(path=None):
+    """The names on user_overlays=, in order; the last such line wins, as the boot loader reads it."""
+    text = _read(Path(path or ENV))
+    for line in reversed(text.splitlines()):
+        if line.startswith("user_overlays="):
+            return line.split("=", 1)[1].split()
+    return []
+
+
+def set_overlay_names(add=None, remove=None, path=None):
+    """user_overlays= with `add` put in (once) or `remove` taken out (every time). Returns the names now."""
+    env = Path(path or ENV)
+    try:
+        lines = env.read_text().splitlines()
+    except OSError:
+        if add:
+            raise OverlayError("no-boot-env", str(env)) from None
+        return []
+    have, at = [], None
+    for i, line in enumerate(lines):
+        if line.startswith("user_overlays="):
+            have, at = line.split("=", 1)[1].split(), i
+    names = [name for name in have if name != remove]
+    if add and add not in names:
+        names.append(add)
+    if names != have:
+        new = "user_overlays=" + " ".join(names)
+        if at is None:
+            lines.append(new)
+        elif names:
+            lines[at] = new
+        else:
+            del lines[at]
+        safeio.write(env, "\n".join(lines) + "\n", 0o644)
+    return names
+
+
+def write_dtbo(name, dts, run=None):
+    """Compile one overlay to /boot/overlay-user/<name>.dtbo. A failure leaves nothing behind."""
+    if not OVERLAY_RE.match(name or ""):
+        raise OverlayError("bad-name", str(name))
+    path = OVERLAY_DIR / f"{name}.dtbo"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    argv = ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(path), "-"]
+    said = (run or _dtc)(argv, dts)
+    if said.returncode:
+        path.unlink(missing_ok=True)
+        if said.returncode == 127:
+            raise OverlayError("dtc-missing", said.stderr.strip()[:160])
+        raise OverlayError("dtc-failed", said.stderr.strip()[:160])
+    return path
+
+
+def remove_dtbo(name):
+    """Take one overlay file away, if it is there."""
+    path = OVERLAY_DIR / f"{name}.dtbo"
+    path.unlink(missing_ok=True)
+    return path
+
+
+def add_overlay(name, dts=None, run=None):
+    """Write the .dtbo when there is one, then add the name to user_overlays=."""
+    if dts is not None:
+        write_dtbo(name, dts, run=run)
+    return set_overlay_names(add=name)
+
+
+def remove_overlay(name):
+    """Take the .dtbo away and the name off user_overlays=."""
+    remove_dtbo(name)
+    if ENV.is_file():
+        return set_overlay_names(remove=name)
+    return overlay_names()
