@@ -4806,6 +4806,14 @@ label > .select-chips {
   min-width: 10rem;
   color: var(--muted);
 }
+.aw-field select {
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
 .aw-field input[type="text"] {
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--border);

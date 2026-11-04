@@ -13417,9 +13417,9 @@ let usbPoll = null;
 // Which filesystems root mounts from a USB drive (root/usbstick.py LEVELS), safest first: each one more is a kernel
 // driver a hostile drive can attack. Chosen here, saved at once; the warning beside it says what a wider one adds.
 const USB_FS_LEVELS = [
-  ["common", "FAT, exFAT, NTFS and discs"],
-  ["linux", "and Linux's ext2–4"],
-  ["all", "and btrfs, XFS and F2FS"],
+  ["common", "FAT, exFAT and NTFS"],
+  ["linux", "FAT, exFAT, NTFS and Linux's ext2–4"],
+  ["all", "Every filesystem the box has a driver for"],
 ];
 const USB_FS_WARN = {
   common: "",
@@ -13431,21 +13431,21 @@ function drawUsbFilesystems(data, busy) {
   const box = document.getElementById("usb-filesystems");
   if (!box) return;
   const chosen = data.filesystems || "common";
-  tlsChoices(
-    box,
-    USB_FS_LEVELS,
-    chosen,
-    () => busy,
-    async (value) => {
-      if (value === chosen) return;
-      usbWaiting = {
-        id: (await postJSON("/admin/usb", { action: "filesystems", level: value })).id,
-        at: "scan",
-      };
-      loadUsb();
-    },
-  );
-  box.querySelectorAll("button").forEach((b) => (b.title = ""));
+  if (box.dataset.chosen !== chosen) {
+    box.dataset.chosen = chosen;
+    box.replaceChildren(...USB_FS_LEVELS.map(([value, label]) =>
+      el("option", { value, textContent: label, selected: value === chosen })));
+  }
+  box.disabled = !!busy;
+  box.onchange = async () => {
+    const value = box.value;
+    if (value === chosen) return;
+    usbWaiting = {
+      id: (await postJSON("/admin/usb", { action: "filesystems", level: value })).id,
+      at: "scan",
+    };
+    loadUsb();
+  };
   document.getElementById("usb-filesystems-warn").textContent = USB_FS_WARN[chosen] || "";
 }
 function renderUsb(data) {
