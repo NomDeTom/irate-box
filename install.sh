@@ -41,6 +41,9 @@
 #                             start, or as chosen on /admin (Recovery and monitoring)
 #   irate-box-usb-gadget.service  USB networking (usbgadget.py, root): a network link and a serial
 #                             console over the USB port, as chosen on /admin (Recovery and monitoring)
+#   irate-box-hardware.service  the SPI display (hardware_service.py, root): one owner of the panel,
+#                             so the test card, the one-minute sequence and the pin page never open
+#                             /dev/spidev1.0 twice
 #   irate-box-visitors.service  unique visitors (visitors.py, unprivileged): devices' addresses
 #                             hashed with daily and weekly salts held in memory, only the counts
 #                             written; runs only while counting is on (irate-box-visitors-switch.path)
@@ -3184,6 +3187,36 @@ PrivateDevices=no
 WantedBy=multi-user.target
 EOF
 
+# The display service (hardware_service.py): one owner of the SPI panel. It keeps /dev/spidev1.0 and
+# the D/C and RST lines open for its lifetime and answers the pin page and the root helper over a
+# Unix socket, so no two callers open the device at once.
+cat >/etc/systemd/system/irate-box-hardware.service <<EOF
+[Unit]
+Description=Irate-Box display service: one owner of the SPI panel (hardware_service.py; /admin, Pin map)
+After=local-fs.target
+
+[Service]
+Type=simple
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC PYTHONUNBUFFERED=1
+ExecStart=$CODE/irate-box hardware_service run
+Restart=on-failure
+RestartSec=10
+Nice=5
+RuntimeDirectory=irate-box-hardware
+RuntimeDirectoryMode=0755
+$ROOT_SANDBOX
+ReadWritePaths=$ETC $STATE
+# /dev/spidev1.0 and the panel's GPIO lines are its devices.
+PrivateDevices=no
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # The status light (led.py): one of the board's LEDs blinking while the box is well, as chosen on
 # Recovery and monitoring. Always running and small; on a board with no LED to use, it only looks.
 cat >/etc/systemd/system/irate-box-led.service <<EOF
@@ -3576,7 +3609,7 @@ fi
 systemctl stop irate-box-crashwatch.service 2>/dev/null || true
 HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" "$CODE/irate-box" crashwatch migrate | sed 's/^/    /' ||
 	problem "crash watch's history was not moved from $STATE/crashwatch"
-for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service irate-box-usb-gadget.service; do
+for u in irate-box-librarian.timer irate-box-secdoctor.timer irate-box-control.path irate-box-ci.path irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service irate-box-usb-gadget.service irate-box-hardware.service; do
 	systemctl enable --quiet --now "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
 # A running watchdog keeps the old code until restarted.
@@ -3584,6 +3617,7 @@ systemctl try-restart irate-box-uplink.service || problem "irate-box-uplink did 
 systemctl try-restart irate-box-crashwatch.service || problem "irate-box-crashwatch did not restart: journalctl -u irate-box-crashwatch -n 30"
 systemctl try-restart irate-box-memory-guard.service || problem "irate-box-memory-guard did not restart: journalctl -u irate-box-memory-guard -n 30"
 systemctl try-restart irate-box-led.service || problem "irate-box-led did not restart: journalctl -u irate-box-led -n 30"
+systemctl try-restart irate-box-hardware.service || problem "irate-box-hardware did not restart: journalctl -u irate-box-hardware -n 30"
 if [ "$WITH_TAILSCALE" = 1 ]; then
 	# The boot unit decides from now on. Not started here: its state is left as found.
 	systemctl disable --quiet tailscaled

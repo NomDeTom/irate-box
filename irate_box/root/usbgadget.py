@@ -25,6 +25,7 @@ headless board is reached), the drive is off. Settings in /etc/hub/usb-gadget.js
 Stdlib only.
 """
 
+import fcntl
 import hashlib
 import json
 import os
@@ -206,26 +207,29 @@ def read_status():
     return data if isinstance(data, dict) else {}
 
 
-def write_status(up, why):
+def write_status(up, why, pending=False):
     RUN.mkdir(parents=True, exist_ok=True)
-    STATUS.write_text(json.dumps({"up": bool(up), "why": why, "at": time.time()}))
+    STATUS.write_text(json.dumps({"up": bool(up), "why": why, "pending": bool(pending), "at": time.time()}))
 
 
 def status():
     udcs = peripherals()
     state = gadget_state()
     saved = read_status()
+    settings = load_settings()
+    pending = bool((settings["on"] or settings["drive"]) and not state["up"])
     return {
         "model": model(),
         "peripheral": bool(udcs),
         "udc": udcs[0] if udcs else None,
-        "settings": load_settings(),
+        "settings": settings,
         "chosen": chosen(),
         "modules": modules_loaded(),
         "dnsmasq": dnsmasq_present(),
         "gadget": state,
         "drive": drive_state(),
         "up": state["up"],
+        "pending": pending,
         "why": saved.get("why"),
     }
 
@@ -646,29 +650,25 @@ def stop_children(children):
                 pass
 
 
-def setup(log=print, sleep=time.sleep):
-    """Compose the gadget, build the drive image and bring the network up: (ok, why, children)."""
-    settings = load_settings()
-    if not settings["on"] and not settings["drive"]:
-        return False, "off", []
-    RUN.mkdir(parents=True, exist_ok=True)
-    ACTIVE.write_text(json.dumps(settings))
-    udcs = peripherals()
-    if not udcs:
-        return False, "the board's USB port is not in peripheral mode", []
-    ok, why = ensure_modules(log)
-    if not ok:
-        return False, why, []
-    if settings["on"] and not dnsmasq_present():
-        return False, "dnsmasq is not installed (the dnsmasq-base package)", []
-    if settings["drive"]:
-        missing = [name for name, present in drive_tools().items() if not present]
-        if missing:
-            return False, f"the USB drive needs {', '.join(missing)} (dosfstools and mtools)", []
-        if not (settings["drive_write"] and DRIVE_IMAGE.is_file()):
-            built, why = build_drive_image(log)
-            if not built:
-                return False, why, []
+def _applying():
+    """The configfs tree is one shared resource: the service and a live apply take turns."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def held():
+        RUN.mkdir(parents=True, exist_ok=True)
+        with open(RUN / "apply.lock", "a+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    return held()
+
+
+def _compose(settings, udcs, log=print, sleep=time.sleep, children=True):
+    """Write the configfs tree from settings and bind it; the modules, dnsmasq and drive image are ready."""
     _teardown_tree()
     try:
         write(GADGET / "idVendor", VENDOR)
@@ -714,7 +714,77 @@ def setup(log=print, sleep=time.sleep):
             return False, f"{IFACE} did not appear", []
         run(["ip", "addr", "replace", f"{ADDRESS}/{PREFIX}", "dev", IFACE], timeout=30)
         run(["ip", "link", "set", IFACE, "up"], timeout=30)
-    return True, None, start_children()
+    return True, None, start_children() if children else []
+
+
+def _prepare(settings, log=print):
+    """Everything the tree needs before it is written: modules, dnsmasq and the drive image."""
+    udcs = peripherals()
+    if not udcs:
+        return None, "the board's USB port is not in peripheral mode"
+    ok, why = ensure_modules(log)
+    if not ok:
+        return None, why
+    if settings["on"] and not dnsmasq_present():
+        return None, "dnsmasq is not installed (the dnsmasq-base package)"
+    if settings["drive"]:
+        missing = [name for name, present in drive_tools().items() if not present]
+        if missing:
+            return None, f"the USB drive needs {', '.join(missing)} (dosfstools and mtools)"
+        if not (settings["drive_write"] and DRIVE_IMAGE.is_file()):
+            built, why = build_drive_image(log)
+            if not built:
+                return None, why
+    return udcs, None
+
+
+def setup(log=print, sleep=time.sleep):
+    """Compose the gadget, build the drive image and bring the network up: (ok, why, children)."""
+    settings = load_settings()
+    if not settings["on"] and not settings["drive"]:
+        return False, "off", []
+    RUN.mkdir(parents=True, exist_ok=True)
+    ACTIVE.write_text(json.dumps(settings))
+    udcs, why = _prepare(settings, log)
+    if not udcs:
+        return False, why, []
+    with _applying():
+        return _compose(settings, udcs, log, sleep)
+
+
+def apply(settings=None, log=print, sleep=time.sleep):
+    """Put the saved settings into the live gadget, without restarting the service: (ok, why).
+
+    The UDC is unbound, the functions are unlinked and made again, and the UDC is bound: the host sees a
+    disconnect and a reconnect. If the new tree cannot be made, the previous settings are put back.
+    """
+    old = active_settings() or load_settings()
+    new = load_settings() if settings is None else dict(settings)
+    RUN.mkdir(parents=True, exist_ok=True)
+    if not new["on"] and not new["drive"]:
+        with _applying():
+            _teardown_tree()
+            ACTIVE.write_text(json.dumps(new))
+            if old.get("on"):
+                run(["ip", "addr", "flush", "dev", IFACE], timeout=30)
+        write_status(True, "off")
+        return True, None
+    udcs, why = _prepare(new, log)
+    if not udcs:
+        write_status(False, why)
+        return False, why
+    ACTIVE.write_text(json.dumps(new))
+    write_status(False, "changing", pending=True)
+    with _applying():
+        ok, why, _children = _compose(new, udcs, log, sleep, children=False)
+        if not ok:
+            # Put the tree the box had back, so a failed change is not a lost gadget.
+            ACTIVE.write_text(json.dumps(old))
+            _compose(old, udcs, log, sleep, children=False)
+            write_status(False, why)
+            return False, why
+    write_status(True, None)
+    return True, None
 
 
 def teardown(children=()):
@@ -742,20 +812,22 @@ def serve(log=print):
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    settings = load_settings()
-    if not (settings["on"] or settings["drive"]) or not peripherals():
-        why = "off" if not (settings["on"] or settings["drive"]) else "no peripheral controller"
-        write_status(False, why)
-        return 0
     children = []
     while not stopping["now"]:
-        if not gadget_state()["up"]:
+        settings = load_settings()
+        if not settings["on"] and not settings["drive"]:
             stop_children(children)
             children = []
-            write_status(False, "starting")
+            write_status(False, "off")
+        elif not gadget_state()["up"]:
+            stop_children(children)
+            children = []
+            write_status(False, "starting", pending=True)
             ok, why, children = setup(log)
-            write_status(ok, why)
+            write_status(ok, why, pending=not ok and why == "changing")
             log(f"usbgadget: {'up' if ok else 'not up'}" + (f": {why}" if why else ""))
+        elif settings["on"] and not children:
+            children = start_children()
         elif any(child.poll() is not None for child in children):
             stop_children(children)
             children = start_children()
@@ -768,10 +840,15 @@ def set_option(value):
     if value not in ("on", "off"):
         raise Refused(M("usb-gadget-set.unknown", "USB networking has no setting {value}.", value=value))
     save_settings(on=(value == "on"))
-    if value == "on" or load_settings()["drive"]:
-        run(["systemctl", "restart", UNIT], timeout=60)
-    else:
-        run(["systemctl", "stop", UNIT], timeout=60)
+    ok, why = apply()
+    if not ok:
+        raise Refused(
+            M(
+                "usb-gadget-set.not-applied",
+                "The setting is saved, but the USB gadget could not change now: {why}",
+                why=why or "unknown",
+            )
+        )
     if value == "on":
         return M(
             "usb-gadget-set.on",
@@ -787,10 +864,15 @@ def set_drive(value):
     if value not in ("on", "off"):
         raise Refused(M("usb-gadget-set.unknown", "USB networking has no setting {value}.", value=value))
     save_settings(drive=(value == "on"))
-    if value == "on" or load_settings()["on"]:
-        run(["systemctl", "restart", UNIT], timeout=60)
-    else:
-        run(["systemctl", "stop", UNIT], timeout=60)
+    ok, why = apply()
+    if not ok:
+        raise Refused(
+            M(
+                "usb-gadget-set.not-applied",
+                "The setting is saved, but the USB gadget could not change now: {why}",
+                why=why or "unknown",
+            )
+        )
     if value == "on":
         return M(
             "usb-gadget-drive-set.on",
@@ -803,8 +885,15 @@ def set_drive_write(value):
     if value not in ("on", "off"):
         raise Refused(M("usb-gadget-set.unknown", "USB networking has no setting {value}.", value=value))
     save_settings(drive_write=(value == "on"))
-    if load_settings()["on"] or load_settings()["drive"]:
-        run(["systemctl", "restart", UNIT], timeout=60)
+    ok, why = apply()
+    if not ok:
+        raise Refused(
+            M(
+                "usb-gadget-set.not-applied",
+                "The setting is saved, but the USB gadget could not change now: {why}",
+                why=why or "unknown",
+            )
+        )
     if value == "on":
         return M(
             "usb-gadget-drive-write.on",

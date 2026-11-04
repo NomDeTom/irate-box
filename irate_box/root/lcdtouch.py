@@ -205,6 +205,12 @@ def set_overlay(on):
     return M("lcdtouch.off", "Saved. The SPI1 display and touch overlay is off after a restart.")
 
 
+def record_display(on):
+    """The panel's state after an operation, from the display service or a direct write."""
+    _save_state({"display_on": bool(on), "boot_id": _boot_id()})
+    write_status()
+
+
 def _require_display():
     if not supported():
         raise Refused(M("lcdtouch.unsupported", "This overlay is for the Luckfox Lyra Zero W only."))

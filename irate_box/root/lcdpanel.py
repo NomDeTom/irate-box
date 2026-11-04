@@ -206,7 +206,21 @@ class Panel:
         self.off()
 
 
+def _through_service(op, **fields):
+    """The display service owns the panel when it runs; None when there is no service to ask."""
+    from irate_box.root import hardware_service
+
+    answer = hardware_service.request(op, **fields)
+    if answer is None:
+        return None
+    if not answer.get("ok"):
+        raise RuntimeError(answer.get("message") or "The display service refused the change.")
+    return answer
+
+
 def show_card():
+    if _through_service("card") is not None:
+        return
     p = Panel()
     try:
         p.init()
@@ -216,6 +230,8 @@ def show_card():
 
 
 def off():
+    if _through_service("off") is not None:
+        return
     p = Panel()
     try:
         p.off()
@@ -224,6 +240,8 @@ def off():
 
 
 def run_test(seconds=60):
+    if _through_service("test", seconds=seconds) is not None:
+        return
     p = Panel()
     try:
         p.init()

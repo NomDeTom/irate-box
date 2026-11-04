@@ -79,6 +79,7 @@ usbgadget.status = lambda: {
     "settings": {"on": True, "drive": True, "drive_write": False},
     "drive": {"on": True},
     "up": True,
+    "pending": False,
 }
 led.status = lambda: {"settings": {}, "found": ["ACT"], "led": "ACT", "show": "alive", "off": False}
 rfkill.status = lambda: {"settings": {"wifi": "on", "bluetooth": "leave"}}
@@ -125,7 +126,15 @@ check(
 check(
     "the USB gadget: on and up, the drive on and read-only, its address",
     data["usb_gadget"]
-    == {"supported": True, "on": True, "up": True, "drive": True, "drive_write": False, "address": "192.168.7.1"},
+    == {
+        "supported": True,
+        "on": True,
+        "up": True,
+        "drive": True,
+        "drive_write": False,
+        "pending": False,
+        "address": "192.168.7.1",
+    },
     data["usb_gadget"],
 )
 check(

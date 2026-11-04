@@ -212,21 +212,63 @@ check(
     health.check_usb_gadget(host) == [] and health.usb_gadget_groups(host) == [],
 )
 
-# The choice is saved and applied through the unit.
+# The choice is saved and applied to the live gadget, without a service restart.
 ran.clear()
 said = usbgadget.set_option("off")
 check(
-    "set off: saved, and the unit stopped",
-    usbgadget.load_settings()["on"] is False and ["systemctl", "stop", "irate-box-usb-gadget.service"] in ran,
-    said,
+    "set off: saved and the tree unbound, with no systemctl",
+    usbgadget.load_settings()["on"] is False
+    and not (T / "config/usb_gadget/irate").exists()
+    and not any(cmd and cmd[0] == "systemctl" for cmd in ran),
+    (said, ran),
 )
 ran.clear()
 said = usbgadget.set_option("on")
 check(
-    "set on: saved, and the unit restarted",
-    usbgadget.load_settings()["on"] is True and ["systemctl", "restart", "irate-box-usb-gadget.service"] in ran,
-    said,
+    "set on: saved and the tree bound again, with no systemctl",
+    usbgadget.load_settings()["on"] is True
+    and (T / "config/usb_gadget/irate/UDC").read_text() == "ff740000.usb"
+    and (T / "config/usb_gadget/irate/configs/c.1/ncm.usb0").is_symlink()
+    and not any(cmd and cmd[0] == "systemctl" for cmd in ran),
+    (said, ran),
 )
+
+# While usb0 is not back, the status says pending rather than up.
+usb0 = T / "sys/class/net/usb0"
+usb0.rename(T / "sys/class/net/usb0.away")
+check("a gadget still coming up: status says pending", usbgadget.status()["pending"] is True, usbgadget.status())
+usb0 = T / "sys/class/net/usb0.away"
+usb0.rename(T / "sys/class/net/usb0")
+check("  and no longer pending once usb0 is back", usbgadget.status()["pending"] is False)
+
+
+# A change that cannot be made puts the previous configfs tree back.
+real_compose = usbgadget._compose
+
+
+def flaky_compose(settings, udcs, *a, **k):
+    if settings.get("drive"):
+        return False, "configfs: stood in failure", []
+    return real_compose(settings, udcs, *a, **k)
+
+
+usbgadget._compose = flaky_compose
+old_active = usbgadget.active_settings()
+ok, why = usbgadget.apply(
+    {"on": True, "drive": True, "drive_write": False, "drive_source": "drop"}, sleep=lambda _: None
+)
+g = T / "config/usb_gadget/irate"
+check(
+    "a failed live change: refused, and the old tree is back",
+    ok is False
+    and "stood in failure" in (why or "")
+    and (g / "UDC").read_text() == "ff740000.usb"
+    and (g / "configs/c.1/ncm.usb0").is_symlink()
+    and not (g / "functions/mass_storage.usb0").exists()
+    and usbgadget.active_settings() == old_active,
+    (ok, why, usbgadget.active_settings()),
+)
+usbgadget._compose = real_compose
 
 # The USB drive: the file drop as a FAT image, read-only by default, writable by choice.
 check("USB drive: off by default", usbgadget.load_settings()["drive"] is False)

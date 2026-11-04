@@ -6225,14 +6225,14 @@ function usbHardwareGroups(hw) {
     onOff(
       "usb-gadget",
       "USB networking",
-      `The box offers a network link and a serial console over its USB port: the hub at ${usb.address}. On by default on a Lyra, as a way in when the WiFi is down.`,
+      `The box offers a network link and a serial console over its USB port: the hub at ${usb.address}. On by default on a Lyra, as a way in when the WiFi is down. Changing it makes the host disconnect and reconnect the USB device.`,
       usb.on ? "on" : "off",
       "usb-gadget",
     ),
     onOff(
       "usb-gadget-drive",
       "USB drive",
-      "A USB drive made from the file drop. Read-only unless writes are on. Files added to a writable drive are copied into the file drop when it stops.",
+      "A USB drive made from the file drop. Read-only unless writes are on. Files added to a writable drive are copied into the file drop when it stops. A change makes the host disconnect and reconnect the drive.",
       usb.drive ? "on" : "off",
       "usb-gadget-drive",
     ),

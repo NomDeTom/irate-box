@@ -1206,6 +1206,23 @@
       "User": "root",
       "source": "install.sh"
     },
+    "irate-box-hardware.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "no",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$ETC",
+        "$STATE"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX"
+      ],
+      "User": "root",
+      "source": "install.sh"
+    },
     "irate-box-led.service": {
       "NoNewPrivileges": "yes",
       "PrivateDevices": "yes",

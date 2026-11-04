@@ -121,6 +121,7 @@ def usb():
         "up": bool(st.get("up")),
         "drive": bool(drive.get("on")),
         "drive_write": bool(settings.get("drive_write")),
+        "pending": bool(st.get("pending")),
         "address": mod.ADDRESS,
     }
 
