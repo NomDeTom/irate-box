@@ -2166,14 +2166,14 @@
                     placeholder="github_pat_…"
                     translate="no"
                 /></label>
+                <button
+                  class="action-btn primary"
+                  type="submit"
+                  data-i18n="admin.sources.btn-save"
+                >
+                  Save
+                </button>
                 <div class="library-buttons">
-                  <button
-                    class="action-btn primary"
-                    type="submit"
-                    data-i18n="admin.sources.btn-save"
-                  >
-                    Save
-                  </button>
                   <button
                     class="action-btn"
                     type="button"
@@ -2184,6 +2184,61 @@
                   </button>
                 </div>
               </form>
+              <details class="sec-fold" id="library-token-how">
+                <summary data-i18n="admin.sources.summary-how-to-get-token">
+                  How to get a token
+                </summary>
+                <ol class="admin-list">
+                  <li data-i18n="admin.sources.how-to-get-token-open-github">
+                    On GitHub: Settings → Developer settings → Personal access
+                    tokens → Fine-grained tokens → Generate new token
+                    (<a
+                      href="https://github.com/settings/personal-access-tokens/new"
+                      target="_blank"
+                      rel="noopener"
+                      >github.com/settings/personal-access-tokens/new</a
+                    >).
+                  </li>
+                  <li data-i18n="admin.sources.how-to-get-token-name-expiry">
+                    Give it a name that says which box it is for, such as
+                    irate-box 181, and an expiry of a year. GitHub emails you
+                    before it runs out.
+                  </li>
+                  <li data-i18n="admin.sources.how-to-get-token-access">
+                    Set Repository access to Public repositories (read-only).
+                    Leave every permission at No access. That is all the box
+                    needs, including Actions artifacts.
+                  </li>
+                  <li data-i18n="admin.sources.how-to-get-token-copy">
+                    Generate it and copy it (<code translate="no"
+                      >github_pat_…</code
+                    >). GitHub shows it once. Then paste it here and select
+                    Save.
+                  </li>
+                </ol>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.sources.how-to-get-token-changes"
+                >
+                  With a token, the box can download Actions artifacts (GitHub
+                  asks for a sign-in even for public repositories) and its
+                  GitHub checks get 5000 requests an hour instead of 60.
+                  Without one, a nightly.link source can serve an artifact
+                  instead.
+                </p>
+                <p
+                  class="setting-desc"
+                  data-i18n="admin.sources.how-to-get-token-sharing"
+                >
+                  Several boxes can share one token. They then share one
+                  allowance, and revoking it stops all of them. One token for
+                  each box keeps them apart, which is better for a box that
+                  goes somewhere you do not control. Never use a token with
+                  access to private repositories, and do not use a classic
+                  token with wider scopes. The box only needs to read public
+                  repositories.
+                </p>
+              </details>
               <h4 data-i18n="admin.sources.h-adapt-rate-limit">
                 Adapt to the rate limit
               </h4>

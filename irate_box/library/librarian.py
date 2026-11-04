@@ -264,6 +264,8 @@ def token():
 
 def set_token(value):
     LIB_DIR.mkdir(parents=True, exist_ok=True)
+    # The allowance follows the token: a budget learned from the old one (or from none) is not the new one's.
+    _forget_budget()
     if not value:
         TOKEN_FILE.unlink(missing_ok=True)
         return
@@ -1135,6 +1137,20 @@ def _pace_run(scheduled):
 
 def pace():
     return _read_json(PACE_FILE, {})
+
+
+def _forget_budget():
+    """Drop the budget learned from the previous token (or from none), so the next answer sets it from the new
+    allowance. Stop adapting's off marker stays."""
+    p = pace()
+    if not p:
+        return
+    for key in ("budget", "limit", "reset", "hits", "failures", "backed_off", "adapted"):
+        p.pop(key, None)
+    if p:
+        _write_json(PACE_FILE, p)
+    else:
+        PACE_FILE.unlink(missing_ok=True)
 
 
 def _pace_roll(now=None):
