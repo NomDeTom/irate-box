@@ -45,46 +45,54 @@
     return response.json();
   }
 
-  const field = (label, input) => el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: label }), input);
-
-  function number(key, label, min, max, value) {
-    const input = el("input", { type: "number", min, max, value, dataset: { key } });
-    return field(label, input);
-  }
-
-  function check(key, label, value) {
-    const input = el("input", { type: "checkbox", checked: !!value, dataset: { key } });
-    input.addEventListener("change", () => post({ action: "settings", [key]: input.checked }).catch((e) => say(fault(e), true)));
-    return el("label", { className: "aw-field" }, input, el("span", { className: "aw-label", textContent: label }));
-  }
-
   function settingsForm() {
-    const settings = snap.settings;
+    const form = el("form", { className: "library-form" });
     const box = el("div", { className: "settings" });
-    box.append(check("enabled", "Follow podcasts", settings.enabled));
-    box.append(
-      number("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours),
-      number("back_catalogue", "New feed: episodes to download (-1 all)", -1, 1000, settings.back_catalogue),
-      number("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count),
-      number("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days),
-      number("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, settings.keep_mb),
-      number("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, settings.cap_mb),
-      number("leave_free_mb", "Leave free on the card in MB", 0, 10000000, settings.leave_free_mb),
-      number("max_episode_mb", "Largest single episode in MB", 1, 4096, settings.max_episode_mb),
-    );
-    box.append(check("keep_played", "Keep played episodes", settings.keep_played), check("video", "Allow video enclosures", settings.video));
-    const save = el("button", { type: "button", className: "action-btn primary", textContent: "Save settings" });
-    save.addEventListener("click", () => {
-      const changes = { action: "settings" };
-      for (const input of box.querySelectorAll("input[data-key]")) {
-        changes[input.dataset.key] = input.type === "checkbox" ? input.checked : Number(input.value);
-      }
-      post(changes).then(() => say("Saved.")).catch((e) => say(fault(e), true));
+    form.append(box);
+    const numberRow = (name, label, min, max, value) => {
+      const input = el("input", { name, type: "number", min, max, value: String(value) });
+      box.append(el("label", { className: "aw-field" }, el("span", { className: "aw-label", textContent: label }), input));
+    };
+    const toggleRow = (name, label, value) => {
+      const input = el("input", { name, type: "checkbox", checked: !!value });
+      box.append(el("label", { className: "aw-field" }, input, el("span", { className: "aw-label", textContent: label })));
+      AW.onOff(input, label);
+    };
+    const settings = snap.settings;
+    toggleRow("enabled", "Follow podcasts", settings.enabled);
+    numberRow("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours);
+    numberRow("back_catalogue", "New feed: episodes to download (-1 all)", -1, 1000, settings.back_catalogue);
+    numberRow("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count);
+    numberRow("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days);
+    numberRow("keep_mb", "Keep per feed, by size in MB (0 no limit)", 0, 10000000, settings.keep_mb);
+    numberRow("cap_mb", "All podcasts' cap in MB (0 no cap)", 0, 10000000, settings.cap_mb);
+    numberRow("leave_free_mb", "Leave free on the card in MB", 0, 10000000, settings.leave_free_mb);
+    numberRow("max_episode_mb", "Largest single episode in MB", 1, 4096, settings.max_episode_mb);
+    toggleRow("keep_played", "Keep played episodes", settings.keep_played);
+    toggleRow("video", "Allow video enclosures", settings.video);
+    const sec = AW.form(form, {
+      label: "Podcast settings",
+      save: async (changes) => {
+        const body = { action: "settings" };
+        for (const [key, value] of Object.entries(changes)) body[key] = typeof value === "boolean" ? value : Number(value);
+        await post(body);
+        return "Saved.";
+      },
     });
-    const checkNow = el("button", { type: "button", className: "action-btn", textContent: "Check now" });
-    checkNow.addEventListener("click", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(fault(e), true)));
-    box.append(el("div", { className: "library-buttons" }, save, checkNow));
-    return box;
+    sec.fill({
+      enabled: settings.enabled,
+      check_every_hours: settings.check_every_hours,
+      back_catalogue: settings.back_catalogue,
+      keep_count: settings.keep_count,
+      keep_days: settings.keep_days,
+      keep_mb: settings.keep_mb,
+      cap_mb: settings.cap_mb,
+      leave_free_mb: settings.leave_free_mb,
+      max_episode_mb: settings.max_episode_mb,
+      keep_played: settings.keep_played,
+      video: settings.video,
+    });
+    return form;
   }
 
   // Each feed is the same source card as the other subscriptions: a card, or a short line from ten feeds.
@@ -200,6 +208,8 @@
       settingsForm(),
       el("h3", { textContent: "Feeds" }),
       ...feedView(),
+      el("p", { className: "library-actions" },
+        actionButton("Check all now", () => post({ action: "update" }).then(() => say("Checking…")).catch((e) => say(e.message, true)))),
       opml(),
       snap.running ? el("p", { className: "setting-desc", textContent: "The librarian is working…" }) : null,
     );
