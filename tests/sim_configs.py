@@ -262,7 +262,7 @@ class _Body(io.BytesIO):
         return False
 
 
-def board_list_open(url, auth=None, method="GET", timeout=60, extra=None):
+def board_list_open(url, auth=None, method="GET", timeout=60, extra=None, allow_local=False):
     assert url.endswith(f"firmware-{FV}.json"), url
     return _Body(BOARD_LIST)
 
@@ -360,7 +360,7 @@ whole = bytes(range(256)) * 40
 asked = []
 
 
-def fake_open(url, auth=None, method="GET", timeout=60, extra=None):
+def fake_open(url, auth=None, method="GET", timeout=60, extra=None, allow_local=False):
     asked.append(extra)
     start = int(extra["Range"][6:-1]) if extra else 0
     return Resp(whole[start:], 206) if extra and honour else Resp(whole, 200)

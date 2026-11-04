@@ -322,7 +322,10 @@ class Feed(io.BytesIO):
 
 
 real_open = L._open
-L._open = lambda url, auth=None, method="GET", timeout=60, extra=None: (opened.append(url), Feed(FEED.encode()))[1]
+L._open = lambda url, auth=None, method="GET", timeout=60, extra=None, allow_local=False: (
+    opened.append(url),
+    Feed(FEED.encode()),
+)[1]
 res = L.catalogue_search(q="raspberry", language="eng")
 check(
     "catalogue: entries with title, language, size, date, the .zim (not its .meta4), https only",
@@ -413,7 +416,7 @@ META4 = (
     '<?xml version="1.0"?><metalink xmlns="urn:ietf:params:xml:ns:metalink"><file name="y.zim"><size>3</size><hash type="sha-256">'
     + "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad</hash><url>https://x/y.zim</url></file></metalink>"
 )
-L._open = lambda url, auth=None, method="GET", timeout=60, extra=None: Feed(META4.encode())
+L._open = lambda url, auth=None, method="GET", timeout=60, extra=None, allow_local=False: Feed(META4.encode())
 check(
     "a metalink's sha-256 read",
     L._meta4_sha256("https://x/y.zim.meta4") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
