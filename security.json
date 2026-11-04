@@ -11,6 +11,7 @@
     "example.invalid": "a placeholder in messages and tests; never contacted",
     "github.com": "the update source, the add-ons catalogue and their repositories",
     "pkgs.tailscale.com": "Tailscale's signed package repository",
+    "raw.githubusercontent.com": "the pinned vendor kernel sources for the USB gadget modules",
     "registry.npmjs.org": "the add-ons' npm packages"
   },
   "privileged_files": [
@@ -1394,6 +1395,23 @@
       "PrivateTmp": "yes",
       "ProtectHome": "yes",
       "ProtectProc": "invisible",
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-usb-gadget.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "no",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$ETC",
+        "/usr/src",
+        "/var/lib/dkms",
+        "/lib/modules",
+        "/var/cache/irate-box/kits"
+      ],
       "User": "root",
       "source": "install.sh"
     },

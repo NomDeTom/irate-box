@@ -7055,6 +7055,124 @@ def check_rfkill(st=None):
     ]
 
 
+def usb_gadget_status():
+    try:
+        from irate_box.root import usbgadget
+
+        return usbgadget.status()
+    except Exception:  # noqa: BLE001 - the report goes out without it
+        return None
+
+
+def usb_gadget_groups(st):
+    """The USB network's choice for the settings card, where the board's USB port is a device."""
+    if not st or not st.get("peripheral"):
+        return []
+    from irate_box.root import usbgadget
+
+    return [
+        {
+            "key": "usb-gadget",
+            "label": M("hs.usb-gadget", "USB networking"),
+            "desc": M(
+                "hs.usb-gadget.desc",
+                "The box offers a network link and a serial console over its USB port: the hub at {address} "
+                "and a sign-in on /dev/{tty}. On by default on a Lyra, which has no other way in.",
+                address=usbgadget.ADDRESS,
+                tty=usbgadget.TTY,
+            ),
+            "current": "on" if st["settings"]["on"] else "off",
+            "options": [
+                {"value": "on", "label": ON, "choice": "usb-gadget:on"},
+                {"value": "off", "label": OFF, "choice": "usb-gadget:off"},
+            ],
+        }
+    ]
+
+
+def check_usb_gadget(st=None):
+    """USB networking: on and up, or on and not up; nothing when it is off or the port is a host port."""
+    st = usb_gadget_status() if st is None else st
+    if not st or not st.get("peripheral") or not st["settings"]["on"]:
+        return []
+    from irate_box.root import usbgadget
+
+    title = M("usb-gadget.title", "USB networking")
+    go = _go("health-settings", RECOVERY, "hs-usb-gadget")
+    if st.get("why") == "starting":
+        return [
+            finding(
+                "usb-gadget",
+                title,
+                "note",
+                M(
+                    "usb-gadget.starting",
+                    "USB networking is starting: the box is fetching or building the gadget modules.",
+                ),
+                go=go,
+                glance=M("usb-gadget.starting.glance", "USB networking is starting."),
+            )
+        ]
+    if st["up"]:
+        return [
+            finding(
+                "usb-gadget",
+                title,
+                "ok",
+                M(
+                    "usb-gadget.ok",
+                    "The box is at {address} over its USB port, with a console on /dev/{tty}.",
+                    address=usbgadget.ADDRESS,
+                    tty=usbgadget.TTY,
+                ),
+                notes=[
+                    M(
+                        "usb-gadget.ok.note",
+                        "The link hands out {first} to {last} over DHCP. The serial console uses the same cable.",
+                        first=usbgadget.DHCP_FIRST,
+                        last=usbgadget.DHCP_LAST,
+                    )
+                ],
+                go=go,
+                glance=M("usb-gadget.ok.glance", "USB networking is up."),
+            )
+        ]
+    missing = [m for m, loaded in st["modules"].items() if not loaded]
+    why = st.get("why")
+    evidence = ([why] if why else []) + ([f"modules not loaded: {', '.join(missing)}"] if missing else [])
+    return [
+        finding(
+            "usb-gadget",
+            title,
+            "problem",
+            M("usb-gadget.down", "USB networking is on, but the gadget did not come up."),
+            M(
+                "usb-gadget.down.why",
+                "The board cannot be reached over its USB port. The network link and the serial console are both missing.",
+            ),
+            M(
+                "usb-gadget.down.fix",
+                "Start it again. If it still fails, install the Driver resources toolkit (DKMS and the kernel's "
+                "headers). The service fetches the pinned gadget sources, builds them, and loads them.",
+            ),
+            notes=[
+                M(
+                    "usb-gadget.down.note",
+                    "The service's log says why: the module build, the configfs tree, or the network link.",
+                )
+            ],
+            commands=[
+                "systemctl status irate-box-usb-gadget.service",
+                "journalctl -u irate-box-usb-gadget.service -n 50",
+            ],
+            evidence=evidence,
+            actions=[action("unit-restart:irate-box-usb-gadget.service", RESTART)],
+            go=go,
+            glance=M("usb-gadget.down.glance", "USB networking did not come up."),
+        )
+    ]
+
+
 def check_watchers(now=None):
     """What the watchers saw and did in the last day, in one time line (watchlog): the uplink
     watchdog's outages, causes and steps, crash watch's radio failures, the driver's own resets, and
@@ -8352,6 +8470,7 @@ def scan(quick=False):
         check_power,
         check_led,
         check_rfkill,
+        check_usb_gadget,
         check_watchers,
         check_watchdogs_alive,
         check_build_bounds,
@@ -8555,6 +8674,7 @@ def doctor_settings():
             "groups": setting_groups(s, wd)
             + led_groups(ls, armbian_led_state() if ls else None)
             + rfkill_groups(rfkill_status())
+            + usb_gadget_groups(usb_gadget_status())
             + image_groups()
             + package_groups()
             + board_hold_groups(),
@@ -8644,6 +8764,10 @@ def fix(choice):
 
         radio, _, value = arg.partition(":")
         return rfkill.set_option(radio, value)
+    if kind == "usb-gadget":
+        from irate_box.root import usbgadget
+
+        return usbgadget.set_option(arg)
     if kind == "rfkill-apply":
         from irate_box.root import rfkill
 
