@@ -6915,8 +6915,10 @@ label > .aw-onoff-box ~ .chip-group,
   gap: 0.35rem 0.6rem;
   margin: 0.6rem 0;
 }
-.pin-gpio-form label {
-  margin: 0;
+.pin-gpio-form > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 #pins-hogs {
   margin-top: 0.6rem;
