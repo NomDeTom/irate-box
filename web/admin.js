@@ -13616,9 +13616,7 @@ const git = {
   form: document.getElementById("git-create"),
   createNote: noteEl("git-create-note"),
   grid: noteEl("git-grid"),
-  search: document.getElementById("git-search"),
-  chipsKind: noteEl("git-chips-kind"),
-  chipsArea: noteEl("git-chips-area"),
+  filter: document.getElementById("git-filter"),
   mirrors: noteEl("git-mirrors"),
   mirrorForm: document.getElementById("git-mirror-add"),
   mirrorNote: noteEl("git-mirror-note"),
@@ -13627,7 +13625,7 @@ const commitDate = (unix) => new Date(unix * 1000).toISOString().slice(0, 10);
 // The Git page as cards (Kiwix's library as the model): a filter bar, a card per
 // repository with its badges in words, and Manage, opening under its card.
 let gitData = null;
-const gitView = { kind: "all", area: "all", q: "", open: null };
+const gitView = { open: null };
 const gitChecks = {}; // a local repository has no upstream; Check now records when it was read
 const PUSH_WORDS = {
   everyone: "anyone pushes",
@@ -13643,16 +13641,6 @@ const STATE_ICON = {
   interrupted: "⏹",
   running: "⏳",
 };
-const GIT_KINDS = [
-  ["all", "All repositories", () => true],
-  ["builds", "With builds", builds],
-];
-const GIT_AREAS = [
-  ["all", "All access", () => true],
-  ["public", "Guests", (repo) => repo.area === "public"],
-  ["private", "Administrators", (repo) => repo.area === "private"],
-];
-
 // One sentence for the card: who sees it, who pushes, whether pushes are built.
 function accessSentence(repo) {
   const see =
@@ -13696,50 +13684,32 @@ function renderGit(data) {
       : `. A single push can be up to ${size(data.max_push)}.`);
   // The mirror repositories and their submodules belong to Git Mirrors, not this list.
   const shown = data.repos.filter((repo) => !repo.submodule_of && !repo.mirror_of);
-  const chips = (box, list, key) =>
-    box.replaceChildren(
-      ...list.map(([id, label, test]) =>
-        el("button", {
-          type: "button",
-          className: `chip${gitView[key] === id ? " selected" : ""}`,
-          textContent: `${label} ${shown.filter(test).length}`,
-          onclick: () => {
-            gitView[key] = id;
-            renderGit(gitData);
-          },
-        }),
-      ),
-    );
-  chips(git.chipsKind, GIT_KINDS, "kind");
-  chips(git.chipsArea, GIT_AREAS, "area");
-  [...git.chipsKind.children, ...git.chipsArea.children].forEach((b) =>
-    b.setAttribute("aria-pressed", b.classList.contains("selected")),
-  );
-  const q = gitView.q.toLowerCase();
-  const kindTest = (GIT_KINDS.find((k) => k[0] === gitView.kind) || GIT_KINDS[0])[2];
-  const areaTest = (GIT_AREAS.find((k) => k[0] === gitView.area) || GIT_AREAS[0])[2];
-  const list = shown.filter(
-    (repo) =>
-      kindTest(repo) &&
-      areaTest(repo) &&
-      (!q ||
-        repo.name.toLowerCase().includes(q) ||
-        (repo.description || "").toLowerCase().includes(q)),
-  );
+  const items = shown.map((repo) => ({
+    id: repoKey(repo),
+    title: repo.name,
+    summary: repo.description || "",
+    badges: [
+      repo.area === "public" ? "Guests" : "Administrators",
+      ...(builds(repo) ? ["Builds"] : []),
+    ],
+  }));
   const cards = [];
-  for (const repo of list) {
-    cards.push(repoCard(repo, data));
+  for (const repo of shown) {
+    const card = repoCard(repo, data);
+    card.dataset.repo = "1";
+    card.dataset.text = `${repo.name} ${repo.description || ""}`.toLowerCase();
+    card.dataset.tags = items.find((item) => item.id === repoKey(repo)).badges.join("|");
+    cards.push(card);
   }
-  if (!list.length)
-    cards.push(
-      el("p", {
-        className: "setting-desc",
-        textContent: shown.length ? "Nothing matches." : "No repositories yet.",
-      }),
-    );
+  if (!shown.length)
+    cards.push(el("p", { className: "setting-desc", textContent: "No repositories yet." }));
   // The New card last, after the repositories, its drawer after it.
   cards.push(newCard());
   git.grid.replaceChildren(...cards);
+  // The same filter bar as the short lists: a search box, tag chips, a count.
+  git.filter.replaceChildren(...(shown.length
+    ? [AW.filterBar(git.grid, ".source-card[data-repo]", items)]
+    : []));
 }
 
 function newCard() {
@@ -14269,11 +14239,6 @@ function managePanel(repo, data, cls) {
     ),
   );
 }
-
-git.search.addEventListener("input", () => {
-  gitView.q = git.search.value.trim();
-  if (gitData) renderGit(gitData);
-});
 
 // Mirrors (mirrors.py): what each keeps, its size and last outcome, and check / update / remove.
 function renderMirrors(data) {
