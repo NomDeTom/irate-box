@@ -20,7 +20,6 @@ import os
 import signal
 import socket
 import threading
-import time
 from pathlib import Path
 
 RUN = Path(os.environ.get("HUB_HARDWARE_RUN", "/run/irate-box-hardware"))
