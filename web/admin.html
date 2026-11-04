@@ -6028,9 +6028,10 @@
           <div class="pin-overlay" id="pins-overlay">
             <h3 data-i18n="admin.pins.overlay-title">SPI1 display and touch</h3>
             <p class="setting-desc" data-i18n="admin.pins.overlay-intro">
-              A 3.5" SPI TFT and XPT2046 resistive touch on SPI1, clear of SPI0 and the MeshAdv-Pi HAT:
-              pins 27 (CLK), 29 (MOSI), 31 (MISO), 35 (display CS), 37 (touch CS), 28 (PEN), 18 (D/C)
-              and 22 (RST). The overlay is applied at the next restart.
+              A 3.5" SPI TFT and XPT2046 resistive touch on SPI1, clear of SPI0:
+              pins 27 (CLK), 29 (MOSI), 31 (MISO), 35 (display CS), 37 (touch CS), 28 (PEN), 18 (D/C),
+              22 (RST) and 36 (BL). Pin 36 is the MeshAdv-Pi HAT's IRQ, so the HAT and the backlight
+              control cannot both be fitted. The overlay is applied at the next restart.
             </p>
             <p class="setting-desc" id="pins-overlay-state" data-i18n="admin.pins.overlay-state">Not read yet.</p>
             <div class="library-buttons">

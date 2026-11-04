@@ -67,6 +67,20 @@ check(
     and lcdtouch.status()["pins"][0] == {"signal": "SPI1 CLK", "pin": 27, "soc": "GPIO1_B1", "rmio": 24, "gpio": 41},
     lcdtouch.status(),
 )
+check(
+    "the backlight is header 36 (GPIO1_D1) and a gpio-leds node in the overlay",
+    lcdtouch.status()["pins"][-1] == {"signal": "Display BL", "pin": 36, "soc": "GPIO1_D1", "rmio": 29, "gpio": 57}
+    and 'compatible = "gpio-leds"' in lcdtouch.DTS
+    and 'label = "lcd-backlight"' in lcdtouch.DTS
+    and "gpios = <&gpio1 25 0>" in lcdtouch.DTS,
+    lcdtouch.status()["pins"][-1],
+)
+bl = T / "bl"
+lcdtouch.lcdpanel.BL = bl
+lcdtouch.lcdpanel.set_bl(True)
+on = bl.read_text() if bl.is_file() else ""
+lcdtouch.lcdpanel.set_bl(False)
+check("the backlight writes 1 and 0 through the LED", on == "1" and bl.read_text() == "0", (on, bl.read_text()))
 lcdtouch.set_overlay(True)
 check(
     "on: the .dtbo written and the name added, off the other overlays left alone",
