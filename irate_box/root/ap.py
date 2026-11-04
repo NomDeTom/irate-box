@@ -16,6 +16,7 @@ import ipaddress
 import os
 from pathlib import Path
 
+from irate_box import validate
 from irate_box.hub import apmode, hotspot
 from irate_box.msg import M, Refused
 from irate_box.root import secmanifest
@@ -155,7 +156,7 @@ def ap_iface(plan):
 
 
 def _keyfile_value(v):
-    return str(v).replace("\n", "")
+    return validate.keyfile_value(v)
 
 
 def keyfile(plan, settings, ssid=DEFAULT_SSID):
@@ -176,7 +177,7 @@ def keyfile(plan, settings, ssid=DEFAULT_SSID):
         "",
         "[wifi]",
         "mode=ap",
-        f"ssid={_keyfile_value(net['ssid'])}",
+        validate.keyfile_ssid(net["ssid"]),
         f"band={band}",
         f"channel={int(plan['channel'])}",
         "",
