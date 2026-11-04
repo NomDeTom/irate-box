@@ -502,8 +502,10 @@ function bookAddCard() {
 function renderBookAddCard() {
   const at = document.getElementById("book-add-card");
   if (!at) return;
-  const card = bookAddCard();
-  if (card) at.replaceChildren(card);
+  AW.redrawIfChanged(at, "book-add", () => {
+    const card = bookAddCard();
+    return card ? [card] : [];
+  });
 }
 
 let lastLibrary = null; // drawn again when the menu is rebuilt, for the apps' own pages
@@ -1165,8 +1167,10 @@ function renderBooksList(data) {
       loadLibrary();
       loadBooks();
     }, { className: "small", dataset: { bookBulk: "untrack" } }));
-  bk.cards.className = "books-list-view";
-  bk.cards.replaceChildren(bar, AW.sourceList(items, { id: "books-source-list", sort: bookSortControl() }));
+  AW.redrawIfChanged(bk.cards, JSON.stringify([data.books, bookSort]), () => {
+    bk.cards.className = "books-list-view";
+    return [bar, AW.sourceList(items, { id: "books-source-list", sort: bookSortControl() })];
+  });
   paintBookBulk();
 }
 
@@ -1205,13 +1209,13 @@ function renderBooks(data) {
   if (data.matching > 9) {
     renderBooksList(data);
   } else {
-    bk.cards.className = "card-grid source-grid";
     const cards = sortBooks(data.books).map(bookCard);
-    bk.cards.replaceChildren(
-      ...(cards.length
+    AW.redrawIfChanged(bk.cards, JSON.stringify([data.books, bookSort]), () => {
+      bk.cards.className = "card-grid source-grid";
+      return cards.length
         ? cards
-        : [el("p", { className: "setting-desc", textContent: sm.count ? "No book matches." : "No books yet." })]),
-    );
+        : [el("p", { className: "setting-desc", textContent: sm.count ? "No book matches." : "No books yet." })];
+    });
   }
   bk.page.textContent = `Page ${data.page} of ${data.pages} (${data.matching} matching)`;
   bk.prev.disabled = data.page <= 1;
@@ -13575,9 +13579,10 @@ function renderGit(data) {
     cards.push(el("p", { className: "setting-desc", textContent: "No repositories yet." }));
   // The New card last, after the repositories, its drawer after it.
   cards.push(newCard());
-  git.grid.replaceChildren(...cards);
+  const key = JSON.stringify([data.repos, data.mirrors, gitView.open, gitChecks]);
+  AW.redrawIfChanged(git.grid, key, () => cards);
   // The same filter bar as the short lists: a search box, tag chips, a count.
-  git.filter.replaceChildren(...(shown.length
+  AW.redrawIfChanged(git.filter, key, () => (shown.length
     ? [AW.filterBar(git.grid, ".source-card[data-repo]", items)]
     : []));
 }
@@ -14065,7 +14070,7 @@ function renderMirrors(data) {
     }
   };
   const list = data.mirrors || [];
-  git.mirrors.replaceChildren(
+  AW.redrawIfChanged(git.mirrors, JSON.stringify([data.mirrors, data.running]), () => [
     ...(gitRemoved()
       ? [
           el("p", {
@@ -14253,7 +14258,7 @@ function renderMirrors(data) {
         })
       : [el("p", { className: "setting-desc", textContent: "None yet." })]),
     mirrorAddCard(),
-  );
+  ]);
 }
 
 // The add form is a mini-card in the same grid: the Git card's shape, Add as its footer.
@@ -14465,7 +14470,7 @@ function renderFirmware(data) {
       ...move("fw-settings-head", "fw-form", "fw-note"),
     ];
     const actions = move("fw-check", "fw-update");
-    record.replaceChildren(AW.sourceCard({
+    AW.redrawIfChanged(record, JSON.stringify([st, data.source, data.free_mb, data.settings, data.targets]), () => [AW.sourceCard({
       id: "firmware-source",
       title: "Meshtastic firmware",
       source: data.source ? `${data.source.name}.git` : "not mirrored",
@@ -14480,7 +14485,7 @@ function renderFirmware(data) {
       ],
       actions,
       body,
-    }));
+    })]);
   }
   const q = fw.filter.value.trim().toLowerCase();
   const targets = (data.targets || []).filter(
