@@ -4567,6 +4567,38 @@ label > .select-chips {
   gap: 0.3rem;
   margin: 0;
 }
+/* The podcast settings: one compact row per setting, the caption and its control on one line, left-aligned. */
+#podcasts-panel .settings .aw-field {
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem 0.7rem;
+}
+#podcasts-panel .settings .aw-field .aw-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+#podcasts-panel .settings .aw-field input[type="number"] {
+  flex: 0 0 auto;
+  width: 6.5rem;
+}
+#podcasts-panel .settings .aw-field .chip-group {
+  flex: 0 1 auto;
+}
+/* The librarian's storage limits: the caption and its entry on one line, the controls left. */
+.library-form label.compact-field {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+.library-form label.compact-field input[type="number"] {
+  width: 6.5rem;
+}
+.library-form label.compact-field .setting-desc {
+  margin-top: 0;
+}
 /* The short-list view of a source: the line's actions beside its head, the same drawer under it, full width. */
 .source-row {
   display: grid;

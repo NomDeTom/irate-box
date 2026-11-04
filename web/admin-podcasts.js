@@ -60,7 +60,26 @@
     };
     const settings = snap.settings;
     toggleRow("enabled", "Follow podcasts", settings.enabled);
-    numberRow("check_every_hours", "Check every (hours; 0 only when asked)", 0, 168, settings.check_every_hours);
+    const often = el("input", { type: "hidden", name: "check_every_hours", value: String(settings.check_every_hours) });
+    const intervals = [["0", "Manual"], ["6", "6 hours"], ["24", "24 hours"], ["168", "Weekly"]];
+    const intervalChips = el("div", { className: "chip-group", role: "radiogroup", "aria-label": "Check interval" });
+    const drawInterval = () => intervalChips.replaceChildren(...intervals.map(([value, text]) => {
+      const chip = el("button", {
+        type: "button",
+        className: `chip${often.value === value ? " selected" : ""}`,
+        role: "radio",
+        "aria-checked": String(often.value === value),
+        textContent: text,
+      });
+      chip.addEventListener("click", () => {
+        often.value = value;
+        drawInterval();
+        often.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      return chip;
+    }));
+    drawInterval();
+    box.append(el("div", { className: "aw-field" }, el("span", { className: "aw-label", textContent: "Check interval" }), often, intervalChips));
     numberRow("back_catalogue", "New feed: episodes to download (-1 all)", -1, 1000, settings.back_catalogue);
     numberRow("keep_count", "Keep per feed, by count (0 no limit)", 0, 500, settings.keep_count);
     numberRow("keep_days", "Keep per feed, by age in days (0 no limit)", 0, 3650, settings.keep_days);
