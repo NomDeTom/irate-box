@@ -97,6 +97,7 @@ ARCHIVE = {
     "flex": ("2.6.4-8.2", ["m4"]),
     "m4": ("1.4.19-4", []),
 }
+POLICY_FAIL = set()  # a package apt-cache cannot answer for at all
 installed = {"libc6", "strace"}
 versions = {}  # installed versions that differ from the archive's
 BOARD = {"arch": "armhf"}
@@ -166,7 +167,11 @@ def fake(cmd, timeout=0, check=True, env=None):
         )
     if name == "apt-cache" and cmd[1] == "policy":
         pkg = cmd[-1]
-        return R(f"{pkg}:\n  Candidate: {ARCHIVE[pkg][0]}\n" if pkg in ARCHIVE else f"{pkg}:\n  Candidate: (none)\n")
+        # The Pi's real answer for platformio: exit 0, and nothing at all. A package in the archive answers with
+        # its candidate; apt-cache failing (rc 100) is the one case that means "cannot tell".
+        if pkg in POLICY_FAIL:
+            return R("", 100)
+        return R(f"{pkg}:\n  Candidate: {ARCHIVE[pkg][0]}\n" if pkg in ARCHIVE else "")
     if name == "dpkg" and cmd[1:] == ["--print-architecture"]:
         return R(BOARD["arch"] + "\n")
     if name == "dpkg-deb" and cmd[1] == "-x":
@@ -1023,6 +1028,17 @@ check("  and the card is told", kits.status()["kits"]["small"]["cached"]["left_o
 )
 saved_platformio = ARCHIVE.pop("platformio")
 try:
+    POLICY_FAIL.add("gdb")
+    check(
+        "  apt-cache failing is not 'not in the sources': the name is kept",
+        kits._no_candidate(["gdb"]) == [],
+        kits._no_candidate(["gdb"]),
+    )
+    POLICY_FAIL.discard("gdb")
+    check(
+        "  apt-cache answering nothing (the Pi's platformio) is not in the sources",
+        kits._no_candidate(["platformio"]) == ["platformio"],
+    )
     checked = kits.check("nocand")
     check(
         "  a check with the same missing package is not unavailable, and says what it left out",

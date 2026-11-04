@@ -185,14 +185,21 @@ def _no_candidate(packages):
     policy, not read from apt-get's failure: one name a source lacks must not fail a whole kit."""
     out = []
     for name in packages:
-        out_text = run(["apt-cache", "policy", name], check=False, timeout=120).stdout
+        result = run(["apt-cache", "policy", name], check=False, timeout=120)
+        # Only apt-cache itself failing means "we cannot tell": keep the name. An empty answer (exit 0, no output)
+        # is the Pi's own answer for platformio: it is not in this box's sources at all, so leave it out.
+        if result.returncode != 0:
+            continue
+        out_text = result.stdout.strip()
+        if not out_text:
+            out.append(name)
+            continue
         candidate = None
         for line in out_text.splitlines():
             if line.strip().startswith("Candidate:"):
                 candidate = line.split(":", 1)[1].strip()
                 break
-        # No Candidate line at all means apt could not tell us, not that the package is absent: keep it.
-        if candidate is not None and candidate in ("", "(none)"):
+        if candidate is None or candidate in ("", "(none)"):
             out.append(name)
     return out
 
