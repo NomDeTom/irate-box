@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: 2026 NomDeTom
+# The checks in irate_box/validate.py that CodeQL cannot see are sanitisers, written as the models
+# CodeQL's Python queries read (python-all 7.2.7 reads the barrier kinds path-injection and
+# log-injection among others, and none for HTTP header values). The type is the top-level package
+# and the path walks to the function: `irate_box` + `Member[validate]...`. Spelling the type as
+# `irate_box.validate` is read as nothing, and the model then does nothing.
+# tests/sim_codeql_model.py checks every row against the code, and tests/codeql_model_check.sh
+# proves the rows work with the CodeQL CLI.
 extensions:
   - addsTo:
       pack: codeql/python-all
       extensible: barrierModel
     data:
-      - - irate_box.validate
-        - Member[path].ReturnValue
+      - - irate_box
+        - Member[validate].Member[path].ReturnValue
         - path-injection
-      - - irate_box.validate
-        - Member[content_disposition].ReturnValue
-        - http-response-splitting
-      - - irate_box.validate
-        - Member[content_disposition].ReturnValue
-        - header-injection
-      - - irate_box.validate
-        - Member[log_text].ReturnValue
+      - - irate_box
+        - Member[validate].Member[log_text].ReturnValue
         - log-injection

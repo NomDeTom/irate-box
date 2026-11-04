@@ -251,7 +251,12 @@ def argv(command, what="The command"):
 
 def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     """`value` inside `root`: normalised and resolved, never through a symlink that leaves the
-    root. A missing leaf is checked through its existing parent."""
+    root. A missing leaf is checked through its existing parent.
+
+    The result is a check, not a handle: the name is the normalised path, still not followed
+    through links, so a name opened later can have been swapped in between. The first test is
+    the shape CodeQL recognises (a normalised path, then `startswith` the root); the checks that
+    follow links come only after it."""
     if isinstance(value, os.PathLike):
         value = os.fspath(value)
     value = _need(value, what)
@@ -262,6 +267,13 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     root_real = os.path.realpath(os.fspath(root))
     full = value if os.path.isabs(value) else os.path.join(root_real, value)
     full = os.path.normpath(full)
+    if full == root_real:
+        # The root itself: it was just resolved, so it is not a link.
+        if must_exist and not os.path.exists(root_real):
+            raise Invalid(f"{what} does not exist.")
+        return Path(root_real)
+    if not full.startswith(root_real.rstrip(os.sep) + os.sep):
+        raise Invalid(f"{what} is outside the folder it belongs in.")
     real = os.path.realpath(full)
     if real != root_real and not real.startswith(root_real + os.sep):
         raise Invalid(f"{what} is outside the folder it belongs in.")

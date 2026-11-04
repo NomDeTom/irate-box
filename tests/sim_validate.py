@@ -120,6 +120,11 @@ refused("path: a link inside the root", V.path, "link-in", root)
 refused("path: a FIFO", V.path, "fifo", root)
 refused("path: missing and must exist", V.path, "gone.txt", root, "The path", True)
 check("path: a folder", V.path("sub", root) == root / "sub")
+check("path: the root itself", V.path(".", root) == Path(os.path.realpath(root)))
+check("path: the root, as an absolute name", V.path(str(root), root) == Path(os.path.realpath(root)))
+(T / (root.name + "-sibling")).mkdir()
+refused("path: a sibling folder that starts with the root's name", V.path, f"../{root.name}-sibling/x", root)
+refused("path: a folder that is not there as the root, must exist", V.path, ".", T / "no-such-root", "The path", True)
 
 
 # --- URLs: scheme, host, credentials, IP literals, whitespace ---
