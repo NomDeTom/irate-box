@@ -2091,7 +2091,13 @@ body[data-art] > header {
 }
 /* The services' strips: one thin row of cells in the service's own table row, hours over days. */
 .svc-uptime {
-  margin: 0.75rem 0;
+  margin: 1.2rem 0;
+}
+.svc-key {
+  margin-top: 1.2rem;
+}
+.svc-key .hm-legend {
+  margin-top: 0.4rem;
 }
 .overview-net {
   margin: 0.75rem 0;

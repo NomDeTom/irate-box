@@ -21,6 +21,7 @@ import time
 import uuid as uuidlib
 from pathlib import Path
 
+from irate_box import validate as checks
 from irate_box.msg import M, Refused
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
@@ -28,7 +29,6 @@ RECORD = ETC / "wifi-joined.json"
 KEYFILES = Path(os.environ.get("HUB_NM_CONNECTIONS", "/etc/NetworkManager/system-connections"))
 SECURITY = ("wpa-psk", "sae", "open")  # WPA2 (and WPA3 transition), WPA3 only, no password
 PRIORITY = -10  # below the owner's own profiles (0): a fallback unless chosen
-SSID_RE = re.compile(r"^[^\x00-\x1f\x7f\\]{1,32}$")
 PSK_RE = re.compile(r"^[\x20-\x7e]{8,63}$|^[0-9A-Fa-f]{64}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -59,7 +59,17 @@ def _save(rec):
 
 def validate(ssid, security, psk, hidden):
     """The network as asked, or Refused saying what is wrong (never echoing the password)."""
-    if not isinstance(ssid, str) or not SSID_RE.match(ssid) or len(ssid.encode()) > 32 or ssid != ssid.strip():
+    try:
+        checks.ssid(ssid)
+    except ValueError:
+        raise Refused(
+            M(
+                "wifi-join.ssid",
+                "Enter a network name (SSID) of 1 to 32 bytes. Do not use control characters, a backslash "
+                "or a space at either end.",
+            )
+        ) from None
+    if not isinstance(ssid, str) or "\\" in ssid or ssid != ssid.strip():
         raise Refused(
             M(
                 "wifi-join.ssid",
@@ -92,9 +102,9 @@ def validate(ssid, security, psk, hidden):
 
 
 def _escape(value):
-    """A value as GLib's key files read it (NetworkManager's keyfiles): backslashes and leading spaces escaped."""
-    v = value.replace("\\", "\\\\")
-    return "\\s" + v[1:] if v.startswith(" ") else v
+    """A value as GLib's key files read it (NetworkManager's keyfiles): backslashes, line breaks,
+    tabs and leading spaces escaped."""
+    return checks.keyfile_value(value)
 
 
 def keyfile(name, uid, ssid, security, psk, hidden):
@@ -108,7 +118,7 @@ def keyfile(name, uid, ssid, security, psk, hidden):
         "",
         "[wifi]",
         "mode=infrastructure",
-        f"ssid={_escape(ssid)}",
+        checks.keyfile_ssid(ssid),
     ]
     if hidden:
         lines.append("hidden=true")
