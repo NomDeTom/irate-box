@@ -376,6 +376,11 @@ const AW = (() => {
     const setOpen = (open) => {
       head.setAttribute('aria-expanded', String(open));
       if (open) {
+        // One source's drawer at a time in this pane: opening one closes the one already open.
+        const scope = scopeOf(card);
+        scope.querySelectorAll('.source-panel.source-expanded').forEach((other) => {
+          if (other !== panel && other._closeSource) other._closeSource();
+        });
         // The small card gives its space to the grid, but is no longer drawn: the larger card takes the next
         // row's gap under it. Mock controls' open card does the same.
         const height = card.getBoundingClientRect().height;
@@ -387,6 +392,7 @@ const AW = (() => {
         onResize = () => place();
         window.addEventListener('resize', onResize);
       } else {
+        panel.classList.remove('open');
         panel.remove();
         card.append(head);
         if (actionsNode) card.append(actionsNode);
@@ -397,6 +403,7 @@ const AW = (() => {
       }
       if (opts.onToggle) opts.onToggle(open);
     };
+    panel._closeSource = () => setOpen(false);
     head.addEventListener('click', () => setOpen(!panel.classList.contains('open')));
     card.append(head);
     if (actionsNode) card.append(actionsNode);
