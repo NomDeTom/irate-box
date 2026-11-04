@@ -10,7 +10,7 @@ const fs = require('fs');
 const WEB = path.resolve(__dirname, '../../web');
 const REPO = path.resolve(__dirname, '../..');
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const levels = JSON.parse(require('child_process').execFileSync('python3', ['-c',
   'import json, sys; sys.path.insert(0, sys.argv[1]); from irate_box.hub import uplink; print(json.dumps(uplink.levels()))', REPO]).toString());
 let fails = 0;

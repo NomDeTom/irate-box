@@ -36,7 +36,7 @@ w.fetch = async (u, o = {}) => {
   return json({}, 404);
 };
 w.confirm = () => true;
-['admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
+['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
 const click = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
 const block = () => d.querySelector('.folder-block[data-folder="folder-one"]');
 const row = (name) => [...block().querySelectorAll('.aw-row')].find((r) => t(r.querySelector('.t')) === name);

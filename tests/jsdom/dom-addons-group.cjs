@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const WEB = path.resolve(__dirname, '../../web');
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const addons = { addons: [
   { id: 'irc', group: 'irc', group_title: 'IRC chat', group_summary: 'One IRC server.', title: 'IRC server (ngIRCd)', summary: 'A small server.', added: true, active: true },
   { id: 'inspircd', group: 'irc', group_title: 'IRC chat', group_summary: 'One IRC server.', title: 'IRC server (InspIRCd)', summary: 'A modular server.', added: false, active: false, consent: 'Open unencrypted IRC on the network?' },

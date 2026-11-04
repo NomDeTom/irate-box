@@ -27,7 +27,7 @@
     note.classList.toggle('bad', !ok);
   }
 
-  const el = AW.el;
+  const el = window.HubEl.el;
 
   function qr(text) {
     const q = qrcode(0, 'M');

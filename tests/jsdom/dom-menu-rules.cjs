@@ -146,7 +146,7 @@ check('no page errors', !errors.length, errors.join('; '));
 {
   const adminApps = require('./admin-apps-fixture.cjs');
   const page = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-  const code = ['admin-widgets.js', 'admin-layout.js', 'admin.js', 'admin-tour.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+  const code = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js', 'admin-tour.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
   const vc2 = new VirtualConsole();
   const real = new JSDOM(page, { url: 'http://box/admin/', runScripts: 'outside-only', virtualConsole: vc2, pretendToBeVisual: true });
   const rw = real.window;

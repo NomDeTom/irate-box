@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const WEB = path.resolve(__dirname, '../../web');
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const M = (id, en, args) => ({ id, en, ...(args ? { args } : {}) });
 const kinds = {
   at: Math.floor(Date.now() / 1000),

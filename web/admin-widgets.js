@@ -82,27 +82,26 @@ const AW = (() => {
   }
   const btn = (label, props = {}) => h('button', { type: 'button', class: 'action-btn', ...props }, label);
 
-  // Props that would run or parse text as markup: a handler only as a function, and never innerHTML and its kind,
-  // so a spread of the hub's data into props can never become script.
-  const EL_MARKUP_PROP = /^(innerhtml|outerhtml|srcdoc)$/i;
-  // The one element builder the admin pages share: el(tag, props, ...children). A button with no class of its
-  // own is an action button (rule 6a, the control vocabulary); role and aria-* are attributes, not properties;
-  // dataset is written through node.dataset.
-  function el(tag, props = {}, ...kids) {
-    if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
-    const { dataset, ...rest } = props;
-    for (const [k, v] of Object.entries(rest))
-      if (EL_MARKUP_PROP.test(k) || (/^on/i.test(k) && v != null && typeof v !== 'function'))
-        throw new TypeError(`el(): ${k} is not set from props`);
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(rest)) {
-      if (k === 'role' || k.startsWith('aria-')) node.setAttribute(k, String(v));
-      else node[k] = v;
-    }
-    if (dataset) Object.assign(node.dataset, dataset);
-    node.append(...kids.filter((k) => k !== null && k !== undefined));
-    return node;
-  }
+  // The one element builder every page shares, from el.js. The fallback is for a page script evaluated on its own
+  // (a test): the real pages load el.js first.
+  const el = (window.HubEl && window.HubEl.el) || (() => {
+    const MARKUP_PROP = /^(innerhtml|outerhtml|srcdoc)$/i;
+    return function el(tag, props = {}, ...kids) {
+      if (tag === 'button' && !props.className) props = { ...props, className: 'action-btn' };
+      const { dataset, ...rest } = props;
+      for (const [k, v] of Object.entries(rest))
+        if (MARKUP_PROP.test(k) || (/^on/i.test(k) && v != null && typeof v !== 'function'))
+          throw new TypeError(`el(): ${k} is not set from props`);
+      const node = document.createElement(tag);
+      for (const [k, v] of Object.entries(rest)) {
+        if (k === 'role' || k.startsWith('aria-')) node.setAttribute(k, String(v));
+        else node[k] = v;
+      }
+      if (dataset) Object.assign(node.dataset, dataset);
+      node.append(...kids.filter((k) => k !== null && k !== undefined));
+      return node;
+    };
+  })();
 
   // An action button's wait, drawn by CSS: the faster ring for a click still in flight, the slower one for a
   // button waiting on the root helper. Everything else (the sentence under the button, its title) still says

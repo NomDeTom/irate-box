@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const WEB = path.resolve(__dirname, '../../web');
 const html = fs.readFileSync(path.join(WEB, 'admin.html'), 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js']
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js']
   .map((f) => fs.readFileSync(path.join(WEB, f), 'utf8'))
   .join(';\n');
 let fails = 0;

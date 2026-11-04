@@ -14,7 +14,7 @@ const { execFileSync } = require('child_process');
 const REPO = path.resolve(__dirname, '../..');
 const WEB = `${REPO}/web`;
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const sys = fs.mkdtempSync(path.join(os.tmpdir(), 'secdoctor-findings-'));
 for (const [k, v] of Object.entries({ 'fs/protected_symlinks': '0', 'fs/protected_hardlinks': '1', 'fs/protected_regular': '2',
   'fs/protected_fifos': '2', 'kernel/yama/ptrace_scope': '1', 'kernel/kptr_restrict': '1', 'kernel/dmesg_restrict': '1' })) {

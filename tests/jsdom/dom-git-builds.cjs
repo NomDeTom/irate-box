@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const WEB = path.resolve(__dirname, '../../web');
 const html = fs.readFileSync(`${WEB}/admin-git.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-git.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-git.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const T = 1790950000;
 const ciData = { installed: true, queued: 0, script: '.irate-ci.sh', time_limit: 43200, keep_runs: 5, runs_bytes: 5e6,
   memory: { max: String(300 * 2 ** 20), high: String(230 * 2 ** 20) }, mirrored: ['https://github.com/meshtastic/firmware', 'https://github.com/meshtastic/protobufs'],

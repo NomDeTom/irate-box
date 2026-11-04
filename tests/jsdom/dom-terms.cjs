@@ -47,7 +47,7 @@ w.fetch = async (u, o = {}) => {
   return json({}, 404);
 };
 w.confirm = () => true;
-['admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
+['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].forEach((f) => w.eval(fs.readFileSync(`${WEB}/${f}`, 'utf8')));
 
 // The text a person reads: the page without its scripts and styles.
 const visible = () => {
@@ -109,7 +109,7 @@ const chips = (root, label) => {
   check('Audience words are Guests, Users and Administrators: no Public or Private chip', ![...d.querySelectorAll('.chip, .chip-btn')].some((c) => /^(Public|Private)$/.test(t(c))));
 
   // The same words in the scripts' own prose (strings with a space), not in comments or code names.
-  const files = ['admin.js', 'admin-widgets.js', 'admin-layout.js', 'admin-tour.js', 'admin-mock.js'];
+  const files = ['admin.js', 'el.js', 'admin-widgets.js', 'admin-layout.js', 'admin-tour.js', 'admin-mock.js'];
   const bad = [];
   for (const f of files) {
     const src = fs.readFileSync(`${WEB}/${f}`, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

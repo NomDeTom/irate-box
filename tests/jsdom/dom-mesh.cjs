@@ -71,7 +71,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
     if (o.method === 'POST' && u === '/admin/mesh') { const b = JSON.parse(o.body); posted.push(b); return json({ channels }); }
     if (u === '/admin/mesh') return json({ state: 'listening', nodes, packets, counts: { text: 1 }, since: now, channels });
     return json({}, 404);
-  }, ['admin-widgets.js', 'admin-layout.js', 'admin.js']);
+  }, ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js']);
   await wait();
   d = admin.d;
   check('admin: a side-bar entry, and the state', [...d.querySelectorAll('.admin-side-list a')].some((a) => a.hash === '#mesh')
@@ -93,7 +93,7 @@ const json = (b, status = 200) => new Response(JSON.stringify(b), { status });
 
   // /admin/mesh.html: Heard, the messages too.
   const heard = page('admin-mesh.html', 'http://box.local/admin/mesh.html', async (u) => (u === '/admin/mesh'
-    ? json({ state: 'listening', nodes, packets, counts: { text: 1 }, since: now, channels }) : json({}, 404)), ['admin-widgets.js', 'mesh-heard.js']);
+    ? json({ state: 'listening', nodes, packets, counts: { text: 1 }, since: now, channels }) : json({}, 404)), ['el.js', 'mesh-heard.js']);
   await wait();
   d = heard.d;
   check('heard: the state and the counts', /Connected to the broker: 2 nodes/.test(t(d.getElementById('mesh-heard-state'))) && /1 text/.test(t(d.getElementById('mesh-heard-counts'))));

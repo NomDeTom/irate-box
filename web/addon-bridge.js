@@ -8,7 +8,7 @@
   let addonOrigin = null;
   let pendingTitle = "An add-on";
 
-  const el = AW.el;
+  const el = window.HubEl.el;
   const tell = (text, bad = false) => {
     say.hidden = false;
     say.textContent = text;

@@ -12,7 +12,7 @@ const { execFileSync } = require('child_process');
 const REPO = path.resolve(__dirname, '../..');
 const WEB = `${REPO}/web`;
 const html = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-const js = ['admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
+const js = ['el.js', 'admin-widgets.js', 'admin-layout.js', 'admin.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const py = `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(REPO)})
