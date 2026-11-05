@@ -255,8 +255,9 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
 
     The result is a check, not a handle: the name is the normalised path, still not followed
     through links, so a name opened later can have been swapped in between. The first test is
-    the shape CodeQL recognises (a normalised path, then `startswith` the root); the checks that
-    follow links come only after it."""
+    the shape CodeQL recognises (a normalised path, then `startswith` the root as given, links
+    not resolved, so a root that runs through a link works); the checks that follow links come
+    only after it."""
     if isinstance(value, os.PathLike):
         value = os.fspath(value)
     value = _need(value, what)
@@ -264,15 +265,21 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
         raise Invalid(f"{what} is empty.")
     if "\x00" in value:
         raise Invalid(f"{what} cannot contain a NUL.")
-    root_real = os.path.realpath(os.fspath(root))
-    full = value if os.path.isabs(value) else os.path.join(root_real, value)
+    plain = os.path.normpath(os.path.abspath(os.fspath(root)))
+    root_real = os.path.realpath(plain)
+    if plain != root_real and os.path.isabs(value):
+        # Given through the resolved root (a root that runs through a link): the same place.
+        normal = os.path.normpath(value)
+        if normal == root_real or normal.startswith(root_real.rstrip(os.sep) + os.sep):
+            value = plain + normal[len(root_real) :]
+    full = value if os.path.isabs(value) else os.path.join(plain, value)
     full = os.path.normpath(full)
-    if full == root_real:
-        # The root itself: it was just resolved, so it is not a link.
+    if full == plain:
+        # The root itself.
         if must_exist and not os.path.exists(root_real):
             raise Invalid(f"{what} does not exist.")
-        return Path(root_real)
-    if not full.startswith(root_real.rstrip(os.sep) + os.sep):
+        return Path(full)
+    if not full.startswith(plain.rstrip(os.sep) + os.sep):
         raise Invalid(f"{what} is outside the folder it belongs in.")
     real = os.path.realpath(full)
     if real != root_real and not real.startswith(root_real + os.sep):

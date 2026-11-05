@@ -78,7 +78,7 @@ try:
     # digests in each sha256.json (what the keeper writes), and the settings naming it.
     APK = b"not a real apk, but a held file of some length" * 40
     OLD = APK[:-7]
-    tag, other = "v9.9.9", "v9.9.8"
+    tag, other = "v9.9.9+b1", "v9.9.8"  # a "+" in a tag stays a "+" in the stable link
     name = "androidApp-fdroid-universal-release.apk"
     folder = holds / "demo"
     for where, data in ((tag, APK), (other, OLD)):

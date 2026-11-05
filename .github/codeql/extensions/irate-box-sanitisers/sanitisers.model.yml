@@ -5,7 +5,7 @@
 # log-injection among others, and none for HTTP header values). The type is the top-level package
 # and the path walks to the function: `irate_box` + `Member[validate]...`. Spelling the type as
 # `irate_box.validate` is read as nothing, and the model then does nothing.
-# tests/sim_codeql_model.py checks every row against the code, and tests/codeql_model_check.sh
+# tests/sim_codeql_model.py checks every row against the code, and tests/codeql_model_check.py
 # proves the rows work with the CodeQL CLI.
 extensions:
   - addsTo:
