@@ -8,12 +8,29 @@ format it lands in:
 
   names       ssid, hostname, iface, name, account, package, version, repo, branch, sha256, card,
               country, unit, ip
-  paths       path() under a named root: no "..", no symlink out, no special file
+  paths       under() and path(), two checks (see "Two path checks" below)
   URLs        url(): an allowed scheme and, where given, an allowed host; no credentials, no IP
               literals (so no link-local), no whitespace
   values      text(), choice(), number(), argv()
   writers     hostapd_ssid() (ssid2= hex), keyfile_ssid() (NetworkManager byte list),
               keyfile_value() (GLib key-file escaping), config_line(), html_text()
+
+Two path checks, and which to use:
+
+  under(base, *parts)   the hub's own folders, and names the hub builds. The joined path is normalised and
+                        held to the folder's prefix (the shape CodeQL's path-injection query recognises);
+                        links are not followed, because only the hub writes there; the folder itself is
+                        refused. It lives in irate_box/confine.py, and is re-exported here.
+  path(value, root)     anything another user can write, or a name from outside (a stick, a library
+                        drive, an upload, a staged bundle, a run's folder). The same first test, then the
+                        links are resolved: nothing that leaves the root through a link, no link, no
+                        special file.
+
+Both return a name, not a handle. The file at that name can be swapped between the check and the open, so
+a caller that holds a privilege the other side does not (root, answering the hub) opens through an
+`irate_box.durable` / `root.safeio` function or a directory file descriptor, as `_take_staged` does after
+`validate.path`. tests/root_trust_guard.py lists every request value root takes from the hub that is a
+path, a device or a name, and the check that holds each.
 
 The hub and root both import this module, so they agree. Root still runs every check again on
 anything that came from the hub's side: a value checked by the hub is not trusted by root.
@@ -29,6 +46,8 @@ import stat
 import unicodedata
 from pathlib import Path
 from urllib.parse import quote, urlsplit
+
+from irate_box.confine import under  # noqa: F401  (one of the two path checks, see the module docstring)
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 JOINERS = "\u200c\u200d"
