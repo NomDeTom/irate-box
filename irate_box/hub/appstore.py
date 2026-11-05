@@ -22,7 +22,6 @@ and the checks here are both in force: a members-only file cannot be fetched by 
 Content types come only from the table below, never from what the forge said. Stdlib only.
 """
 
-import html
 import json
 import re
 import time
@@ -351,7 +350,7 @@ def _channel(name):
 
 
 def _esc(message):
-    return html.escape(str(message))
+    return validate.html_text(str(message))
 
 
 def page(host, scheme, level, firmware_visible=False):
@@ -377,7 +376,7 @@ def page(host, scheme, level, firmware_visible=False):
         # Nothing set up yet: the confused krab (web/art), as the box's not-found and not-running pages show it.
         parts.append(
             '  <section class="krab-figure"><img src="/art/krab-confused.webp" alt="" width="240" height="240">'
-            f"<p>{html.escape(str(M('appstore.empty', 'Nothing to install yet.')))}</p>"
+            f"<p>{validate.html_text(str(M('appstore.empty', 'Nothing to install yet.')))}</p>"
         )
         if level == "admin":
             parts.append(
@@ -385,9 +384,9 @@ def page(host, scheme, level, firmware_visible=False):
             )
         parts.append("  </section>")
     for entry in listings:
-        label = html.escape(entry["title"])
+        label = validate.html_text(entry["title"])
         repo = entry["repo"]
-        parts.append(f'  <section class="card appstore-holder" data-holder="{html.escape(entry["id"])}">')
+        parts.append(f'  <section class="card appstore-holder" data-holder="{validate.html_text(entry["id"])}">')
         parts.append(f"    <h2>{label}</h2>")
         added = _obtainium_app(entry, host, scheme)
         if added:
@@ -395,17 +394,17 @@ def page(host, scheme, level, firmware_visible=False):
 
             link = "obtainium://app/" + _url.quote(json.dumps(added, separators=(",", ":")))
             parts.append(
-                f'    <p class="library-buttons"><a class="action-btn" href="{html.escape(link, quote=True)}">'
+                f'    <p class="library-buttons"><a class="action-btn" href="{validate.html_text(link, quote=True)}">'
                 f"{_esc(M('appstore.obtainium.add', 'Add to Obtainium'))}</a></p>"
             )
         if repo:
-            said = html.escape(str(M("appstore.from", "From {repo}", repo=repo))).replace(
-                html.escape(repo), f'<code translate="no">{html.escape(repo)}</code>'
+            said = validate.html_text(str(M("appstore.from", "From {repo}", repo=repo))).replace(
+                validate.html_text(repo), f'<code translate="no">{validate.html_text(repo)}</code>'
             )
             parts.append(f'    <p class="setting-desc">{said}</p>')
         if entry["empty"]:
             parts.append(
-                f'    <p class="setting-desc">{html.escape(str(M("appstore.none-yet", "Nothing to install yet.")))}</p>'
+                f'    <p class="setting-desc">{validate.html_text(str(M("appstore.none-yet", "Nothing to install yet.")))}</p>'
             )
             failed = _last_error(entry["id"]) if level == "admin" else None
             if failed:
@@ -420,9 +419,9 @@ def page(host, scheme, level, firmware_visible=False):
                 f'    <p class="setting-desc">{_esc(M("appstore.firmware.where", "These are the files the Firmware page keeps."))}</p>'
             )
             for version in entry["versions"]:
-                channel = html.escape(str(_channel(version["channel"])))
+                channel = validate.html_text(str(_channel(version["channel"])))
                 parts.append(
-                    f'    <h3><span translate="no">{html.escape(version["tag"])}</span>'
+                    f'    <h3><span translate="no">{validate.html_text(version["tag"])}</span>'
                     f' <span class="appstore-badge">{channel}</span>'
                     f' <span class="appstore-day">{_day(version["published"])}</span></h3>'
                 )
@@ -430,23 +429,25 @@ def page(host, scheme, level, firmware_visible=False):
                     parts.append(
                         f'    <details class="appstore-notes"><summary>'
                         f"{_esc(M('appstore.release-notes', 'Release notes'))}</summary>"
-                        f"<pre>{html.escape(version['notes'])}</pre></details>"
+                        f"<pre>{validate.html_text(version['notes'])}</pre></details>"
                     )
                 parts.append('    <div class="appstore-boards">')
                 for board in version["boards"]:
-                    board_id = html.escape(board["board"], quote=True)
-                    arch = html.escape(board["architecture"], quote=True)
+                    board_id = validate.html_text(board["board"], quote=True)
+                    arch = validate.html_text(board["architecture"], quote=True)
                     count = len(board["files"])
-                    name = html.escape(board["name"])
+                    name = validate.html_text(board["name"])
                     parts.append(
                         f'      <details class="appstore-board" data-board="{board_id}" data-arch="{arch}">'
                         f'        <summary><code translate="no">{board_id}</code>'
-                        f' <span class="setting-desc">{name} · {html.escape(board["architecture"])} · '
+                        f' <span class="setting-desc">{name} · {validate.html_text(board["architecture"])} · '
                         f"{_esc(M('appstore.firmware.file-count', {'one': '{n} file', 'other': '{n} files'}, n=count))}"
                         "</span></summary>"
                     )
                     parts.append('        <ul class="appstore-files">')
                     for file in board["files"]:
+                        if _on_this_hub(file.get("url")) is None:
+                            continue  # an address that is not a path on this hub is not made a link
                         role = FIRMWARE_ROLES.get(file.get("role"))
                         role_html = f' <span class="appstore-role">{_esc(role)}</span>' if role else ""
                         digest = (
@@ -457,8 +458,8 @@ def page(host, scheme, level, firmware_visible=False):
                         md5 = _esc(M("appstore.md5", "md5: {digest}", digest=file["md5"])) if file.get("md5") else ""
                         details = "".join(f'<p><code translate="no">{d}</code></p>' for d in (digest, md5) if d)
                         parts.append(
-                            f'          <li><a href="{html.escape(file["url"])}">'
-                            f'<code translate="no">{html.escape(file["name"])}</code></a>{role_html}'
+                            f'          <li><a href="{validate.html_text(_on_this_hub(file["url"]))}">'
+                            f'<code translate="no">{validate.html_text(file["name"])}</code></a>{role_html}'
                             f' <span class="appstore-size">{_size(file["size"])}</span>'
                             f' <details class="appstore-digest"><summary>'
                             f"{_esc(M('appstore.details', 'Details'))}</summary>{details}</details></li>"
@@ -469,34 +470,36 @@ def page(host, scheme, level, firmware_visible=False):
             parts.append("  </section>")
             continue
         for number, version in enumerate(entry["versions"]):
-            channel = html.escape(str(_channel(version["channel"])))
+            channel = validate.html_text(str(_channel(version["channel"])))
             newest = (
                 f' <span class="chip selected">{_esc(M("appstore.newest", "Newest"))}</span>' if number == 0 else ""
             )
             if number:
                 parts.append(
                     f'    <details class="sec-fold appstore-older"><summary>'
-                    f'<span translate="no">{html.escape(version["tag"])}</span>'
+                    f'<span translate="no">{validate.html_text(version["tag"])}</span>'
                     f' <span class="appstore-badge">{channel}</span>'
                     f' <span class="appstore-day">{_day(version["published"])}</span></summary>'
                 )
             parts.append(
-                f'    <h3 class="appstore-version"><span translate="no">{html.escape(version["tag"])}</span>'
+                f'    <h3 class="appstore-version"><span translate="no">{validate.html_text(version["tag"])}</span>'
                 f' <span class="appstore-badge">{channel}</span>'
                 f' <span class="appstore-day">{_day(version["published"])}</span>{newest}</h3>'
             )
             if version["notes"]:
                 parts.append(
                     f'    <details class="sec-fold appstore-notes"><summary>{_esc(M("appstore.release-notes", "Release notes"))}'
-                    f"</summary><pre>{html.escape(version['notes'])}</pre></details>"
+                    f"</summary><pre>{validate.html_text(version['notes'])}</pre></details>"
                 )
 
             def item(file, nested=""):
-                tags = html.escape(" ".join(sorted(w for ws in holdsurvey.tags_of(file["name"]).values() for w in ws)))
+                tags = validate.html_text(
+                    " ".join(sorted(w for ws in holdsurvey.tags_of(file["name"]).values() for w in ws))
+                )
                 return (
                     f'      <li data-tags="{tags}">'
-                    f'<a class="action-btn" href="{html.escape(file["url"])}">{html.escape(_friendly(file))}</a>'
-                    f' <span class="setting-desc" translate="no">{html.escape(file["name"])}</span>'
+                    f'<a class="action-btn" href="{validate.html_text(_on_this_hub(file["url"]) or "#")}">{validate.html_text(_friendly(file))}</a>'
+                    f' <span class="setting-desc" translate="no">{validate.html_text(file["name"])}</span>'
                     f' <details class="appstore-digest"><summary>{_esc(M("appstore.details", "Details"))}</summary>'
                     f'<p><code translate="no">{_esc(M("appstore.sha256", "sha-256: {digest}", digest=file["sha256"]))}'
                     f"</code></p></details>{nested}</li>"
@@ -530,7 +533,7 @@ def page(host, scheme, level, firmware_visible=False):
         "📱 A phone needs permission to install an app from the browser you downloaded it with. Turn that on once, "
         "for this browser.",
     )
-    warning = html.escape(
+    warning = validate.html_text(
         str(
             M(
                 "appstore.phone.certificate",
@@ -539,8 +542,8 @@ def page(host, scheme, level, firmware_visible=False):
                 certificate=certificate,
             )
         )
-    ).replace(html.escape(certificate), f'<a href="/certificate">{html.escape(certificate)}</a>')
-    address = html.escape(f"{scheme}://{host}/appstore/", quote=True)
+    ).replace(validate.html_text(certificate), f'<a href="/certificate">{validate.html_text(certificate)}</a>')
+    address = validate.html_text(f"{scheme}://{host}/appstore/", quote=True)
     parts.append(
         f'  <section class="card appstore-help"><div><h2>{_esc(M("appstore.help-card", "On a phone"))}</h2>'
         f'<p class="setting-desc appstore-hint">{_esc(permission)}</p>'
@@ -591,10 +594,10 @@ def feed_xml(level, firmware_visible=False):
         if file.get("board"):
             role = FIRMWARE_ROLES.get(file.get("role"))
             where = f" ({file['board']}{' · ' + str(role) if role else ''})"
-        heading = html.escape(f"{title} {file['name']}{where}")
+        heading = validate.html_text(f"{title} {file['name']}{where}")
         identifier = file.get("sha256") or urllib.parse.quote(file["url"])
         categories = "".join(
-            f'    <category term="{html.escape(str(file[key]), quote=True)}"/>\n'
+            f'    <category term="{validate.html_text(str(file[key]), quote=True)}"/>\n'
             for key in ("board", "architecture", "role")
             if file.get(key)
         )
@@ -602,10 +605,10 @@ def feed_xml(level, firmware_visible=False):
             "  <entry>",
             f"    <title>{heading}</title>",
             f'    <link rel="enclosure" type="{kind}" length="{file["size"]}" '
-            f'href="{html.escape(file["url"], quote=True)}"/>',
-            f"    <id>urn:sha256:{html.escape(identifier)}</id>",
+            f'href="{validate.html_text(_on_this_hub(file["url"]) or "#", quote=True)}"/>',
+            f"    <id>urn:sha256:{validate.html_text(identifier)}</id>",
             categories.rstrip("\n"),
-            f"    <updated>{html.escape(published)}</updated>",
+            f"    <updated>{validate.html_text(published)}</updated>",
             "  </entry>",
         ]
     out.append("</feed>")
@@ -691,6 +694,16 @@ def route(handler, path, mode, flasher_mode="off"):
     return _not_found(handler)
 
 
+def _on_this_hub(url):
+    """`url` if it is a path on this hub (what a firmware file's address is), else None: the index
+    came from the internet's answers, so an address in it is checked before it is made a link or
+    a redirect."""
+    try:
+        return validate.local_path(url, "The address")
+    except (validate.Invalid, TypeError):
+        return None
+
+
 def _index_of(holder_id):
     """The holder's published index, or None (a folder of its own is not proof the id is a holder)."""
     for entry in _index("admin"):
@@ -742,7 +755,7 @@ def _firmware_latest(handler, parts, visible):
             for file in one["files"]:
                 if file.get("role") == role:
                     handler.send_response(302)
-                    handler.send_header("Location", file["url"])
+                    handler.send_header("Location", validate.header_value(_on_this_hub(file["url"]) or "/appstore/"))
                     handler.send_header("Cache-Control", "no-store")
                     handler.send_header("Content-Length", "0")
                     handler.end_headers()

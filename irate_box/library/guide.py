@@ -18,13 +18,14 @@ another page of the guide becoming its .html.
 Stdlib only."""
 
 import hashlib
-import html
 import re
 import struct
 import sys
 import time
 import uuid as uuidlib
 from pathlib import Path
+
+from irate_box import validate
 
 CHECKOUT = Path(__file__).resolve().parents[2]
 SOURCE = CHECKOUT / "docs" / "user"
@@ -41,20 +42,26 @@ D2Z_CONFIG = CHECKOUT / "config" / "guide-zim.json"
 def _inline(text):
     out, pos = [], 0
     for m in re.finditer(r"`([^`]+)`|\*\*(.+?)\*\*|\*(.+?)\*|\[([^\]]+)\]\(([^)\s]+)\)", text):
-        out.append(html.escape(text[pos : m.start()], quote=False))
+        out.append(validate.html_text(text[pos : m.start()], quote=False))
         code, bold, em, label, href = m.groups()
         if code is not None:
-            out.append(f"<code>{html.escape(code, quote=False)}</code>")
+            out.append(f"<code>{validate.html_text(code, quote=False)}</code>")
         elif bold is not None:
             out.append(f"<strong>{_inline(bold)}</strong>")
         elif em is not None:
             out.append(f"<em>{_inline(em)}</em>")
         else:
+            if re.match(r"^[a-z][a-z0-9+.-]*:", href, re.I) and not href.lower().startswith(
+                ("http://", "https://", "mailto:")
+            ):
+                out.append(_inline(label))  # no javascript: or data: address is made a link
+                pos = m.end()
+                continue
             if not re.match(r"^[a-z]+:|^/|^#", href):
                 href = re.sub(r"\.md(#|$)", r".html\1", href)
-            out.append(f'<a href="{html.escape(href)}">{_inline(label)}</a>')
+            out.append(f'<a href="{validate.html_text(href)}">{_inline(label)}</a>')
         pos = m.end()
-    out.append(html.escape(text[pos:], quote=False))
+    out.append(validate.html_text(text[pos:], quote=False))
     return "".join(out)
 
 
@@ -109,7 +116,7 @@ def render(md):
                 j += 1
             out.append(
                 '<pre class="help-code"><code>'
-                + html.escape("\n".join(lines[i + 1 : j]), quote=False)
+                + validate.html_text("\n".join(lines[i + 1 : j]), quote=False)
                 + "</code></pre>"
             )
             i = j + 1
@@ -205,7 +212,7 @@ def page_html(stem, md):
     )
     return PAGE.format(
         src=f"{stem}.md",
-        title_text=html.escape(title),
+        title_text=validate.html_text(title),
         title=_inline(title),
         subtitle=_inline(subtitle),
         body=body,
@@ -240,7 +247,7 @@ def zim_page(stem, md):
     nav = "" if stem == "index" else '<p><a href="index.html">The guide\'s other pages</a></p>'
     return (
         f'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
-        f"<title>{html.escape(title)}</title><style>{ZIM_STYLE}</style></head><body><main><h1>{_inline(title)}</h1>"
+        f"<title>{validate.html_text(title)}</title><style>{ZIM_STYLE}</style></head><body><main><h1>{_inline(title)}</h1>"
         f'<p class="subtitle">{_inline(subtitle)}</p>{body}</main>{nav}</body></html>'
     )
 

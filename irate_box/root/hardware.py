@@ -542,7 +542,7 @@ def set_overlay_names(add=None, remove=None, boot=None, path=None):
 
 def write_dtbo(name, dts, run=None, boot=None):
     """Compile one overlay beside its final name, then replace it: a failure keeps the old .dtbo."""
-    if not OVERLAY_RE.match(name or ""):
+    if not OVERLAY_RE.fullmatch(name or ""):
         raise OverlayError("bad-name", str(name))
     path = _overlay_dir(boot) / f"{name}.dtbo"
     path.parent.mkdir(parents=True, exist_ok=True)

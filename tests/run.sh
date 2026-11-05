@@ -154,6 +154,8 @@ run sim_configs.py
 run sim_validate.py
 run sim_downloads.py
 run sim_codeql_model.py
+run sim_hostile_corpus.py
+run sink_guard.py
 run sim_root_configs.py
 run sim_hub_inputs.py
 run sim_forwarded.py

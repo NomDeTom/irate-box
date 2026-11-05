@@ -188,6 +188,43 @@ for private in (
     check(f"public_address: {private} is not public", not V.public_address(private))
 
 
+# --- an address on this hub: a path with one slash ---
+for good in ("/", "/admin/", "/app.html#/draw/", "/account.html?next=%2Fadmin%2F"):
+    check(f"local_path: {good}", V.local_path(good) == good)
+for why, bad in (
+    ("a protocol-relative address", "//evil.example/x"),
+    ("a backslash after the slash", "/\\evil.example"),
+    ("a backslash later", "/a\\b"),
+    ("another site", "https://evil.example/"),
+    ("javascript:", "javascript:alert(1)"),
+    ("no slash", "admin/"),
+    ("a space", "/a b"),
+    ("a newline", "/a\nb"),
+    ("CRLF and a header", "/a\r\nX-Evil: 1"),
+    ("a bidi override", "/a\u202eb"),
+    ("too long", "/" + "a" * 3000),
+    ("empty", ""),
+):
+    refused(f"local_path: {why}", V.local_path, bad)
+
+# An add-on's tile or entry cannot point off the hub: manifests.py reads the address with local_path.
+import copy
+import json
+
+from irate_box.hub import manifests
+
+draw = json.loads((REPO / "apps.d/10-draw.json").read_text())
+manifests._check(copy.deepcopy(draw), "draw")
+for bad in ("//evil.example/", "/\\evil.example", "javascript:alert(1)", "/a b"):
+    broken = copy.deepcopy(draw)
+    broken["tile"]["href"] = bad
+    try:
+        manifests._check(broken, "draw")
+        check(f"manifest: a tile address {bad!r} is refused", False, "accepted")
+    except manifests.ManifestError:
+        check(f"manifest: a tile address {bad!r} is refused", True)
+
+
 # --- the writers: every format gets its own spelling ---
 check("hostapd: ssid2 hex", V.hostapd_ssid("12;34;") == "ssid2=31323b33343b")
 line = V.keyfile_ssid("12;34;")

@@ -366,6 +366,16 @@ def hostapd_lines(settings, kind, ssid):
         if not PASSWORD_RE.fullmatch(pw):
             raise Refused(BAD_PASSWORD)
         if settings.get("allow_wpa2"):
-            return lines + ["wpa_key_mgmt=WPA-PSK SAE", f"wpa_passphrase={pw}", f"sae_password={pw}", "ieee80211w=1"]
-        return lines + ["wpa_key_mgmt=SAE", f"sae_password={pw}", "ieee80211w=2", "sae_require_mfp=1"]
+            return lines + [
+                "wpa_key_mgmt=WPA-PSK SAE",
+                checks.config_line("wpa_passphrase", pw),
+                checks.config_line("sae_password", pw),
+                "ieee80211w=1",
+            ]
+        return lines + [
+            "wpa_key_mgmt=SAE",
+            checks.config_line("sae_password", pw),
+            "ieee80211w=2",
+            "sae_require_mfp=1",
+        ]
     raise Refused(M("hotspot.security.unknown", "Unknown hotspot security mode {kind}.", kind=kind))

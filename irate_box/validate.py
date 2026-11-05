@@ -26,16 +26,18 @@ import ipaddress
 import os
 import re
 import stat
+import unicodedata
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+JOINERS = "\u200c\u200d"
 HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
-IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+IFACE_RE = re.compile(r"^(?![-.])[A-Za-z0-9_.-]{1,15}$")  # not "-x" (an option), not "." or ".."
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
-ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
+ACCOUNT_RE = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]{2,31}$")  # not "-x" (an option)
 PACKAGE_RE = re.compile(r"^[a-z0-9][a-z0-9+.-]{0,63}$")
-VERSION_RE = re.compile(r"^[A-Za-z0-9.+~:-]{1,100}$")
+VERSION_RE = re.compile(r"^(?!\.\.?$)[A-Za-z0-9.+~:][A-Za-z0-9.+~:-]{0,99}$")  # not "-x" (an option), not "." or ".."
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 BRANCH_RE = re.compile(r"^[A-Za-z0-9_./-]{1,200}$")
 COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
@@ -65,13 +67,30 @@ def _short(value, what, most):
     return value
 
 
+def has_hidden_character(value, newlines=False):
+    """Whether `value` has a character that acts instead of showing: a C0 control (a tab, CR and LF
+    too unless `newlines`), DEL, a C1 control (U+0080 to U+009F, among them the 8-bit CSI), a line or
+    paragraph separator, a lone surrogate, or a format character (U+200E, U+202A to U+202E, U+2066
+    to U+2069 and the rest of category Cf: the ones that turn the text that follows around or hide
+    it). The two joiners, U+200C and U+200D, are allowed: emoji sequences and several scripts need
+    them."""
+    for char in value:
+        if newlines and char in "\t\n\r":
+            continue
+        category = unicodedata.category(char)
+        if category in ("Cc", "Cs", "Zl", "Zp") or (category == "Cf" and char not in JOINERS):
+            return True
+    return False
+
+
 def ssid(value):
-    """A WiFi network name: 1 to 32 bytes of UTF-8, no control characters. Any other character
-    is allowed; the writers decide how to put it in hostapd or a NetworkManager keyfile."""
+    """A WiFi network name: 1 to 32 bytes of UTF-8, no control characters (see
+    `has_hidden_character`). Any other character is allowed; the writers decide how to put it in
+    hostapd or a NetworkManager keyfile."""
     value = _need(value, "The WiFi network name")
     if not value or len(value.encode("utf-8")) > 32:
         raise Invalid("The WiFi network name must be 1 to 32 bytes.")
-    if CONTROL_RE.search(value):
+    if has_hidden_character(value):
         raise Invalid("The WiFi network name cannot contain control characters.")
     return value
 
@@ -212,13 +231,13 @@ def ip(value):
 
 
 def text(value, what="The text", most=4096, multiline=False):
-    """Text for a message, a record or a page. No control characters unless newlines are allowed,
-    and never longer than `most` characters."""
+    """Text for a message, a record or a page. No control characters (C0, C1, bidi and other format
+    characters: see `has_hidden_character`) unless newlines are allowed, and never longer than `most`
+    characters."""
     value = _need(value, what)
     if len(value) > most:
         raise Invalid(f"{what} is too long.")
-    bad = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]") if multiline else CONTROL_RE
-    if bad.search(value):
+    if has_hidden_character(value, newlines=multiline):
         raise Invalid(f"{what} cannot contain control characters.")
     return value
 
@@ -263,8 +282,8 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     value = _need(value, what)
     if not value:
         raise Invalid(f"{what} is empty.")
-    if "\x00" in value:
-        raise Invalid(f"{what} cannot contain a NUL.")
+    if CONTROL_RE.search(value) or has_hidden_character(value):
+        raise Invalid(f"{what} cannot contain a NUL, CR, LF or other control character.")
     plain = os.path.normpath(os.path.abspath(os.fspath(root)))
     root_real = os.path.realpath(plain)
     if plain != root_real and os.path.isabs(value):
@@ -329,6 +348,20 @@ def is_ip_spelling(host):
     except (OSError, ValueError):
         pass
     return bool(host) and all(NUMERIC_LABEL_RE.fullmatch(label) for label in host.split("."))
+
+
+def local_path(value, what="The address", most=2048):
+    r"""An address on this hub: a path that starts with one slash, as a page or a redirect takes it.
+    Not `//host` or `/\\host` (a browser reads both as another site), no backslash, no control
+    character or space, and not longer than `most`."""
+    value = _need(value, what)
+    if len(value) > most:
+        raise Invalid(f"{what} is too long.")
+    if not value.startswith("/") or value.startswith(("//", "/\\")) or "\\" in value:
+        raise Invalid(f"{what} must be a path on this hub.")
+    if CONTROL_RE.search(value) or any(char.isspace() for char in value) or has_hidden_character(value):
+        raise Invalid(f"{what} cannot contain spaces or control characters.")
+    return value
 
 
 def url(value, schemes=("https",), hosts=None, what="The address", allow_ip=False):
@@ -476,22 +509,34 @@ def config_line(key, value, what="The setting"):
     return f"{key}={value}"
 
 
-# An OSC string ends at BEL or ESC \ and holds no ESC itself, so a run of unfinished ones is read once
-# (a body that could hold ESC would be read again from each ESC: quadratic on hostile text).
-ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))?")
+# A terminal sequence: ESC [ ... (or the 8-bit CSI, U+009B, the same) and ESC ] ... (or the 8-bit OSC,
+# U+009D), ended by BEL, ST (ESC \\ or U+009C). A title holds no ESC, so a run of unfinished ones is
+# read once (a body that could hold ESC would be read again from each ESC: quadratic on hostile text).
+ANSI_RE = re.compile(
+    r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x9b[0-9;?]*[ -/]*[@-~]"
+    r"|[\x1b\x9d]\][^\x07\x1b\x9c]*(?:\x07|\x9c|\x1b\\)|\x9d[^\x07\x1b\x9c]*(?:\x07|\x9c|\x1b\\)"
+    r"|\x1b"
+)
+LINE_BREAKS = "\r\n\x0b\x0c\x85\u2028\u2029"
 
 
 def html_text(value, quote=True):
-    """Text for an HTML page: escaped, never markup."""
+    """Text for an HTML page: escaped, never markup. For element text and for an attribute inside
+    double quotes only (it escapes the quote, not a space or a backtick, so it is not for an unquoted
+    attribute), and never alone for an attribute that holds an address (href, src, action): that
+    needs `local_path` or `url` first, because `javascript:` survives escaping."""
     return html.escape(str(value), quote=quote)
 
 
 def log_text(value, what="The log line", most=300):
-    """One line for a message or a report: terminal escapes and control characters removed,
-    a CR or LF turned into a space, and the length bounded."""
+    """One line for a message or a report: terminal escapes (7-bit and 8-bit) removed, every kind of
+    line break turned into a space, the other control characters, C1 controls and bidi or other
+    format characters removed (see `has_hidden_character`), and the length bounded."""
     value = _need(value, what)
     value = ANSI_RE.sub("", value)
-    value = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", value.replace("\r", " ").replace("\n", " "))
+    for line_break in LINE_BREAKS:
+        value = value.replace(line_break, " ")
+    value = "".join(char for char in value if char == "\t" or not has_hidden_character(char))
     value = value.strip()
     return value[:most]
 
