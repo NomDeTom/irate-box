@@ -2861,8 +2861,10 @@ EOF
 	# A config it cannot read would leave the unit failing; say so now, in words. The server
 	# runs for a moment and is killed by timeout: 124 is the config accepted.
 	if command -v runuser >/dev/null 2>&1; then
-		timeout 4 runuser -u irc -- /usr/sbin/inspircd --nofork --nopid --nolog --config /etc/inspircd/irate-box.conf >/tmp/inspircd-check.log 2>&1
-		rc=$?
+		# timeout's 124 is the expected answer from a server that is running; under set -e it must be
+		# captured rather than stopping the install (bench Lyra, 2026-11-05).
+		rc=0
+		timeout 4 runuser -u irc -- /usr/sbin/inspircd --nofork --nopid --nolog --config /etc/inspircd/irate-box.conf >/tmp/inspircd-check.log 2>&1 || rc=$?
 		[ "$rc" = 124 ] || problem "inspircd does not accept /etc/inspircd/irate-box.conf: $(tail -1 /tmp/inspircd-check.log)"
 		rm -f /tmp/inspircd-check.log
 	fi

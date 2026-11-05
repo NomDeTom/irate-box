@@ -188,6 +188,10 @@ check(
     "irate-box.conf 2>/dev/null | head -1 || true" in inst,
 )
 check(
+    "  InspIRCd's moment-long config check captures timeout's 124 instead of stopping at it",
+    "rc=0\n\t\ttimeout 4 runuser -u irc -- /usr/sbin/inspircd" in inst and "|| rc=$?" in inst,
+)
+check(
     "  the collaboration relay's unit is written only when its app is there",
     'if [ -f "$ROOM/dist/index.js" ]; then\n\t\tcat >/etc/systemd/system/excalidraw-room.service' in inst
     and '[ "$WITH_COLLAB" = 1 ] && [ -f "$ROOM/dist/index.js" ] && units+=(excalidraw-room)' in inst,
