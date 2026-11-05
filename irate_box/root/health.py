@@ -2024,55 +2024,24 @@ def check_wifi_stalls():
     return out
 
 
-WIFI_GONE_LINE = re.compile(r"(?:urb fail|error):?\s*-19\b", re.I)
-WIFI_GONE_REPEAT = 3  # more than one stray error: the driver is still submitting to a device that is gone
-
-
-def _wifi_client_ifaces():
-    """The WiFi client interfaces on the box now, from iw (a hotspot's AP interface is not one). Where iw cannot
-    answer, every interface with a wireless directory counts, so a missing client is not claimed without a look."""
-    from irate_box.root import radio
-
-    r = run("iw", "dev", timeout=10)
-    if r.returncode == 0:
-        out, name = [], None
-        for line in r.stdout.splitlines():
-            m = re.match(r"\s*Interface (\S+)", line)
-            if m:
-                name = m.group(1)
-                continue
-            m = re.search(r"\btype (\w+)", line)
-            if m and name:
-                if m.group(1) == "managed":
-                    out.append(name)
-                name = None
-        return out
-    try:
-        return sorted(
-            d.name
-            for d in (radio.SYS / "class/net").iterdir()
-            if d.name != "lo" and ((d / "wireless").exists() or (d / "phy80211").exists())
-        )
-    except OSError:
-        return []
-
-
 def check_wifi_gone():
-    """The AIC8800's driver loaded with no WiFi client interface while the kernel repeats `-19` (ENODEV):
-    the chip left the USB bus and the driver kept submitting to it (the Lyra, 2026-11-04). The host bus can
-    then hang udev, lsusb and a soft reboot. The repair is a hardware reset, never a soft reboot; the owner
-    chooses whether the box resets itself (crash watch's chip_gone setting)."""
+    """The AIC8800's driver stack loaded with no WiFi client interface while the kernel repeats `-19`
+    (ENODEV): the chip left the USB bus and the driver kept submitting to it (the Lyra, 2026-11-04).
+    Only `aic_load_fw` had loaded in that boot, so the shared check accepts either module. The host bus
+    can then hang udev, lsusb and a soft reboot. The repair is a hardware reset, never a soft reboot;
+    the administrator chooses whether the box resets itself (crash watch's chip_gone setting)."""
     from irate_box.root import crashwatch as cw
-    from irate_box.root import radio
+    from irate_box.root import radio, wifichip
 
-    if not (radio.SYS / "module" / AIC_MODULE).exists():
-        return []
-    if _wifi_client_ifaces():
-        return []
+    def pair(*cmd, timeout=15):
+        said = run(*cmd, timeout=timeout)
+        return said.returncode, said.stdout
+
     kernel = run("journalctl", "-k", "-b", "-q", "--no-pager", "-n", "300", timeout=20)
     lines = kernel.stdout.splitlines() if kernel.returncode == 0 else []
-    gone = [line.strip() for line in lines if WIFI_GONE_LINE.search(line)]
-    if len(gone) < WIFI_GONE_REPEAT:
+    state = wifichip.chip_gone(lines, sysfs=radio.SYS, run=pair)
+    gone = state["lines"]
+    if not state["gone"]:
         return []
     try:
         choice = json.loads(cw.SETTINGS.read_text()).get("chip_gone", "off")
@@ -2132,7 +2101,7 @@ def check_wifi_gone():
             fix,
             notes=notes,
             commands=[
-                "ls /sys/module/aic8800_fdrv",
+                "ls /sys/module/aic_load_fw /sys/module/aic8800_fdrv",
                 "journalctl -k -b --grep='fail:-19'",
             ],
             evidence=[f"{len(gone)} lines like: {gone[-1][:160]}"],

@@ -63,7 +63,7 @@ gadget = {
     "why": None,
 }
 health.usb_gadget_status = lambda: gadget
-(SYS / "module/aic8800_fdrv").mkdir(parents=True)
+(SYS / "module/aic_load_fw").mkdir(parents=True)
 
 # The finding: driver loaded, no client, the boot's -19 lines repeating.
 IWD = ""
@@ -113,8 +113,14 @@ kern = "\n".join(line for line in FIXTURE.splitlines() if "fail:-19" not in line
 kernel = kern + "\n[10000.0] usb submit msg rx urb fail:-19\n[10001.0] usb submit msg rx urb fail:-19\n"
 check("  two -19 lines are not a repeat: nothing", health.check_wifi_gone() == [])
 kernel = FIXTURE
+check(
+    "  only aic_load_fw loaded, as on the stuck boot: the failure still shows",
+    bool(health.check_wifi_gone()),
+)
+(SYS / "module/aic_load_fw").rename(SYS / "module/aic8800_fdrv")
+check("  the full driver alone is enough too", bool(health.check_wifi_gone()))
 (SYS / "module/aic8800_fdrv").rename(SYS / "module/aic8800_fdrv.off")
-check("  the AIC driver not loaded: nothing", health.check_wifi_gone() == [])
+check("  no AIC module loaded: nothing", health.check_wifi_gone() == [])
 (SYS / "module/aic8800_fdrv.off").rename(SYS / "module/aic8800_fdrv")
 
 # USB networking's own finding names the fallback too.
