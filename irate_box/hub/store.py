@@ -840,7 +840,7 @@ def _handle_drop(handler, method, path, drop):
 
 def _send(handler, code, body=b"", ctype="application/octet-stream", extra=None):
     handler.send_response(code)
-    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Type", validate.header_value(ctype))
     handler.send_header("Content-Length", str(len(body)))
     # No CORS on the box: everything that uses the store is on the hub's own origin, and
     # a wildcard let any website a guest visited read the drop and saves and change saves.
@@ -850,7 +850,7 @@ def _send(handler, code, body=b"", ctype="application/octet-stream", extra=None)
         handler.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
         handler.send_header("Access-Control-Allow-Headers", "*")
     for key, value in (extra or {}).items():
-        handler.send_header(key, value)
+        handler.send_header(key, validate.header_value(value))
     handler.end_headers()
     if body and handler.command != "HEAD":
         handler.wfile.write(body)

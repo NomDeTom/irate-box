@@ -34,3 +34,52 @@ BAD_URLS = {
     "plain http": "http://example.com/x",
     "no host": "https:///x",
 }
+
+# Text that acts instead of showing, or ends a line, or turns the text after it around.
+CONTROLS = {
+    "a trailing newline": "abc\n",
+    "CRLF and a header": "abc\r\nX-Evil: 1",
+    "a NUL": "abc\x00def",
+    "a tab": "abc\tdef",
+    "ESC [ (a 7-bit CSI)": "a\x1b[31mred",
+    "an 8-bit CSI": "a\x9b31mred",
+    "an 8-bit OSC": "a\x9d0;title\x9cb",
+    "a next-line character": "a\x85b",
+    "a line separator": "a b",
+    "a paragraph separator": "a b",
+    "a right-to-left override": "red‮evil",
+    "a bidi isolate": "a⁦b⁩c",
+    "a left-to-right mark": "a‎b",
+    "a lone surrogate": "a\ud800b",
+}
+
+# Text that must stay allowed: the joiners that emoji sequences and several scripts need.
+JOINERS = {
+    "a zero-width joiner in an emoji sequence": "\U0001f468‍\U0001f469‍\U0001f467",
+    "a zero-width non-joiner in Persian": "می‌خواهم",
+}
+
+# A name or a path that tries to leave, or to look like an option.
+NAMES = {
+    "dot dot": "..",
+    "a path out": "../../etc/passwd",
+    "an absolute path": "/etc/passwd",
+    "a leading dash": "-rf",
+    "an option with a value": "--output=/etc/passwd",
+    "an empty value": "",
+    "an over-long value": "a" * 5000,
+    "a user at a host": "user@host",
+    "a semicolon list": "12;34;",
+    "a hash": "#x",
+    "a quote and a backslash": 'a"b\\c',
+    "a space": "a b",
+}
+
+# Everything for a validator that takes one value: the rows above plus the numeric hosts as bare text and as addresses.
+ALL = {
+    **CONTROLS,
+    **NAMES,
+    **{f"{why}, as a host": host for why, host in NUMERIC_HOSTS.items()},
+    **{f"{why}, as an address": f"https://{host}/x" for why, host in NUMERIC_HOSTS.items()},
+    **BAD_URLS,
+}

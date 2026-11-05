@@ -5171,7 +5171,7 @@ class Handler(BaseHTTPRequestHandler):
             f'<body><p><a href="{url}">Open the hub</a></p></body></html>'
         ).encode()
         self.send_response(302)
-        self.send_header("Location", target)
+        self.send_header("Location", validate.header_value(target))
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -5278,7 +5278,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
         elif self._query_one("redirect") == "1":
             back = self.headers.get("X-Forwarded-Uri", "/")
-            nxt = back if back.startswith("/") and not back.startswith("//") else "/"
+            try:
+                nxt = validate.local_path(back, "The address")
+            except validate.Invalid:
+                nxt = "/"
             self.send_response(302)
             self.send_header("Location", validate.header_value("/account.html?next=" + quote(nxt, safe="/")))
             self.send_header("Content-Length", "0")
@@ -5768,15 +5771,16 @@ class Handler(BaseHTTPRequestHandler):
 
         path = self.path.split("?")[0]
         if path in ("/http-admin-warning", "/http-admin-continue"):
-            nxt = self._query_one("next", "/", 2048)
-            if not nxt.startswith("/") or nxt.startswith("//") or "\\" in nxt or any(ord(char) < 32 for char in nxt):
+            try:
+                nxt = validate.local_path(self._query_one("next", "/", 2048), "The address")
+            except validate.Invalid:
                 nxt = "/admin/"
-            # The test above lets no CR or LF through; made plain beside the header.
+            # local_path lets no CR or LF through; made plain beside the header.
             nxt = nxt.replace("\r", "").replace("\n", "")
             if path == "/http-admin-continue":
                 self.send_response(303)
                 self.send_header("Set-Cookie", "irate_http_ok=1; Path=/; HttpOnly; SameSite=Strict")
-                self.send_header("Location", nxt)
+                self.send_header("Location", validate.header_value(nxt))
                 self.send_header("Content-Length", "0")
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
@@ -5824,7 +5828,7 @@ class Handler(BaseHTTPRequestHandler):
             code, k = NOTEBOOKS.gate(accounts.session(self._session_token()))
             self.send_response(204 if code == 204 else code)
             if k:
-                self.send_header("X-Irate-Notebook", k)
+                self.send_header("X-Irate-Notebook", validate.header_value(k))
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
@@ -6444,7 +6448,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("X-Irate-Session", "ok" if vouched else "")
                 self.send_header(
                     "X-Irate-User",
-                    account["name"] if vouched and account is not None else "",
+                    validate.header_value(account["name"]) if vouched and account is not None else "",
                 )
                 self.send_header("Content-Length", "0")
                 self.end_headers()
