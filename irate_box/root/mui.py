@@ -70,6 +70,7 @@ DEFAULTS = {
     "touch": "lgfx",
     "radio_spidev": DEFAULT_RADIO,
     "radio_module": "sim",
+    "replace_radio": False,
     "bus_frequency": 10000000,
 }
 # Fallback labels for a kernel without __symbols__: the two SPI controllers share these RM_IOs.
@@ -148,6 +149,8 @@ def _header():
 
 def _pin(pin):
     """A header row as a dict, or None. pinmap's tuples are (name, global GPIO, RM_IO, fixed role)."""
+    if isinstance(pin, bool) or isinstance(pin, float):
+        return None
     try:
         pin = int(pin)
     except (TypeError, ValueError):
@@ -199,17 +202,28 @@ def _cs_candidate(bus, pin):
     return None
 
 
+def _int_value(value, field):
+    """A pin or frequency from the request: a plain integer or a decimal string, never a bool or a float."""
+    if isinstance(value, bool) or isinstance(value, float):
+        raise Refused(M("mui.bad-selection", "{role} is not a pin number.", role=field))
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+        return int(value)
+    raise Refused(M("mui.bad-selection", "{role} is not a pin number.", role=field))
+
+
 def _normalize(selection):
     sel = dict(DEFAULTS)
     if isinstance(selection, dict):
-        sel.update(selection)
+        for key in DEFAULTS:
+            if key in selection:
+                sel[key] = selection[key]
     for key in ("bus", "clk", "mosi", "miso", "display_cs", "touch_cs", "dc", "rst", "bl", "bus_frequency"):
         if key in sel and sel[key] is not None:
-            try:
-                sel[key] = int(sel[key])
-            except (TypeError, ValueError):
-                raise Refused(M("mui.bad-selection", "{role} is not a pin number.", role=key)) from None
-    sel["bus_frequency"] = int(sel.get("bus_frequency") or 10000000)
+            sel[key] = _int_value(sel[key], key)
+    if type(sel.get("replace_radio")) is not bool:
+        raise Refused(M("mui.replace-radio", "replace_radio must be true or false."))
     sel["touch"] = str(sel.get("touch") or "lgfx")
     sel["radio_spidev"] = str(sel.get("radio_spidev") or "")
     sel["radio_module"] = str(sel.get("radio_module") or "sim")
@@ -303,8 +317,10 @@ def _validate(selection, check_binary=False):
         raise Refused(M("mui.bus-frequency", "The display bus frequency must be 1-40 MHz."))
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", sel["radio_module"]):
         raise Refused(M("mui.radio-module", "The radio module name is not valid."))
+    if sel["radio_module"] != "sim":
+        raise Refused(M("mui.radio-module.sim", "MUI activation uses SimRadio. Configure a real radio separately."))
     if sel["radio_spidev"]:
-        found = SPIDEV_RE.match(sel["radio_spidev"])
+        found = SPIDEV_RE.fullmatch(sel["radio_spidev"])
         if not found:
             raise Refused(M("mui.radio-spidev", "{name} is not a spidev path.", name=sel["radio_spidev"]))
         if int(found.group(1)) == sel["bus"]:
@@ -556,6 +572,11 @@ def _status_for(sel):
         "binary": sel.get("binary", ""),
         "binary_present": bool(sel.get("binary") and Path(sel["binary"]).is_file()),
         "meshtasticd_enabled": bool(_state().get("meshtasticd_enabled")),
+        "radio": {
+            "module": sel.get("radio_module", ""),
+            "spidev": sel.get("radio_spidev", ""),
+            "replaced_meshtasticd": bool(_state().get("meshtasticd_enabled")),
+        },
     }
 
 
@@ -612,6 +633,7 @@ def write_status():
     state = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub")) / "control" / "mui.json"
     safeio.mkdir(state.parent, mode=0o755)
     safeio.write(state, json.dumps(status(), indent=1, sort_keys=True) + "\n", 0o644)
+    write_options()
     return state
 
 
@@ -623,6 +645,18 @@ def write_options():
     return path
 
 
+MESHTASTIC_CONFIG = Path(os.environ.get("HUB_MESHTASTIC_CONFIG", "/etc/meshtasticd/config.yaml"))
+
+
+def _radio_configured():
+    """Whether the packaged daemon has a non-SimRadio module configured (fixed path, never from the hub)."""
+    text = _read(MESHTASTIC_CONFIG)
+    if not text:
+        return False
+    found = re.search(r"^\s*Module:\s*(\S+)", text, re.M)
+    return bool(found and found.group(1).lower() != "sim")
+
+
 def _overlay_error(exc):
     if exc.kind == "dtc-missing":
         raise Refused(M("mui.dtc-missing", "The device tree compiler (dtc) is not installed.")) from None
@@ -632,6 +666,14 @@ def _overlay_error(exc):
 def activate(selection):
     """Write the overlay, config, UI timeout and unit, then enable MUI; a restart applies the overlay."""
     sel = _validate(selection, check_binary=True)
+    package_enabled = _systemctl("is-enabled", "meshtasticd.service").returncode == 0
+    if package_enabled and _radio_configured() and not sel["replace_radio"]:
+        raise Refused(
+            M(
+                "mui.radio-configured",
+                "meshtasticd has a real radio configured. MUI uses SimRadio; pass replace_radio to replace it.",
+            )
+        )
     try:
         hardware.write_dtbo(OVERLAY, dts(sel), boot=BOOT)
     except hardware.OverlayError as exc:
@@ -644,22 +686,27 @@ def activate(selection):
     safeio.write(CONFIG, config(sel), 0o644)
     safeio.mkdir(FSDIR, mode=0o755)
     safeio.mkdir(FSDIR / "prefs", mode=0o755)
-    # DeviceUI's default is a 30 s screen timeout. With no backlight control it blanks the panel.
+    # DeviceUIConfig: version=1, brightness=153, screen_timeout=0, alert_enabled=1, banner_enabled=1.
+    # The default 30 s timeout blanks the panel because this setup has no LGFX backlight control.
     safeio.write(FSDIR / "prefs" / "uiconfig.proto", bytes.fromhex("0801109901180040014801"), 0o644)
     safeio.mkdir(UNIT_DIR, mode=0o755)
     safeio.write(UNIT_PATH, unit(sel), 0o644)
     _systemctl("daemon-reload")
     _systemctl("enable", UNIT)
-    package_enabled = _systemctl("is-enabled", "meshtasticd.service").returncode == 0
     if package_enabled:
         _systemctl("disable", "--now", "meshtasticd.service")
     devices = _devices(sel)
     if devices["display"] and devices["touch"]:
         _systemctl("restart", UNIT)
     _save_state(sel, meshtasticd_enabled=package_enabled)
+    radio = f"SimRadio on {sel['radio_spidev']}" if sel["radio_spidev"] else "SimRadio"
     if devices["display"] and devices["touch"]:
-        return M("mui.active", "MUI is saved and running on {display}.", display=CONFIG)
-    return M("mui.saved", "MUI is saved. Restart the box to apply the selected SPI pins.")
+        return M("mui.active", "MUI is running with {radio}.", radio=radio)
+    return M(
+        "mui.saved",
+        "MUI is saved with {radio}. Restart the box to apply the selected SPI pins.",
+        radio=radio,
+    )
 
 
 def deactivate():

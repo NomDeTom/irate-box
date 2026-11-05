@@ -599,6 +599,8 @@ def check_units():
     watched = watched_units()
     idle = {i["unit"] for i in idle_units()}  # said by check_idle, with switching it off as the choice
     failed = [u for u in failed if u not in idle]
+    if _mui_active():
+        failed = [u for u in failed if u != "meshtasticd.service"]
     for u in [u for u in failed if u in watched]:
         out.append(
             finding(
@@ -714,11 +716,21 @@ def _idle_off():
         return {}
 
 
+def _mui_active():
+    """Whether MUI is the running radio/display daemon, so meshtasticd being stopped is intentional."""
+    try:
+        from irate_box.root import mui
+
+        return bool(mui.status().get("unit_active"))
+    except (ImportError, OSError, ValueError, subprocess.SubprocessError):
+        return False
+
+
 def idle_units():
     """[{unit, title, summary, why, evidence}]: services here that, as far as the box can tell, do nothing for it."""
     out = []
     p = unit_props("meshtasticd.service")
-    if p.get("LoadState") == "loaded" and p.get("UnitFileState") == "enabled":
+    if p.get("LoadState") == "loaded" and p.get("UnitFileState") == "enabled" and not _mui_active():
         log = run("journalctl", "-u", "meshtasticd.service", "-b", "--no-pager", "-o", "cat", "-n", "300").stdout
         if NO_LORA.search(log) and p.get("ActiveState") != "active":
             out.append(

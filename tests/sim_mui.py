@@ -77,6 +77,7 @@ env.write_text("verbosity=1\nuser_overlays=irate-box-watchdog\n")
 mui._snapshot = lambda: {"header": []}
 hardware._dtc = fake_dtc
 mui._systemctl = fake_systemctl
+mui.MESHTASTIC_CONFIG = T / "meshtasticd.yaml"
 sel = {}
 
 check("a Lyra Zero W is supported", mui.supported() is True)
@@ -153,6 +154,29 @@ real_snapshot = mui._snapshot
 mui._snapshot = lambda: {"header": [{"pin": 26, "used": True, "consumer": "ff120000.spi"}]}
 check("a pin owned by the radio is refused", refused(mui.dts, {}) == "mui.pin-busy")
 mui._snapshot = real_snapshot
+check(
+    "unknown selection keys are not kept",
+    not ({"_touch_cs", "bogus"} & set(mui.status({"_touch_cs": {"cs": 1}, "bogus": "x"})["selection"])),
+)
+check(
+    "a trailing newline is not a spidev path",
+    refused(mui.dts, {"radio_spidev": "spidev0.0\n"}) == "mui.radio-spidev",
+)
+check(
+    "booleans and floats are not pin numbers",
+    refused(mui.dts, {"dc": True}) == "mui.bad-selection"
+    and refused(mui.dts, {"bus_frequency": 3.7}) == "mui.bad-selection",
+)
+mui.MESHTASTIC_CONFIG.write_text("Lora:\n  Module: sx1262\n")
+check(
+    "a real radio configured for meshtasticd is refused unless replace_radio is true",
+    refused(mui.activate, sel) == "mui.radio-configured",
+)
+mui.MESHTASTIC_CONFIG.unlink()
+check(
+    "MUI only activates with SimRadio",
+    refused(mui.dts, {"radio_module": "sx1262"}) == "mui.radio-module.sim",
+)
 
 old_env = "verbosity=1\nuser_overlays=irate-box-watchdog luckfox-lyra-zero-w-spi1-lcd-touch\n"
 env.write_text(old_env)
