@@ -90,6 +90,7 @@ FETCH_TIMEOUT = 30
 BUILD_TIMEOUT = 900
 MACHINE_ID = Path(os.environ.get("HUB_MACHINE_ID", "/etc/machine-id"))
 DNSMASQ = Path(os.environ.get("HUB_DNSMASQ_BIN", "/usr/sbin/dnsmasq"))
+PROC = Path(os.environ.get("HUB_PROC", "/proc"))
 MKFS_VFAT = os.environ.get("HUB_MKFS_VFAT", "mkfs.vfat")
 MCOPY = os.environ.get("HUB_MCOPY", "mcopy")
 MDIR = os.environ.get("HUB_MDIR", "mdir")
@@ -442,6 +443,59 @@ def _teardown_tree():
         _remove(folder)
 
 
+def _tty_holders():
+    """The pids with the gadget's serial port open: the getty, or a shell on the console."""
+    holders = []
+    try:
+        entries = list(PROC.iterdir())
+    except OSError:
+        return holders
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if pid in (0, 1, os.getpid()):
+            continue
+        try:
+            descriptors = list((entry / "fd").iterdir())
+        except OSError:
+            continue
+        for descriptor in descriptors:
+            try:
+                target = os.readlink(descriptor)
+            except OSError:
+                continue
+            if target == f"/dev/{TTY}" or target.startswith("/dev/ttyGS"):
+                holders.append(pid)
+                break
+    return sorted(set(holders))
+
+
+def release_serial(log=print):
+    """Close the console before the ACM function is removed. The vendor kernel's gserial_free_port waits
+    for its tty to be closed: removing the function with a getty on it hangs the caller in D state. The
+    service starts the console again after the new tree is bound."""
+    holders = _tty_holders()
+    if not holders:
+        return []
+    log(f"usbgadget: releasing the serial console (pids {', '.join(str(pid) for pid in holders)})")
+    for pid in holders:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    for _ in range(20):
+        if not _tty_holders():
+            return holders
+        time.sleep(0.1)
+    for pid in _tty_holders():
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    return holders
+
+
 def _link(function):
     dest = CONFIGS / "c.1" / function
     if not dest.exists():
@@ -709,6 +763,7 @@ def _applying():
 
 def _compose(settings, udcs, log=print, sleep=time.sleep, children=True):
     """Write the configfs tree from settings and bind it; the modules, dnsmasq and drive image are ready."""
+    release_serial(log)
     _teardown_tree()
     try:
         write(GADGET / "idVendor", VENDOR)
@@ -736,10 +791,12 @@ def _compose(settings, udcs, log=print, sleep=time.sleep, children=True):
             _link("acm.usb0")
         if settings["drive"]:
             (FUNCTIONS / DRIVE_FUNCTION / "lun.0").mkdir(parents=True, exist_ok=True)
-            write(DRIVE_LUN / "file", str(DRIVE_IMAGE))
+            # The read-only flag, removable and CD-ROM are set before the file: once a file is
+            # loaded the kernel refuses ro with EBUSY (seen on the bench Lyra, 2026-11-05).
             write(DRIVE_LUN / "ro", "0" if settings["drive_write"] else "1")
             write(DRIVE_LUN / "removable", "1")
             write(DRIVE_LUN / "cdrom", "0")
+            write(DRIVE_LUN / "file", str(DRIVE_IMAGE))
             _link(DRIVE_FUNCTION)
         write(GADGET / "UDC", udcs[0])
     except OSError as exc:

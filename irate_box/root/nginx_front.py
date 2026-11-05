@@ -384,6 +384,13 @@ def rollback(directory, runner=system, probe=health):
     data = transaction_state(directory)
     if data["state"] in ("committed", "restored"):
         return False
+    # A first install has no hub in front of nginx to probe: the transaction restores the box's own
+    # site. Probing the hub there failed and left a healthy rollback marked for console recovery
+    # (seen on the bench Lyra, 2026-11-05).
+    had_hub = any(
+        entry.get("exists") and str(entry.get("path", "")).endswith(("/irate-box.conf", "/hub.env"))
+        for entry in data.get("entries", [])
+    )
     try:
         recover(directory, finalize=False)
         _journal(directory, dict(data, state="recovery-required"))
@@ -392,7 +399,7 @@ def rollback(directory, runner=system, probe=health):
         operation = "reload-or-restart" if data.get("was_running") is not False else "stop"
         if runner("systemctl", operation, "nginx").returncode:
             raise ValueError("The restored nginx service could not be activated")
-        if data.get("was_running") is not False:
+        if data.get("was_running") is not False and had_hub:
             probe(data["previous_values"])
     except (OSError, ValueError, subprocess.SubprocessError, http.client.HTTPException):
         _journal(directory, dict(data, state="recovery-required"))

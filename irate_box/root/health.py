@@ -2024,6 +2024,93 @@ def check_wifi_stalls():
     return out
 
 
+def check_wifi_gone():
+    """The AIC8800's driver stack loaded with no WiFi client interface while the kernel repeats `-19`
+    (ENODEV): the chip left the USB bus and the driver kept submitting to it (the Lyra, 2026-11-04).
+    Only `aic_load_fw` had loaded in that boot, so the shared check accepts either module. The host bus
+    can then hang udev, lsusb and a soft reboot. The repair is a hardware reset, never a soft reboot;
+    the administrator chooses whether the box resets itself (crash watch's chip_gone setting)."""
+    from irate_box.root import crashwatch as cw
+    from irate_box.root import radio, wifichip
+
+    def pair(*cmd, timeout=15):
+        said = run(*cmd, timeout=timeout)
+        return said.returncode, said.stdout
+
+    kernel = run("journalctl", "-k", "-b", "-q", "--no-pager", "-n", "300", timeout=20)
+    lines = kernel.stdout.splitlines() if kernel.returncode == 0 else []
+    state = wifichip.chip_gone(lines, sysfs=radio.SYS, run=pair)
+    gone = state["lines"]
+    if not state["gone"]:
+        return []
+    try:
+        choice = json.loads(cw.SETTINGS.read_text()).get("chip_gone", "off")
+    except (OSError, ValueError, AttributeError):
+        choice = "off"
+    if choice not in ("off", "reset"):
+        choice = "off"
+    notes = [
+        M(
+            "wifi-chip.bus",
+            "Everything that touches the host bus can wait for ever: udev, lsusb, reads under /sys/bus/usb, "
+            "and a soft reboot's shutdown.",
+        )
+    ]
+    st = usb_gadget_status()
+    if st and st.get("peripheral") and st["settings"]["on"]:
+        from irate_box.root import usbgadget
+
+        notes.append(
+            M(
+                "wifi-chip.gadget",
+                "The USB gadget is a way in while the WiFi is gone: the hub is at {address} and the console on "
+                "/dev/{tty}.",
+                address=usbgadget.ADDRESS,
+                tty=usbgadget.TTY,
+            )
+        )
+    fix = (
+        M(
+            "wifi-chip.fix.reset",
+            "The box resets itself when it sees this. If it has not reset, use its reset pin or the hardware "
+            "watchdog. A soft reboot hangs in shutdown.",
+        )
+        if choice == "reset"
+        else M(
+            "wifi-chip.fix.off",
+            "Reset the box with its reset pin or the hardware watchdog. A soft reboot hangs in shutdown. The "
+            "automatic reset is off: turn it on under Recovery and monitoring.",
+        )
+    )
+    return [
+        finding(
+            "wifi-chip-gone",
+            M("wifi-chip.title", "WiFi chip gone, driver still loaded"),
+            "problem",
+            M(
+                "wifi-chip.summary",
+                "The AIC8800 driver is loaded, but there is no WiFi interface, and the kernel has repeated "
+                "{n} lines about a device that is gone.",
+                n=len(gone),
+            ),
+            M(
+                "wifi-chip.why",
+                "The chip left the USB bus while its driver kept submitting to it. The box cannot bring it back "
+                "without a hardware reset.",
+            ),
+            fix,
+            notes=notes,
+            commands=[
+                "ls /sys/module/aic_load_fw /sys/module/aic8800_fdrv",
+                "journalctl -k -b --grep='fail:-19'",
+            ],
+            evidence=[f"{len(gone)} lines like: {gone[-1][:160]}"],
+            go=_go("health-settings", RECOVERY, "hs-chip-gone"),
+            glance=M("wifi-chip.glance", "WiFi chip gone, driver still loaded."),
+        )
+    ]
+
+
 def _aic_channel(title, why):
     """The AIC8800's hotspot on another channel than the WiFi link on the same radio: the condition of every stall
     measured (2026-10-22). A plan from before the box knew it (apmode, known_radios.json), or a hotspot started by
@@ -6682,6 +6769,33 @@ def setting_groups(s, wd):
             }
         )
     groups += memguard.groups()
+
+    groups.append(
+        {
+            "key": "boot-journal",
+            "label": M("hs.boot-journal", "Each boot's last minutes"),
+            "desc": M(
+                "hs.boot-journal.desc",
+                "Crash watch keeps the last minutes of a boot at shutdown and at the next boot. A hard reset "
+                "reaches neither, so an interval copies them to the card while the box runs. That "
+                "writes the card, so it is off by default.",
+            ),
+            "current": s.get("boot_journal", "off"),
+            "options": [
+                {"value": "off", "label": OFF, "choice": "crashwatch-boot-journal:off"},
+                {
+                    "value": "15min",
+                    "label": M("hs.boot-journal.15", "Every 15 minutes"),
+                    "choice": "crashwatch-boot-journal:15min",
+                },
+                {
+                    "value": "1h",
+                    "label": M("hs.boot-journal.1h", "Every hour"),
+                    "choice": "crashwatch-boot-journal:1h",
+                },
+            ],
+        }
+    )
     return groups
 
 
@@ -7273,7 +7387,12 @@ def check_usb_gadget(st=None):
                         "so a plugged-in computer keeps its own internet. The serial console uses the same cable.",
                         first=usbgadget.DHCP_FIRST,
                         last=usbgadget.DHCP_LAST,
-                    )
+                    ),
+                    M(
+                        "usb-gadget.ok.fallback",
+                        "This is the way in when the WiFi is down: open the hub at {address} over the USB cable.",
+                        address=usbgadget.ADDRESS,
+                    ),
                 ],
                 go=go,
                 glance=M("usb-gadget.ok.glance", "USB networking is up."),
@@ -8601,6 +8720,7 @@ def scan(quick=False):
         check_hotspot,
         check_hotspot_per_account,
         check_wifi_stalls,
+        check_wifi_gone,
         check_space,
         check_card_writes,
         check_card_health,

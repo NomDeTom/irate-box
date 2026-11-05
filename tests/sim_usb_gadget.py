@@ -375,13 +375,30 @@ drop.mkdir(parents=True, exist_ok=True)
 said = usbgadget.set_drive("on")
 check("  set on: saved", usbgadget.load_settings()["drive"] is True, said)
 ran.clear()
+writes = []
+real_write = usbgadget.write
+
+
+def recording_write(path, text):
+    if str(path).startswith(str(T / "config/usb_gadget/irate/functions/mass_storage.usb0/lun.0")):
+        writes.append(Path(path).name)
+    return real_write(path, text)
+
+
+usbgadget.write = recording_write
 ok, why, children = usbgadget.setup(sleep=lambda _: None)
+usbgadget.write = real_write
 g = T / "config/usb_gadget/irate"
 lun = g / "functions/mass_storage.usb0/lun.0"
 image = drop / ".usb-drive.img"
 check("  setup builds the image and the LUN", ok and image.is_file() and lun.is_dir(), why)
 check("  the LUN points at the image", lun.joinpath("file").read_text() == str(image))
 check("  read-only by default", lun.joinpath("ro").read_text() == "1")
+check(
+    "  the LUN's flags are written before its file, as the kernel requires",
+    writes.index("ro") < writes.index("removable") < writes.index("cdrom") < writes.index("file"),
+    writes,
+)
 check(
     "  the manifest names the drop's file",
     json.loads((drop / ".usb-drive-manifest.json").read_text())["hello.txt"]["id"] == "one",
@@ -459,6 +476,36 @@ check(
 usbgadget.set_drive_write("off")
 usbgadget.set_drive("off")
 check("  off: the drive choice is saved", usbgadget.load_settings()["drive"] is False)
+
+# Removing the ACM function must close the console first: the vendor kernel's gserial_free_port waits
+# on it (seen on the bench Lyra, 2026-11-05). A fake /proc names one getty holding ttyGS0 and one
+# unrelated process, and the console holder is asked to close before the tree is torn down.
+import signal as _signal
+
+fake_proc = T / "proc"
+(fake_proc / "321" / "fd").mkdir(parents=True)
+(fake_proc / "322" / "fd").mkdir(parents=True)
+(fake_proc / "321" / "fd" / "0").symlink_to("/dev/ttyGS0")
+(fake_proc / "322" / "fd" / "0").symlink_to("/dev/null")
+real_proc, real_kill = usbgadget.PROC, os.kill
+killed = []
+
+
+def fake_kill(pid, signum):
+    killed.append((pid, signum))
+    (fake_proc / str(pid) / "fd" / "0").unlink(missing_ok=True)
+
+
+usbgadget.PROC = fake_proc
+os.kill = fake_kill
+holders = usbgadget.release_serial(log=lambda *_: None)
+os.kill = real_kill
+usbgadget.PROC = real_proc
+check(
+    "  the serial console is closed before the ACM function is removed",
+    holders == [321] and killed == [(321, _signal.SIGTERM)],
+    (holders, killed),
+)
 
 # The pinned source fetch: the cache first, then the commit's raw file, checked against its sha256.
 data = b"// a pinned source\n"
