@@ -6150,8 +6150,8 @@ class Handler(BaseHTTPRequestHandler):
                         entry = item
                         break
             try:
-                fh = open(STATE_DIR / "rk-backups" / name, "rb") if entry else None
-            except OSError:
+                fh = open(validate.path(name, STATE_DIR / "rk-backups", must_exist=True), "rb") if entry else None
+            except (OSError, validate.Invalid):
                 fh = None
             if fh is None:
                 self.send_json(
