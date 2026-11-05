@@ -1,0 +1,68 @@
+name: build-meshtasticd-armhf
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build/meshtasticd-armhf
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - name: Build native-tft in armhf Debian trixie
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            -v "$GITHUB_WORKSPACE":/work -w /work \
+            debian:trixie bash -euc '
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential ca-certificates git python3 python3-pip python3-venv \
+                pkg-config cmake \
+                libgpiod-dev libyaml-cpp-dev libx11-dev libinput-dev libxkbcommon-dev \
+                libulfius-dev libssl-dev libbsd-dev
+              pip3 install --break-system-packages platformio
+
+              git clone --depth 1 https://github.com/meshtastic/firmware.git firmware
+              cd firmware
+
+              python3 - <<"PY"
+          import re
+          p = "src/graphics/tftSetup.cpp"
+          s = open(p).read()
+          s2 = re.sub(
+              r"portduino_config\.displayPanel == ili9486\s*\|\|\s*portduino_config\.displayPanel == ili9488",
+              "portduino_config.displayPanel == ili9486",
+              s,
+          )
+          if s2 == s:
+              raise SystemExit("dlen patch did not apply")
+          open(p, "w").write(s2)
+          PY
+
+              python3 - <<"PY"
+          p = "variants/native/portduino/platformio.ini"
+          s = open(p).read()
+          old = "${device-ui_base.lib_deps}"
+          new = "${device-ui_base.lib_deps}\n  lovyan03/LovyanGFX@1.2.28"
+          if old not in s:
+              raise SystemExit("native-tft lib_deps anchor not found")
+          open(p, "w").write(s.replace(old, new, 1))
+          PY
+
+              pio run -e native-tft -j 1
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meshtasticd-armhf
+          path: firmware/.pio/build/native-tft/meshtasticd
+          if-no-files-found: error
