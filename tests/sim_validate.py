@@ -120,6 +120,32 @@ refused("path: a link inside the root", V.path, "link-in", root)
 refused("path: a FIFO", V.path, "fifo", root)
 refused("path: missing and must exist", V.path, "gone.txt", root, "The path", True)
 check("path: a folder", V.path("sub", root) == root / "sub")
+check("path: the root itself", V.path(".", root) == Path(os.path.realpath(root)))
+check("path: the root, as an absolute name", V.path(str(root), root) == Path(os.path.realpath(root)))
+# A root that runs through a link (the state folder on a box often does): the name through the link
+# and the name through the resolved folder are the same place, and an escape is still one.
+(T / "real-runs").mkdir()
+(T / "real-runs" / "1").mkdir()
+(T / "real-runs" / "1" / "log.txt").write_text("log")
+(T / "link-to-runs").symlink_to(T / "real-runs")
+linked_root = T / "link-to-runs"
+check(
+    "path: an absolute name through a linked root",
+    V.path(str(linked_root / "1/log.txt"), linked_root, must_exist=True) == linked_root / "1/log.txt",
+)
+check(
+    "path: an absolute name through the resolved root of a linked root",
+    V.path(str(T / "real-runs/1/log.txt"), linked_root, must_exist=True).name == "log.txt",
+)
+check("path: a relative name under a linked root", V.path("1/log.txt", linked_root, must_exist=True).name == "log.txt")
+check("path: a linked root itself", V.path(".", linked_root, must_exist=True) == linked_root)
+refused("path: ../ out of a linked root", V.path, "../outside.txt", linked_root)
+refused("path: a sibling of the linked root", V.path, str(T / "outside.txt"), linked_root)
+(T / "real-runs" / "out-link").symlink_to(outside)
+refused("path: a link out of a linked root", V.path, "out-link", linked_root)
+(T / (root.name + "-sibling")).mkdir()
+refused("path: a sibling folder that starts with the root's name", V.path, f"../{root.name}-sibling/x", root)
+refused("path: a folder that is not there as the root, must exist", V.path, ".", T / "no-such-root", "The path", True)
 
 
 # --- URLs: scheme, host, credentials, IP literals, whitespace ---
@@ -147,6 +173,10 @@ check(
     "keyfile: leading spaces and line breaks escaped", V.keyfile_value("  a\\b\nc\rd\te") == "\\s\\sa\\\\b\\nc\\rd\\te"
 )
 refused("keyfile: NUL", V.keyfile_value, "a\0b")
+check("header_value: a plain value", V.header_value("/appstore/files/x/v1/a.apk") == "/appstore/files/x/v1/a.apk")
+for bad in ("a\r\nX-Evil: 1", "a\n", "a\x00", "a\x7f"):
+    refused(f"header_value: {bad!r}", V.header_value, bad)
+refused("header_value: not text", V.header_value, None)
 refused("config line: newline", V.config_line, "ssid", "a\nb")
 refused("config line: bad key", V.config_line, "ss id", "x")
 check("config line: a plain line", V.config_line("channel", "6") == "channel=6")
