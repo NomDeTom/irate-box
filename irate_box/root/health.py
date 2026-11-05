@@ -6417,6 +6417,38 @@ def setting_groups(s, wd):
                 ],
             }
         )
+    groups.append(
+        {
+            "key": "chip-gone",
+            "label": M("hs.chip-gone", "A WiFi chip that is gone"),
+            "desc": M(
+                "hs.chip-gone.desc",
+                "When the AIC8800 driver is still loaded, there is no WiFi interface, and the kernel keeps "
+                "reporting a device that is gone, the box saves the evidence and waits for the administrator. Reset "
+                "sets the box going again at once, without an orderly shutdown: a soft reboot hangs on the "
+                "wedged bus. Anything unsaved is lost.",
+            ),
+            "current": s.get("chip_gone", "off"),
+            "options": [
+                {
+                    "value": "off",
+                    "label": M("hs.chip-gone.off", "Wait for the administrator"),
+                    "choice": "crashwatch-chip-gone:off",
+                },
+                {
+                    "value": "reset",
+                    "label": M("hs.chip-gone.reset", "Reset the box"),
+                    "choice": "crashwatch-chip-gone:reset",
+                    "confirm": M(
+                        "hs.chip-gone.confirm",
+                        "Reset the box when the WiFi chip is gone while its driver is still loaded? The box saves "
+                        "the evidence first, then resets with no orderly shutdown. Anything unsaved is lost, and "
+                        "the box is unreachable until it starts again.",
+                    ),
+                },
+            ],
+        }
+    )
     groups += [
         {
             "key": "undervoltage",

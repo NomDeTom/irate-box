@@ -109,7 +109,9 @@ DEFAULT = {
     "undervoltage": True,
     "undervoltage_mv": UNDERVOLTAGE_MV,
     "power_action": "log",
+    "chip_gone": "off",
 }
+CHIP_GONE = ("off", "reset")
 FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5  # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
@@ -148,6 +150,8 @@ def load_settings():
         out["undervoltage_mv"] = raw["undervoltage_mv"]
     if raw.get("power_action") in POWER_ACTIONS:
         out["power_action"] = raw["power_action"]
+    if raw.get("chip_gone") in CHIP_GONE:
+        out["chip_gone"] = raw["chip_gone"]
     return out
 
 
@@ -651,6 +655,90 @@ class RadioWatch:
         return events
 
 
+# --- the WiFi chip gone -------------------------------------------------------------------------
+
+AIC_MODULE = "aic8800_fdrv"
+CHIP_GONE_LINE = re.compile(r"(?:urb fail|error):?\s*-19\b", re.I)
+CHIP_GONE_REPEAT = 3
+
+
+def wifi_clients():
+    """The WiFi client interfaces, from iw; a hotspot's AP interface is not one. Where iw cannot answer,
+    every wireless interface counts, so a missing client is never claimed without a look."""
+    r = _run("iw", "dev", timeout=10)
+    if r.returncode == 0:
+        out, name = [], None
+        for line in (r.stdout or "").splitlines():
+            m = re.match(r"\s*Interface (\S+)", line)
+            if m:
+                name = m.group(1)
+                continue
+            m = re.search(r"\btype (\w+)", line)
+            if m and name:
+                if m.group(1) == "managed":
+                    out.append(name)
+                name = None
+        return out
+    try:
+        return sorted(
+            d.name
+            for d in (SYS / "class/net").iterdir()
+            if d.name != "lo" and ((d / "wireless").exists() or (d / "phy80211").exists())
+        )
+    except OSError:
+        return []
+
+
+def wifi_chip_gone(kernel):
+    """(gone, why) when the AIC8800's driver is loaded, no WiFi client is there, and the kernel repeats
+    -19 for the vanished device. why names what was seen."""
+    if not (SYS / "module" / AIC_MODULE).exists():
+        return False, ""
+    if wifi_clients():
+        return False, ""
+    bad = [line.strip() for line in kernel if CHIP_GONE_LINE.search(line)]
+    if len(bad) < CHIP_GONE_REPEAT:
+        return False, ""
+    return True, f"the AIC8800 driver is loaded with no WiFi interface, and {len(bad)} lines repeat: {bad[-1][:160]}"
+
+
+def hard_reset(run=None):
+    """An immediate reset with no orderly shutdown, which hangs on the wedged bus (F6): systemd's own
+    forced reboot, and SysRq B if that does not go. Evidence is written before this is called."""
+    run = run or _run
+    code, _out = run("systemctl", "reboot", "--force", "--force", timeout=30)
+    if code == 0:
+        return None
+    try:
+        Path(os.environ.get("HUB_SYSRQ", "/proc/sysrq-trigger")).write_text("b")
+    except OSError as exc:
+        return f"the box was not reset: {exc}"
+    return None
+
+
+class ChipWatch:
+    """A WiFi chip that left the bus while its driver kept submitting, noted once. With the owner's
+    chip_gone: reset, the box is reset at once after the evidence is filed, never through a soft reboot."""
+
+    def __init__(self, log, reset=None):
+        self.log, self.reset, self.seen = log, reset or hard_reset, False
+
+    def act(self, now, kernel, settings):
+        gone, why = wifi_chip_gone(kernel)
+        if not gone:
+            self.seen = False
+            return None
+        if self.seen:
+            return None
+        self.seen = True
+        event = self.log(now, "wifi", "chip-gone", f"The WiFi chip is gone: {why}.", snapshot=True)
+        if settings.get("chip_gone") == "reset":
+            said = self.reset()
+            if said:
+                print(f"crashwatch: {said}", file=sys.stderr)
+        return event
+
+
 # --- the hang settings ---------------------------------------------------------------------------
 
 
@@ -1061,6 +1149,21 @@ def set_option(key, value):
             "The supply's low point is {mv} mV.",
             mv=int(value),
         )
+    elif key == "chip-gone" and value in CHIP_GONE:
+        s["chip_gone"] = value
+        msg = (
+            M(
+                "crashwatch-set.chip-gone.reset",
+                "When the WiFi chip is gone while its driver is still loaded, the box saves the evidence and resets "
+                "itself at once, without an orderly shutdown.",
+            )
+            if value == "reset"
+            else M(
+                "crashwatch-set.chip-gone.off",
+                "When the WiFi chip is gone while its driver is still loaded, the box records it and waits for its "
+                "administrator to reset it.",
+            )
+        )
     elif key == "power-action" and value in POWER_ACTIONS:
         s["power_action"] = value
         if value == "shutdown":
@@ -1121,6 +1224,7 @@ def run(once=False):
         if kind in (
             "failed",
             "driver-reset",
+            "chip-gone",
         ):  # filed with the kernel's lines: what failed, or what the driver timed out on
             try:
                 e["filed"] = file_radio(now, iface, text, pending["lines"], (known.get(iface) or {}).get("port"))["dir"]
@@ -1152,6 +1256,7 @@ def run(once=False):
     except (OSError, ValueError) as exc:
         print(f"crashwatch: the old radio setting not carried over: {exc}", file=sys.stderr)
     watch = RadioWatch(log)
+    chip_watch = ChipWatch(log)
     keeper = SnapshotKeeper()
     # Stopped (a shutdown, a restart): what the saver stop holds goes to the card first.
     import signal
@@ -1177,6 +1282,10 @@ def run(once=False):
         for i, r in radios().items():
             known[i] = r  # a radio that came back, or a new one, watched from now on
         watch.act(now, radio_state(known, lines), lines, radio.driver_reset())
+        try:
+            chip_watch.act(now, lines, settings)
+        except (OSError, ValueError) as exc:
+            print(f"crashwatch: the WiFi chip check failed: {exc}", file=sys.stderr)
         try:
             power_tick(now, settings)
         except (OSError, ValueError) as exc:
