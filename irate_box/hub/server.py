@@ -7841,6 +7841,10 @@ class Handler(BaseHTTPRequestHandler):
                 loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
             ):
                 self.send_json(202, {"id": control_request({"action": "rk-read", "loader": loader})})
+            elif act == "backup" and (
+                loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
+            ):
+                self.send_json(202, {"id": control_request({"action": "rk-backup", "loader": loader})})
             elif (
                 act == "erase"
                 and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))

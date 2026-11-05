@@ -51,7 +51,7 @@
     }
   }
   // The same guard for installing a bootloader: read, say what is there, then ask with what will be written.
-  async function readThenInstall(body, at, anchor, title, what) {
+  async function readThenInstall(body, at, anchor, title, what, saveFirst) {
     say('Reading the onboard flash…', true, at);
     try {
       const id = (await postJSON('/admin/rkboard', { action: 'read', loader: body.loader })).id;
@@ -61,7 +61,16 @@
       const token = (read.msg && read.msg.token) || '';
       const ask = `${resultSaid(read)} ${what} This erases the board's onboard flash, including any logs kept on the NAND. It cannot be undone.`;
       if (!(await AW.confirmHere(ask, { anchor, label: title }))) return say('Nothing was written.', true, at);
-      say('Writing the bootloader to the board…', true, at);
+      if (saveFirst) {
+        say('Saving a full copy of the onboard flash first…', true, at);
+        const bid = (await postJSON('/admin/rkboard', { action: 'backup', loader: body.loader })).id;
+        const backed = await awaitResult(bid);
+        if (!backed) return say('The onboard flash was not saved in time; nothing was written.', false, at);
+        if (!backed.ok) return say(resultSaid(backed), false, at);
+        say(`${resultSaid(backed)} Writing the bootloader…`, true, at);
+      } else {
+        say('Writing the bootloader to the board…', true, at);
+      }
       waiting = (await postJSON('/admin/rkboard', { ...body, confirm: token })).id;
       shown = '';
       load();
@@ -199,6 +208,9 @@
       el('h3', { textContent: 'Install a bootloader' }),
       el('p', { className: 'setting-desc', textContent: "Write a bootloader to the board's onboard flash. The original is the one Luckfox ships; the irate-box NAND U-Boot boots from the SPI NAND. The Alpine rescue image can be written to a card in a reader in the same step." }),
       el('p', { className: 'setting-desc warn-text', textContent: "Installing a bootloader erases the board's onboard flash. If logs were being kept on the NAND, they are erased. There is no migration: the board is prepared again from scratch." }));
+    const save = el('input', { type: 'checkbox', id: 'rk-backup-first' });
+    save.checked = true;
+    box.append(el('label', { className: 'setting-desc' }, save, ' Save a full copy of the onboard flash first (recommended)'));
     const boots = data.bootloaders || [];
     if (!boots.length) {
       box.append(el('p', { className: 'setting-desc', textContent: 'No bootloader is described on this box.' }));
@@ -254,7 +266,7 @@
         body.rescue = { image: rescue.name, sha256: rescue.sha256, card: card.name, size: card.size, serial: card.serial };
       }
       readThenInstall(body, note, event.currentTarget, go.textContent,
-        `Install ${chosen.title}${rescue ? ` and write ${rescue.name} to the card` : ''}?`);
+        `Install ${chosen.title}${rescue ? ` and write ${rescue.name} to the card` : ''}?`, save.checked);
     });
     box.append(el('div', { className: 'library-buttons' }, go));
     return box;

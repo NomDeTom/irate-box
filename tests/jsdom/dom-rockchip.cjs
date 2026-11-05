@@ -26,6 +26,7 @@ w.fetch = async (u, opts = {}) => {
     const body = JSON.parse(opts.body);
     posted.push(body);
     if (body.action === 'secret') return new Response(JSON.stringify({ secret: body.id === 'rk1' ? { root: 'Root16charsAbcd1', user: 'salty-parrot', user_password: 'User16charsAbcd2' } : null }), { status: 200 });
+    if (body.action === 'backup') return new Response('{"id":"rk-backup"}', { status: 202 });
     return new Response('{"id":"rk1"}', { status: 202 });
   }
   if (u === '/admin/rkboard') return new Response(JSON.stringify(state), { status: 200 });
@@ -109,15 +110,21 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
     d.getElementById('rk-install').textContent,
   );
   posted.length = 0;
-  state.results = [{ id: 'rk1', ok: true, msg: { id: 'rkboard.read', en: 'It holds logs, rescue and state.', token: 'logs,rescue,state' } }];
+  state.results = [{ id: 'rk1', ok: true, msg: { id: 'rkboard.read', en: 'It holds logs, rescue and state.', token: 'logs,rescue,state' } }, { id: 'rk-backup', ok: true, msg: { id: 'rkboard.backed-up', en: 'Saved a full copy of the onboard flash.' } }];
   [...d.querySelectorAll('#rk-install button')].find((x) => x.textContent === 'Install the bootloader and the rescue').click();
   await wait(700);
   check('  read first, then asked with what will be lost', posted.some((x) => x.action === 'read') && /Everything on it is lost|including any logs kept on the NAND/.test((d.querySelector('.aw-ask') || {}).textContent || ''), posted);
   const installAsk = [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Install the bootloader and the rescue');
   check('  the install ask names the bootloader and says the flash is erased', !!installAsk, d.querySelector('.aw-ask') && d.querySelector('.aw-ask').textContent);
   installAsk.click();
-  await wait(80);
+  await wait(800);
   const installBody = posted.find((x) => x.action === 'install');
+  check(
+    '  the full copy is saved before the install',
+    posted.some((x) => x.action === 'backup') &&
+      posted.findIndex((x) => x.action === 'backup') < posted.findIndex((x) => x.action === 'install'),
+    posted,
+  );
   check(
     '  then sent: the NAND bootloader, the rescue image and the card',
     installBody && installBody.bootloader === 'nand-uboot' && installBody.confirm === 'logs,rescue,state' && installBody.rescue.image === 'alpine-rescue.img' && installBody.rescue.card === 'sda' && installBody.rescue.serial === 'R1',

@@ -334,6 +334,19 @@ check(
     and any(f["sha256"] for f in shipped_bootloaders[1]["files"]),
     shipped_bootloaders,
 )
+nand_files = [(f["name"], f["offset"]) for f in shipped_bootloaders[1]["files"]]
+check(
+    "  the NAND rescue bundle carries the chain, the FIT and the UBI at the tested offsets",
+    nand_files
+    == [
+        ("idbloader.img", 0),
+        ("idbloader.img", 4194304),
+        ("u-boot.itb", 8388608),
+        ("rescue.itb", 12582912),
+        ("irate-nand.ubi", 33554432),
+    ],
+    nand_files,
+)
 boot_meta = T / "bootloaders"
 boot_state = T / "state" / "rk-bootloaders"
 boot_meta.mkdir()
@@ -499,6 +512,27 @@ rkcard.run = real_rkcard_run
 rkusb.cards = real_cards
 rkusb.BOOTLOADERS, rkusb.BOOTLOADER_STATE = real_bootloaders, real_state
 
+# A full copy of the onboard flash, saved before the erase. A small flash keeps the test quick.
+shows.update(mb=1, sectors=2048)
+card[:] = bytes((i * 7) & 0xFF for i in range(2048 * 512))
+unplug_all()
+plug("1-1.2", "loader")
+ran.clear()
+said = hub_control.ACTIONS["rk-backup"]({"action": "rk-backup", "loader": None})
+backups = sorted((T / "state" / "rk-backups").glob("*.bin"))
+check(
+    "the full copy: the whole flash read and saved, nothing written to the board",
+    said.get("id") == "rkboard.backed-up"
+    and len(backups) == 1
+    and backups[0].stat().st_size == 2048 * 512
+    and hashlib.sha256(backups[0].read_bytes()).hexdigest() == said.get("sha256")
+    and any(c[:2] == ("rkdeveloptool", "rl") for c in ran)
+    and not any(c[:2] == ("rkdeveloptool", "ef") for c in ran)
+    and not any(c[:2] == ("rkdeveloptool", "wl") for c in ran),
+    (said, ran, backups),
+)
+shows.update(NAND)
+
 # A missing tool.
 del have["rkdeveloptool"]
 unplug_all()
@@ -550,6 +584,15 @@ check(
     and "logs were being kept on the NAND" in (REPO / "web" / "admin-rockchip.js").read_text()
     and "rk-bootloaders" in (REPO / "web" / "admin-rockchip.js").read_text()
     and "alpine-rescue" in (REPO / "rockchip" / "rescues" / "README.md").read_text(),
+)
+check(
+    "the recovery page and the backup action are wired",
+    '"action": "rk-backup"' in src
+    and '"rk-backup": rk_backup' in (REPO / "irate_box" / "root" / "hub_control.py").read_text()
+    and "Recover a dead Lyra" in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "maskrom-pins.png" in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "Save a full copy" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup'" in (REPO / "web" / "admin-rockchip.js").read_text(),
 )
 rescue_build = subprocess.run(
     [

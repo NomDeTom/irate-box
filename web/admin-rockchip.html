@@ -55,6 +55,35 @@
       <div id="rk-images-panel" class="card-grid source-grid"></div>
     </section>
 
+    <!-- Recovering a board whose NAND boot chain is damaged: Tom's invasive route. The owner shorts the W25N02KV's
+         CLK pad to GND while powering the board; the box sees MaskROM, reads and saves the flash, then writes the
+         NAND U-Boot and the Alpine rescue. The photo at /maskrom-pins.png is added later. -->
+    <section class="admin-pane" id="rk-recovery-pane" aria-labelledby="rk-recovery-title">
+      <h2 id="rk-recovery-title" data-i18n="admin-rockchip.recovery.title">Recover a dead Lyra in MaskROM</h2>
+      <p class="setting-desc" data-i18n="admin-rockchip.recovery.intro">
+        A Lyra whose NAND boot chain is damaged, or whose U-Boot no longer starts, can be recovered from this
+        page without removing the NAND. Connect the board's OTG0 USB-C to this box (data and power), and its debug
+        UART to a USB serial adapter on this box. The Lyra's console is 1,500,000 baud. Open the
+        <a href="/serial/">serial terminal</a> to watch it.
+      </p>
+      <ol class="setting-desc">
+        <li data-i18n="admin-rockchip.recovery.step-1">Power the board off. On the <strong>W25N02KV</strong> (the 8-pad flash near the SoC), hold
+          <strong>pad 6 (CLK)</strong> to <strong>pad 4 (GND)</strong> with fine tweezers or a jumper. Pin 1 is the
+          dot. Pad 6 is the third pad down on the right, pad 4 is bottom-left. Do not touch pad 8 (VCC).</li>
+        <li data-i18n="admin-rockchip.recovery.step-2">Power the board on while holding the short. When it appears below in <strong>MaskROM</strong>, release
+          the short at once. If it does not appear, power off, re-seat the short and try again.</li>
+        <li data-i18n="admin-rockchip.recovery.step-3">In <em>Install a bootloader</em> below, select <strong>irate-box NAND U-Boot and Alpine rescue (C)</strong>.
+          Keep <em>Save a full copy of the onboard flash first</em> ticked. The box reads and saves the whole NAND,
+          then erases it and writes the boot chain, the rescue FIT and the UBI rescue. The board is standalone
+          afterwards: it boots its card first, then USB, then C.</li>
+      </ol>
+      <figure class="rk-pins">
+        <img src="/maskrom-pins.png" alt="Jumper pad 6 (CLK) to pad 4 (GND) on the W25N02KV" data-i18n-alt="admin-rockchip.recovery.photo-alt" loading="lazy">
+        <figcaption data-i18n="admin-rockchip.recovery.photo-caption">W25N02KV, 8-pad WSON: pin 1 is the dot, pad 6 is CLK and pad 4 is GND. The photo is added at
+          <code>/maskrom-pins.png</code>.</figcaption>
+      </figure>
+    </section>
+
     <!-- Cards in a reader (hub/rkusb.cards, root/rkcard.py): a board's SD card in a USB reader on the box, one card
          each; its drawer checks it (reads only), tests it as genuine (erasing it), or writes an image to it. -->
     <section class="admin-pane" id="rk-cards-pane" aria-labelledby="rk-cards-title">

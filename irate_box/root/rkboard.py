@@ -231,6 +231,80 @@ def read_flash(loader_id=None):
     return message
 
 
+def backup(loader_id=None):
+    """Read and save the whole onboard flash before an erase, in the state's rk-backups folder, with its SHA-256.
+    Refused when the loader shows the SD card, and it never writes to the board."""
+    board = _one(("loader", "maskrom"))
+    _need("rkdeveloptool")
+    if board["mode"] == "maskrom":
+        _send_loader(loader_id)
+    shown = storage()
+    if shown["card"]:
+        raise Refused(
+            M(
+                "rkboard.backup.card-shown",
+                "The board's loader shows {gb} GB: its SD card, not its onboard flash, so nothing was saved.",
+                gb=_gb(shown["mb"]),
+            )
+        )
+    sectors = shown.get("sectors") or 0
+    if not sectors:
+        raise Refused(M("rkboard.backup.no-size", "The board's flash size could not be read, so nothing was saved."))
+    backups = rkusb.STATE / "rk-backups"
+    try:
+        backups.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError as exc:
+        raise Refused(
+            M(
+                "rkboard.backup.path",
+                "The backup folder {path} could not be made: {detail}",
+                path=str(backups),
+                detail=str(exc)[-160:],
+            )
+        ) from None
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    serial = re.sub(r"[^A-Za-z0-9._-]", "", str(board.get("serial") or ""))[:32] or "board"
+    path = backups / f"{stamp}-{serial}.bin"
+    r = run("rkdeveloptool", "rl", "0", str(sectors * SECTOR), str(path), timeout=900)
+    want = sectors * SECTOR
+    if r.returncode:
+        path.unlink(missing_ok=True)
+        raise Refused(
+            M(
+                "rkboard.backup.failed",
+                "The flash could not be read: {detail}",
+                detail=(r.stderr or r.stdout).strip()[-200:],
+            )
+        )
+    try:
+        size = path.stat().st_size
+    except OSError:
+        size = 0
+    if size != want:
+        path.unlink(missing_ok=True)
+        raise Refused(
+            M(
+                "rkboard.backup.size",
+                "The backup is {size} bytes, not the {want} the board's flash holds. Nothing was kept.",
+                size=size,
+                want=want,
+            )
+        )
+    digest = _digest(path)
+    message = M(
+        "rkboard.backed-up",
+        "Saved a full copy of the onboard flash: {mb} MB at {path} (sha256 {sha}). Keep it: the install erases "
+        "the flash.",
+        mb=want >> 20,
+        path=str(path),
+        sha=digest,
+    )
+    message["path"] = str(path)
+    message["sha256"] = digest
+    message["mb"] = want >> 20
+    return message
+
+
 def erase(loader_id=None, confirm=None):
     """The board's onboard flash erased (rkdeveloptool ef), then the board reset. A board in Maskrom mode is sent
     the loader for its chip first. Refused when the loader shows the SD card: ef would empty the card."""
