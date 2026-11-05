@@ -51,6 +51,12 @@ check(
     and refused(A.signup, "a b", "harbour lantern 1", says="accounts.name.invalid")
     and refused(A.signup, "ab", "harbour lantern 1", says="accounts.name.invalid"),
 )
+check(
+    "  a leading dash refused at sign-up, at creation and at sign-in",
+    refused(A.signup, "-xylophone", "harbour lantern 1", says="accounts.name.invalid")
+    and refused(A.make, "-xylophone", says="accounts.name.invalid")
+    and refused(A.login, "-xylophone", "harbour lantern 1", "", says="accounts.name.invalid"),
+)
 check("  a short password refused", refused(A.signup, "bob", "short", says="accounts.password.length"))
 raw = json.loads((T / "state" / "accounts.json").read_text())
 h = raw["accounts"]["alice"]["hash"]

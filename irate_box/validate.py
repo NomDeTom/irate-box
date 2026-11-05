@@ -51,6 +51,9 @@ from irate_box.confine import under  # noqa: F401  (one of the two path checks, 
 
 CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 JOINERS = "\u200c\u200d"
+TAG_START = "\U0001f3f4"  # the black flag
+TAG_FIRST, TAG_LAST = "\U000e0020", "\U000e007e"
+TAG_CANCEL = "\U000e007f"
 HOSTNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 IFACE_RE = re.compile(r"^(?![-.])[A-Za-z0-9_.-]{1,15}$")  # not "-x" (an option), not "." or ".."
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -86,19 +89,41 @@ def _short(value, what, most):
     return value
 
 
+def _flag_sequence_end(value, start):
+    """The index just after a well-formed subdivision flag at `start`: the black flag, one or more
+    tag characters (U+E0020 to U+E007E), and the cancel tag (U+E007F). None when it is not one."""
+    end = start + 1
+    first = end
+    while end < len(value) and TAG_FIRST <= value[end] <= TAG_LAST:
+        end += 1
+    if end == first or end >= len(value) or value[end] != TAG_CANCEL:
+        return None
+    return end + 1
+
+
 def has_hidden_character(value, newlines=False):
     """Whether `value` has a character that acts instead of showing: a C0 control (a tab, CR and LF
     too unless `newlines`), DEL, a C1 control (U+0080 to U+009F, among them the 8-bit CSI), a line or
     paragraph separator, a lone surrogate, or a format character (U+200E, U+202A to U+202E, U+2066
     to U+2069 and the rest of category Cf: the ones that turn the text that follows around or hide
     it). The two joiners, U+200C and U+200D, are allowed: emoji sequences and several scripts need
-    them."""
-    for char in value:
+    them. A subdivision flag is allowed too: the black flag, tag characters that spell the region,
+    and the cancel tag. A tag character anywhere else is hidden text and is refused."""
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char == TAG_START:
+            end = _flag_sequence_end(value, index)
+            if end is not None:
+                index = end
+                continue
         if newlines and char in "\t\n\r":
+            index += 1
             continue
         category = unicodedata.category(char)
         if category in ("Cc", "Cs", "Zl", "Zp") or (category == "Cf" and char not in JOINERS):
             return True
+        index += 1
     return False
 
 
@@ -547,6 +572,24 @@ def html_text(value, quote=True):
     return html.escape(str(value), quote=quote)
 
 
+def _shown_text(value):
+    """`value` without the characters that act instead of showing, but with a subdivision flag kept
+    whole: its tag characters are part of the name, not hidden text."""
+    out, index = [], 0
+    while index < len(value):
+        if value[index] == TAG_START:
+            end = _flag_sequence_end(value, index)
+            if end is not None:
+                out.append(value[index:end])
+                index = end
+                continue
+        char = value[index]
+        if char == "\t" or not has_hidden_character(char):
+            out.append(char)
+        index += 1
+    return "".join(out)
+
+
 def log_text(value, what="The log line", most=300):
     """One line for a message or a report: terminal escapes (7-bit and 8-bit) removed, every kind of
     line break turned into a space, the other control characters, C1 controls and bidi or other
@@ -555,7 +598,7 @@ def log_text(value, what="The log line", most=300):
     value = ANSI_RE.sub("", value)
     for line_break in LINE_BREAKS:
         value = value.replace(line_break, " ")
-    value = "".join(char for char in value if char == "\t" or not has_hidden_character(char))
+    value = _shown_text(value)
     value = value.strip()
     return value[:most]
 

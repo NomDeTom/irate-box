@@ -8354,16 +8354,54 @@ def pins_test(_req):
         hardware.write_status()
 
 
-def _rk(fn):
-    def action(req):
-        from irate_box.root import rkboard
+def rk_loader(req):
+    """The board's loader as it is now."""
+    from irate_box.root import rkboard
 
-        try:
-            return fn(rkboard, req)
-        finally:
-            safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+    try:
+        return rkboard.to_loader()
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
 
-    return action
+
+def rk_read(req):
+    """The onboard flash read through the board's loader."""
+    from irate_box.root import rkboard
+
+    try:
+        return rkboard.read_flash(req.get("loader"))
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_erase(req):
+    """The board's onboard flash erased, through its loader."""
+    from irate_box.root import rkboard
+
+    try:
+        return _rk_erase(rkboard, req)
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_install(req):
+    """A bootloader on the board's onboard flash, and optionally the Alpine rescue image on a card."""
+    from irate_box.root import rkboard
+
+    try:
+        return _rk_install(rkboard, req)
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_write(req):
+    """An image written to the card the board's loader shows."""
+    from irate_box.root import rkboard
+
+    try:
+        return _rk_write(rkboard, req)
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
 
 
 def _rk_erase(rkboard, req):
@@ -9178,49 +9216,123 @@ def _kit_sweep(req):
         _kits_status()
 
 
-def _kit_req(fn):
+def _kit_action(fn, req):
     """A toolkit action, and control/kits.json written after it, whatever happened."""
-
-    def action(req):
-        kit = req.get("kit")
-        if fn is kits.define:
-            try:
-                return kits.define(kit)
-            finally:
-                _kits_status()
-        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.fullmatch(kit)):
-            raise Refused(KIT_BAD)
+    if fn is kits.define:
         try:
-            if fn is kits.set_extra:
-                return kits.set_extra(kit, req.get("packages"))
-            if fn is kits.fetch:
-                budget = req.get("budget_mb", 500)
-                if type(budget) is not int or not 10 <= budget <= 1 << 16:
-                    raise Refused(
-                        M(
-                            "control.kit.budget-range",
-                            "The cache budget must be from {min} to {max} MB.",
-                            min=10,
-                            max=1 << 16,
-                        )
-                    )
-                # The librarian's daily refreshes share one list update; one the owner asks for updates them.
-                fresh = kits.LISTS_FRESH_HOURS if req.get("scheduled") is True else 0
-                return kits.fetch(kit, budget_mb=budget, lists_max_hours=fresh, log=lambda *_: None)
-            if fn is kits.install:
-                return kits.install(kit, _kit_hours(req), log=lambda *_: None)
-            if fn is kits.set_removal:
-                return kits.set_removal(kit, _kit_hours(req))
-            if fn is kits.drop_all_previous:
-                return kits.drop_all_previous(log=lambda *_: None)
-            if fn is kits.expire:
-                # One answer per toolkit removed, said one after another.
-                return kits.expire() or M("control.kit.expire.none", "No toolkit is due for removal.")
-            return fn(kit, log=lambda *_: None)
+            return kits.define(req.get("kit"))
         finally:
             _kits_status()
+    kit = req.get("kit")
+    if not (isinstance(kit, str) and kits.ID_RE.fullmatch(kit)):
+        raise Refused(KIT_BAD)
+    try:
+        if fn is kits.set_extra:
+            return kits.set_extra(kit, req.get("packages"))
+        if fn is kits.fetch:
+            budget = req.get("budget_mb", 500)
+            if type(budget) is not int or not 10 <= budget <= 1 << 16:
+                raise Refused(
+                    M(
+                        "control.kit.budget-range",
+                        "The cache budget must be from {min} to {max} MB.",
+                        min=10,
+                        max=1 << 16,
+                    )
+                )
+            # The librarian's daily refreshes share one list update; one the owner asks for updates them.
+            fresh = kits.LISTS_FRESH_HOURS if req.get("scheduled") is True else 0
+            return kits.fetch(kit, budget_mb=budget, lists_max_hours=fresh, log=lambda *_: None)
+        if fn is kits.install:
+            return kits.install(kit, _kit_hours(req), log=lambda *_: None)
+        if fn is kits.set_removal:
+            return kits.set_removal(kit, _kit_hours(req))
+        return fn(kit, log=lambda *_: None)
+    finally:
+        _kits_status()
 
-    return action
+
+def kit_fetch(req):
+    return _kit_action(kits.fetch, req)
+
+
+def kit_install(req):
+    return _kit_action(kits.install, req)
+
+
+def kit_remove(req):
+    return _kit_action(kits.remove, req)
+
+
+def kit_keep(req):
+    return _kit_action(kits.set_removal, req)
+
+
+def kit_rollback(req):
+    return _kit_action(kits.rollback, req)
+
+
+def kit_drop_previous(req):
+    return _kit_action(kits.drop_previous, req)
+
+
+def kit_drop_all_previous(req):
+    try:
+        return kits.drop_all_previous(log=lambda *_: None)
+    finally:
+        _kits_status()
+
+
+def kit_define(req):
+    return _kit_action(kits.define, req)
+
+
+def kit_undefine(req):
+    return _kit_action(kits.undefine, req)
+
+
+def kit_extra(req):
+    return _kit_action(kits.set_extra, req)
+
+
+def kit_expire(req):
+    try:
+        # One answer per toolkit removed, said one after another.
+        return kits.expire() or M("control.kit.expire.none", "No toolkit is due for removal.")
+    finally:
+        _kits_status()
+
+
+def security_changes(req):
+    return secchanges.save(req)
+
+
+def security_record_read(req):
+    return secchanges.mark_read()
+
+
+def library_drive(req):
+    return librarydrive.choose(req)
+
+
+def library_drive_eject(req):
+    return librarydrive.eject(req)
+
+
+def rk_card_check(req):
+    return _rk_card(req, "check")
+
+
+def rk_card_genuine(req):
+    return _rk_card(req, "genuine")
+
+
+def rk_card_flash(req):
+    return _rk_card(req, "flash")
+
+
+def kit_status(req):
+    return (_kits_status(), KITS_STATUS)[1]
 
 
 ACTIONS = {
@@ -9228,8 +9340,8 @@ ACTIONS = {
     "password": password,
     "claim": claim,
     "security-policy": policy_set,
-    "security-changes": secchanges.save,
-    "security-record-read": lambda req: secchanges.mark_read(),
+    "security-changes": security_changes,
+    "security-record-read": security_record_read,
     "tls-settings": tls_settings,
     "update-check": update_check,
     "update-fetch": update_fetch,
@@ -9255,8 +9367,8 @@ ACTIONS = {
     "tls-import": tls_import,
     "tls-box": tls_box,
     "tls-admin-only": tls_admin_only,
-    "library-drive": lambda req: librarydrive.choose(req),
-    "library-drive-eject": lambda req: librarydrive.eject(req),
+    "library-drive": library_drive,
+    "library-drive-eject": library_drive_eject,
     "usb-scan": usb_scan,
     "usb-filesystems": usb_filesystems,
     "usb-import": usb_import,
@@ -9306,11 +9418,11 @@ ACTIONS = {
     "uplink-profile": uplink_profile,
     "nm-defaults": nm_defaults,
     "wifi-country": wifi_country,
-    "rk-loader": _rk(lambda rkboard, req: rkboard.to_loader()),
-    "rk-erase": _rk(_rk_erase),
-    "rk-install": _rk(_rk_install),
-    "rk-read": _rk(lambda rkboard, req: rkboard.read_flash(req.get("loader"))),
-    "rk-write": _rk(_rk_write),
+    "rk-loader": rk_loader,
+    "rk-erase": rk_erase,
+    "rk-install": rk_install,
+    "rk-read": rk_read,
+    "rk-write": rk_write,
     "rk-serial-setup": _rk_serial_setup,
     "rk-own-serial": _rk_own_serial,
     "rk-card-setup": _rk_card_setup,
@@ -9318,9 +9430,9 @@ ACTIONS = {
     "rk-ssh-setup": _rk_ssh_setup,
     "rk-finish": _rk_finish,
     "board-install": _board_install,
-    "rk-card-check": lambda req: _rk_card(req, "check"),
-    "rk-card-genuine": lambda req: _rk_card(req, "genuine"),
-    "rk-card-flash": lambda req: _rk_card(req, "flash"),
+    "rk-card-check": rk_card_check,
+    "rk-card-genuine": rk_card_genuine,
+    "rk-card-flash": rk_card_flash,
     "box-hostname": box_hostname,
     "nm-handover": nm_handover,
     "nm-connection": nm_connection,
@@ -9332,19 +9444,19 @@ ACTIONS = {
     "admin-gate": admin_gate,
     "kit-check": _kit_check,
     "kit-check-all": _kit_check_all,
-    "kit-fetch": _kit_req(kits.fetch),
-    "kit-install": _kit_req(kits.install),
-    "kit-remove": _kit_req(kits.remove),
-    "kit-keep": _kit_req(kits.set_removal),
-    "kit-rollback": _kit_req(kits.rollback),
-    "kit-drop-previous": _kit_req(kits.drop_previous),
-    "kit-drop-all-previous": _kit_req(kits.drop_all_previous),
+    "kit-fetch": kit_fetch,
+    "kit-install": kit_install,
+    "kit-remove": kit_remove,
+    "kit-keep": kit_keep,
+    "kit-rollback": kit_rollback,
+    "kit-drop-previous": kit_drop_previous,
+    "kit-drop-all-previous": kit_drop_all_previous,
     "kit-drop-old-previous": _kit_sweep,
-    "kit-define": _kit_req(kits.define),
-    "kit-undefine": _kit_req(kits.undefine),
-    "kit-extra": _kit_req(kits.set_extra),
-    "kit-expire": _kit_req(kits.expire),
-    "kit-status": lambda req: (_kits_status(), KITS_STATUS)[1],
+    "kit-define": kit_define,
+    "kit-undefine": kit_undefine,
+    "kit-extra": kit_extra,
+    "kit-expire": kit_expire,
+    "kit-status": kit_status,
 }
 
 KITS_STATUS = M("control.kit.status", "The toolkit status is up to date.")

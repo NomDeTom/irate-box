@@ -153,11 +153,123 @@ REVIEWED = {
         "the name of a netplan file",
     ),
     ("kit-check", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("content-export", "books"): (
+        ROOT + "hub_control.py",
+        "usbstick.NAME_RE.fullmatch(b)",
+        "each a book name",
+    ),
+    ("offline-kit", "books"): (
+        ROOT + "hub_control.py",
+        "usbstick.NAME_RE.fullmatch(b)",
+        "each a book name",
+    ),
+    ("kit-fetch", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-install", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-remove", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-keep", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-rollback", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-drop-previous", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-undefine", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-extra", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
+    ("kit-define", "kit"): (
+        "irate_box/root/kits.py",
+        "if not ID_RE.fullmatch(kid)",
+        "the toolkit definition's own id check",
+    ),
+    ("rk-card-check", "card"): (
+        ROOT + "rkcard.py",
+        "name = validate.card(name)",
+        "a card name, then matched against the cards root finds in a reader",
+    ),
+    ("rk-card-check", "serial"): (
+        ROOT + "rkcard.py",
+        'found["serial"] != (serial or "")',
+        "compared with the card root found; never used as a path",
+    ),
+    ("rk-card-check", "image"): (
+        ROOT + "rkboard.py",
+        "name = validate.image(name)",
+        "not read for a check; the flash action's image is checked against the box's own image list",
+    ),
+    ("rk-card-genuine", "card"): (
+        ROOT + "rkcard.py",
+        "name = validate.card(name)",
+        "a card name, then matched against the cards root finds in a reader",
+    ),
+    ("rk-card-genuine", "serial"): (
+        ROOT + "rkcard.py",
+        'found["serial"] != (serial or "")',
+        "compared with the card root found; never used as a path",
+    ),
+    ("rk-card-genuine", "image"): (
+        ROOT + "rkboard.py",
+        "name = validate.image(name)",
+        "not read for a genuine test; the flash action's image is checked against the box's own image list",
+    ),
+    ("rk-card-flash", "card"): (
+        ROOT + "rkcard.py",
+        "name = validate.card(name)",
+        "a card name, then matched against the cards root finds in a reader",
+    ),
+    ("rk-card-flash", "serial"): (
+        ROOT + "rkcard.py",
+        'found["serial"] != (serial or "")',
+        "compared with the card root found; never used as a path",
+    ),
+    ("rk-card-flash", "image"): (
+        ROOT + "rkboard.py",
+        "name = validate.image(name)",
+        "an image in the box's own image list, opened without following a link",
+    ),
+    ("rk-write", "image"): (
+        ROOT + "rkboard.py",
+        "name = validate.image(name)",
+        "an image in the box's own image list, opened without following a link",
+    ),
 }
 
 
+def _passes_request(call):
+    """Whether a call hands its `req` to a helper, so the helper's request values belong to the action."""
+    return any(isinstance(arg, ast.Name) and arg.id == "req" for arg in call.args) or any(
+        isinstance(word.value, ast.Name) and word.value.id == "req" for word in call.keywords
+    )
+
+
+def _request_keys(function, functions, seen):
+    """The request values an action's handler reads, including those in local helpers it passes `req` to."""
+    keys = set()
+    for node in ast.walk(function):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "req"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+        ):
+            keys.add(node.args[0].value)
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "req"
+            and isinstance(node.slice, ast.Constant)
+        ):
+            keys.add(node.slice.value)
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            name = node.func.id
+            if name in functions and name not in seen and _passes_request(node):
+                seen.add(name)
+                keys |= _request_keys(functions[name], functions, seen)
+    return {key for key in keys if isinstance(key, str) and KEY.search(key)}
+
+
 def request_keys():
-    """{action: {key}} for the handlers of ACTIONS that are plain functions in hub_control.py."""
+    """({action: {key}}, failures) for every handler in ACTIONS. A handler must be a plain module-level
+    function, and every request value its handler (and the local helpers it passes `req` to) reads is
+    returned for review."""
     tree = ast.parse((REPO / ROOT / "hub_control.py").read_text())
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
     table = next(
@@ -165,39 +277,19 @@ def request_keys():
         for node in tree.body
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "ACTIONS"
     )
-    found = {}
+    found, failures = {}, []
     for action, handler in zip(table.keys, table.values, strict=False):
-        function = functions.get(ast.unparse(handler))
-        if function is None:
+        if not (isinstance(handler, ast.Name) and handler.id in functions):
+            failures.append(f"{action.value}: the handler {ast.unparse(handler)} is not a plain module-level function")
             continue
-        keys = set()
-        for node in ast.walk(function):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "get"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "req"
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-            ):
-                keys.add(node.args[0].value)
-            if (
-                isinstance(node, ast.Subscript)
-                and isinstance(node.value, ast.Name)
-                and node.value.id == "req"
-                and isinstance(node.slice, ast.Constant)
-            ):
-                keys.add(node.slice.value)
-        keys = {key for key in keys if isinstance(key, str) and KEY.search(key)}
+        keys = _request_keys(functions[handler.id], functions, {handler.id})
         if keys:
             found[action.value] = keys
-    return found
+    return found, failures
 
 
 def main():
-    failures = []
-    found = request_keys()
+    found, failures = request_keys()
     listed = {}
     for action, key in REVIEWED:
         listed.setdefault(action, set()).add(key)

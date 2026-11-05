@@ -537,10 +537,13 @@ check(
     and '"/admin/rockchip.html"' in src
     and 'path = "/admin-rockchip.html"' in src,
 )
+control_src = (REPO / "irate_box" / "root" / "hub_control.py").read_text()
 check(
     "the hub's route sends install on, and the page offers both bootloaders, the rescue and the disclaimer",
     '"action": "rk-install"' in src
-    and '"rk-install": _rk(_rk_install)' in (REPO / "irate_box" / "root" / "hub_control.py").read_text()
+    and '"rk-install": rk_install,' in control_src
+    and "return _rk_install(rkboard, req)" in control_src
+    and 'safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))' in control_src
     and '"bootloader": payload["bootloader"]' in src
     and 'req["rescue"] = rescue' in src
     and "Installing a bootloader erases the board's onboard flash" in (REPO / "web" / "admin-rockchip.html").read_text()

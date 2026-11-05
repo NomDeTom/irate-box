@@ -59,6 +59,23 @@ JOINERS = {
     "a zero-width non-joiner in Persian": "می‌خواهم",
 }
 
+# Subdivision flags: a black flag, the tag characters that spell the region, and the cancel tag. These are
+# well-formed emoji sequences, so they must stay allowed in a name or text.
+FLAGS = {
+    "the England flag": "\U0001f3f4\U000e0067\U000e0062\U000e0065\U000e006e\U000e0067\U000e007f",
+    "the Scotland flag": "\U0001f3f4\U000e0067\U000e0062\U000e0073\U000e0063\U000e0074\U000e007f",
+    "the Wales flag": "\U0001f3f4\U000e0067\U000e0062\U000e0077\U000e006c\U000e0073\U000e007f",
+}
+
+# Tag characters outside a well-formed flag: the invisible text that spells something the eye cannot see
+# ("ASCII smuggling"), and the broken sequences that are not a flag.
+TAG_SMUGGLING = {
+    "a loose tag run": "word \U000e0067\U000e0062\U000e0065 word",
+    "a tag run with no black flag": "\U000e0067\U000e0062\U000e0065\U000e006e\U000e0067\U000e007f",
+    "a tag run with no cancel tag": "\U0001f3f4\U000e0067\U000e0062\U000e0065\U000e006e\U000e0067",
+    "tag characters inside an otherwise ordinary word": "Eng\U000e006c\U000e0061\U000e006e\U000e0064",
+}
+
 # A name or a path that tries to leave, or to look like an option.
 NAMES = {
     "dot dot": "..",
