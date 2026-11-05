@@ -8354,6 +8354,28 @@ def pins_test(_req):
         hardware.write_status()
 
 
+def mui(req):
+    """Activate or stop the modular MUI display; the pin values are checked again in mui.py."""
+    from irate_box.root import hardware, mui as mui_module
+
+    do = req.get("do")
+    try:
+        if do == "activate":
+            selection = req.get("selection")
+            if not isinstance(selection, dict):
+                raise Refused(M("control.mui.bad", "Send the selected header pins as an object."))
+            return mui_module.activate(selection)
+        if do == "deactivate":
+            return mui_module.deactivate()
+        if do == "status":
+            mui_module.write_options()
+            return M("control.mui.status", "MUI status is in control/mui.json.")
+        raise Refused(M("control.mui.unknown", "Name activate, deactivate or status."))
+    finally:
+        mui_module.write_status()
+        hardware.write_status()
+
+
 def rk_loader(req):
     """The board's loader as it is now."""
     from irate_box.root import rkboard
@@ -9412,6 +9434,7 @@ ACTIONS = {
     "pins-overlay": pins_overlay,
     "pins-display": pins_display,
     "pins-test": pins_test,
+    "mui": mui,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,
     "uplink-hold": uplink_hold,

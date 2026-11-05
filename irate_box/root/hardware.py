@@ -208,6 +208,21 @@ def display():
     }
 
 
+def mui():
+    """The modular MUI display: its saved pin selection, overlay and unit state."""
+    st = _module("mui").status()
+    return {
+        "supported": bool(st.get("supported")),
+        "on": bool(st.get("unit_active")),
+        "active": bool(st.get("active")),
+        "pending": bool(st.get("pending")),
+        "selection": st.get("selection") or {},
+        "config": st.get("config") or "",
+        "binary": st.get("binary") or "",
+        "binary_present": bool(st.get("binary_present")),
+    }
+
+
 def usb():
     """The USB gadget: on, up, and the drive made from the file drop."""
     mod = _module("usbgadget")
@@ -284,6 +299,7 @@ SECTIONS = (
     ("assignments", assignments),
     ("overlays", overlays),
     ("display", display),
+    ("mui", mui),
     ("usb_gadget", usb),
     ("led", led),
     ("radios", radios),

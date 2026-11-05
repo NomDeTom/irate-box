@@ -115,6 +115,20 @@ _PATH_ACTIONS = {
     "pins-overlay": {"reads": [], "writes": ["control/lcdtouch.json"]},
     "pins-display": {"reads": [], "writes": ["control/lcdtouch.json"]},
     "pins-test": {"reads": [], "writes": ["control/lcdtouch.json"]},
+    "mui": {
+        "reads": [],
+        "writes": [
+            "control/mui.json",
+            "control/mui-options.json",
+            "control/hardware.json",
+            "etc/hub/mui.json",
+            "etc/hub/mui.yaml",
+            "etc/hub/mui-fs/prefs/uiconfig.proto",
+            "etc/systemd/system/irate-box-mui.service",
+            "boot/overlay-user/irate-box-mui.dtbo",
+            "boot/armbianEnv.txt",
+        ],
+    },
 }
 _HUB_ACTIONS = {
     "https_only",
