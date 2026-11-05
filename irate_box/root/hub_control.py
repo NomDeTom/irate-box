@@ -8356,7 +8356,8 @@ def pins_test(_req):
 
 def mui(req):
     """Activate or stop the modular MUI display; the pin values are checked again in mui.py."""
-    from irate_box.root import hardware, mui as mui_module
+    from irate_box.root import hardware
+    from irate_box.root import mui as mui_module
 
     do = req.get("do")
     try:
