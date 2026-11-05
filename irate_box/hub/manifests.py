@@ -122,6 +122,8 @@ import os
 import re
 from pathlib import Path
 
+from irate_box import validate
+
 CHECKOUT = Path(__file__).resolve().parents[2]
 APPS_D = Path(os.environ.get("HUB_APPS_D", CHECKOUT / "apps.d"))
 SHARE = Path(os.environ.get("HUB_SHARE_DIR", "/usr/share/hub"))
@@ -139,6 +141,15 @@ REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 # text's colour by style.css's .svg-icon[data-icon=…]).
 ICONS = CHECKOUT / "web" / "icons"
 SVG_ICON_RE = re.compile(r"^svg:([a-z0-9-]{1,40})$")
+
+
+def _on_this_hub(href):
+    r"""Whether `href` is a path on this hub: one slash, never `//host` or `/\\host`, no spaces or controls."""
+    try:
+        validate.local_path(href, "The address")
+    except validate.Invalid:
+        return False
+    return True
 
 
 def svg_icon(icon):
@@ -286,7 +297,7 @@ def _check(m, where):
                 not tile["icon"].startswith("svg:") or svg_icon(tile["icon"]),
                 "tile.icon: svg:<name> of a file in web/icons/",
             )
-            need(tile["href"].startswith("/"), "tile.href: a path on this hub")
+            need(_on_this_hub(tile["href"]), "tile.href: a path on this hub")
     menu = m.get("menu")
     if menu is not None:
         need(
@@ -344,7 +355,7 @@ def _check(m, where):
         need(all(type(v) is int for v in e["menus"].values()), "entries.menus: menu id -> order")
         for k in ("name", "href"):
             need(isinstance(e.get(k), str), f"entries.{k}: a string")
-        need(e["href"].startswith("/"), "entries.href: a path on this hub")
+        need(_on_this_hub(e["href"]), "entries.href: a path on this hub")
         need(e.get("admin", False) in (True, False), "entries.admin: true or false")
         need(
             "section" not in e or (isinstance(e["section"], str) and SECTION_RE.match(e["section"])),

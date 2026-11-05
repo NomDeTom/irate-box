@@ -36,6 +36,19 @@ check(
     __import__("time").time() - _started < 2,
     __import__("time").time() - _started,
 )
+check(
+    "log: an 8-bit CSI and a bidi override removed",
+    V.log_text("a\x9b31mred\u202eevil") == "aredevil",
+    V.log_text("a\x9b31mred\u202eevil"),
+)
+check(
+    "log: an 8-bit title and a line separator",
+    V.log_text("a\x9d0;t\x9cb\u2028c\x85d") == "ab c d",
+    V.log_text("a\x9d0;t\x9cb\u2028c\x85d"),
+)
+check(
+    "log: an emoji sequence keeps its joiners", V.log_text("\U0001f468\u200d\U0001f469") == "\U0001f468\u200d\U0001f469"
+)
 check("log: CR and LF become spaces", V.log_text("a\rb\nc") == "a b c")
 check("log: NUL and other controls removed", V.log_text("a\x00b\x08c") == "abc")
 check("log: a tab kept", V.log_text("a\tb") == "a\tb")
