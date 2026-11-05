@@ -83,7 +83,7 @@ podcast._fetch = lambda url, limit, accept="": (
     url,
     "application/rss+xml",
 )
-podcast._download = lambda url, path, cfg, log: (Path(path).write_bytes(b"x" * 1024), 1024)[1]
+podcast._download = lambda url, path, cfg, log, feed_url=None: (Path(path).write_bytes(b"x" * 1024), 1024)[1]
 podcast.set_settings(
     enabled=True, feeds=[{"id": "one", "url": "https://example.org/feed.xml", "title": "One"}], back_catalogue=1
 )
