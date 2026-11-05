@@ -47,6 +47,239 @@
     }
     if (testButton) testButton.disabled = !ready;
   }
+  let lastMui = null;
+  let muiOptions = null;
+  let muiStatus = null;
+  let muiPopulated = false;
+  const MUI_ROLE_SELECTS = {
+    clk: 'pins-mui-clk',
+    mosi: 'pins-mui-mosi',
+    miso: 'pins-mui-miso',
+    display_cs: 'pins-mui-display-cs',
+    touch_cs: 'pins-mui-touch-cs',
+    dc: 'pins-mui-dc',
+    rst: 'pins-mui-rst',
+    bl: 'pins-mui-bl',
+  };
+  const MUI_ROLE_NAMES = {
+    clk: 'Clock',
+    mosi: 'MOSI',
+    miso: 'MISO',
+    display_cs: 'Display CS',
+    touch_cs: 'Touch CS',
+    dc: 'D/C',
+    rst: 'Reset',
+    bl: 'Backlight',
+  };
+  const muiSayText = (text, ok) => { const n = $('pins-mui-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
+  function muiHeaderRow(pin) {
+    const rows = (lastPins && lastPins.header) || [];
+    return rows.find((row) => row && row.pin === pin) || null;
+  }
+  function muiCandidateRows(role, bus) {
+    if (!muiOptions) return [];
+    if (role === 'dc' || role === 'rst' || role === 'bl') return muiOptions.gpios || [];
+    const found = (muiOptions.buses || []).find((item) => Number(item.bus) === Number(bus));
+    if (!found) return [];
+    if (role === 'display_cs' || role === 'touch_cs') return [...(found.signals.csn0 || []), ...(found.signals.csn1 || [])];
+    return found.signals[role] || [];
+  }
+  function muiFillSelect(id, rows, value) {
+    const select = $(id);
+    if (!select) return;
+    const chosen = String(value === undefined || value === null ? '' : value);
+    const options = rows.map((row) => {
+      const option = document.createElement('option');
+      const usable = row.usable === true;
+      const reason = row.why || (usable ? 'free' : 'unavailable');
+      option.value = String(row.pin);
+      option.disabled = !usable;
+      option.dataset.usable = String(usable);
+      option.dataset.why = reason;
+      if (row.cs !== undefined) option.dataset.cs = String(row.cs);
+      const bits = [`Pin ${row.pin}`, row.name || '', row.rmio !== null && row.rmio !== undefined ? `RM_IO${row.rmio}` : ''];
+      option.textContent = `${bits.filter(Boolean).join(' — ')} (${reason})`;
+      option.title = reason;
+      return option;
+    });
+    if (!options.length) options.push(Object.assign(document.createElement('option'), { value: '', textContent: 'No valid pin' }));
+    select.replaceChildren(...options);
+    if (options.some((option) => option.value === chosen)) select.value = chosen;
+  }
+  function muiSelectionFrom(saved) {
+    const sel = saved || {};
+    return {
+      bus: Number(sel.bus === undefined ? 1 : sel.bus),
+      touch: sel.touch || 'lgfx',
+      clk: sel.clk,
+      mosi: sel.mosi,
+      miso: sel.miso,
+      display_cs: sel.display_cs,
+      touch_cs: sel.touch_cs,
+      dc: sel.dc,
+      rst: sel.rst,
+      bl: sel.bl,
+    };
+  }
+  function muiRebuild(initial) {
+    if (!muiOptions) return;
+    const bus = Number($('pins-mui-bus').value || 1);
+    const touch = $('pins-mui-touch').value || 'lgfx';
+    const saved = muiSelectionFrom(initial || (muiPopulated ? muiSelectionNow() : (muiStatus && muiStatus.selection) || muiOptions.selection || muiOptions.defaults));
+    for (const role of Object.keys(MUI_ROLE_SELECTS)) {
+      const rows = muiCandidateRows(role, bus);
+      muiFillSelect(MUI_ROLE_SELECTS[role], rows, saved[role]);
+    }
+    if (touch !== 'none') {
+      const display = $('pins-mui-display-cs');
+      const touchCs = $('pins-mui-touch-cs');
+      if (display.value && display.value === touchCs.value) {
+        const other = [...touchCs.options].find((option) => option.value !== display.value && !option.disabled);
+        if (other) touchCs.value = other.value;
+      }
+    }
+    $('pins-mui-touch-cs').disabled = touch === 'none';
+    muiUpdate();
+  }
+  function muiSelectionNow() {
+    const sel = { bus: Number($('pins-mui-bus').value || 1), touch: $('pins-mui-touch').value || 'lgfx' };
+    for (const role of Object.keys(MUI_ROLE_SELECTS)) sel[role] = Number($(MUI_ROLE_SELECTS[role]).value);
+    sel.replace_radio = Boolean($('pins-mui-replace-radio').checked);
+    return sel;
+  }
+  function muiDuplicates(sel) {
+    const seen = new Map();
+    const roles = sel.touch === 'none' ? Object.keys(MUI_ROLE_SELECTS).filter((role) => role !== 'touch_cs') : Object.keys(MUI_ROLE_SELECTS);
+    for (const role of roles) {
+      const pin = sel[role];
+      if (!Number.isInteger(pin)) continue;
+      if (seen.has(pin)) return [seen.get(pin), role];
+      seen.set(pin, role);
+    }
+    return null;
+  }
+  function muiDrawDiagram(sel) {
+    const host = $('pins-mui-diagram');
+    if (!host) return;
+    host.replaceChildren();
+    if (!muiOptions) return;
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    for (const role of Object.keys(MUI_ROLE_SELECTS)) {
+      if (sel.touch === 'none' && role === 'touch_cs') continue;
+      const pin = sel[role];
+      const row = muiHeaderRow(pin) || {};
+      const tr = document.createElement('tr');
+      const roleCell = document.createElement('th');
+      roleCell.textContent = MUI_ROLE_NAMES[role];
+      const pinCell = document.createElement('td');
+      pinCell.textContent = pin ? `Pin ${pin}` : '—';
+      pinCell.className = 'mui-selected';
+      const nameCell = document.createElement('td');
+      nameCell.textContent = [row.name, row.rmio !== null && row.rmio !== undefined ? `RM_IO${row.rmio}` : ''].filter(Boolean).join(' · ');
+      tr.append(roleCell, pinCell, nameCell);
+      table.append(tr);
+    }
+    host.append(table);
+  }
+  function muiStateText() {
+    if (!muiStatus) return 'Read the pins to see MUI.';
+    if (!muiStatus.supported) return 'MUI is for the Luckfox Lyra Zero W only.';
+    if (!muiStatus.binary_present) return 'The per-host meshtasticd binary is missing; MUI cannot be activated.';
+    if (muiStatus.unit_active) {
+      const radio = muiStatus.radio && muiStatus.radio.spidev ? `SimRadio on ${muiStatus.radio.spidev}` : 'SimRadio';
+      const display = muiStatus.spidev && muiStatus.spidev.display ? muiStatus.spidev.display : 'the selected display';
+      const touch = muiStatus.spidev && muiStatus.spidev.touch ? `, touch ${muiStatus.spidev.touch}` : '';
+      return `Running with ${radio}; display ${display}${touch}.`;
+    }
+    if (muiStatus.pending) return 'Saved, waiting for a restart.';
+    if (muiStatus.overlay_enabled) return 'Enabled, waiting for the SPI devices.';
+    return 'Off.';
+  }
+  function muiUpdate() {
+    if (!lastMui) return;
+    const displaySelect = $('pins-mui-display-cs');
+    const touchSelect = $('pins-mui-touch-cs');
+    const displayCs = displaySelect && displaySelect.selectedOptions[0] ? displaySelect.selectedOptions[0].dataset.cs : undefined;
+    if (touchSelect && $('pins-mui-touch').value !== 'none') {
+      for (const option of touchSelect.options) {
+        if (displayCs !== undefined && option.dataset.cs !== undefined && option.dataset.cs === displayCs) {
+          option.disabled = true;
+          option.title = 'same chip select as the display';
+        } else {
+          option.disabled = option.dataset.usable !== 'true';
+          option.title = option.dataset.why || '';
+        }
+      }
+      if (touchSelect.selectedOptions[0] && touchSelect.selectedOptions[0].disabled) {
+        const other = [...touchSelect.options].find((option) => !option.disabled);
+        if (other) touchSelect.value = other.value;
+      }
+    }
+    const sel = muiSelectionNow();
+    const dup = muiDuplicates(sel);
+    const touchOption = touchSelect && touchSelect.selectedOptions[0];
+    const csConflict = Boolean(
+      touchOption && displayCs !== undefined && touchOption.dataset.cs !== undefined && touchOption.dataset.cs === displayCs
+    );
+    const configured = Boolean(muiStatus && muiStatus.radio && muiStatus.radio.configured);
+    const warning = $('pins-mui-radio-warning');
+    if (warning) warning.hidden = !configured;
+    const activate = $('pins-mui-activate');
+    const deactivate = $('pins-mui-deactivate');
+    const restart = $('pins-mui-restart');
+    const supported = Boolean(muiOptions && muiStatus && muiStatus.supported);
+    const binary = Boolean(muiStatus && muiStatus.binary_present);
+    if (activate) activate.disabled = !supported || !binary || Boolean(dup) || csConflict || (configured && !sel.replace_radio);
+    if (deactivate) {
+      deactivate.disabled = !muiStatus || !(muiStatus.overlay_enabled || muiStatus.unit_active || muiStatus.pending);
+    }
+    if (restart) restart.hidden = !(muiStatus && muiStatus.pending);
+    const state = $('pins-mui-state');
+    if (state) {
+      state.textContent = dup
+        ? 'Two roles use the same pin. Select different pins.'
+        : csConflict
+          ? 'Display and touch need different chip selects.'
+          : muiStateText();
+    }
+    muiDrawDiagram(sel);
+  }
+  function renderMui(mui) {
+    lastMui = mui || null;
+    muiStatus = (mui && mui.status) || null;
+    muiOptions = (mui && mui.options) || null;
+    if (!muiOptions) {
+      const state = $('pins-mui-state');
+      if (state) state.textContent = 'Read the pins to see MUI.';
+      if ($('pins-mui-activate')) $('pins-mui-activate').disabled = true;
+      if ($('pins-mui-deactivate')) $('pins-mui-deactivate').disabled = true;
+      return;
+    }
+    if (!muiPopulated) {
+      const saved = muiSelectionFrom((muiStatus && muiStatus.selection) || muiOptions.selection || muiOptions.defaults);
+      $('pins-mui-bus').value = String(saved.bus === 0 ? 0 : 1);
+      $('pins-mui-touch').value = saved.touch || 'lgfx';
+      muiPopulated = true;
+      muiRebuild(saved);
+    } else {
+      muiUpdate();
+    }
+  }
+  async function waitMui(id) {
+    for (let i = 0; i < 180; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      let data;
+      try { data = await get(); } catch (_) { continue; }
+      const done = (data.results || []).find((result) => result.id === id);
+      if (!done) continue;
+      if (data.mui) renderMui(data.mui);
+      if (!done.ok) muiSayText(answerSaid(done) || 'MUI could not be changed.', false);
+      return done;
+    }
+    muiSayText('The MUI change was not confirmed in time.', false);
+    return null;
+  }
   // The hardware document carries the overlay and display state without a Box doctor scan; /admin/pins carries
   // the last pin read and the helper's answers. On a box whose root helper has not published one yet, the pin
   // page's own copy of the overlay is used.
@@ -304,6 +537,7 @@
         .map((item) => [item.pin, item]),
     );
     renderOverlay(data && data.overlay);
+    renderMui(data && data.mui);
     const pins = data && data.pins;
     $('pins-copy').disabled = true;
     if (!pins) { $('pins-board').textContent = 'Not read yet.'; return; }
@@ -621,6 +855,60 @@
     } catch (err) {
       dispSay(err.message || 'The test could not be run.', false);
       renderOverlay(lastOverlay);
+    }
+  });
+  $('pins-mui-bus').addEventListener('change', () => { muiRebuild(); });
+  $('pins-mui-touch').addEventListener('change', () => { muiRebuild(); });
+  for (const id of Object.values(MUI_ROLE_SELECTS)) $(id).addEventListener('change', () => { muiUpdate(); });
+  $('pins-mui-replace-radio').addEventListener('change', () => { muiUpdate(); });
+  $('pins-mui-activate').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (!muiOptions || !muiStatus) return;
+    const selection = muiSelectionNow();
+    const dup = muiDuplicates(selection);
+    if (dup) { muiSayText(`Two roles use pin ${selection[dup[0]]}. Select different pins.`, false); return; }
+    if (muiStatus.radio && muiStatus.radio.configured && !selection.replace_radio) {
+      muiSayText('meshtasticd has a real radio configured. Tick the SimRadio setting to replace it.', false);
+      return;
+    }
+    if (!(await AW.confirmHere('Activate MUI with these pins? This changes the boot files and the radio daemon; a restart applies it.', { anchor: button, label: 'Activate MUI' }))) return;
+    button.disabled = true;
+    muiSayText('Saving MUI…', true);
+    try {
+      const reply = await post({ action: 'mui-activate', selection });
+      const done = await waitMui(reply.id);
+      if (done && done.ok) muiSayText(answerSaid(done) || 'MUI is saved.', true);
+    } catch (err) {
+      muiSayText(err.message || 'MUI could not be activated.', false);
+      muiUpdate();
+    }
+  });
+  $('pins-mui-deactivate').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (!(await AW.confirmHere('Turn MUI off and re-enable meshtasticd when it was on? A restart removes the overlay.', { anchor: button, label: 'Turn MUI off' }))) return;
+    button.disabled = true;
+    muiSayText('Turning MUI off…', true);
+    try {
+      const reply = await post({ action: 'mui-deactivate' });
+      const done = await waitMui(reply.id);
+      if (done && done.ok) muiSayText(answerSaid(done) || 'MUI is off.', true);
+    } catch (err) {
+      muiSayText(err.message || 'MUI could not be turned off.', false);
+      muiUpdate();
+    }
+  });
+  $('pins-mui-restart').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (!(await AW.confirmHere('Restart the box now to apply the MUI overlay?', { anchor: button, label: 'Restart now' }))) return;
+    button.disabled = true;
+    muiSayText('The box is restarting…', true);
+    try {
+      const reply = await post({ action: 'mui-restart' });
+      const done = await waitMui(reply.id);
+      if (done && done.ok) muiSayText(answerSaid(done) || 'The box is restarting.', true);
+    } catch (err) {
+      muiSayText(err.message || 'The box could not be restarted.', false);
+      button.disabled = false;
     }
   });
   if (typeof window !== 'undefined') window.rkRenderPins = render;

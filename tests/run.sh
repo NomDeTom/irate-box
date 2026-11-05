@@ -44,6 +44,7 @@ run sim_abslot.py
 run sim_readonly.py
 run sim_pinmap.py
 run sim_lcdtouch.py
+run sim_mui.py
 run sim_hardware.py
 run sim_overlays.py
 run sim_hardware_set.py

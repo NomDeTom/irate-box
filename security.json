@@ -281,6 +281,31 @@
       "reads": [],
       "writes": []
     },
+    "mui": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/mui.json",
+        "control/mui-options.json",
+        "control/hardware.json",
+        "etc/hub/mui.json",
+        "etc/hub/mui.yaml",
+        "etc/hub/mui-fs/prefs/uiconfig.proto",
+        "etc/systemd/system/irate-box-mui.service",
+        "boot/overlay-user/irate-box-mui.dtbo",
+        "boot/armbianEnv.txt"
+      ]
+    },
+    "mui-restart": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/mui.json",
+        "control/hardware.json"
+      ]
+    },
     "net-scan": {
       "https_only": false,
       "policy": false,
@@ -329,7 +354,9 @@
       "reads": [],
       "writes": [
         "control/pins.json",
-        "control/lcdtouch.json"
+        "control/lcdtouch.json",
+        "control/mui.json",
+        "control/mui-options.json"
       ]
     },
     "pins-display": {

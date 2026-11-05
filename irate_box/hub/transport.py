@@ -48,6 +48,8 @@ HTTPS_ONLY = frozenset(
         "addon-switch",
         "usb-filesystems",
         "pins-overlay",
+        "mui",
+        "mui-restart",
         "pins-hog",
         "rk-own-serial",
         "rk-serial-setup",
