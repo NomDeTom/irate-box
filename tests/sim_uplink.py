@@ -1601,5 +1601,97 @@ check(
     == "The hotspot did not move to channel 6 with the link: The hotspot did not start: no channel.",
 )
 
+# 11. A WiFi radio with no device: no network tool is asked, and the outage's cause is the radio.
+calls = []
+_real_net, _real_backend, _real_gw, _real_ans, _real_up = (
+    U.SYS_NET,
+    U.backend_of,
+    U.gateway_of,
+    U.gateway_answers,
+    U.link_up,
+)
+_real_run, _real_guests, _real_shared, _real_busy, _real_uptime = (
+    U.netinv.run,
+    U.guests,
+    U.shared_radio,
+    U.busy,
+    U.uptime,
+)
+_real_facts = U.netinv.device_facts
+_net = Path(tempfile.mkdtemp())
+U.SYS_NET = _net
+U.backend_of = lambda i: calls.append(("backend", i)) or "networkmanager"
+U.gateway_of = lambda i: calls.append(("gateway", i)) or "192.168.1.1"
+U.gateway_answers = lambda i, gw: calls.append(("answers", i)) or True
+U.link_up = lambda i: calls.append(("up", i)) or True
+U.netinv.run = lambda *a, **k: calls.append(("netinv", a)) or (0, "")
+U.netinv.device_facts = lambda i: calls.append(("facts", i)) or {"driver": "aic8800_fdrv", "usb": {"port": "1-1.1"}}
+U.guests = lambda: calls.append(("guests",)) or 0
+U.shared_radio = lambda i: calls.append(("shared", i)) or False
+U.busy = lambda: calls.append(("busy",)) or None
+U.uptime = lambda: 1000.0
+
+
+class Watcher:
+    def take(self, *a, **k):
+        calls.append(("watcher", a))
+        return []
+
+
+try:
+    chosen = U.validate({})
+    link = U.Link("wlan0", chosen, dry=True)
+    link.radio_seen = {"driver": "aic8800_fdrv", "usb": {"port": "1-1.1"}}
+    obs = link.look(1000, chosen, Watcher())
+    check(
+        "a WiFi link whose interface has gone: no backend, network or iw call",
+        calls == [] and obs["link"] is False and obs["cause"] == "radio",
+        (calls, obs),
+    )
+    check(
+        "  the wedge evidence names the driver that did not bring it back",
+        "did not bring it back" in (obs.get("wedged") or ""),
+        obs.get("wedged"),
+    )
+    check(
+        "  a radio reset and a reboot are still possible",
+        {"radio", "reboot"} <= obs["can"],
+        obs["can"],
+    )
+    (_net / "wlan0").mkdir()
+    calls.clear()
+    obs = link.look(1060, chosen, Watcher())
+    check(
+        "  the interface back: the normal look runs again",
+        ("backend", "wlan0") in calls and obs["link"] is True and obs.get("cause") is None,
+        (calls, obs),
+    )
+finally:
+    (
+        U.SYS_NET,
+        U.backend_of,
+        U.gateway_of,
+        U.gateway_answers,
+        U.link_up,
+        U.netinv.run,
+        U.netinv.device_facts,
+        U.guests,
+        U.shared_radio,
+        U.busy,
+        U.uptime,
+    ) = (
+        _real_net,
+        _real_backend,
+        _real_gw,
+        _real_ans,
+        _real_up,
+        _real_run,
+        _real_facts,
+        _real_guests,
+        _real_shared,
+        _real_busy,
+        _real_uptime,
+    )
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
