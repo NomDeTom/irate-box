@@ -92,12 +92,17 @@ REVIEWED = {
     ),
     ("housecall-scan", "target"): (
         ROOT + "hub_control.py",
-        "if kind not in ('image', 'device', 'root', 'this-card', 'card', 'peer'):",
+        'if kind not in ("image", "device", "root", "this-card", "card", "peer"):',
         "one of six words",
+    ),
+    ("housecall-scan", "on_own_card"): (
+        ROOT + "hub_control.py",
+        'req.get("on_own_card") is True',
+        "a true or false, never used as a path",
     ),
     ("housecall-scan", "image_first"): (
         ROOT + "hub_control.py",
-        "'\\x00' in image_first or len(image_first) > 4096",
+        '"\\0" in image_first or len(image_first) > 4096',
         "a path the owner chose, read only; no NUL, bounded",
     ),
     ("housecall-scan", "reference"): (
@@ -161,7 +166,7 @@ def request_keys():
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "ACTIONS"
     )
     found = {}
-    for action, handler in zip(table.keys, table.values):
+    for action, handler in zip(table.keys, table.values, strict=False):
         function = functions.get(ast.unparse(handler))
         if function is None:
             continue
