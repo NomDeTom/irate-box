@@ -6042,6 +6042,61 @@
             </div>
             <p class="setting-desc action-note" id="pins-overlay-note" role="status" hidden></p>
           </div>
+          <div class="pin-overlay" id="pins-mui">
+            <h3 data-i18n="admin.pins.mui-title">Activate MUI</h3>
+            <p class="setting-desc" data-i18n="admin.pins.mui-intro">
+              Choose the header pins for the SPI display and touch, then let the box build the matching overlay and
+              the per-host meshtasticd configuration. The overlay applies at the next restart. SPI0 stays free for a
+              radio; MUI itself uses SimRadio.
+            </p>
+            <div class="pin-mui-form">
+              <label class="setting-name" for="pins-mui-bus" data-i18n="admin.pins.mui-bus">Display bus</label>
+              <select id="pins-mui-bus">
+                <option value="1" data-i18n="admin.pins.mui-spi1">SPI1</option>
+                <option value="0" data-i18n="admin.pins.mui-spi0">SPI0</option>
+              </select>
+              <label class="setting-name" for="pins-mui-touch" data-i18n="admin.pins.mui-touch">Touch</label>
+              <select id="pins-mui-touch">
+                <option value="lgfx" data-i18n="admin.pins.mui-touch-xpt2046">XPT2046 (LGFX)</option>
+                <option value="none" data-i18n="admin.pins.mui-touch-none">None</option>
+              </select>
+              <label class="setting-name" for="pins-mui-clk" data-i18n="admin.pins.mui-clk">Clock</label>
+              <select id="pins-mui-clk"></select>
+              <label class="setting-name" for="pins-mui-mosi" data-i18n="admin.pins.mui-mosi">MOSI</label>
+              <select id="pins-mui-mosi"></select>
+              <label class="setting-name" for="pins-mui-miso" data-i18n="admin.pins.mui-miso">MISO</label>
+              <select id="pins-mui-miso"></select>
+              <label class="setting-name" for="pins-mui-display-cs" data-i18n="admin.pins.mui-display-cs">Display CS</label>
+              <select id="pins-mui-display-cs"></select>
+              <label class="setting-name" for="pins-mui-touch-cs" data-i18n="admin.pins.mui-touch-cs">Touch CS</label>
+              <select id="pins-mui-touch-cs"></select>
+              <label class="setting-name" for="pins-mui-dc" data-i18n="admin.pins.mui-dc">D/C</label>
+              <select id="pins-mui-dc"></select>
+              <label class="setting-name" for="pins-mui-rst" data-i18n="admin.pins.mui-rst">Reset</label>
+              <select id="pins-mui-rst"></select>
+              <label class="setting-name" for="pins-mui-bl" data-i18n="admin.pins.mui-bl">Backlight</label>
+              <select id="pins-mui-bl"></select>
+            </div>
+            <p class="setting-desc" id="pins-mui-radio-setting">
+              <label for="pins-mui-replace-radio">
+                <input type="checkbox" id="pins-mui-replace-radio" />
+                <span data-i18n="admin.pins.mui-replace-radio">Replace the radio with a simulated one (SimRadio)</span>
+              </label>
+            </p>
+            <p class="setting-desc action-note bad" id="pins-mui-radio-warning" data-i18n="admin.pins.mui-radio-warning" hidden>
+              meshtasticd has a real radio configured. Activating MUI stops it and uses SimRadio; tick the setting
+              above to replace it.
+            </p>
+            <p class="setting-desc" id="pins-mui-state" data-i18n="admin.pins.mui-state">Not read yet.</p>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="pins-mui-activate" data-i18n="admin.pins.mui-activate" disabled>Activate</button>
+              <button class="action-btn" type="button" id="pins-mui-deactivate" data-i18n="admin.pins.mui-deactivate" disabled>Deactivate</button>
+              <button class="action-btn" type="button" id="pins-mui-restart" data-i18n="admin.pins.mui-restart" hidden>Restart now</button>
+            </div>
+            <p class="setting-desc action-note" id="pins-mui-note" role="status" hidden></p>
+            <h4 data-i18n="admin.pins.mui-selected">Selected header pins</h4>
+            <div id="pins-mui-diagram"></div>
+          </div>
           <div class="pin-overlay" id="pins-display">
             <h3 data-i18n="admin.pins.display-title">Display</h3>
             <p class="setting-desc" data-i18n="admin.pins.display-intro">

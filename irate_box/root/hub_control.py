@@ -8306,12 +8306,14 @@ def pins_hog(req):
 
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
-    from irate_box.root import lcdtouch, pinmap
+    from irate_box.root import lcdtouch, mui, pinmap
 
     data = pinmap.snapshot()
     data["at"] = time.time()
     safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
     lcdtouch.write_status()
+    mui.write_options()
+    mui.write_status()
     hardware.write_status()
     return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
 
@@ -8372,6 +8374,17 @@ def mui(req):
             mui_module.write_options()
             return M("control.mui.status", "MUI status is in control/mui.json.")
         raise Refused(M("control.mui.unknown", "Name activate, deactivate or status."))
+    finally:
+        mui_module.write_status()
+        hardware.write_status()
+
+
+def mui_restart(_req):
+    """Restart the box after MUI has written a pending overlay."""
+    from irate_box.root import hardware, mui as mui_module
+
+    try:
+        return mui_module.restart()
     finally:
         mui_module.write_status()
         hardware.write_status()
@@ -9436,6 +9449,7 @@ ACTIONS = {
     "pins-display": pins_display,
     "pins-test": pins_test,
     "mui": mui,
+    "mui-restart": mui_restart,
     "uplink-set": uplink_set,
     "uplink-do": uplink_do,
     "uplink-hold": uplink_hold,

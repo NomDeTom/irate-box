@@ -101,7 +101,11 @@ _PATH_ACTIONS = {
             "boot/armbianEnv.txt",
         ],
     },
-    "pins": {"reads": [], "writes": ["control/pins.json", "control/lcdtouch.json"]},
+    "mui-restart": {"reads": [], "writes": ["control/mui.json", "control/hardware.json"]},
+    "pins": {
+        "reads": [],
+        "writes": ["control/pins.json", "control/lcdtouch.json", "control/mui.json", "control/mui-options.json"],
+    },
     "pins-gpio": {"reads": [], "writes": ["control/hardware.json"]},
     "pins-hog": {
         "reads": [],

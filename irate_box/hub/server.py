@@ -3543,6 +3543,18 @@ def hardware_snapshot():
     return data if isinstance(data, dict) else {}
 
 
+def mui_snapshot():
+    """/admin/pins: the modular MUI status and pin picker (root/mui.py's control/mui*.json)."""
+    out = {}
+    for key, name in (("status", "mui.json"), ("options", "mui-options.json")):
+        try:
+            data = json.loads((CONTROL_DIR / name).read_text())
+        except (OSError, ValueError):
+            data = None
+        out[key] = data if isinstance(data, dict) else None
+    return out
+
+
 def pins_snapshot():
     """/admin/pins: the last pin map read (root/pinmap.py's control/pins.json), or none yet; the SPI1 LCD and touch
     overlay's state (root/lcdtouch.py's control/lcdtouch.json) too."""
@@ -3557,6 +3569,7 @@ def pins_snapshot():
     return {
         "pins": data,
         "overlay": overlay,
+        "mui": mui_snapshot(),
         "pending": _pending_actions("pins"),
         "results": control_results(10),
     }
@@ -7827,6 +7840,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "pins-display", "on": payload["on"]})})
             elif act == "pins-test":
                 self.send_json(202, {"id": control_request({"action": "pins-test"})})
+            elif act == "mui-status":
+                self.send_json(202, {"id": control_request({"action": "mui", "do": "status"})})
+            elif act == "mui-activate" and isinstance(payload.get("selection"), dict):
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "mui", "do": "activate", "selection": payload["selection"]})},
+                )
+            elif act == "mui-deactivate":
+                self.send_json(202, {"id": control_request({"action": "mui", "do": "deactivate"})})
+            elif act == "mui-restart":
+                self.send_json(202, {"id": control_request({"action": "mui-restart"})})
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
