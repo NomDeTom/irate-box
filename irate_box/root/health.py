@@ -2024,6 +2024,124 @@ def check_wifi_stalls():
     return out
 
 
+WIFI_GONE_LINE = re.compile(r"(?:urb fail|error):?\s*-19\b", re.I)
+WIFI_GONE_REPEAT = 3  # more than one stray error: the driver is still submitting to a device that is gone
+
+
+def _wifi_client_ifaces():
+    """The WiFi client interfaces on the box now, from iw (a hotspot's AP interface is not one). Where iw cannot
+    answer, every interface with a wireless directory counts, so a missing client is not claimed without a look."""
+    from irate_box.root import radio
+
+    r = run("iw", "dev", timeout=10)
+    if r.returncode == 0:
+        out, name = [], None
+        for line in r.stdout.splitlines():
+            m = re.match(r"\s*Interface (\S+)", line)
+            if m:
+                name = m.group(1)
+                continue
+            m = re.search(r"\btype (\w+)", line)
+            if m and name:
+                if m.group(1) == "managed":
+                    out.append(name)
+                name = None
+        return out
+    try:
+        return sorted(
+            d.name
+            for d in (radio.SYS / "class/net").iterdir()
+            if d.name != "lo" and ((d / "wireless").exists() or (d / "phy80211").exists())
+        )
+    except OSError:
+        return []
+
+
+def check_wifi_chip():
+    """The AIC8800's driver loaded with no WiFi client interface while the kernel repeats `-19` (ENODEV):
+    the chip left the USB bus and the driver kept submitting to it (the Lyra, 2026-11-04). The host bus can
+    then hang udev, lsusb and a soft reboot. The repair is a hardware reset, never a soft reboot; the owner
+    chooses whether the box resets itself (crash watch's chip_gone setting)."""
+    from irate_box.root import crashwatch as cw
+    from irate_box.root import radio
+
+    if not (radio.SYS / "module" / AIC_MODULE).exists():
+        return []
+    if _wifi_client_ifaces():
+        return []
+    kernel = run("journalctl", "-k", "-b", "-q", "--no-pager", "-n", "300", timeout=20)
+    lines = kernel.stdout.splitlines() if kernel.returncode == 0 else []
+    gone = [line.strip() for line in lines if WIFI_GONE_LINE.search(line)]
+    if len(gone) < WIFI_GONE_REPEAT:
+        return []
+    try:
+        choice = json.loads(cw.SETTINGS.read_text()).get("chip_gone", "off")
+    except (OSError, ValueError, AttributeError):
+        choice = "off"
+    if choice not in ("off", "reset"):
+        choice = "off"
+    notes = [
+        M(
+            "wifi-chip.bus",
+            "Everything that touches the host bus can wait for ever: udev, lsusb, reads under /sys/bus/usb, "
+            "and a soft reboot's shutdown.",
+        )
+    ]
+    st = usb_gadget_status()
+    if st and st.get("peripheral") and st["settings"]["on"]:
+        from irate_box.root import usbgadget
+
+        notes.append(
+            M(
+                "wifi-chip.gadget",
+                "The USB gadget is a way in while the WiFi is gone: the hub is at {address} and the console on "
+                "/dev/{tty}.",
+                address=usbgadget.ADDRESS,
+                tty=usbgadget.TTY,
+            )
+        )
+    fix = (
+        M(
+            "wifi-chip.fix.reset",
+            "The box resets itself when it sees this. If it has not reset, use its reset pin or the hardware "
+            "watchdog. A soft reboot hangs in shutdown.",
+        )
+        if choice == "reset"
+        else M(
+            "wifi-chip.fix.off",
+            "Reset the box with its reset pin or the hardware watchdog. A soft reboot hangs in shutdown. The "
+            "automatic reset is off: turn it on under Recovery and monitoring.",
+        )
+    )
+    return [
+        finding(
+            "wifi-chip-gone",
+            M("wifi-chip.title", "WiFi chip gone, driver still loaded"),
+            "problem",
+            M(
+                "wifi-chip.summary",
+                "The AIC8800 driver is loaded, but there is no WiFi interface, and the kernel has repeated "
+                "{n} lines about a device that is gone.",
+                n=len(gone),
+            ),
+            M(
+                "wifi-chip.why",
+                "The chip left the USB bus while its driver kept submitting to it. The box cannot bring it back "
+                "without a hardware reset.",
+            ),
+            fix,
+            notes=notes,
+            commands=[
+                "ls /sys/module/aic8800_fdrv",
+                "journalctl -k -b --grep='fail:-19'",
+            ],
+            evidence=[f"{len(gone)} lines like: {gone[-1][:160]}"],
+            go=_go("health-settings", RECOVERY, "hs-chip-gone"),
+            glance=M("wifi-chip.glance", "WiFi chip gone, driver still loaded."),
+        )
+    ]
+
+
 def _aic_channel(title, why):
     """The AIC8800's hotspot on another channel than the WiFi link on the same radio: the condition of every stall
     measured (2026-10-22). A plan from before the box knew it (apmode, known_radios.json), or a hotspot started by
@@ -7273,7 +7391,12 @@ def check_usb_gadget(st=None):
                         "so a plugged-in computer keeps its own internet. The serial console uses the same cable.",
                         first=usbgadget.DHCP_FIRST,
                         last=usbgadget.DHCP_LAST,
-                    )
+                    ),
+                    M(
+                        "usb-gadget.ok.fallback",
+                        "This is the way in when the WiFi is down: open the hub at {address} over the USB cable.",
+                        address=usbgadget.ADDRESS,
+                    ),
                 ],
                 go=go,
                 glance=M("usb-gadget.ok.glance", "USB networking is up."),
@@ -8601,6 +8724,7 @@ def scan(quick=False):
         check_hotspot,
         check_hotspot_per_account,
         check_wifi_stalls,
+        check_wifi_chip,
         check_space,
         check_card_writes,
         check_card_health,

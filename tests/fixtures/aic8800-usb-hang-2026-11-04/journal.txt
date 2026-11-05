@@ -1,0 +1,52 @@
+[ 9890.1] usb 1-1.1: new high-speed USB device number 3 using dwc2
+[ 9890.1] usb 1-1.1: device descriptor read/64, error -71
+[ 9890.1] usb 1-1.1: device descriptor read/64, error -71
+[ 9890.1] aic_bluetooth_mod_init
+[ 9890.1] usb 1-1.1: USB disconnect, device number 3
+[ 9890.1] usb_err:<aicwf_usb_submit_rx_urb,757>: usb submit rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9890.1] AICWFDBG(LOGERROR)	usb submit msg rx urb fail:-19
+[ 9902.0] using random self ethernet address
+[ 9946.0] systemd-udevd[259]: 1-1.1:1.2: Worker [265] processing SEQNUM=1275 is taking a long time
+[10076.0] systemd-udevd[259]: 1-1.1:1.2: Worker [265] processing SEQNUM=1275 killed
+[10276.0] systemd[1]: irate-box-uplink.service: Watchdog timeout (limit 6min)!
+[10276.0] systemd[1]: irate-box-uplink.service: Main process exited, code=killed, status=6/ABRT
+[10648.0] systemd[1]: irate-box-uplink.service: Watchdog timeout (limit 6min)!
