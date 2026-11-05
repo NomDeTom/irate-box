@@ -56,7 +56,7 @@ from pathlib import Path
 
 from irate_box import notify
 from irate_box.msg import M, Refused, duration, render
-from irate_box.root import safeio
+from irate_box.root import safeio, wifichip
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -657,61 +657,40 @@ class RadioWatch:
 
 # --- the WiFi chip gone -------------------------------------------------------------------------
 
-AIC_MODULE = "aic8800_fdrv"
-CHIP_GONE_LINE = re.compile(r"(?:urb fail|error):?\s*-19\b", re.I)
-CHIP_GONE_REPEAT = 3
-
-
-def wifi_clients():
-    """The WiFi client interfaces, from iw; a hotspot's AP interface is not one. Where iw cannot answer,
-    every wireless interface counts, so a missing client is never claimed without a look."""
-    r = _run("iw", "dev", timeout=10)
-    if r.returncode == 0:
-        out, name = [], None
-        for line in (r.stdout or "").splitlines():
-            m = re.match(r"\s*Interface (\S+)", line)
-            if m:
-                name = m.group(1)
-                continue
-            m = re.search(r"\btype (\w+)", line)
-            if m and name:
-                if m.group(1) == "managed":
-                    out.append(name)
-                name = None
-        return out
-    try:
-        return sorted(
-            d.name
-            for d in (SYS / "class/net").iterdir()
-            if d.name != "lo" and ((d / "wireless").exists() or (d / "phy80211").exists())
-        )
-    except OSError:
-        return []
-
 
 def wifi_chip_gone(kernel):
-    """(gone, why) when the AIC8800's driver is loaded, no WiFi client is there, and the kernel repeats
-    -19 for the vanished device. why names what was seen."""
-    if not (SYS / "module" / AIC_MODULE).exists():
-        return False, ""
-    if wifi_clients():
-        return False, ""
-    bad = [line.strip() for line in kernel if CHIP_GONE_LINE.search(line)]
-    if len(bad) < CHIP_GONE_REPEAT:
-        return False, ""
-    return True, f"the AIC8800 driver is loaded with no WiFi interface, and {len(bad)} lines repeat: {bad[-1][:160]}"
+    """(gone, why) from the one shared check the Box doctor uses too. It accepts any AIC module:
+    only aic_load_fw had loaded on the stuck boot, before the full driver could bind."""
+    state = wifichip.chip_gone(kernel, sysfs=SYS, run=_run)
+    return state["gone"], state["why"]
 
 
-def hard_reset(run=None):
-    """An immediate reset with no orderly shutdown, which hangs on the wedged bus (F6): systemd's own
-    forced reboot, and SysRq B if that does not go. Evidence is written before this is called."""
+def _sync_filesystem(path, run, timeout=10):
+    """Sync one filesystem, bounded: a global sync can wait on storage behind the stuck bus."""
+    run("timeout", str(timeout), "sync", "-f", str(path), timeout=timeout + 5)
+
+
+def hard_reset(run=None, sync=None):
+    """An immediate reset with no orderly shutdown (F6): sync the filesystems that matter, each with
+    a deadline, then SysRq B, which runs emergency_restart and no device_shutdown. reboot(2) would
+    take the stuck device's lock and could never be killed. Evidence is written before this is called."""
     run = run or _run
-    code, _out = run("systemctl", "reboot", "--force", "--force", timeout=30)
-    if code == 0:
-        return None
+    sync = sync or _sync_filesystem
+    paths = [Path("/")]
+    for candidate in (STATE, safeio.ROOT_STATE):
+        if candidate.exists() and candidate not in paths:
+            paths.append(candidate)
+    for path in paths:
+        sync(path, run)
+    sysrq = Path(os.environ.get("HUB_SYSRQ", "/proc/sysrq-trigger"))
     try:
-        Path(os.environ.get("HUB_SYSRQ", "/proc/sysrq-trigger")).write_text("b")
+        sysrq.write_text("b")
     except OSError as exc:
+        if load_settings().get("watchdog"):
+            return (
+                f"the immediate reset could not be requested ({exc}); the hardware watchdog is armed and "
+                "restarts the box when it stops answering"
+            )
         return f"the box was not reset: {exc}"
     return None
 

@@ -446,9 +446,9 @@ check(
 )
 # The detector, from the real -19 shape.
 shutil.rmtree(SYS / "module", ignore_errors=True)
-(SYS / "module/aic8800_fdrv").mkdir(parents=True)
-no_client = type("R", (), {"returncode": 0, "stdout": "phy#0\n", "stderr": ""})()
-client = type("R", (), {"returncode": 0, "stdout": "phy#0\n\tInterface wlan0\n\t\ttype managed\n", "stderr": ""})()
+(SYS / "module/aic_load_fw").mkdir(parents=True)
+no_client = (0, "phy#0\n")
+client = (0, "phy#0\n\tInterface wlan0\n\t\ttype managed\n")
 cw._run = lambda *a, **k: no_client
 flood = [
     "[1.0] AICWFDBG(LOGERROR)\tusb submit msg rx urb fail:-19",
@@ -456,13 +456,19 @@ flood = [
     "[1.2] AICWFDBG(LOGERROR)\tusb submit msg rx urb fail:-19",
 ]
 gone, why = cw.wifi_chip_gone(flood)
-check("the AIC driver loaded, no client, three -19 lines: gone", gone and "3 lines repeat" in why, why)
+check(
+    "only aic_load_fw loaded, as on the stuck boot, no client, three -19 lines: gone",
+    gone and "3 lines repeat" in why and "aic_load_fw" in why,
+    why,
+)
 check("  two lines are not a repeat: not gone", cw.wifi_chip_gone(flood[:2])[0] is False)
 cw._run = lambda *a, **k: client
 check("  a WiFi client there: not gone", cw.wifi_chip_gone(flood)[0] is False)
 cw._run = lambda *a, **k: no_client
+(SYS / "module/aic_load_fw").rename(SYS / "module/aic8800_fdrv")
+check("  the full driver alone is enough too", cw.wifi_chip_gone(flood)[0] is True)
 (SYS / "module/aic8800_fdrv").rename(SYS / "module/aic8800_fdrv.off")
-check("  the driver not loaded: not gone", cw.wifi_chip_gone(flood)[0] is False)
+check("  no AIC module loaded: not gone", cw.wifi_chip_gone(flood)[0] is False)
 (SYS / "module/aic8800_fdrv.off").rename(SYS / "module/aic8800_fdrv")
 seen, resets = [], []
 
@@ -487,13 +493,43 @@ check(
     [k for _, k, _ in seen] == ["chip-gone", "chip-gone"] and resets == [1],
     (seen, resets),
 )
-reset = []
 (fake_sysrq := T / "sysrq").write_text("")
 os.environ["HUB_SYSRQ"] = str(fake_sysrq)
-cw.hard_reset(lambda *a, **k: (0, ""))
-check("hard reset: the forced reboot, and no SysRq needed when it goes", fake_sysrq.read_text() == "")
-cw.hard_reset(lambda *a, **k: (1, "refused"))
-check("  refused: SysRq B, the immediate reset", fake_sysrq.read_text() == "b", fake_sysrq.read_text())
+calls = []
+said = cw.hard_reset(
+    lambda *a, **k: (0, ""),
+    sync=lambda path, run: calls.append(("sync", str(path))),
+)
+check(
+    "hard reset: the filesystems synced first, then SysRq B, never reboot(2)",
+    said is None
+    and fake_sysrq.read_text() == "b"
+    and [p for _, p in calls][:1] == ["/"]
+    and not any(a[:1] == ("systemctl",) for a in calls),
+    (calls, fake_sysrq.read_text()),
+)
+fake_sysrq.write_text("")
+calls.clear()
+
+
+def hanging_sync(path, run):
+    calls.append(("sync", str(path)))
+    return run("timeout", "10", "sync", "-f", str(path))
+
+
+cw.hard_reset(lambda *a, **k: (124, "timed out"), sync=hanging_sync)
+check("  a sync that does not finish: cut off, and SysRq B still goes", fake_sysrq.read_text() == "b")
+fake_sysrq.write_text("")
+cw.SETTINGS.write_text('{"watchdog": true}')
+os.environ["HUB_SYSRQ"] = str(T)
+said = cw.hard_reset(lambda *a, **k: (0, ""), sync=lambda path, run: None)
+check(
+    "  SysRq unavailable with the watchdog armed: said, left to the watchdog",
+    "hardware watchdog" in said,
+    said,
+)
+cw.SETTINGS.write_text("{}")
+os.environ["HUB_SYSRQ"] = str(fake_sysrq)
 
 # --- the AIC8800's own words as its firmware wedged (a recorded kernel log) ---
 FX = REPO / "tests/fixtures/aic8800-wedge-2026-10-09"
