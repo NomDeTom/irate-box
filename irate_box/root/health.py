@@ -2057,7 +2057,7 @@ def _wifi_client_ifaces():
         return []
 
 
-def check_wifi_chip():
+def check_wifi_gone():
     """The AIC8800's driver loaded with no WiFi client interface while the kernel repeats `-19` (ENODEV):
     the chip left the USB bus and the driver kept submitting to it (the Lyra, 2026-11-04). The host bus can
     then hang udev, lsusb and a soft reboot. The repair is a hardware reset, never a soft reboot; the owner
@@ -8724,7 +8724,7 @@ def scan(quick=False):
         check_hotspot,
         check_hotspot_per_account,
         check_wifi_stalls,
-        check_wifi_chip,
+        check_wifi_gone,
         check_space,
         check_card_writes,
         check_card_health,

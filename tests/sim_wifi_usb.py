@@ -67,7 +67,7 @@ health.usb_gadget_status = lambda: gadget
 
 # The finding: driver loaded, no client, the boot's -19 lines repeating.
 IWD = ""
-f = {x["id"]: x for x in health.check_wifi_chip()}
+f = {x["id"]: x for x in health.check_wifi_gone()}
 check("the AIC driver loaded, no client, -19 repeating: a problem", f["wifi-chip-gone"]["status"] == "problem", f)
 check(
     "  it says how many lines and keeps one as evidence",
@@ -92,29 +92,29 @@ check(
 
 # The owner's setting changes what the finding says the box will do.
 cw.SETTINGS.write_text('{"chip_gone": "reset"}')
-f = {x["id"]: x for x in health.check_wifi_chip()}["wifi-chip-gone"]
+f = {x["id"]: x for x in health.check_wifi_gone()}["wifi-chip-gone"]
 check(
     "with chip_gone reset: the finding says the box resets itself",
     "wifi-chip.fix.reset" in msg_ids(f) and "wifi-chip.fix.off" not in msg_ids(f),
     f,
 )
 cw.SETTINGS.write_text('{"chip_gone": "nonsense"}')
-f = {x["id"]: x for x in health.check_wifi_chip()}["wifi-chip-gone"]
+f = {x["id"]: x for x in health.check_wifi_gone()}["wifi-chip-gone"]
 check("  anything else is read as off", "wifi-chip.fix.off" in msg_ids(f), f)
 cw.SETTINGS.unlink()
 
 # Not this failure: a client is there, the driver is not loaded, or -19 does not repeat.
 IWD = "phy#0\n\tInterface wlan0\n\t\ttype managed\n"
-check("a WiFi client interface there: nothing", health.check_wifi_chip() == [])
+check("a WiFi client interface there: nothing", health.check_wifi_gone() == [])
 IWD = "phy#0\n\tInterface ap0\n\t\ttype AP\n"
-check("  a hotspot interface is not a client: the failure still shows", bool(health.check_wifi_chip()))
+check("  a hotspot interface is not a client: the failure still shows", bool(health.check_wifi_gone()))
 IWD = ""
 kern = "\n".join(line for line in FIXTURE.splitlines() if "fail:-19" not in line)
 kernel = kern + "\n[10000.0] usb submit msg rx urb fail:-19\n[10001.0] usb submit msg rx urb fail:-19\n"
-check("  two -19 lines are not a repeat: nothing", health.check_wifi_chip() == [])
+check("  two -19 lines are not a repeat: nothing", health.check_wifi_gone() == [])
 kernel = FIXTURE
 (SYS / "module/aic8800_fdrv").rename(SYS / "module/aic8800_fdrv.off")
-check("  the AIC driver not loaded: nothing", health.check_wifi_chip() == [])
+check("  the AIC driver not loaded: nothing", health.check_wifi_gone() == [])
 (SYS / "module/aic8800_fdrv.off").rename(SYS / "module/aic8800_fdrv")
 
 # USB networking's own finding names the fallback too.
