@@ -423,6 +423,55 @@ check(
     and rkusb.bootloaders()[1]["ready"],
     staged,
 )
+# A link where the upload should be: O_NOFOLLOW refuses it, and the link is removed rather than followed.
+evil = T / "evil"
+evil.write_bytes(b"not the bundle")
+(rkboard.UPLOAD / "upload.part").symlink_to(evil)
+check(
+    "  an upload that is a symlink: refused, the link removed, its target untouched",
+    refused(rkboard.stage_bundle, "nand-uboot", "u-boot.itb", "upload.part") == "rkboard.bundle.upload"
+    and not (rkboard.UPLOAD / "upload.part").exists()
+    and evil.read_bytes() == b"not the bundle"
+    and (boot_state / "nand-uboot" / "u-boot.itb").read_bytes() == itb,
+)
+# The hub swaps the name after root opened it: root copies the descriptor it opened, not the new link.
+(boot_state / "nand-uboot" / "u-boot.itb").write_bytes(b"OLD")
+(rkboard.UPLOAD / "upload.part").write_bytes(itb)
+real_open = rkboard.os.open
+swapped = []
+
+
+def swap_open(path, flags, *args, **kwargs):
+    fd = real_open(path, flags, *args, **kwargs)
+    if path == "upload.part" and kwargs.get("dir_fd") is not None and not swapped:
+        (rkboard.UPLOAD / "upload.part").unlink()
+        (rkboard.UPLOAD / "upload.part").symlink_to(evil)
+        swapped.append(True)
+    return fd
+
+
+rkboard.os.open = swap_open
+try:
+    swapped_result = rkboard.stage_bundle("nand-uboot", "u-boot.itb", "upload.part")
+finally:
+    rkboard.os.open = real_open
+check(
+    "  the upload swapped for a link after it was opened: the opened bytes staged, the link not followed",
+    swapped
+    and swapped_result.get("id") == "rkboard.bundle.staged"
+    and (boot_state / "nand-uboot" / "u-boot.itb").read_bytes() == itb
+    and not (rkboard.UPLOAD / "upload.part").exists()
+    and evil.read_bytes() == b"not the bundle",
+)
+# A lock left by a dead helper is broken, not waited on until the next reboot.
+busy = rkboard.RUN / "rkboard-busy"
+busy.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+busy.write_text("999999 0")
+check(
+    "  a stale lock: broken, and the step goes on to refuse the missing upload",
+    refused(rkboard.stage_bundle, "nand-uboot", "u-boot.itb", "missing.part") == "rkboard.bundle.upload"
+    and not busy.exists(),
+)
 
 unplug_all()
 plug("1-1.2", "loader")
@@ -544,6 +593,8 @@ check(
     said.get("id") == "rkboard.backed-up"
     and len(backups) == 1
     and backups[0].stat().st_size == 2048 * 512
+    and (backups[0].stat().st_mode & 0o777) == 0o640
+    and ((T / "state" / "rk-backups").stat().st_mode & 0o777) == 0o750
     and hashlib.sha256(backups[0].read_bytes()).hexdigest() == said.get("sha256")
     and any(c[:2] == ("rkdeveloptool", "rl") for c in ran)
     and not any(c[:2] == ("rkdeveloptool", "ef") for c in ran)
@@ -566,6 +617,12 @@ check(
     and not backups[0].exists()
     and not (T / "state" / "control" / "rkboard-backups.json").read_text().strip().strip("[]"),
     (index, rkboard.backups_list()),
+)
+check(
+    "  a saved-copy name with a path or the wrong suffix: refused in root, before anything is touched",
+    refused(rkboard.delete_backup, "../evil.bin") == "rkboard.backup.name"
+    and refused(rkboard.restore, "../evil.bin") == "rkboard.backup.name"
+    and refused(rkboard.delete_backup, "notes.txt") == "rkboard.backup.name",
 )
 shows.update(NAND)
 
@@ -630,6 +687,8 @@ check(
     and '"action": "rk-bundle-stage"' in src
     and 'path == "/admin/rkboard/upload"' in src
     and '"X-Rk-File"' in src
+    and 'if "rk-backup" in transport.HTTPS_ONLY and not self._https():' in src
+    and 'validate.path(name, STATE_DIR / "rk-backups"' in src
     and '"rk-backup": rk_backup' in control_src
     and '"rk-backup-delete": rk_backup_delete' in control_src
     and '"rk-backup-keep": rk_backup_keep' in control_src

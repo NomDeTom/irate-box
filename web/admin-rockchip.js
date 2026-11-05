@@ -495,7 +495,7 @@
       ...(copies.length
         ? rows
         : [el('p', { className: 'setting-desc', textContent: 'No full copy is saved yet. Keep "Save a full copy" ticked when installing a bootloader.' })]),
-      el('div', { className: 'rk-copy-keep' },
+      el('div', { className: 'library-buttons rk-copy-keep' },
         el('span', { className: 'setting-name', textContent: 'Copies to keep' }), keep, saveKeep),
     );
   }

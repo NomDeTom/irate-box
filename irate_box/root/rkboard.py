@@ -18,6 +18,7 @@ import hashlib
 import json
 import lzma
 import os
+import pwd
 import re
 import shutil
 import stat
@@ -29,6 +30,7 @@ from pathlib import Path
 
 from irate_box import validate
 from irate_box.hub import rkusb
+from irate_box.root import safeio
 from irate_box.hub.rkusb import boards, loaders, status, tools  # noqa: F401 - the root helper's names for them
 from irate_box.msg import M, Refused
 
@@ -38,6 +40,9 @@ LARGE_MB = 1024  # a Lyra's SPI NAND is 256 MB: a storage larger than this is it
 SIZE_MB_RE = re.compile(r"Flash Size:\s*(\d+)\s*MB")
 SIZE_SECTORS_RE = re.compile(r"Flash Size:\s*(\d+)\s*Sectors")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+BACKUP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,190}\.bin$")
+BUNDLE_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$")
+MAX_BUNDLE = 64 << 20  # a bundle file: the UBI rescue is about 47 MB
 SECTOR = 512
 CHUNK = 32 << 20  # an image written in pieces of this size, each in RAM, then read back
 TAIL = 2048  # sectors cleared at the card's end after an image: an older image's backup partition table
@@ -59,27 +64,76 @@ def run(*cmd, timeout=600):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
+def _alive(pid):
+    """Whether a process with this pid exists (permission to signal it counts as alive too)."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _exclusive(fn):
-    """One backup or install at a time: a second request is refused while the first runs."""
+    """One backup, install or restore at a time: a second request is refused while the first runs. The lock names
+    the holder's pid and start time, so a lock left by a dead helper is broken rather than waiting for a reboot."""
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         RUN.mkdir(mode=0o700, parents=True, exist_ok=True)
         busy = RUN / "rkboard-busy"
+        for attempt in (0, 1):
+            try:
+                fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+            except FileExistsError:
+                try:
+                    holder = int(busy.read_text().split()[0])
+                except (OSError, ValueError, IndexError):
+                    holder = 0
+                if attempt == 0 and not _alive(holder):
+                    busy.unlink(missing_ok=True)
+                    continue
+                raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish.")) from None
+            except OSError:
+                raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish.")) from None
+            break
+        else:
+            raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish."))
         try:
-            fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        except FileExistsError:
-            raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish.")) from None
-        except OSError:
-            raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish.")) from None
-        try:
-            os.write(fd, fn.__name__.encode())
+            os.write(fd, f"{os.getpid()} {int(time.time())}".encode())
             os.close(fd)
             return fn(*args, **kwargs)
         finally:
             busy.unlink(missing_ok=True)
 
     return wrapper
+
+
+def _hub_gid():
+    try:
+        return pwd.getpwnam("hub").pw_gid
+    except KeyError:
+        return os.getgid()
+
+
+def _root_owner():
+    return 0 if os.geteuid() == 0 else None
+
+
+def _own_backup(path):
+    """A saved copy: root's, the hub group's to read for the download; nothing else can read it."""
+    try:
+        os.chmod(path, 0o640)
+    except OSError:
+        pass
+    if os.geteuid() == 0:
+        try:
+            os.chown(path, 0, _hub_gid())
+        except OSError:
+            pass
 
 
 def _progress(action, done, total, path=""):
@@ -109,9 +163,7 @@ def _backup_entries():
 
 def _write_index(entries):
     try:
-        BACKUP_INDEX.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
-        BACKUP_INDEX.write_text(json.dumps(entries))
-        os.chmod(BACKUP_INDEX, 0o644)
+        safeio.write(BACKUP_INDEX, json.dumps(entries))
     except OSError:
         pass
 
@@ -165,9 +217,7 @@ def set_keep(value):
     if not 1 <= n <= 20:
         raise Refused(M("rkboard.keep.value", "Select how many copies to keep, from 1 to 20."))
     try:
-        BACKUP_SETTINGS.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
-        BACKUP_SETTINGS.write_text(json.dumps({"keep": n}))
-        os.chmod(BACKUP_SETTINGS, 0o644)
+        safeio.write(BACKUP_SETTINGS, json.dumps({"keep": n}))
     except OSError as exc:
         raise Refused(
             M("rkboard.keep.write", "The setting could not be saved: {detail}", detail=str(exc)[-160:])
@@ -177,6 +227,8 @@ def set_keep(value):
 
 
 def delete_backup(name):
+    if not isinstance(name, str) or not BACKUP_NAME_RE.fullmatch(name):
+        raise Refused(M("rkboard.backup.name", "That is not a saved copy's name."))
     entry = next((e for e in _backup_entries() if e["name"] == name), None)
     if not entry:
         raise Refused(M("rkboard.backup.missing", "That saved copy is no longer on the box."))
@@ -192,7 +244,8 @@ def delete_backup(name):
 
 @_exclusive
 def stage_bundle(bundle, name, temp):
-    """Stage an uploaded bundle file after checking it against the sha256 in bootloaders.json."""
+    """Stage an uploaded bundle file: open it once without following a link, copy from that descriptor into a
+    root-owned temporary file, hash and fchmod the copy, then replace the staged file with it."""
     meta = next((b for b in rkusb.bootloaders() if b.get("id") == bundle), None)
     if not meta:
         raise Refused(M("rkboard.bundle.unknown", "That bootloader is not described on this box."))
@@ -201,39 +254,85 @@ def stage_bundle(bundle, name, temp):
         raise Refused(
             M("rkboard.bundle.file", "{name} is not a file of {title}.", name=name, title=meta.get("title") or bundle)
         )
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}", temp):
-        raise Refused(M("rkboard.bundle.upload", "That upload cannot be read."))
-    source = UPLOAD / temp
-    if not source.is_file() or source.is_symlink():
+    if not BUNDLE_FILE_RE.fullmatch(temp) or not BUNDLE_FILE_RE.fullmatch(name):
         raise Refused(M("rkboard.bundle.upload", "That upload cannot be read."))
     expected = str(item.get("sha256") or "").lower()
-    actual = _digest(source)
-    if expected and actual != expected:
-        source.unlink(missing_ok=True)
-        raise Refused(
-            M(
-                "rkboard.bundle.mismatch",
-                "{name} does not match its sha256 ({actual}), so nothing was staged.",
-                name=name,
-                actual=actual,
-            )
-        )
     dest = rkusb.BOOTLOADER_STATE / bundle / name
+    _stage_upload(temp, dest, expected)
+    return M("rkboard.bundle.staged", "Staged {name} for {title}.", name=name, title=meta.get("title") or bundle)
+
+
+def _stage_upload(temp, dest, expected):
+    """Copy one hub-written upload safely. The upload folder is the hub's, so it can swap the file or plant a link;
+    open the name once with O_NOFOLLOW and copy from that descriptor. The copy is root's, hashed, fchmodded and
+    renamed into place; the upload is removed whatever happens."""
     try:
-        dest.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        shutil.move(str(source), str(dest))
-        os.chmod(dest, 0o644)
+        dfd = safeio._dir_fd(UPLOAD)
+    except OSError:
+        raise Refused(M("rkboard.bundle.upload", "That upload cannot be read.")) from None
+    src_fd = None
+    tmp_fd = None
+    tmp_path = None
+    try:
+        try:
+            src_fd = os.open(temp, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK, dir_fd=dfd)
+        except OSError:
+            raise Refused(M("rkboard.bundle.upload", "That upload cannot be read.")) from None
+        st = os.fstat(src_fd)
+        if not stat.S_ISREG(st.st_mode) or not 0 < st.st_size <= MAX_BUNDLE:
+            raise Refused(M("rkboard.bundle.upload", "That upload cannot be read."))
+        safeio.mkdir(rkusb.BOOTLOADER_STATE, uid=_root_owner(), gid=_hub_gid(), mode=0o750)
+        safeio.mkdir(dest.parent, uid=_root_owner(), gid=_hub_gid(), mode=0o750)
+        tmp_fd, tmp_path = tempfile.mkstemp(prefix=f".{dest.name}.", suffix=".tmp", dir=dest.parent)
+        digest = hashlib.sha256()
+        with os.fdopen(src_fd, "rb", closefd=False) as src, os.fdopen(tmp_fd, "wb", closefd=False) as out:
+            for block in iter(lambda: src.read(1 << 20), b""):
+                digest.update(block)
+                out.write(block)
+        actual = digest.hexdigest()
+        os.fchmod(tmp_fd, 0o640)
+        if os.geteuid() == 0:
+            try:
+                os.fchown(tmp_fd, 0, _hub_gid())
+            except OSError:
+                pass
+        if expected and actual != expected:
+            raise Refused(
+                M(
+                    "rkboard.bundle.mismatch",
+                    "{name} does not match its sha256 ({actual}), so nothing was staged.",
+                    name=dest.name,
+                    actual=actual,
+                )
+            )
+        os.replace(tmp_path, dest)
+        tmp_path = None
     except OSError as exc:
-        source.unlink(missing_ok=True)
         raise Refused(
             M("rkboard.bundle.write", "The file could not be staged: {detail}", detail=str(exc)[-160:])
         ) from None
-    return M("rkboard.bundle.staged", "Staged {name} for {title}.", name=name, title=meta.get("title") or bundle)
+    finally:
+        if src_fd is not None:
+            os.close(src_fd)
+        if tmp_fd is not None:
+            os.close(tmp_fd)
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        try:
+            os.unlink(temp, dir_fd=dfd)
+        except OSError:
+            pass
+        os.close(dfd)
 
 
 @_exclusive
 def restore(name, loader_id=None, confirm=None):
     """Write a saved full copy back to the board, read it back and compare. The same read/confirm rule as an install."""
+    if not isinstance(name, str) or not BACKUP_NAME_RE.fullmatch(name):
+        raise Refused(M("rkboard.backup.name", "That is not a saved copy's name."))
     entry = next((e for e in _backup_entries() if e["name"] == name), None)
     path = BACKUPS / name
     if not entry or not path.is_file():
@@ -499,11 +598,7 @@ def backup(loader_id=None):
     backups = BACKUPS
     want = sectors * SECTOR
     try:
-        backups.mkdir(mode=0o755, parents=True, exist_ok=True)
-        try:
-            os.chmod(backups, 0o755)  # nosec B103 - the hub reads a saved copy for the admin's download
-        except OSError:
-            pass
+        safeio.mkdir(backups, uid=_root_owner(), gid=_hub_gid(), mode=0o750)
     except OSError as exc:
         raise Refused(
             M(
@@ -572,10 +667,7 @@ def backup(loader_id=None):
             )
         )
     _progress("backup", want, want, str(path))
-    try:
-        os.chmod(path, 0o644)
-    except OSError:
-        pass
+    _own_backup(path)
     digest = _digest(path)
     _index_add(path, digest, serial, want)
     message = M(

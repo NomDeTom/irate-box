@@ -429,6 +429,7 @@
       "reads": [],
       "writes": [
         "control/rkboard.json",
+        "control/rkboard-backups.json",
         "rk-backups"
       ]
     },
@@ -437,6 +438,7 @@
       "policy": false,
       "reads": [],
       "writes": [
+        "control/rkboard.json",
         "control/rkboard-backups.json",
         "rk-backups"
       ]
@@ -446,7 +448,9 @@
       "policy": false,
       "reads": [],
       "writes": [
+        "control/rkboard.json",
         "control/rkboard-settings.json",
+        "control/rkboard-backups.json",
         "rk-backups"
       ]
     },
@@ -457,6 +461,7 @@
         "rk-backups"
       ],
       "writes": [
+        "control/rkboard.json",
         "rk-backups"
       ]
     },
@@ -467,6 +472,8 @@
         "rk-upload"
       ],
       "writes": [
+        "control/rkboard.json",
+        "rk-upload",
         "rk-bootloaders"
       ]
     },

@@ -6142,6 +6142,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/admin/rkboard/backup":
+            # The same HTTPS-only rule as the backup that made it: this is the whole flash, keys included.
+            if "rk-backup" in transport.HTTPS_ONLY and not self._https():
+                self.send_json(403, refused.say(HTTPS_ONLY_SAID))
+                return
             name = self._query_one("name", "", 200)
             entry = None
             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,190}\.bin", name):
