@@ -6928,13 +6928,23 @@ label > .aw-onoff-box ~ .chip-group,
 .pin-mui-form {
   display: grid;
   grid-template-columns: max-content minmax(0, 22rem);
-  gap: 0.35rem 0.9rem;
+  gap: 0.7rem 0.9rem;
   align-items: center;
   margin: 0.6rem 0;
 }
 
 .pin-mui-form select {
   min-width: 0;
+}
+
+@media (max-width: 30rem) {
+  .pin-mui-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pin-mui-form select {
+    width: 100%;
+  }
 }
 
 #pins-mui-diagram .admin-table {

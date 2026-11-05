@@ -8381,7 +8381,8 @@ def mui(req):
 
 def mui_restart(_req):
     """Restart the box after MUI has written a pending overlay."""
-    from irate_box.root import hardware, mui as mui_module
+    from irate_box.root import hardware
+    from irate_box.root import mui as mui_module
 
     try:
         return mui_module.restart()

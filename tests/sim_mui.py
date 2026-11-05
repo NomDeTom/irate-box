@@ -93,6 +93,14 @@ check(
     opt["buses"],
 )
 check(
+    "options carry root's usable/why for every candidate",
+    opt["buses"][1]["signals"]["clk"][0]["usable"] is True
+    and opt["buses"][1]["signals"]["clk"][0]["why"] == "free"
+    and next(row for row in opt["gpios"] if row["pin"] == 8)["usable"] is False
+    and "fixed for UART0 TX" in next(row for row in opt["gpios"] if row["pin"] == 8)["why"],
+    opt["gpios"],
+)
+check(
     "defaults are the proven SPI1 layout",
     opt["defaults"]["bus"] == 1
     and opt["defaults"]["clk"] == 27

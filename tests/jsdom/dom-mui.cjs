@@ -18,11 +18,14 @@ const posted = [];
 let asked = 0;
 let state;
 const signal = (pin, name, rmio, cs) => {
-  const item = { pin, name, gpio: 40 + pin, rmio, signal: cs === undefined ? 'clk' : `csn${cs}`, label: `rm_io${rmio}_spi1_${cs === undefined ? 'clk' : 'csn' + cs}` };
+  const item = { pin, name, gpio: 40 + pin, rmio, signal: cs === undefined ? 'clk' : `csn${cs}`, label: `rm_io${rmio}_spi1_${cs === undefined ? 'clk' : 'csn' + cs}`, usable: true, why: 'free' };
   if (cs !== undefined) item.cs = cs;
   return item;
 };
-const gpio = (pin, name, gpioNo, fixed = '') => ({ pin, name, gpio: gpioNo, rmio: gpioNo, fixed, gpiochip: Math.floor(gpioNo / 32), line: gpioNo % 32 });
+const gpio = (pin, name, gpioNo, fixed = '') => ({
+  pin, name, gpio: gpioNo, rmio: gpioNo, fixed, gpiochip: Math.floor(gpioNo / 32), line: gpioNo % 32,
+  usable: !fixed, why: fixed ? `fixed for ${fixed}` : 'free',
+});
 const defaults = { bus: 1, clk: 27, mosi: 29, miso: 31, display_cs: 35, touch_cs: 37, dc: 26, rst: 28, bl: 36, touch: 'lgfx', replace_radio: false };
 const options = {
   supported: true,
@@ -113,6 +116,11 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
   bus.dispatchEvent(new w.Event('change'));
   await wait(20);
   check('SPI0 filters the SPI pins', d.getElementById('pins-mui-clk').value === '12' && /Pin 12/.test(option('pins-mui-clk', 12).textContent), [...d.getElementById('pins-mui-clk').options].map((o) => o.textContent));
+  check(
+    'a touch CS with the display CS number is disabled with the reason',
+    option('pins-mui-touch-cs', 24).disabled && /same chip select/.test(option('pins-mui-touch-cs', 24).title),
+    [option('pins-mui-touch-cs', 24).disabled, option('pins-mui-touch-cs', 24).title],
+  );
   const clk = d.getElementById('pins-mui-clk');
   const dc = d.getElementById('pins-mui-dc');
   dc.value = clk.value;

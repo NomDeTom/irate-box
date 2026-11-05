@@ -232,36 +232,49 @@ def _normalize(selection):
     return sel
 
 
-def _claim(pin):
-    """The live header row for a pin, or {}; only used to refuse a pin another function owns."""
+def _claim_rows():
+    """The live header rows by pin. An unreadable snapshot is not a reason to block a saved choice."""
     try:
-        for row in _snapshot().get("header") or []:
-            if isinstance(row, dict) and row.get("pin") == pin:
-                return row
+        return {
+            row["pin"]: row
+            for row in _snapshot().get("header") or []
+            if isinstance(row, dict) and isinstance(row.get("pin"), int)
+        }
     except (OSError, ValueError, subprocess.SubprocessError):
-        # No gpioinfo (or unreadable output) is not a reason to block a saved choice.
-        pass
-    return {}
+        return {}
+
+
+def _pin_status(pin, rows=None):
+    """(usable, why, message_id, detail) for one pin: the one rule shared by validation and the page."""
+    row = _pin(pin)
+    if row is None:
+        return False, "not in this board's header map", "mui.unknown-pin", None
+    if row["gpio"] is None:
+        return False, "power or ground", "mui.not-gpio", None
+    if row["fixed"]:
+        return False, f"fixed for {row['fixed']}", "mui.fixed-pin", row["fixed"]
+    claim = (rows if rows is not None else _claim_rows()).get(pin) or {}
+    if claim.get("used"):
+        owner = str(claim.get("consumer") or claim.get("function") or "another function").lower()
+        if any(token in owner for token in FOREIGN_TOKENS):
+            return False, f"used by {owner}", "mui.pin-busy", owner
+        if not any(token in owner for token in OWN_TOKENS):
+            return False, f"used by {owner}", "mui.pin-busy", owner
+        return True, f"in use by {owner}; this overlay replaces it", None, None
+    return True, "free", None, None
 
 
 def _pin_ok(pin, role, sel, check_claims=True):
     row = _pin(pin)
-    if row is None:
-        raise Refused(M("mui.unknown-pin", "Pin {pin} is not in this board's header map.", pin=pin))
-    if row["gpio"] is None:
-        raise Refused(M("mui.not-gpio", "Pin {pin} is power or ground, not a GPIO.", pin=pin))
-    if row["fixed"]:
-        raise Refused(
-            M("mui.fixed-pin", "Pin {pin} is fixed for {fixed}; choose a free GPIO.", pin=pin, fixed=row["fixed"])
-        )
-    if check_claims:
-        claim = _claim(pin)
-        if claim.get("used"):
-            owner = str(claim.get("consumer") or claim.get("function") or "another function").lower()
-            if any(token in owner for token in FOREIGN_TOKENS):
-                raise Refused(M("mui.pin-busy", "Pin {pin} is used by {owner}.", pin=pin, owner=owner))
-            if not any(token in owner for token in OWN_TOKENS):
-                raise Refused(M("mui.pin-busy", "Pin {pin} is used by {owner}.", pin=pin, owner=owner))
+    ok, why, code, detail = _pin_status(pin)
+    if not ok:
+        if code == "mui.unknown-pin":
+            raise Refused(M(code, "Pin {pin} is not in this board's header map.", pin=pin))
+        if code == "mui.not-gpio":
+            raise Refused(M(code, "Pin {pin} is power or ground, not a GPIO.", pin=pin))
+        if code == "mui.fixed-pin":
+            raise Refused(M(code, "Pin {pin} is fixed for {fixed}; choose a free GPIO.", pin=pin, fixed=detail))
+        raise Refused(M("mui.pin-busy", "Pin {pin} is used by {owner}.", pin=pin, owner=detail))
     return row
 
 
@@ -601,13 +614,21 @@ def status(selection=None):
 
 def options():
     """Everything a pin picker needs: valid header pins, SPI signal candidates and the saved choice."""
+    claims = _claim_rows()
     buses = []
     for bus in (0, 1):
-        buses.append({"bus": bus, "signals": _spi_candidates(bus)})
+        signals = _spi_candidates(bus)
+        for rows in signals.values():
+            for row in rows:
+                ok, why, _code, _detail = _pin_status(row["pin"], claims)
+                row["usable"] = ok
+                row["why"] = why
+        buses.append({"bus": bus, "signals": signals})
     gpios = []
     for pin, (name, gpio, rmio, fixed) in sorted(_header().items()):
         if gpio is None:
             continue
+        ok, why, _code, _detail = _pin_status(pin, claims)
         gpios.append(
             {
                 "pin": pin,
@@ -615,6 +636,8 @@ def options():
                 "gpio": gpio,
                 "rmio": rmio,
                 "fixed": fixed or "",
+                "usable": ok,
+                "why": why,
                 "gpiochip": gpio // 32,
                 "line": gpio % 32,
             }
@@ -748,7 +771,10 @@ def activate(selection):
 
 def restart():
     """Schedule a reboot after answering, so the pending overlay is applied."""
-    _run("systemd-run", "--on-active=2", "systemctl", "reboot")
+    said = _run("systemd-run", "--on-active=2", "systemctl", "reboot")
+    if said.returncode:
+        detail = (said.stderr or said.stdout).strip()[:160] or "systemd-run failed"
+        raise Refused(M("mui.restart-failed", "The box could not be restarted: {why}", why=detail))
     return M("mui.restart", "The box is restarting to apply the MUI overlay.")
 
 
