@@ -78,6 +78,8 @@ mui._snapshot = lambda: {"header": []}
 hardware._dtc = fake_dtc
 mui._systemctl = fake_systemctl
 mui.MESHTASTIC_CONFIG = T / "meshtasticd.yaml"
+mui.MESHTASTIC_CONFIG_DIR = T / "meshtasticd.d"
+mui.MESHTASTIC_CONFIG_DIR.mkdir()
 sel = {}
 
 check("a Lyra Zero W is supported", mui.supported() is True)
@@ -167,7 +169,13 @@ check(
     refused(mui.dts, {"dc": True}) == "mui.bad-selection"
     and refused(mui.dts, {"bus_frequency": 3.7}) == "mui.bad-selection",
 )
-mui.MESHTASTIC_CONFIG.write_text("Lora:\n  Module: sx1262\n")
+mui.MESHTASTIC_CONFIG.write_text("Display:\n  Module: sx1262\n")
+check("only the Lora section counts as a radio", mui._radio_configured() is False)
+mui.MESHTASTIC_CONFIG.write_text("Display:\n  Module: sx1262\nLora:\n  Module: sx1262\n")
+check("the Lora section is read", mui._radio_configured() is True)
+(mui.MESHTASTIC_CONFIG_DIR / "20-radio.yaml").write_text("Lora:\n  Module: sim\n")
+check("a later config.d file wins", mui._radio_configured() is False)
+(mui.MESHTASTIC_CONFIG_DIR / "20-radio.yaml").unlink()
 check(
     "a real radio configured for meshtasticd is refused unless replace_radio is true",
     refused(mui.activate, sel) == "mui.radio-configured",
@@ -219,6 +227,12 @@ check("  activation is pending until the selected spidev devices exist", mui.sta
 (T / "spi" / "spi1.0").write_text("")
 (T / "spi" / "spi1.1").write_text("")
 check("  the same selection becomes active when both devices appear", mui.status()["active"] is True)
+mui.activate(sel)
+check(
+    "  a second activation keeps the earlier meshtasticd record",
+    mui._state().get("meshtasticd_enabled") is True,
+    mui._state(),
+)
 check(
     "  activating again replaces the old overlay names, never duplicates",
     "luckfox-lyra-zero-w-spi1-lcd-touch" not in env.read_text() and env.read_text().count("irate-box-mui") == 1,

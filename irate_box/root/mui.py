@@ -560,6 +560,14 @@ def _status_for(sel):
         "overlay_enabled": enabled,
         "overlay_installed": installed,
         "devices": devices,
+        "spidev": {
+            "display": f"spidev{sel['bus']}.{(sel.get('_display_cs') or _cs_candidate(sel['bus'], sel.get('display_cs')) or {'cs': '?'})['cs']}",
+            "touch": (
+                f"spidev{sel['bus']}.{(sel.get('_touch_cs') or _cs_candidate(sel['bus'], sel.get('touch_cs')) or {'cs': '?'})['cs']}"
+                if sel.get("touch") == "lgfx"
+                else ""
+            ),
+        },
         "active": bool(enabled and installed and devices["display"] and devices["touch"]),
         "pending": bool(enabled and installed and not (devices["display"] and devices["touch"])),
         "config": str(CONFIG),
@@ -575,6 +583,7 @@ def _status_for(sel):
         "radio": {
             "module": sel.get("radio_module", ""),
             "spidev": sel.get("radio_spidev", ""),
+            "configured": _radio_configured(),
             "replaced_meshtasticd": bool(_state().get("meshtasticd_enabled")),
         },
     }
@@ -646,15 +655,41 @@ def write_options():
 
 
 MESHTASTIC_CONFIG = Path(os.environ.get("HUB_MESHTASTIC_CONFIG", "/etc/meshtasticd/config.yaml"))
+MESHTASTIC_CONFIG_DIR = Path(os.environ.get("HUB_MESHTASTIC_CONFIG_DIR", "/etc/meshtasticd/config.d"))
+
+
+def _lora_module(text):
+    """The last Lora.Module in one meshtasticd YAML file, or None when it has no Lora section."""
+    section = re.search(r"(?ms)^Lora:\s*\n(.*?)(?=^\S|\Z)", text)
+    if not section:
+        return None
+    found = re.findall(r"(?m)^\s+Module:\s*(\S+)", section.group(1))
+    return found[-1] if found else None
 
 
 def _radio_configured():
-    """Whether the packaged daemon has a non-SimRadio module configured (fixed path, never from the hub)."""
-    text = _read(MESHTASTIC_CONFIG)
-    if not text:
-        return False
-    found = re.search(r"^\s*Module:\s*(\S+)", text, re.M)
-    return bool(found and found.group(1).lower() != "sim")
+    """Whether meshtasticd has a non-SimRadio Lora module, reading config.yaml then config.d/*.yaml.
+
+    The packaged daemon reads config.yaml first, then each config.d file in directory order; the last
+    Lora.Module wins. An unreadable file counts as configured so the safe refusal holds.
+    """
+    files = [MESHTASTIC_CONFIG]
+    try:
+        files += sorted(MESHTASTIC_CONFIG_DIR.glob("*.yaml"))
+    except OSError:
+        return True
+    module = None
+    for path in files:
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text()
+        except OSError:
+            return True
+        found = _lora_module(text)
+        if found is not None:
+            module = found
+    return bool(module and module.lower() != "sim")
 
 
 def _overlay_error(exc):
@@ -666,7 +701,9 @@ def _overlay_error(exc):
 def activate(selection):
     """Write the overlay, config, UI timeout and unit, then enable MUI; a restart applies the overlay."""
     sel = _validate(selection, check_binary=True)
-    package_enabled = _systemctl("is-enabled", "meshtasticd.service").returncode == 0
+    package_enabled = _systemctl("is-enabled", "meshtasticd.service").returncode == 0 or bool(
+        _state().get("meshtasticd_enabled")
+    )
     if package_enabled and _radio_configured() and not sel["replace_radio"]:
         raise Refused(
             M(
@@ -707,6 +744,12 @@ def activate(selection):
         "MUI is saved with {radio}. Restart the box to apply the selected SPI pins.",
         radio=radio,
     )
+
+
+def restart():
+    """Schedule a reboot after answering, so the pending overlay is applied."""
+    _run("systemd-run", "--on-active=2", "systemctl", "reboot")
+    return M("mui.restart", "The box is restarting to apply the MUI overlay.")
 
 
 def deactivate():
