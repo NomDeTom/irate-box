@@ -203,6 +203,29 @@ def _cs_candidate(bus, pin, avoid=None):
     return None
 
 
+def _cs_at(bus, pin, index):
+    """The CS signal for a pin with this exact CS number, or None."""
+    if index is None:
+        return None
+    for signal in ("csn0", "csn1"):
+        item = _spi_candidate(bus, signal, pin)
+        if item and item["cs"] == index:
+            return item
+    return None
+
+
+def _cs_pair(sel):
+    """(display, touch) CS candidates, using the saved numbers when present and one rule everywhere."""
+    bus = sel["bus"]
+    display = sel.get("_display_cs") or _cs_at(bus, sel.get("display_cs"), sel.get("display_cs_index"))
+    display = display or _cs_candidate(bus, sel.get("display_cs"))
+    touch = None
+    if sel.get("touch") == "lgfx":
+        touch = sel.get("_touch_cs") or _cs_at(bus, sel.get("touch_cs"), sel.get("touch_cs_index"))
+        touch = touch or _cs_candidate(bus, sel.get("touch_cs"), avoid=display["cs"] if display else None)
+    return display, touch
+
+
 def _int_value(value, field):
     """A pin or frequency from the request: a plain integer or a decimal string, never a bool or a float."""
     if isinstance(value, bool) or isinstance(value, float):
@@ -321,6 +344,11 @@ def _validate(selection, check_binary=False):
         )
     sel["_display_cs"] = display
     if sel["touch"] == "lgfx":
+        touch_any = _cs_candidate(sel["bus"], sel["touch_cs"])
+        if touch_any is None:
+            raise Refused(
+                M("mui.not-touch-cs", "Pin {pin} is not a SPI{bus} chip select.", pin=sel["touch_cs"], bus=sel["bus"])
+            )
         touch = _cs_candidate(sel["bus"], sel["touch_cs"], avoid=display["cs"])
         if touch is None:
             raise Refused(M("mui.same-cs", "The display and touch cannot share one chip select."))
@@ -511,10 +539,7 @@ def _boot_id():
 
 
 def _devices(sel):
-    display = sel.get("_display_cs") or _cs_candidate(sel["bus"], sel.get("display_cs"))
-    touch = sel.get("_touch_cs") or (
-        _cs_candidate(sel["bus"], sel.get("touch_cs")) if sel.get("touch") == "lgfx" else None
-    )
+    display, touch = _cs_pair(sel)
     return {
         "display": bool(display and (SPI_SYS / f"spi{sel['bus']}.{display['cs']}").exists()),
         "touch": bool(touch and (SPI_SYS / f"spi{sel['bus']}.{touch['cs']}").exists())
@@ -544,6 +569,8 @@ def _save_state(selection, note="", meshtasticd_enabled=None):
                 "fsdir": str(FSDIR),
                 "unit": UNIT,
                 "binary": selection.get("binary", ""),
+                "display_cs_index": (selection.get("_display_cs") or {}).get("cs"),
+                "touch_cs_index": (selection.get("_touch_cs") or {}).get("cs"),
                 "meshtasticd_enabled": bool(meshtasticd_enabled),
                 "note": note,
             },
@@ -556,6 +583,7 @@ def _save_state(selection, note="", meshtasticd_enabled=None):
 
 
 def _status_for(sel):
+    sel["_display_cs"], sel["_touch_cs"] = _cs_pair(sel)
     devices = _devices(sel) if supported() else {"display": False, "touch": False}
     enabled = OVERLAY in hardware.overlay_names(boot=BOOT)
     installed = DTBO.is_file()
@@ -573,10 +601,10 @@ def _status_for(sel):
         "overlay_installed": installed,
         "devices": devices,
         "spidev": {
-            "display": f"spidev{sel['bus']}.{(sel.get('_display_cs') or _cs_candidate(sel['bus'], sel.get('display_cs')) or {'cs': '?'})['cs']}",
+            "display": f"spidev{sel['bus']}.{sel['_display_cs']['cs'] if sel.get('_display_cs') else '?'}",
             "touch": (
-                f"spidev{sel['bus']}.{(sel.get('_touch_cs') or _cs_candidate(sel['bus'], sel.get('touch_cs')) or {'cs': '?'})['cs']}"
-                if sel.get("touch") == "lgfx"
+                f"spidev{sel['bus']}.{sel['_touch_cs']['cs']}"
+                if sel.get("touch") == "lgfx" and sel.get("_touch_cs")
                 else ""
             ),
         },
@@ -603,9 +631,12 @@ def _status_for(sel):
 
 def status(selection=None):
     """The live overlay/unit state, and the saved selection (or one supplied by the caller)."""
+    state = _state()
     if selection is None:
-        saved = _state().get("selection")
+        saved = state.get("selection")
         sel = _normalize(saved if isinstance(saved, dict) else {})
+        sel["display_cs_index"] = state.get("display_cs_index")
+        sel["touch_cs_index"] = state.get("touch_cs_index")
     else:
         sel = _normalize(selection)
     return _status_for(sel)
