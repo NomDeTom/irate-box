@@ -3292,7 +3292,7 @@ def control_request(req):
     """Queue a request for hub_control.py; returns its id, which its answer will carry. Raises NeedsHTTPS for an
     HTTPS-only action asked over plain HTTP, before anything is queued."""
     over = request_over()
-    if not transport.allowed(req.get("action"), over):
+    if not transport.allowed_choice(req.get("action"), req.get("choice"), over):
         raise NeedsHTTPS(req.get("action"))
     CONTROL_REQUESTS.mkdir(parents=True, exist_ok=True)
     rid = secrets.token_hex(8)
@@ -3531,6 +3531,16 @@ def update_progress():
     except OSError:
         return None
     return data
+
+
+def hardware_snapshot():
+    """/admin/hardware: the hardware status the root helper published (root/hardware.py); the pages read it
+    without asking the Box doctor for a scan."""
+    try:
+        data = json.loads((CONTROL_DIR / "hardware.json").read_text())
+    except (OSError, ValueError):
+        data = {}
+    return data if isinstance(data, dict) else {}
 
 
 def pins_snapshot():
@@ -6126,6 +6136,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, rkboard_snapshot())
             return
 
+        if path == "/admin/hardware":
+            self.send_json(200, hardware_snapshot())
+            return
+
         if path == "/admin/pins":
             self.send_json(200, pins_snapshot())
             return
@@ -7752,10 +7766,57 @@ class Handler(BaseHTTPRequestHandler):
                 )
             return
 
+        if path == "/admin/hardware":
+            act = payload.get("action")
+            if act == "status":
+                self.send_json(202, {"id": control_request({"action": "hw-status"})})
+            elif act == "set" and HEALTH_CHOICES_RE.fullmatch(str(payload.get("choice", ""))):
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "hw-set", "choice": payload["choice"]})},
+                )
+            else:
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
+            return
+
         if path == "/admin/pins":
             act = payload.get("action")
+            pin = payload.get("pin")
+            mode = payload.get("mode")
+            bias = payload.get("bias", "none")
+            value = payload.get("value")
+            level = (mode == "in" and value is None) or (mode == "out" and type(value) is int and value in (0, 1))
             if act == "pins":
                 self.send_json(202, {"id": control_request({"action": "pins"})})
+            elif (
+                act == "pins-gpio"
+                and type(pin) is int
+                and mode in ("in", "out")
+                and bias in ("none", "up", "down")
+                and level
+            ):
+                self.send_json(
+                    202,
+                    {
+                        "id": control_request(
+                            {"action": "pins-gpio", "pin": pin, "mode": mode, "bias": bias, "value": value}
+                        )
+                    },
+                )
+            elif (
+                act == "pins-hog"
+                and type(pin) is int
+                and (
+                    payload.get("remove") is True
+                    or (mode in ("in", "out") and bias in ("none", "up", "down") and level)
+                )
+            ):
+                body = {"action": "pins-hog", "pin": pin}
+                if payload.get("remove") is True:
+                    body["remove"] = True
+                else:
+                    body.update(mode=mode, bias=bias, value=value)
+                self.send_json(202, {"id": control_request(body)})
             elif act == "pins-overlay" and type(payload.get("on")) is bool:
                 self.send_json(202, {"id": control_request({"action": "pins-overlay", "on": payload["on"]})})
             elif act == "pins-display" and type(payload.get("on")) is bool:

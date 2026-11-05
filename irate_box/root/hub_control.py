@@ -80,6 +80,18 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       "rerun-install": install.sh again from a copy of the installed code, recorded options;
       "rerun-install-port-80" the same with the hub moved to port 80.
       Then the Box doctor looks again.
+  {"id": ..., "action": "hw-status"}
+      Every hardware part this box owns read again and published to control/hardware.json
+      (hardware.py): the pages read that one file instead of waiting for a Box doctor scan.
+  {"id": ..., "action": "hw-set", "choice": "<one of the Box doctor's hardware choices>"}
+      One hardware setting (USB gadget, drive, LED, radios, clock, RTC, serial pins, watchdog) through
+      the same gate the Box doctor uses, then the published hardware status again.
+  {"id": ..., "action": "pins-gpio", "pin": <header pin>, "mode": "in"|"out", "bias": "none"|"up"|"down", "value": 0|1|null}
+      One free header pin read once or set once through libgpiod (pinsgpio.py), then released.
+  {"id": ..., "action": "pins-hog", "pin": <header pin>, "mode": "in"|"out", "bias": "none"|"up"|"down",
+   "value": 0|1|null} | "remove": true
+      One header pin held by a gpio-hog in irate-box-pin-hogs.dtbo (pinhog.py), applied at the next
+      restart; removing the last hog removes the overlay.
   {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
@@ -218,6 +230,7 @@ from irate_box.msg import text as paragraph
 from irate_box.root import (
     ap,
     aptram,
+    hardware,
     health,
     kits,
     librarydrive,
@@ -8221,6 +8234,53 @@ def wifi_country(req):
 # control/rkboard.json is the state after each, for the page.
 
 
+def hardware_status(_req):
+    """Every hardware part read again and published to control/hardware.json (hardware.py)."""
+    return hardware.publish()
+
+
+def hardware_set(req):
+    """One hardware setting, checked and carried out by hardware.set(); the published status follows."""
+    try:
+        return hardware.set(str(req.get("choice", "")))
+    finally:
+        hardware.write_status()
+
+
+def pins_gpio(req):
+    """One free header pin read once or set once, through libgpiod (pinsgpio.py)."""
+    from irate_box.root import pinsgpio
+
+    pin = req.get("pin")
+    mode = req.get("mode")
+    if type(pin) is not int or mode not in ("in", "out"):
+        raise Refused(M("control.pins-gpio.bad", "Name a header pin and whether it is read or set."))
+    try:
+        return pinsgpio.set_pin(pin, mode, req.get("bias") or "none", req.get("value"))
+    finally:
+        hardware.write_status()
+
+
+def pins_hog(req):
+    """One pin held by a boot-time gpio-hog (pinhog.py), or its removal."""
+    from irate_box.root import pinhog
+
+    pin = req.get("pin")
+    if type(pin) is not int:
+        raise Refused(M("control.pins-hog.bad", "Name a header pin."))
+    try:
+        if req.get("remove") is True:
+            return pinhog.remove(pin)
+        mode = req.get("mode")
+        bias = req.get("bias") or "none"
+        value = req.get("value")
+        if mode not in ("in", "out") or bias not in ("none", "up", "down") or value not in (None, 0, 1):
+            raise Refused(M("control.pins-hog.bad-setting", "Name a pin, its mode and its pull or level."))
+        return pinhog.add(pin, mode, bias, value)
+    finally:
+        hardware.write_status()
+
+
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
     from irate_box.root import lcdtouch, pinmap
@@ -8229,6 +8289,7 @@ def pins(_req):
     data["at"] = time.time()
     safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
     lcdtouch.write_status()
+    hardware.write_status()
     return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
 
 
@@ -8243,6 +8304,7 @@ def pins_overlay(req):
         return lcdtouch.set_overlay(on)
     finally:
         lcdtouch.write_status()
+        hardware.write_status()
 
 
 def pins_display(req):
@@ -8256,13 +8318,17 @@ def pins_display(req):
         return lcdtouch.set_display(on)
     finally:
         lcdtouch.write_status()
+        hardware.write_status()
 
 
 def pins_test(_req):
     """The 60-second animation sequence (lcdtouch.py), then the panel blanked."""
     from irate_box.root import lcdtouch
 
-    return lcdtouch.run_screen_test(60)
+    try:
+        return lcdtouch.run_screen_test(60)
+    finally:
+        hardware.write_status()
 
 
 def _rk(fn):
@@ -9203,7 +9269,11 @@ ACTIONS = {
     "housecall-pair": housecall_pair,
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
+    "hw-status": hardware_status,
+    "hw-set": hardware_set,
     "pins": pins,
+    "pins-gpio": pins_gpio,
+    "pins-hog": pins_hog,
     "pins-overlay": pins_overlay,
     "pins-display": pins_display,
     "pins-test": pins_test,
@@ -9300,6 +9370,11 @@ def _mtime(path):
 
 def main():
     policy_publish()
+    # The pages read one hardware status: publish it when the helper starts, so a boot needs no scan.
+    try:
+        hardware.write_status_on_boot()
+    except Exception:  # noqa: BLE001 - a hardware read must not stop the helper from answering its queue # nosec B110
+        pass
     # A request that arrives while this runs is picked up by the same loop.
     for _ in range(100):
         pending = sorted(REQUESTS.glob("*.json"), key=_mtime)
@@ -9328,7 +9403,7 @@ def main():
                         )
                     )
                 policy_check(what)
-                if not transport.allowed(what, req.get("over")):
+                if not transport.allowed_choice(what, req.get("choice"), req.get("over")):
                     # The hub refuses these over plain HTTP before it queues them; this catches a route it missed.
                     raise Refused(
                         M(

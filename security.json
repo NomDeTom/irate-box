@@ -160,6 +160,25 @@
       "reads": [],
       "writes": []
     },
+    "hw-set": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json",
+        "etc/hub/crashwatch.json",
+        "boot/overlay-user/irate-box-watchdog.dtbo",
+        "boot/armbianEnv.txt"
+      ]
+    },
+    "hw-status": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json"
+      ]
+    },
     "kit-check": {
       "https_only": false,
       "policy": false,
@@ -319,6 +338,25 @@
       "reads": [],
       "writes": [
         "control/lcdtouch.json"
+      ]
+    },
+    "pins-gpio": {
+      "https_only": false,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json"
+      ]
+    },
+    "pins-hog": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/hardware.json",
+        "etc/hub/pin-hogs.json",
+        "boot/overlay-user/irate-box-pin-hogs.dtbo",
+        "boot/armbianEnv.txt"
       ]
     },
     "pins-overlay": {
@@ -1187,6 +1225,23 @@
       "source": "install.sh"
     },
     "irate-box-git.socket": {
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-box-hardware.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateDevices": "no",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$ETC",
+        "$STATE"
+      ],
+      "RestrictAddressFamilies": [
+        "AF_UNIX"
+      ],
       "User": "root",
       "source": "install.sh"
     },
