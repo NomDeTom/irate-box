@@ -251,7 +251,13 @@ def argv(command, what="The command"):
 
 def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     """`value` inside `root`: normalised and resolved, never through a symlink that leaves the
-    root. A missing leaf is checked through its existing parent."""
+    root. A missing leaf is checked through its existing parent.
+
+    The result is a check, not a handle: the name is the normalised path, still not followed
+    through links, so a name opened later can have been swapped in between. The first test is
+    the shape CodeQL recognises (a normalised path, then `startswith` the root as given, links
+    not resolved, so a root that runs through a link works); the checks that follow links come
+    only after it."""
     if isinstance(value, os.PathLike):
         value = os.fspath(value)
     value = _need(value, what)
@@ -259,9 +265,22 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
         raise Invalid(f"{what} is empty.")
     if "\x00" in value:
         raise Invalid(f"{what} cannot contain a NUL.")
-    root_real = os.path.realpath(os.fspath(root))
-    full = value if os.path.isabs(value) else os.path.join(root_real, value)
+    plain = os.path.normpath(os.path.abspath(os.fspath(root)))
+    root_real = os.path.realpath(plain)
+    if plain != root_real and os.path.isabs(value):
+        # Given through the resolved root (a root that runs through a link): the same place.
+        normal = os.path.normpath(value)
+        if normal == root_real or normal.startswith(root_real.rstrip(os.sep) + os.sep):
+            value = plain + normal[len(root_real) :]
+    full = value if os.path.isabs(value) else os.path.join(plain, value)
     full = os.path.normpath(full)
+    if full == plain:
+        # The root itself.
+        if must_exist and not os.path.exists(root_real):
+            raise Invalid(f"{what} does not exist.")
+        return Path(full)
+    if not full.startswith(plain.rstrip(os.sep) + os.sep):
+        raise Invalid(f"{what} is outside the folder it belongs in.")
     real = os.path.realpath(full)
     if real != root_real and not real.startswith(root_real + os.sep):
         raise Invalid(f"{what} is outside the folder it belongs in.")
@@ -376,7 +395,9 @@ def config_line(key, value, what="The setting"):
     return f"{key}={value}"
 
 
-ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))?")
+# An OSC string ends at BEL or ESC \ and holds no ESC itself, so a run of unfinished ones is read once
+# (a body that could hold ESC would be read again from each ESC: quadratic on hostile text).
+ANSI_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))?")
 
 
 def html_text(value, quote=True):
@@ -394,6 +415,22 @@ def log_text(value, what="The log line", most=300):
     return value[:most]
 
 
+def _one_line(value):
+    """`value` with any CR or LF taken out. Callers have already refused or encoded them, so this
+    changes nothing; it is written this way because it is the call CodeQL reads as a line-break
+    sanitiser for an HTTP header, and the header is then known to be one line."""
+    return value.replace("\n", "").replace("\r", "")
+
+
+def header_value(value, what="The header value"):
+    """A value for an HTTP response header: text with no control characters, so it cannot end the
+    header and add another."""
+    value = _need(value, what)
+    if CONTROL_RE.search(value):
+        raise Invalid(f"{what} cannot contain control characters.")
+    return _one_line(value)
+
+
 def content_disposition(filename, disposition="attachment"):
     """A Content-Disposition value for a download: no CR, LF or NUL; a quoted ASCII name with
     quotes and backslashes replaced; and RFC 6266's filename* for the real, UTF-8 name."""
@@ -404,4 +441,5 @@ def content_disposition(filename, disposition="attachment"):
     if not name:
         raise Invalid("The file name is empty.")
     fallback = "".join(char if 32 <= ord(char) < 127 and char not in '"\\' else "_" for char in name)
-    return f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
+    value = f"{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
+    return _one_line(value)

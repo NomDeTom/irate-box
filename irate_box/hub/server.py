@@ -5280,7 +5280,7 @@ class Handler(BaseHTTPRequestHandler):
             back = self.headers.get("X-Forwarded-Uri", "/")
             nxt = back if back.startswith("/") and not back.startswith("//") else "/"
             self.send_response(302)
-            self.send_header("Location", "/account.html?next=" + quote(nxt, safe="/"))
+            self.send_header("Location", validate.header_value("/account.html?next=" + quote(nxt, safe="/")))
             self.send_header("Content-Length", "0")
             self.end_headers()
         else:

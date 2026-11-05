@@ -27,6 +27,15 @@ check("HTML: text kept as text", V.html_text("Café & tea") == "Café &amp; tea"
 
 check("log: a terminal colour removed", V.log_text("\x1b[31mred\x1b[0m") == "red")
 check("log: a terminal title removed", V.log_text("\x1b]0;title\x07text") == "text")
+check("log: a title ended by ESC backslash removed", V.log_text("\x1b]0;title\x1b\\text") == "text")
+_started = __import__("time").time()
+V.log_text("\x1b]" * 20000 + "x")
+V.log_text("\x1b]0;" * 10000)
+check(
+    "log: thousands of unfinished titles are read in linear time",
+    __import__("time").time() - _started < 2,
+    __import__("time").time() - _started,
+)
 check("log: CR and LF become spaces", V.log_text("a\rb\nc") == "a b c")
 check("log: NUL and other controls removed", V.log_text("a\x00b\x08c") == "abc")
 check("log: a tab kept", V.log_text("a\tb") == "a\tb")

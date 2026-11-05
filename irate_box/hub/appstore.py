@@ -28,7 +28,7 @@ import re
 import time
 import urllib.parse
 
-from irate_box import confine
+from irate_box import confine, validate
 from irate_box.hub import refused
 from irate_box.library import firmware, holder, holdsurvey, librarian
 from irate_box.msg import M
@@ -710,7 +710,12 @@ def _latest(handler, parts, level):
     for version in entry["versions"]:
         if any(file["name"] == name for file in version["files"]):
             handler.send_response(302)
-            handler.send_header("Location", f"/appstore/files/{holder_id}/{version['tag']}/{name}")
+            handler.send_header(
+                "Location",
+                # The parts are matched by NAME_PART_RE and the index; _file reads them back as they come,
+                # so a "+" in a tag stays a "+".
+                validate.header_value(f"/appstore/files/{holder_id}/{version['tag']}/{name}"),
+            )
             handler.send_header("Cache-Control", "no-store")
             handler.send_header("Content-Length", "0")
             handler.end_headers()
@@ -797,7 +802,7 @@ def _file(handler, parts, level):
     handler.send_response(code)
     handler.send_header("Content-Type", kind)
     handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("Content-Disposition", f'attachment; filename="{name}"')
+    handler.send_header("Content-Disposition", validate.content_disposition(name))
     handler.send_header("Accept-Ranges", "bytes")
     handler.send_header("ETag", f'"{note[2]}"')
     handler.send_header("Cache-Control", "public, max-age=86400")

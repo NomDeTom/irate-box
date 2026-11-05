@@ -35,7 +35,7 @@ import threading
 import time
 from pathlib import Path
 
-from irate_box import confine
+from irate_box import confine, validate
 from irate_box.hub import hubclock
 from irate_box.hub.refused import Refused, Said, answer, say
 from irate_box.msg import M
@@ -699,12 +699,13 @@ def clean_filename(name):
     return name[:MAX_FILENAME] or "file"
 
 
-def content_disposition(name):
-    """attachment, with an ASCII fallback and the real name per RFC 6266 / 5987."""
-    from urllib.parse import quote
-
-    ascii_name = "".join(c if 32 <= ord(c) < 127 and c not in '"\\%' else "_" for c in name)
-    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
+def _drop_disposition(name):
+    """The download header for a dropped file: the shared writer, and a plain "file" when the
+    stored name is one it refuses (empty, or with a NUL, CR or LF)."""
+    try:
+        return validate.content_disposition(name)
+    except validate.Invalid:
+        return validate.content_disposition("file")
 
 
 def _handle_drop(handler, method, path, drop):
@@ -820,7 +821,7 @@ def _handle_drop(handler, method, path, drop):
             # Whatever the name says, the browser gets bytes to save, never a page to run.
             handler.send_header("Content-Type", "application/octet-stream")
             handler.send_header("Content-Length", str(size))
-            handler.send_header("Content-Disposition", content_disposition(meta.get("name", "file")))
+            handler.send_header("Content-Disposition", _drop_disposition(meta.get("name", "file")))
             handler.send_header("X-Content-Type-Options", "nosniff")
             handler.send_header("Content-Security-Policy", "default-src 'none'; sandbox")
             handler.end_headers()
