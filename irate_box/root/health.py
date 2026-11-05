@@ -77,7 +77,7 @@ from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
 from irate_box.msg import M, Refused, duration, named, render, sentences, when
-from irate_box.root import kernelinfo, memguard, rtc
+from irate_box.root import kernelinfo, memguard, rtc, sysread
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -1927,13 +1927,13 @@ def check_wifi_stalls():
     )
     notes = _aic_powersave_notes(_aic_clients(radio))
     try:
-        recoveries = int((params / "recoveries").read_text().strip())
-        at = int((params / "recovered_at").read_text().strip())
-    except (OSError, ValueError):
+        recoveries = int(_sysfs(params / "recoveries"))
+        at = int(_sysfs(params / "recovered_at"))
+    except ValueError:
         recoveries = at = None
     try:
-        watch = int((params / "stall_watch").read_text().strip())
-    except (OSError, ValueError):
+        watch = int(_sysfs(params / "stall_watch"))
+    except ValueError:
         watch = None
     if recoveries is not None:
         evidence = [f"recoveries {recoveries}, recovered_at {at}"] + (
@@ -1998,8 +1998,8 @@ def check_wifi_stalls():
                 left.append(f"{conf}: {line.strip()}")
     # A log level raised at run time (as tests do) lasts until the driver loads again: no file says so.
     try:
-        level = int((params / "aicwf_dbg_level").read_text().strip())
-    except (OSError, ValueError):
+        level = int(_sysfs(params / "aicwf_dbg_level"))
+    except ValueError:
         level = None
     if level is not None and level & AIC_VERBOSE_BITS:
         left.append(f"aicwf_dbg_level {level} (now: trace, debug, data or steering on)")
@@ -4949,10 +4949,8 @@ def _card_tests_save(rec):
 
 
 def _sysfs(path, default=""):
-    try:
-        return path.read_text().strip()
-    except OSError:
-        return default
+    text = sysread.read(path, None)
+    return text.strip() if text is not None else default
 
 
 def card_info():
