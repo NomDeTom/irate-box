@@ -40,7 +40,7 @@ def fake_fetch(url, limit, accept=""):
     return data, url, "application/rss+xml"
 
 
-def fake_download(url, path, cfg, log):
+def fake_download(url, path, cfg, log, feed_url=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"x" * 1024)
     return 1024

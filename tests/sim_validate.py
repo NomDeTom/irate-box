@@ -10,6 +10,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "tests"))
+import hostile
+
 from irate_box import validate as V
 from irate_box.hub import hotspot
 from irate_box.msg import Refused
@@ -159,6 +162,30 @@ refused("url: credentials", V.url, "https://user:pass@example.com/x")
 refused("url: IP literal", V.url, "https://127.0.0.1/x")
 refused("url: a space", V.url, "https://example.com/a b")
 refused("url: no host", V.url, "https:///x")
+for why, host in hostile.NUMERIC_HOSTS.items():
+    refused(f"url: {why} ({host!r}) is an address, not a name", V.url, f"https://{host}/x")
+    check(
+        f"url: {why} ({host!r}) is kept when the owner's own address is allowed",
+        V.url(f"https://{host}/x", allow_ip=True),
+    )
+for why, bad in hostile.BAD_URLS.items():
+    refused(f"url: {why}", V.url, bad, schemes=("https",))
+for host in ("example.com", "123.example.com", "xn--bcher-kva.example", "b\u00fccher.example", "1e3.example", "a.b"):
+    check(f"url: the name {host!r} is a name", V.url(f"https://{host}/x") == f"https://{host}/x")
+check("public_address: a public one", V.public_address("93.184.216.34"))
+for private in (
+    "127.0.0.1",
+    "10.0.0.5",
+    "192.168.1.1",
+    "169.254.1.1",
+    "::1",
+    "fe80::1",
+    "::ffff:127.0.0.1",
+    "224.0.0.1",
+    "0.0.0.0",
+    "nonsense",
+):
+    check(f"public_address: {private} is not public", not V.public_address(private))
 
 
 # --- the writers: every format gets its own spelling ---

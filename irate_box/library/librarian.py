@@ -78,7 +78,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from irate_box import confine, validate
+from irate_box import confine, validate, webfetch
 from irate_box.hub import manifests
 from irate_box.hub.refused import Said
 from irate_box.library import zimcheck
@@ -1042,15 +1042,19 @@ class _CheckedRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _ORIGINAL_URLOPEN = urllib.request.urlopen
-_URLOPENER = urllib.request.build_opener(_CheckedRedirect())
+# An answer's address: every connection, redirects included, goes to a public address that is
+# checked as it connects (webfetch), so a name that answers differently the second time is refused.
+_URLOPENER = webfetch.opener(resolve=lambda *arguments: RESOLVE(*arguments), redirect=_CheckedRedirect())
+# An address the owner entered, which may be on their own network: redirects are still checked.
+_LOCAL_URLOPENER = urllib.request.build_opener(_CheckedRedirect())
 
 
-def _urlopen(request, timeout=None):
+def _urlopen(request, timeout=None, allow_local=False):
     """The one place a download opens. A test that stands the network in by replacing
     urllib.request.urlopen is answered by its stand-in; the real one follows checked redirects."""
     if urllib.request.urlopen is not _ORIGINAL_URLOPEN:
         return urllib.request.urlopen(request, timeout=timeout)  # nosec B310 - a test's stand-in, not a URL
-    return _URLOPENER.open(request, timeout=timeout)
+    return (_LOCAL_URLOPENER if allow_local else _URLOPENER).open(request, timeout=timeout)
 
 
 def _open(url, auth=None, method="GET", timeout=60, extra=None, allow_local=False):
@@ -1069,7 +1073,7 @@ def _open(url, auth=None, method="GET", timeout=60, extra=None, allow_local=Fals
         _pace_hit()
     try:
         # Web addresses only, checked above; https never downgraded below.
-        resp = _urlopen(_request(url, auth, method, extra), timeout=timeout)  # nosec B310
+        resp = _urlopen(_request(url, auth, method, extra), timeout=timeout, allow_local=allow_local)  # nosec B310
         if (
             urllib.parse.urlparse(url).scheme == "https"
             and urllib.parse.urlparse(getattr(resp, "geturl", lambda: url)()).scheme != "https"

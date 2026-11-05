@@ -867,14 +867,14 @@ def _https(url):
 
 def _ranged(url):
     real = _https(
-        urllib.request.urlopen(  # https only, checked before and after the redirect. # nosec B310
+        librarian._urlopen(  # https only, public addresses only, checked at connect and at every redirect
             urllib.request.Request(_https(url), method="HEAD", headers={"User-Agent": librarian.USER_AGENT}),
             timeout=60,
         ).url
     )
 
     def get(off):
-        resp = urllib.request.urlopen(  # https only, checked before and after the redirect. # nosec B310
+        resp = librarian._urlopen(  # https only, public addresses only, checked at connect and at every redirect
             urllib.request.Request(real, headers={"Range": f"bytes={off}-", "User-Agent": librarian.USER_AGENT}),
             timeout=120,
         )
