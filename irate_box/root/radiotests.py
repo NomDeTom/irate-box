@@ -120,7 +120,7 @@ def check_ready(inv, iface, exp):
         raise Refused(
             M("radio-test.unknown", "The experiment {exp} is not available. The box does not know it.", exp=str(exp))
         )
-    if not IFACE_RE.match(str(iface or "")):
+    if not IFACE_RE.fullmatch(str(iface or "")):
         raise Refused(M("radio-test.request.iface", "The request is not valid: the interface name is not valid."))
     radio = next((r for r in inv.get("radios", []) if r.get("iface") == iface and r.get("type") == "managed"), None)
     if not radio:

@@ -212,7 +212,7 @@ def plan(name):
         left = set(without.get(NETPLAN_UDEV, b"").decode(errors="replace").splitlines())
         lost = [ln for ln in had if ln not in left]
         rules = [ln for ln in lost if not ln.startswith("#")]
-        if rules and all(ALLOW_RE.match(ln) for ln in rules):
+        if rules and all(ALLOW_RE.fullmatch(ln) for ln in rules):
             keep_udev = lost
             gone = [k for k in gone if k != NETPLAN_UDEV]
             changed = [k for k in changed if k != NETPLAN_UDEV]
@@ -468,7 +468,7 @@ def _put_back(entry, written):
                 skip = line == f"# from {entry['name']}"
                 if skip:
                     continue
-            elif skip and (ALLOW_RE.match(line) or line.startswith("# netplan:")):
+            elif skip and (ALLOW_RE.fullmatch(line) or line.startswith("# netplan:")):
                 continue
             else:
                 skip = False

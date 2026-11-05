@@ -255,7 +255,7 @@ def _valid_password(pw, name=None):
 
 
 def _valid_name(name):
-    if not isinstance(name, str) or not NAME_RE.match(name):
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
         raise AccountError(
             M("accounts.name.invalid", "Invalid username. Use 3 to 32 letters, digits, dots, dashes or underscores.")
         )
@@ -591,7 +591,7 @@ def set_prefs(token, changes):
             )
         )
     if "email" in changes and not (
-        changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.match(changes["email"]))
+        changes["email"] == "" or (isinstance(changes["email"], str) and EMAIL_RE.fullmatch(changes["email"]))
     ):
         raise AccountError(M("accounts.prefs.email", "The email must be an address, or empty."))
     with _lock:

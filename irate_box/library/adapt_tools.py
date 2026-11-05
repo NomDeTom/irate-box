@@ -56,7 +56,7 @@ def homes():
     out = {}
     for m in ms:
         for e in m.get("entries", []):
-            page = re.match(r"^/app\.html#/tools/([^/#?]+\.html)$", e["href"])
+            page = re.fullmatch(r"^/app\.html#/tools/([^/#?]+\.html)$", e["href"])
             if page and e["menus"]:
                 best = min(e["menus"], key=e["menus"].get)
                 out.setdefault(page.group(1), menu_href.get(best, "/"))

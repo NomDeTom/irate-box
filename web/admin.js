@@ -6206,16 +6206,159 @@ const hardeningSettings = doctorSection({
   groupsOf: (st) => st.hardening_groups,
   empty: "Shown after the Box doctor's next check.",
 });
-const usbSettings = doctorSection({
-  id: "usb-settings",
+// USB, from the hardware status the root helper publishes: the gadget, its drive and the drive's writes,
+// without waiting for a Box doctor scan. The same choices go back through the hardware action gate.
+function usbHardwareGroups(hw) {
+  const usb = hw && hw.usb_gadget;
+  if (!usb || !usb.supported) return [];
+  const onOff = (key, label, desc, current, base) => ({
+    key,
+    label,
+    desc,
+    current,
+    options: [
+      { value: "on", label: "On", choice: `${base}:on` },
+      { value: "off", label: "Off", choice: `${base}:off` },
+    ],
+  });
+  const groups = [
+    onOff(
+      "usb-gadget",
+      "USB networking",
+      `The box offers a network link and a serial console over its USB port: the hub at ${usb.address}. On by default on a Lyra, as a way in when the WiFi is down. Changing it makes the host disconnect and reconnect the USB device.`,
+      usb.on ? "on" : "off",
+      "usb-gadget",
+    ),
+    onOff(
+      "usb-gadget-drive",
+      "USB drive",
+      "A USB drive made from the file drop. Read-only unless writes are on. Files added to a writable drive are copied into the file drop when it stops. A change makes the host disconnect and reconnect the drive.",
+      usb.drive ? "on" : "off",
+      "usb-gadget-drive",
+    ),
+  ];
+  if (usb.drive) {
+    groups.push(
+      onOff(
+        "usb-gadget-drive-write",
+        "USB drive writes",
+        "Off: the computer can read the drive but not change it. On: it can add files, which are copied into the file drop when the drive stops. Changes to existing files stay on the drive.",
+        usb.drive_write ? "on" : "off",
+        "usb-gadget-drive-write",
+      ),
+    );
+  }
+  return groups;
+}
+
+const usbHardware = AW.section({
+  id: "usb-hardware-settings",
   label: "USB",
-  prefix: "usb",
-  groupsEl: document.getElementById("usb-gadget-groups"),
-  footEl: document.getElementById("usb-gadget-foot"),
-  noteEl: document.getElementById("usb-gadget-note"),
-  groupsOf: (st) => st.usb_groups,
-  empty: "Shown after the Box doctor's next check.",
+  saved: null,
+  save: (changes) => usbHardwareSave(changes),
+  onChange: () => drawUsbHardware(),
 });
+const usbGroupsEl = document.getElementById("usb-gadget-groups");
+const usbNoteEl = document.getElementById("usb-gadget-note");
+document.getElementById("usb-gadget-foot").append(usbHardware.foot, usbHardware.reason);
+const usbHw = { groups: [], saving: null, from: "", seen: false };
+function drawUsbHardware() {
+  if (!usbHw.groups.length) {
+    usbGroupsEl.replaceChildren(
+      el("p", {
+        className: "setting-desc",
+        textContent: usbHw.seen
+          ? "This box's USB port is not a device port."
+          : "The hardware status is not ready yet.",
+      }),
+    );
+    return;
+  }
+  usbGroupsEl.replaceChildren(
+    ...usbHw.groups.map((g) => {
+      const box = el("div", { id: `usb-${g.key}` });
+      AW.choices(
+        box,
+        `usb-${g.key}`,
+        g.options.map((o) => ({ value: o.value, title: o.label })),
+        {
+          value: usbHardware.get(g.key),
+          onChange: (v) => usbHardware.set(g.key, v, true),
+        },
+      );
+      box.setAttribute("aria-label", g.label);
+      return el(
+        "div",
+        { className: "up-group" },
+        el("span", { className: "setting-name", textContent: g.label }),
+        el("p", { className: "setting-desc", textContent: g.desc }),
+        box,
+      );
+    }),
+  );
+}
+function renderUsbHardware(hw) {
+  usbHw.seen = Boolean(hw && hw.usb_gadget);
+  usbHw.groups = usbHardwareGroups(hw);
+  const from = JSON.stringify(usbHw.groups.map((g) => [g.key, g.current]));
+  if (from !== usbHw.from && !usbHardware.saving()) {
+    usbHw.from = from;
+    usbHardware.update(Object.fromEntries(usbHw.groups.map((g) => [g.key, g.current])));
+    drawUsbHardware();
+  }
+}
+if (typeof window !== "undefined") window.rkRenderUsbHardware = renderUsbHardware;
+async function loadHardware() {
+  try {
+    renderUsbHardware(await getJSON("/admin/hardware"));
+  } catch (err) {
+    console.error("hardware status:", err);
+    if (!usbHw.groups.length) {
+      usbGroupsEl.replaceChildren(
+        el("p", { className: "setting-desc", textContent: "The hardware status could not be read." }),
+      );
+    }
+  }
+}
+async function usbHardwareSave(changes) {
+  const ids = [];
+  for (const [k, v] of Object.entries(changes)) {
+    const g = usbHw.groups.find((x) => x.key === k);
+    const o = g.options.find((x) => x.value === v);
+    ids.push((await postJSON("/admin/hardware", { action: "set", choice: o.choice })).id);
+  }
+  const job = AW.job();
+  usbHw.saving = { ids, job };
+  say("Saving. Sent to the root helper.", true, usbNoteEl);
+  waitUsbHardware();
+  return job;
+}
+async function waitUsbHardware() {
+  const saving = usbHw.saving;
+  if (!saving) return;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    let data;
+    try {
+      data = await getJSON("/admin/health");
+    } catch (_) {
+      continue;
+    }
+    const done = saving.ids.map((id) => (data.results || []).find((result) => result.id === id));
+    if (!done.every(Boolean)) continue;
+    const bad = done.filter((result) => !result.ok);
+    const text = bad.length ? bad.map(resultSaid).join(" ") : `Saved: ${done.map(resultSaid).join(" ")}`;
+    usbHw.saving = null;
+    say(text, !bad.length, usbNoteEl);
+    saving.job.done(!bad.length, bad.length ? text : "");
+    loadHardware();
+    return;
+  }
+  const text = "The USB change was not confirmed in time.";
+  usbHw.saving = null;
+  say(text, false, usbNoteEl);
+  saving.job.done(false, text);
+}
 document
   .getElementById("health-search")
   .addEventListener("input", () => hlLast && renderHealth(hlLast));
@@ -6476,7 +6619,6 @@ function renderHealth(data) {
   doctorOwn.render(data, rep);
   cardSystem.render(data, rep);
   hardeningSettings.render(data, rep);
-  usbSettings.render(data, rep);
   const all = rep
     ? [...rep.findings].sort((left, right) => RANK[left.status] - RANK[right.status])
     : [];
@@ -7101,8 +7243,10 @@ hl.clockScan.addEventListener("click", (event) =>
 );
 window.addEventListener("hashchange", () => {
   if (paneShown("health") || paneShown("clock")) loadHealth();
+  if (paneShown("usb")) loadHardware();
 });
 loadHealth();
+loadHardware();
 
 // --- network ---------------------------------------------------------------------------
 // The root helper's inventory of the box's networking (netinv.py), and the uplink watchdog

@@ -43,6 +43,12 @@ run sim_abslot.py
 run sim_readonly.py
 run sim_pinmap.py
 run sim_lcdtouch.py
+run sim_hardware.py
+run sim_overlays.py
+run sim_hardware_set.py
+run sim_hardware_service.py
+run sim_pinsgpio.py
+run sim_pinhog.py
 run sim_lost_writes.py
 run sim_bootkey.py
 run sim_powerwatch.py
@@ -52,6 +58,7 @@ run sim_front_writes.py
 run sim_write_checked.py
 run write_guard.py
 run subprocess_guard.py
+run regex_anchor_guard.py
 run sim_retain.py
 run sim_nand_health.py
 run sim_led.py

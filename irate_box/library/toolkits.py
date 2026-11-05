@@ -147,7 +147,7 @@ def feeds():
 def refresh_feed(log=print):
     """debsecan's data for this box's suite (and GENERIC), checked before it replaces the last."""
     s = suite()
-    if not s or not re.match(r"^[a-z]{2,20}$", s):
+    if not s or not re.fullmatch(r"^[a-z]{2,20}$", s):
         raise LibrarianError(
             M("toolkits.suite.unknown", "Download failed. The Debian suite of this box is unknown (/etc/os-release).")
         )

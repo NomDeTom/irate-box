@@ -80,6 +80,18 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       "rerun-install": install.sh again from a copy of the installed code, recorded options;
       "rerun-install-port-80" the same with the hub moved to port 80.
       Then the Box doctor looks again.
+  {"id": ..., "action": "hw-status"}
+      Every hardware part this box owns read again and published to control/hardware.json
+      (hardware.py): the pages read that one file instead of waiting for a Box doctor scan.
+  {"id": ..., "action": "hw-set", "choice": "<one of the Box doctor's hardware choices>"}
+      One hardware setting (USB gadget, drive, LED, radios, clock, RTC, serial pins, watchdog) through
+      the same gate the Box doctor uses, then the published hardware status again.
+  {"id": ..., "action": "pins-gpio", "pin": <header pin>, "mode": "in"|"out", "bias": "none"|"up"|"down", "value": 0|1|null}
+      One free header pin read once or set once through libgpiod (pinsgpio.py), then released.
+  {"id": ..., "action": "pins-hog", "pin": <header pin>, "mode": "in"|"out", "bias": "none"|"up"|"down",
+   "value": 0|1|null} | "remove": true
+      One header pin held by a gpio-hog in irate-box-pin-hogs.dtbo (pinhog.py), applied at the next
+      restart; removing the last hog removes the overlay.
   {"id": ..., "action": "housecall-scan", "target": "image"|"device"|"root"|"this-card", "path": "...",
    "reference": "...", "dpkg": true|false, "git_tree": true|false}
       The Housecall doctor (housecall.py): a card image, a card device, a folder or this box's own files, read
@@ -218,6 +230,7 @@ from irate_box.msg import text as paragraph
 from irate_box.root import (
     ap,
     aptram,
+    hardware,
     health,
     kits,
     librarydrive,
@@ -815,7 +828,7 @@ def kit_choices(req):
     books = req.get("books", False)
     if books is True:
         zims = sorted(ZIM_DIR.glob("*.zim"))
-    elif isinstance(books, list) and all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+    elif isinstance(books, list) and all(isinstance(b, str) and usbstick.NAME_RE.fullmatch(b) for b in books):
         zims = [ZIM_DIR / f"{b}.zim" for b in books]
         missing = [z.stem for z in zims if not z.is_file() or z.is_symlink()]
         if missing:
@@ -840,10 +853,10 @@ def kit_choices(req):
             )
         )
     kit_ids = req.get("kits") or []
-    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.fullmatch(k) for k in kit_ids):
         raise Refused(KITS_BAD)
     repos = req.get("repos") or []
-    if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.match(r) for r in repos):
+    if not isinstance(repos, list) or not all(isinstance(r, str) and REPO_RE.fullmatch(r) for r in repos):
         raise Refused(
             M(
                 "control.kit.repos-bad",
@@ -1623,7 +1636,7 @@ def access_set(req):
     local = {m["id"] for m in manifests.load_local(builtin=MANIFESTS)[0]}
     # Off is always safe, so a web add-on just removed (its manifest gone) can still be switched
     # off: the hub asks that when one is added or removed.
-    if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.match(app)):
+    if app not in access.ROUTED and app not in local and not (mode == "off" and access.LOCAL_ID_RE.fullmatch(app)):
         raise Refused(
             M(
                 "control.access.unknown-app",
@@ -2253,7 +2266,7 @@ def _installed_commit():
     except (OSError, IndexError):
         return None
     first = first.removesuffix("-dirty")
-    match = re.search(r"-g([0-9a-f]{7,40})$", first) or re.match(r"^([0-9a-f]{7,40})$", first)
+    match = re.search(r"-g([0-9a-f]{7,40})\Z", first) or re.fullmatch(r"^([0-9a-f]{7,40})$", first)
     return match.group(1) if match else None
 
 
@@ -6295,7 +6308,7 @@ def appstore_findings(now=None):
 def librarian_name(value):
     """A holder id as the librarian names things: letters, digits, dots, hyphens and underscores, from a file
     an administrator may have edited by hand. The doctor reads state by path, so only a real name is followed."""
-    return isinstance(value, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$", value) is not None
+    return isinstance(value, str) and re.fullmatch(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$", value) is not None
 
 
 def _holder_checked_epoch(value):
@@ -6358,7 +6371,7 @@ def update_set_source(req):
     cleared. Whoever can do this chooses the code root installs next, so it is a security-policy action."""
     repo = _source_repo(req.get("repo", ""))
     branch = str(req.get("branch", "")).strip()
-    if not SOURCE_BRANCH.match(branch) or ".." in branch or branch.endswith(("/", ".lock")):
+    if not SOURCE_BRANCH.fullmatch(branch) or ".." in branch or branch.endswith(("/", ".lock")):
         raise Refused(M("update.source.branch.bad", "Give the branch name as git writes it, for example main."))
     if req.get("confirmed") is not True:
         raise Refused(
@@ -6858,7 +6871,7 @@ KIT_BAD = M("control.kit.kit-bad", "The request must give a toolkit ID.")
 
 def usb_kit_export(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
-    if not kits.ID_RE.match(kit):
+    if not kits.ID_RE.fullmatch(kit):
         raise Refused(KIT_BAD)
     try:
         with Progress("usb-export", 1, path=USB_PROGRESS) as progress:
@@ -6885,14 +6898,14 @@ def usb_export_many(req):
     """
     device = str(req.get("device", ""))
     books, kit_ids = req.get("books") or [], req.get("kits") or []
-    if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.match(b) for b in books):
+    if not isinstance(books, list) or not all(isinstance(b, str) and usbstick.NAME_RE.fullmatch(b) for b in books):
         raise Refused(
             M(
                 "control.kit.book-list-bad",
                 "The request must give the books as a list of book names.",
             )
         )
-    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.match(k) for k in kit_ids):
+    if not isinstance(kit_ids, list) or not all(isinstance(k, str) and kits.ID_RE.fullmatch(k) for k in kit_ids):
         raise Refused(KITS_BAD)
     _, _, repo_dirs, state, _ = kit_choices({"repos": req.get("repos") or [], "state": req.get("state", "none")})
     if not books and not kit_ids and not repo_dirs and state == "none":
@@ -6968,7 +6981,7 @@ def backup_image(req):
 
 def usb_kit_import(req):
     device, kit = str(req.get("device", "")), str(req.get("kit", ""))
-    if not kits.ID_RE.match(kit):
+    if not kits.ID_RE.fullmatch(kit):
         raise Refused(KIT_BAD)
     # Importing a release the clock cannot date is a security decision: the owner's, from the hub only while the
     # security policy accepts the hub's; otherwise root's, at the console (kits import-dir --unknown-time).
@@ -8244,6 +8257,53 @@ def wifi_country(req):
 # control/rkboard.json is the state after each, for the page.
 
 
+def hardware_status(_req):
+    """Every hardware part read again and published to control/hardware.json (hardware.py)."""
+    return hardware.publish()
+
+
+def hardware_set(req):
+    """One hardware setting, checked and carried out by hardware.set(); the published status follows."""
+    try:
+        return hardware.set(str(req.get("choice", "")))
+    finally:
+        hardware.write_status()
+
+
+def pins_gpio(req):
+    """One free header pin read once or set once, through libgpiod (pinsgpio.py)."""
+    from irate_box.root import pinsgpio
+
+    pin = req.get("pin")
+    mode = req.get("mode")
+    if type(pin) is not int or mode not in ("in", "out"):
+        raise Refused(M("control.pins-gpio.bad", "Name a header pin and whether it is read or set."))
+    try:
+        return pinsgpio.set_pin(pin, mode, req.get("bias") or "none", req.get("value"))
+    finally:
+        hardware.write_status()
+
+
+def pins_hog(req):
+    """One pin held by a boot-time gpio-hog (pinhog.py), or its removal."""
+    from irate_box.root import pinhog
+
+    pin = req.get("pin")
+    if type(pin) is not int:
+        raise Refused(M("control.pins-hog.bad", "Name a header pin."))
+    try:
+        if req.get("remove") is True:
+            return pinhog.remove(pin)
+        mode = req.get("mode")
+        bias = req.get("bias") or "none"
+        value = req.get("value")
+        if mode not in ("in", "out") or bias not in ("none", "up", "down") or value not in (None, 0, 1):
+            raise Refused(M("control.pins-hog.bad-setting", "Name a pin, its mode and its pull or level."))
+        return pinhog.add(pin, mode, bias, value)
+    finally:
+        hardware.write_status()
+
+
 def pins(_req):
     """The board's GPIO lines and header, read with gpioinfo, for the pin map page."""
     from irate_box.root import lcdtouch, pinmap
@@ -8252,6 +8312,7 @@ def pins(_req):
     data["at"] = time.time()
     safeio.write(CONTROL / "pins.json", json.dumps(data, indent=1))
     lcdtouch.write_status()
+    hardware.write_status()
     return M("control.pins", "{n} GPIO lines read.", n=len(data["lines"]))
 
 
@@ -8266,6 +8327,7 @@ def pins_overlay(req):
         return lcdtouch.set_overlay(on)
     finally:
         lcdtouch.write_status()
+        hardware.write_status()
 
 
 def pins_display(req):
@@ -8279,13 +8341,17 @@ def pins_display(req):
         return lcdtouch.set_display(on)
     finally:
         lcdtouch.write_status()
+        hardware.write_status()
 
 
 def pins_test(_req):
     """The 60-second animation sequence (lcdtouch.py), then the panel blanked."""
     from irate_box.root import lcdtouch
 
-    return lcdtouch.run_screen_test(60)
+    try:
+        return lcdtouch.run_screen_test(60)
+    finally:
+        hardware.write_status()
 
 
 def _rk(fn):
@@ -8518,7 +8584,7 @@ def _rk_serial_setup(req):
                 )
             )
         path = own["device"]
-    elif CONSOLE_RE.match(console) and (SERIAL_BY_ID / console).exists():
+    elif CONSOLE_RE.fullmatch(console) and (SERIAL_BY_ID / console).exists():
         path = str(SERIAL_BY_ID / console)
     else:
         raise Refused(M("rkserial.no-console", "That serial adapter is not connected to the box."))
@@ -9035,7 +9101,7 @@ def _kit_check_said(kit, result):
 
 def _kit_check(req):
     kit = req.get("kit")
-    if not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+    if not (isinstance(kit, str) and kits.ID_RE.fullmatch(kit)):
         raise Refused(KIT_BAD)
     try:
         result = kits.check(kit, _kit_lists_hours(req))
@@ -9122,7 +9188,7 @@ def _kit_req(fn):
                 return kits.define(kit)
             finally:
                 _kits_status()
-        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.match(kit)):
+        if fn not in (kits.expire, kits.drop_all_previous) and not (isinstance(kit, str) and kits.ID_RE.fullmatch(kit)):
             raise Refused(KIT_BAD)
         try:
             if fn is kits.set_extra:
@@ -9226,7 +9292,11 @@ ACTIONS = {
     "housecall-pair": housecall_pair,
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
+    "hw-status": hardware_status,
+    "hw-set": hardware_set,
     "pins": pins,
+    "pins-gpio": pins_gpio,
+    "pins-hog": pins_hog,
     "pins-overlay": pins_overlay,
     "pins-display": pins_display,
     "pins-test": pins_test,
@@ -9323,13 +9393,18 @@ def _mtime(path):
 
 def main():
     policy_publish()
+    # The pages read one hardware status: publish it when the helper starts, so a boot needs no scan.
+    try:
+        hardware.write_status_on_boot()
+    except Exception:  # noqa: BLE001 - a hardware read must not stop the helper from answering its queue # nosec B110
+        pass
     # A request that arrives while this runs is picked up by the same loop.
     for _ in range(100):
         pending = sorted(REQUESTS.glob("*.json"), key=_mtime)
         if not pending:
             return 0
         for path in pending:
-            rid = path.stem if ID_RE.match(path.stem) else "invalid"
+            rid = path.stem if ID_RE.fullmatch(path.stem) else "invalid"
             what = None
             try:
                 text = safeio.read_request(path)  # never a link or a FIFO
@@ -9351,7 +9426,7 @@ def main():
                         )
                     )
                 policy_check(what)
-                if not transport.allowed(what, req.get("over")):
+                if not transport.allowed_choice(what, req.get("choice"), req.get("over")):
                     # The hub refuses these over plain HTTP before it queues them; this catches a route it missed.
                     raise Refused(
                         M(
@@ -9416,7 +9491,7 @@ def notebooks_sync():
         fd = os.open(STATE / "notebooks" / ".wanted.json", os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(fd) as fh:
             names = json.loads(fh.read(1 << 16)).get("run", [])
-        wanted = {n for n in names if isinstance(n, str) and NOTEBOOK_RE.match(n)}
+        wanted = {n for n in names if isinstance(n, str) and NOTEBOOK_RE.fullmatch(n)}
     except (OSError, ValueError, AttributeError):
         pass
     wanted = set(sorted(wanted)[:NOTEBOOK_MAX])

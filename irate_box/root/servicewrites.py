@@ -44,7 +44,7 @@ def run(*cmd, timeout=120):
 
 def ok_path(path):
     """A path that can be put in RAM: absolute, not under /run (already RAM) or the kernel's, no .. or //."""
-    return bool(PATH_RE.match(path or "")) and ".." not in path and "//" not in path and path.rstrip("/") != ""
+    return bool(PATH_RE.fullmatch(path or "")) and ".." not in path and "//" not in path and path.rstrip("/") != ""
 
 
 def owner():
@@ -52,7 +52,7 @@ def owner():
         got = json.loads(OWNER.read_text())
     except (OSError, ValueError):
         return {}
-    return {u: [p for p in ps if ok_path(p)] for u, ps in got.items() if UNIT_RE.match(u) and isinstance(ps, list)}
+    return {u: [p for p in ps if ok_path(p)] for u, ps in got.items() if UNIT_RE.fullmatch(u) and isinstance(ps, list)}
 
 
 def declared(manifests=None):
@@ -101,7 +101,7 @@ def apply(manifests=None):
     want = declared(manifests)
     changed = []
     for unit, paths in want.items():
-        if not UNIT_RE.match(unit):
+        if not UNIT_RE.fullmatch(unit):
             continue
         folder = UNITS_ETC / f"{unit}.d"
         text = dropin_text(unit, paths)
@@ -128,7 +128,7 @@ def apply(manifests=None):
 
 def set_owner(unit, path, on=True):
     """The owner's choice for one path of one service: kept in RAM (on) or back on the card."""
-    if not UNIT_RE.match(unit or "") or not ok_path(path):
+    if not UNIT_RE.fullmatch(unit or "") or not ok_path(path):
         raise Refused(M("service-ram.bad", "That is not a service and path that can be kept in RAM."))
     mine = owner()
     paths = [p for p in mine.get(unit, []) if p != path]

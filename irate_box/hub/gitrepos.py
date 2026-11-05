@@ -229,8 +229,8 @@ def decide(uri, method="GET", git_mode="public", account=None):
 
     parts = urlsplit(uri or "")
     path = unquote(parts.path)
-    m = re.match(r"^/git(-private)?/([^/]+)\.git/(.*)$", path)
-    if not m or not NAME_RE.match(m.group(2)):
+    m = re.fullmatch(r"^/git(-private)?/([^/]+)\.git/(.*)$", path)
+    if not m or not NAME_RE.fullmatch(m.group(2)):
         return False
     admin = account is not None and account.get("role") == "admin"
     if m.group(1) or git_mode == "private":
@@ -286,7 +286,7 @@ def _target(payload):
     name = name.strip()
     if name.endswith(".git"):
         name = name[:-4]
-    if not NAME_RE.match(name):
+    if not NAME_RE.fullmatch(name):
         raise Refused(
             M(
                 "git.name.invalid",
@@ -375,7 +375,7 @@ def action(payload):
                 or not refs
                 or len(refs) > 20
                 or not all(
-                    isinstance(r, str) and re.match(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$", r) and ".." not in r
+                    isinstance(r, str) and re.fullmatch(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$", r) and ".." not in r
                     for r in refs
                 )
             ):

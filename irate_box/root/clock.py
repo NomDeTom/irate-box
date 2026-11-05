@@ -168,7 +168,7 @@ def hardware():
 
 def parse(choice):
     """('chrony'|'image', pool, gps, module, serve, local or '') from the page's choice, or ValueError."""
-    m = CHOICE_RE.match(choice or "")
+    m = CHOICE_RE.fullmatch(choice or "")
     if not m:
         raise Refused(
             M("clock-sources.not-a-choice", "This is not a choice of clock sources that the Clock page makes.")
@@ -215,7 +215,7 @@ def parse(choice):
 def parse_order(choice):
     """The sources' order from the page's choice (its last field), each source once, any left out after in the
     default order; the default when the choice has none."""
-    m = CHOICE_RE.match(choice or "")
+    m = CHOICE_RE.fullmatch(choice or "")
     given = [s for s in (m.group(7) or "").split(",") if s] if m else []
     seen = list(dict.fromkeys(given))
     return seen + [s for s in ORDER if s not in seen]
@@ -259,7 +259,7 @@ def _host_ok(host):
         ipaddress.ip_address(host)
         return True
     except ValueError:
-        return bool(HOST_RE.match(host)) and ":" not in host and not host.startswith("-") and ".." not in host
+        return bool(HOST_RE.fullmatch(host)) and ":" not in host and not host.startswith("-") and ".." not in host
 
 
 # --- applying ----------------------------------------------------------------------------------------------
@@ -629,7 +629,7 @@ def parse_chronyc(text):
 
 def _ago(text):
     """chronyc's LastRx: seconds, or with m, h, d or y."""
-    m = re.match(r"^(\d+)([mhdy]?)$", text)
+    m = re.fullmatch(r"^(\d+)([mhdy]?)$", text)
     return int(m.group(1)) * {"": 1, "m": 60, "h": 3600, "d": 86400, "y": 31536000}[m.group(2)] if m else None
 
 

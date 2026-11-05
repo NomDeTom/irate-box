@@ -93,7 +93,7 @@ def validate(ssid, security, psk, hidden):
                     "An open network has no password. Clear the password, or select another security.",
                 )
             )
-    elif not isinstance(psk, str) or not PSK_RE.match(psk):
+    elif not isinstance(psk, str) or not PSK_RE.fullmatch(psk):
         raise Refused(
             M("wifi-join.psk", "Enter a password of 8 to 63 printable characters, or of 64 hexadecimal digits.")
         )
@@ -203,7 +203,7 @@ def join(ssid, security="wpa-psk", psk="", hidden=False, now=False, wait=60, sle
 
 def forget(uid):
     """Remove a network added here (and only those)."""
-    if not isinstance(uid, str) or not UUID_RE.match(uid):
+    if not isinstance(uid, str) or not UUID_RE.fullmatch(uid):
         raise Refused(M("wifi-join.request.uuid", "The request is not valid: the network ID is not a UUID."))
     rec = record()
     if uid not in rec:

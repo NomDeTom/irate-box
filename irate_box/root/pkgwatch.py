@@ -98,7 +98,7 @@ def definitions():
         d = _json(f, None)
         if (
             isinstance(d, dict)
-            and ID_RE.match(str(d.get("id", "")))
+            and ID_RE.fullmatch(str(d.get("id", "")))
             and d["id"] == f.stem
             and isinstance(d.get("channels"), dict)
             and d.get("package")
@@ -236,7 +236,7 @@ def _index(pid, pkg):
             if (
                 fields.get("Package") == pkg
                 and fields.get("Architecture") in (a, "all")
-                and VERSION_RE.match(fields.get("Version", ""))
+                and VERSION_RE.fullmatch(fields.get("Version", ""))
             ):
                 if not best or newer(fields["Version"], best["version"]):
                     best = {
@@ -359,7 +359,7 @@ def _record(pid):
 def install(pid, version, log=print):
     """A cached build installed (its dependencies from the box's own sources, as apt finds them)."""
     d = _def(pid)
-    if not VERSION_RE.match(str(version)):
+    if not VERSION_RE.fullmatch(str(version)):
         raise Refused(M("pkgwatch.install.version-invalid", "The version is not valid."))
     e = seen(pid).get(version)
     if not e and version in flagged(pid):

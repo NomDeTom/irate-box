@@ -6022,15 +6022,18 @@
             <span class="pin-key pin-5v"></span><span data-i18n="admin.pins.legend-5v">5 V</span>
             <span class="pin-key pin-gnd"></span><span data-i18n="admin.pins.legend-gnd">Ground</span>
             <span class="pin-key pin-free"></span><span data-i18n="admin.pins.legend-free">Free</span>
+            <span class="pin-key pin-assigned"></span><span data-i18n="admin.pins.legend-assigned">Assigned, not in use</span>
             <span class="pin-key pin-taken"></span><span data-i18n="admin.pins.legend-taken">Taken</span>
+            <span class="pin-key pin-conflict"></span><span data-i18n="admin.pins.legend-conflict">Conflict</span>
           </p>
           <div class="pinheader" id="pins-map"></div>
           <div class="pin-overlay" id="pins-overlay">
             <h3 data-i18n="admin.pins.overlay-title">SPI1 display and touch</h3>
             <p class="setting-desc" data-i18n="admin.pins.overlay-intro">
               A 3.5" SPI TFT and XPT2046 resistive touch on SPI1, clear of SPI0:
-              pins 27 (CLK), 29 (MOSI), 31 (MISO), 35 (display CS), 37 (touch CS), 28 (PEN), 18 (D/C),
-              22 (RST) and 36 (BL). Pin 36 is the MeshAdv-Pi HAT's IRQ, so the HAT and the backlight
+              pins 27 (CLK), 29 (MOSI), 31 (MISO), 35 (display CS), 37 (touch CS), 26 (D/C),
+              28 (RST) and 36 (BL). Pin 28 was the proposed touch PEN, so PEN needs another free pin
+              when touch is wired. Pin 36 is the MeshAdv-Pi HAT's IRQ, so the HAT and the backlight
               control cannot both be fitted. The overlay is applied at the next restart.
             </p>
             <p class="setting-desc" id="pins-overlay-state" data-i18n="admin.pins.overlay-state">Not read yet.</p>
@@ -6051,6 +6054,48 @@
               <button class="action-btn" type="button" id="pins-test" data-i18n="admin.pins.test" disabled>Run 1-minute test</button>
             </div>
             <p class="setting-desc action-note" id="pins-display-note" role="status" hidden></p>
+          </div>
+          <div class="pin-overlay" id="pins-gpio">
+            <h3 data-i18n="admin.pins.gpio-title">Read or keep a pin</h3>
+            <p class="setting-desc" data-i18n="admin.pins.gpio-intro">
+              A free header pin can be read once, or held by a pin hog from boot: input with a pull, or
+              output high or low. A poll lasts one request. A hog is a boot-file change and applies at the
+              next restart.
+            </p>
+            <div class="pin-gpio-form">
+              <label class="setting-name" for="pins-gpio-pin" data-i18n="admin.pins.gpio-pin">Pin</label>
+              <select id="pins-gpio-pin"></select>
+              <label class="setting-name" for="pins-gpio-mode" data-i18n="admin.pins.gpio-mode">Mode</label>
+              <select id="pins-gpio-mode">
+                <option value="in" data-i18n="admin.pins.gpio-in">Input</option>
+                <option value="out" data-i18n="admin.pins.gpio-out">Output</option>
+              </select>
+              <span id="pins-gpio-bias-box">
+                <label class="setting-name" for="pins-gpio-bias" data-i18n="admin.pins.gpio-bias">Pull</label>
+                <select id="pins-gpio-bias">
+                  <option value="none" data-i18n="admin.pins.gpio-bias-none">None</option>
+                  <option value="up" data-i18n="admin.pins.gpio-bias-up">Pull-up</option>
+                  <option value="down" data-i18n="admin.pins.gpio-bias-down">Pull-down</option>
+                </select>
+              </span>
+              <span id="pins-gpio-value-box" hidden>
+                <label class="setting-name" for="pins-gpio-value" data-i18n="admin.pins.gpio-level">Level</label>
+                <select id="pins-gpio-value">
+                  <option value="0" data-i18n="admin.pins.gpio-low">Low</option>
+                  <option value="1" data-i18n="admin.pins.gpio-high">High</option>
+                </select>
+              </span>
+            </div>
+            <div class="library-buttons">
+              <button class="action-btn" type="button" id="pins-gpio-read" data-i18n="admin.pins.gpio-read">
+                Read once
+              </button>
+              <button class="action-btn" type="button" id="pins-gpio-hog" data-i18n="admin.pins.gpio-hog">
+                Keep it set
+              </button>
+            </div>
+            <p class="setting-desc action-note" id="pins-gpio-note" role="status" hidden></p>
+            <div id="pins-hogs"></div>
           </div>
           <h3 data-i18n="admin.pins.claims">In use now</h3>
           <div id="pins-claims"></div>

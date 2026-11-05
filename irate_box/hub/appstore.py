@@ -169,7 +169,7 @@ def _firmware_entry(visible):
                 notes[item["id"]] = item
     out = []
     for version, info in versions.items():
-        if not isinstance(info, dict) or not info.get("boards") or not firmware.VERSION_RE.match(str(version)):
+        if not isinstance(info, dict) or not info.get("boards") or not firmware.VERSION_RE.fullmatch(str(version)):
             continue
         vdir = firmware.ROOT / version
         boards = []
@@ -177,7 +177,7 @@ def _firmware_entry(visible):
         digests = librarian._read_json(vdir / firmware.DIGESTS, {})
         build_epoch = None
         for board in info["boards"]:
-            if not isinstance(board, str) or not firmware.BOARD_RE.match(board):
+            if not isinstance(board, str) or not firmware.BOARD_RE.fullmatch(board):
                 continue
             mt = librarian._read_json(vdir / f"firmware-{board}-{version}.mt.json", {})
             if not isinstance(mt, dict) or not mt:
@@ -188,7 +188,7 @@ def _firmware_entry(visible):
             role_files = []
             for entry in mt.get("files", []) if isinstance(mt.get("files"), list) else []:
                 name = entry.get("name") if isinstance(entry, dict) else None
-                if not isinstance(name, str) or not firmware.FILE_RE.match(name) or name.endswith(".elf"):
+                if not isinstance(name, str) or not firmware.FILE_RE.fullmatch(name) or name.endswith(".elf"):
                     continue
                 path = vdir / name
                 if not path.is_file() or path.is_symlink():
@@ -637,7 +637,7 @@ def route(handler, path, mode, flasher_mode="off"):
     if path in ("/appstore", "/appstore/"):
         # The Host as it came, port and all: a QR of this page must answer on the address it was loaded from.
         host = handler.headers.get("Host", "")
-        if not HOST_RE.match(host):
+        if not HOST_RE.fullmatch(host):
             host = "box.local"
         body = page(host, "https" if handler._https() else "http", level, firmware_visible)
         handler.send_response(200)
@@ -651,7 +651,7 @@ def route(handler, path, mode, flasher_mode="off"):
         return
     if path == "/appstore/obtainium.json":
         host = handler.headers.get("Host", "")
-        if not HOST_RE.match(host):
+        if not HOST_RE.fullmatch(host):
             host = "box.local"
         body = json.dumps(obtainium_json(level, host, "https" if handler._https() else "http")).encode()
         handler.send_response(200)
@@ -714,7 +714,7 @@ def _index_of(holder_id):
 
 def _latest(handler, parts, level):
     """The newest kept version of a holder that has this file, as a 302 to its versioned address."""
-    if len(parts) != 2 or not all(NAME_PART_RE.match(part) for part in parts):
+    if len(parts) != 2 or not all(NAME_PART_RE.fullmatch(part) for part in parts):
         return _not_found(handler)
     holder_id, name = parts
     entry = _index_of(holder_id)
@@ -742,7 +742,7 @@ def _firmware_latest(handler, parts, visible):
     if not visible or len(parts) != 2:
         return _not_found(handler)
     board, role = parts
-    if not NAME_PART_RE.match(board) or role not in FIRMWARE_ROLES:
+    if not NAME_PART_RE.fullmatch(board) or role not in FIRMWARE_ROLES:
         return _not_found(handler)
     wanted = urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query).get("channel", [""])[0]
     entry = _firmware_entry(True)
@@ -766,7 +766,11 @@ def _firmware_latest(handler, parts, visible):
 def _file(handler, parts, level):
     """One held file, streamed, with Range. Only a name the keeper recorded for that version, in that
     version's folder; the id and tag must be the holder's own, as published."""
-    if len(parts) != 3 or not all(NAME_PART_RE.match(part) for part in parts[:2]) or not holder.FILE_RE.match(parts[2]):
+    if (
+        len(parts) != 3
+        or not all(NAME_PART_RE.fullmatch(part) for part in parts[:2])
+        or not holder.FILE_RE.fullmatch(parts[2])
+    ):
         return _not_found(handler)
     holder_id, tag, name = parts
     entry = _index_of(holder_id)

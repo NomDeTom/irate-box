@@ -81,7 +81,7 @@ def _releases():
     read without the factory's imports) and those the librarian keeps (firmware.py), in the same layout."""
     out = []
     for folder in FIRMWARE.iterdir() if FIRMWARE.is_dir() else []:
-        if not ESP_VERSION_RE.match(folder.name):
+        if not ESP_VERSION_RE.fullmatch(folder.name):
             continue
         try:
             targets = json.loads((folder / f"firmware-{folder.name}.json").read_text()).get("targets") or []
@@ -155,7 +155,7 @@ def _target_files(folder, env):
     except (OSError, ValueError):
         return None, {}
     names = [str(f.get("name", "")) for f in mt.get("files") or []]
-    paths = {n: confine.under(folder, n) for n in names if FILE_RE.match(n)}
+    paths = {n: confine.under(folder, n) for n in names if FILE_RE.fullmatch(n)}
     return mt, {n: p for n, p in paths.items() if p.is_file()}
 
 
@@ -163,7 +163,7 @@ def esp_manifest(version, env):
     """ESP Web Tools' manifest for one published ESP32 target, or None: factory.bin at 0, then the OTA
     loader at the second app partition and the file system at the data one, where the build has them
     and they fit."""
-    if not ESP_VERSION_RE.match(version or "") or not ENV_RE.match(env or ""):
+    if not ESP_VERSION_RE.fullmatch(version or "") or not ENV_RE.fullmatch(env or ""):
         return None
     try:
         folder = confine.under(FIRMWARE, version)
@@ -182,7 +182,9 @@ def esp_manifest(version, env):
     ota = next((p for p in table if p["type"] == 0 and p["subtype"] == 0x11), None)
     fs = next((p for p in table if p["type"] == 1 and p["subtype"] in (0x82, 0x83)), None)
     for name in names:
-        where = ota if OTA_RE.match(name) else fs if name.startswith("littlefs-") and name.endswith(".bin") else None
+        where = (
+            ota if OTA_RE.fullmatch(name) else fs if name.startswith("littlefs-") and name.endswith(".bin") else None
+        )
         if where and names[name].stat().st_size <= where["size"]:
             parts.append({"path": f"/flasher/firmware/{version}/{name}", "offset": where["offset"]})
     return {
@@ -230,14 +232,14 @@ def digests():
     (firmware.record_digests, made where the files land: never computed while a page is asked for)."""
     out = {}
     for folder in FIRMWARE.iterdir() if FIRMWARE.is_dir() else []:
-        if not ESP_VERSION_RE.match(folder.name):
+        if not ESP_VERSION_RE.fullmatch(folder.name):
             continue
         try:
             kept = json.loads((folder / "sha256.json").read_text())
         except (OSError, ValueError):
             continue
         for name, v in kept.items() if isinstance(kept, dict) else ():
-            if FILE_RE.match(name) and isinstance(v, list) and len(v) == 3 and SHA256_RE.match(str(v[2])):
+            if FILE_RE.fullmatch(name) and isinstance(v, list) and len(v) == 3 and SHA256_RE.fullmatch(str(v[2])):
                 out[f"/flasher/firmware/{folder.name}/{name}"] = v[2]
     return out
 
@@ -287,7 +289,7 @@ def page(host, scheme="http"):
     """flasher.html with the hub's address filled in, in the scheme it was asked over (https when the guest
     downloaded it over HTTPS), and the check above with the digests of the firmware here, or None (not installed,
     or a Host that cannot go into a URL)."""
-    if not installed() or not HOST_RE.match(host or "") or scheme not in ("http", "https"):
+    if not installed() or not HOST_RE.fullmatch(host or "") or scheme not in ("http", "https"):
         return None
     origin = f"{scheme}://{host}"
     body = (ROOT / "flasher.html").read_bytes().replace(PLACEHOLDER, origin.encode())

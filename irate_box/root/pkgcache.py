@@ -60,7 +60,7 @@ def startup_packages():
 
 
 def parse(name):
-    found = DEB.match(name)
+    found = DEB.fullmatch(name)
     if not found:
         return (None, None, None)
     # apt encodes a version's epoch colon (1%3a9.20.30) in the file name; compare the version
