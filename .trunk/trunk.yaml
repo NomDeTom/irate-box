@@ -52,9 +52,17 @@ lint:
     - linters: [oxlint]
       paths: [tests/**, tools/**, extras/**, web/qrcode.js, web/gamja/**]
 actions:
+  definitions:
+    - id: codeql-model-pre-push
+      display_name: CodeQL model check
+      description: Prove the model pack locally when a push changes the CodeQL files.
+      run: bash scripts/codeql-pre-push.sh
+      triggers:
+        - git_hooks: [pre-push]
   disabled:
     - trunk-announce
     - trunk-check-pre-push
   enabled:
+    - codeql-model-pre-push
     - trunk-fmt-pre-commit
     - trunk-upgrade-available

@@ -231,6 +231,15 @@ for row, value in hostile.CONTROLS.items():
 for row, value in hostile.JOINERS.items():
     check(f"has_hidden_character: {row} is allowed", not V.has_hidden_character(value))
 check("has_hidden_character: newlines allowed on request", not V.has_hidden_character("a\nb\tc\r", newlines=True))
+for row, value in hostile.FLAGS.items():
+    check(f"ssid: allows {row}", V.ssid(value) == value, "refused")
+    check(f"text: allows {row}", V.text(value) == value, "refused")
+    check(f"has_hidden_character: {row} is allowed", not V.has_hidden_character(value))
+    check(f"log_text: keeps {row} whole", V.log_text(value) == value)
+for row, value in hostile.TAG_SMUGGLING.items():
+    check(f"ssid: refuses {row}", refuses(V.ssid, value), "accepted")
+    check(f"text: refuses {row}", refuses(V.text, value), "accepted")
+    check(f"has_hidden_character: {row}", V.has_hidden_character(value))
 
 # Every public function of validate.py is in a table, or here with its reason.
 COVERED_ELSEWHERE = {

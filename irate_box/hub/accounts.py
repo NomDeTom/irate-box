@@ -42,7 +42,7 @@ FILE = STATE / "accounts.json"
 SIGNUP = ("off", "open", "apply", "assigned")
 HTTP = ("permitted", "warning", "prevented")
 DEFAULTS = {"signup": "off", "http": "warning"}
-NAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
+NAME_RE = re.compile(r"^(?!-)[A-Za-z0-9._-]{3,32}$")  # not "-x" (an option)
 RESERVED = {"admin", "root", "hub", "guest", "everyone"}
 MIN_PASSWORD, MAX_PASSWORD = 8, 128
 # The hub's choices for a password being set (server.py's settings, through SIGNIN): its least length, its rules
@@ -686,6 +686,10 @@ def login(name, password, addr="", https=False, device=None, mark=None):
     recorded (https_login): an admin account that has can stand in for the box's own login. device: the
     hardware address of the hotspot device signing in, kept with the session (session_device). mark: the browser's
     device cookie, if it sent one (whether the account knows it: _known)."""
+    if not isinstance(name, str) or not NAME_RE.fullmatch(name):
+        raise AccountError(
+            M("accounts.name.invalid", "Invalid username. Use 3 to 32 letters, digits, dots, dashes or underscores.")
+        )
     now = time.time()
     known = _known(name, addr, mark, now)
     with _lock:
