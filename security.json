@@ -423,6 +423,53 @@
       "reads": [],
       "writes": []
     },
+    "rk-backup": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/rkboard.json",
+        "rk-backups"
+      ]
+    },
+    "rk-backup-delete": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/rkboard-backups.json",
+        "rk-backups"
+      ]
+    },
+    "rk-backup-keep": {
+      "https_only": true,
+      "policy": false,
+      "reads": [],
+      "writes": [
+        "control/rkboard-settings.json",
+        "rk-backups"
+      ]
+    },
+    "rk-backup-restore": {
+      "https_only": true,
+      "policy": false,
+      "reads": [
+        "rk-backups"
+      ],
+      "writes": [
+        "rk-backups"
+      ]
+    },
+    "rk-bundle-stage": {
+      "https_only": true,
+      "policy": false,
+      "reads": [
+        "rk-upload"
+      ],
+      "writes": [
+        "rk-bootloaders"
+      ]
+    },
     "rk-card-check": {
       "https_only": false,
       "policy": false,

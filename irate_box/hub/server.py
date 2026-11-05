@@ -4985,6 +4985,7 @@ class HubServer(ThreadingHTTPServer):
 # next request. The security doctor looks for this marker.
 DRAINS_REQUEST_BODIES = True
 MAX_JSON = 256 * 1024  # the largest JSON body the hub reads; the store and drop have their own
+MAX_UPLOAD = 64 << 20  # a bootloader bundle file: the UBI rescue is about 47 MB
 # More unread than this, and the connection is closed rather than read. Closing early is the
 # rougher choice (a client still sending sees a reset, and may lose the answer), so it is kept
 # for bodies far over any the hub takes (the drop's are up to 25 MB by default).
@@ -6140,6 +6141,37 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, rkboard_snapshot())
             return
 
+        if path == "/admin/rkboard/backup":
+            name = self._query_one("name", "", 200)
+            entry = None
+            if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,190}\.bin", name):
+                for item in _read_json(CONTROL_DIR / "rkboard-backups.json", []) or []:
+                    if isinstance(item, dict) and item.get("name") == name:
+                        entry = item
+                        break
+            try:
+                fh = open(STATE_DIR / "rk-backups" / name, "rb") if entry else None
+            except OSError:
+                fh = None
+            if fh is None:
+                self.send_json(
+                    404, refused.say(M("rkboard.backup.missing", "That saved copy is no longer on the box."))
+                )
+                return
+            with fh:
+                size = os.fstat(fh.fileno()).st_size
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(size))
+                self.send_header("Content-Disposition", validate.content_disposition(name))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                try:
+                    shutil.copyfileobj(fh, self.wfile, 1 << 20)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+            return
+
         if path == "/admin/hardware":
             self.send_json(200, hardware_snapshot())
             return
@@ -6749,6 +6781,69 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _rk_upload(self):
+        """One staged bootloader file, streamed from the page: checked there, staged by root after its sha256."""
+        from irate_box.hub import rkusb
+
+        if "rk-bundle-stage" in transport.HTTPS_ONLY and not self._https():
+            self.close_connection = True
+            self.send_json(403, refused.say(HTTPS_ONLY_SAID))
+            return
+        bundle = self.headers.get("X-Rk-Bundle", "")
+        name = self.headers.get("X-Rk-File", "")
+        meta = next((b for b in rkusb.bootloaders() if b.get("id") == bundle), None)
+        if (
+            not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", bundle)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}", name)
+            or not meta
+            or not any(f.get("name") == name for f in meta.get("files") or [])
+        ):
+            self._discard_body()
+            self.send_json(400, refused.say(BAD_REQUEST))
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_UPLOAD:
+            self.close_connection = True
+            self.send_json(
+                413,
+                refused.say(
+                    M(
+                        "hub.request.large",
+                        "Request too large. The hub reads at most {kb} KB.",
+                        kb=MAX_UPLOAD >> 10,
+                    )
+                ),
+            )
+            return
+        folder = STATE_DIR / "rk-upload"
+        try:
+            folder.mkdir(mode=0o750, parents=True, exist_ok=True)
+            temp = f"{int(time.time())}-{os.urandom(8).hex()}.part"
+            path = folder / temp
+            remaining = length
+            with path.open("wb") as fh:
+                while remaining:
+                    chunk = self.rfile.read(min(remaining, 1 << 20))
+                    if not chunk:
+                        raise OSError("short body")
+                    fh.write(chunk)
+                    remaining -= len(chunk)
+            os.chmod(path, 0o644)
+        except OSError:
+            self.close_connection = True
+            try:
+                path.unlink(missing_ok=True)
+            except (OSError, UnboundLocalError):
+                pass
+            self.send_json(400, refused.say(BAD_REQUEST))
+            return
+        self.send_json(
+            202, {"id": control_request({"action": "rk-bundle-stage", "bundle": bundle, "name": name, "temp": temp})}
+        )
+
     def _read_payload(self):
         """The request's JSON, or None. Larger than MAX_JSON is not read at all: the
         caller answers 413 and the drain reads it away or closes the connection."""
@@ -6794,6 +6889,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self._admin_refused(path) or self._forged(path) or self._admin_locked(path):
+            return
+        if path == "/admin/rkboard/upload":
+            self._rk_upload()
             return
         self._too_large = False
         payload = self._read_payload()
@@ -7845,6 +7943,34 @@ class Handler(BaseHTTPRequestHandler):
                 loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader))
             ):
                 self.send_json(202, {"id": control_request({"action": "rk-backup", "loader": loader})})
+            elif act == "backup-keep" and isinstance(payload.get("keep"), int) and 1 <= payload["keep"] <= 20:
+                self.send_json(202, {"id": control_request({"action": "rk-backup-keep", "keep": payload["keep"]})})
+            elif (
+                act == "backup-delete"
+                and isinstance(payload.get("name"), str)
+                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,190}\.bin", payload["name"])
+            ):
+                self.send_json(202, {"id": control_request({"action": "rk-backup-delete", "name": payload["name"]})})
+            elif (
+                act == "backup-restore"
+                and isinstance(payload.get("name"), str)
+                and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,190}\.bin", payload["name"])
+                and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))
+                and (
+                    payload.get("confirm") is None
+                    or (
+                        isinstance(payload.get("confirm"), str)
+                        and re.fullmatch(r"[A-Za-z0-9,_-]{0,64}", payload["confirm"])
+                    )
+                )
+            ):
+                req = {
+                    "action": "rk-backup-restore",
+                    "name": payload["name"],
+                    "loader": loader,
+                    "confirm": payload.get("confirm"),
+                }
+                self.send_json(202, {"id": control_request(req)})
             elif (
                 act == "erase"
                 and (loader is None or (isinstance(loader, str) and re.fullmatch(r"[a-z0-9]{1,16}", loader)))

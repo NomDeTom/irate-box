@@ -13,13 +13,17 @@ An image is written through the loader in pieces held in RAM (a whole one would 
 each read back and compared before the next.
 """
 
+import functools
 import hashlib
+import json
 import lzma
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -38,6 +42,13 @@ SECTOR = 512
 CHUNK = 32 << 20  # an image written in pieces of this size, each in RAM, then read back
 TAIL = 2048  # sectors cleared at the card's end after an image: an older image's backup partition table
 RUN = Path(os.environ.get("HUB_RK_RUN", "/run/irate-box-rk"))
+PROGRESS = rkusb.STATE / "control" / "rkboard-progress.json"
+BACKUPS = rkusb.STATE / "rk-backups"
+BACKUP_INDEX = rkusb.STATE / "control" / "rkboard-backups.json"
+BACKUP_SETTINGS = rkusb.STATE / "control" / "rkboard-settings.json"
+UPLOAD = rkusb.STATE / "rk-upload"
+BACKUP_MARGIN = 64 << 20  # free space left on the box after a full copy
+KEEP_DEFAULT = 2
 
 
 def run(*cmd, timeout=600):
@@ -46,6 +57,240 @@ def run(*cmd, timeout=600):
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
+
+
+def _exclusive(fn):
+    """One backup or install at a time: a second request is refused while the first runs."""
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        RUN.mkdir(mode=0o700, parents=True, exist_ok=True)
+        busy = RUN / "rkboard-busy"
+        try:
+            fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish.")) from None
+        except OSError:
+            raise Refused(M("rkboard.busy", "A recovery is already running. Wait for it to finish.")) from None
+        try:
+            os.write(fd, fn.__name__.encode())
+            os.close(fd)
+            return fn(*args, **kwargs)
+        finally:
+            busy.unlink(missing_ok=True)
+
+    return wrapper
+
+
+def _progress(action, done, total, path=""):
+    """The page's progress: small, in the control folder the hub can read."""
+    try:
+        PROGRESS.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+        PROGRESS.write_text(json.dumps({"action": action, "done": done, "total": total, "path": path}))
+    except OSError:
+        pass
+
+
+def _read_json_path(path, default):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def _backup_entries():
+    entries = _read_json_path(BACKUP_INDEX, [])
+    if not isinstance(entries, list):
+        return []
+    return [
+        e for e in entries if isinstance(e, dict) and isinstance(e.get("name"), str) and (BACKUPS / e["name"]).is_file()
+    ]
+
+
+def _write_index(entries):
+    try:
+        BACKUP_INDEX.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+        BACKUP_INDEX.write_text(json.dumps(entries))
+        os.chmod(BACKUP_INDEX, 0o644)
+    except OSError:
+        pass
+
+
+def _keep():
+    value = _read_json_path(BACKUP_SETTINGS, {})
+    try:
+        n = int(value.get("keep", KEEP_DEFAULT))
+    except (TypeError, ValueError, AttributeError):
+        n = KEEP_DEFAULT
+    return max(1, min(20, n))
+
+
+def _prune():
+    entries = sorted(_backup_entries(), key=lambda e: (e.get("created") or "", e["name"]))
+    keep = _keep()
+    while len(entries) > keep:
+        old = entries.pop(0)
+        try:
+            (BACKUPS / old["name"]).unlink(missing_ok=True)
+        except OSError:
+            pass
+    _write_index(entries)
+
+
+def _index_add(path, digest, serial, size):
+    entries = [e for e in _backup_entries() if e.get("name") != path.name]
+    entries.append(
+        {
+            "name": path.name,
+            "size": size,
+            "sha256": digest,
+            "serial": serial,
+            "created": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(path.stat().st_mtime)),
+        }
+    )
+    _write_index(entries)
+    _prune()
+
+
+def backups_list():
+    """The saved copies, newest first, as the page lists them."""
+    return sorted(_backup_entries(), key=lambda e: (e.get("created") or "", e["name"]), reverse=True)
+
+
+def set_keep(value):
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        raise Refused(M("rkboard.keep.value", "Select how many copies to keep, from 1 to 20.")) from None
+    if not 1 <= n <= 20:
+        raise Refused(M("rkboard.keep.value", "Select how many copies to keep, from 1 to 20."))
+    try:
+        BACKUP_SETTINGS.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+        BACKUP_SETTINGS.write_text(json.dumps({"keep": n}))
+        os.chmod(BACKUP_SETTINGS, 0o644)
+    except OSError as exc:
+        raise Refused(
+            M("rkboard.keep.write", "The setting could not be saved: {detail}", detail=str(exc)[-160:])
+        ) from None
+    _prune()
+    return M("rkboard.keep", "Keeping the newest {n} copies.", n=n)
+
+
+def delete_backup(name):
+    entry = next((e for e in _backup_entries() if e["name"] == name), None)
+    if not entry:
+        raise Refused(M("rkboard.backup.missing", "That saved copy is no longer on the box."))
+    try:
+        (BACKUPS / name).unlink()
+    except OSError as exc:
+        raise Refused(
+            M("rkboard.backup.delete", "The copy could not be removed: {detail}", detail=str(exc)[-160:])
+        ) from None
+    _write_index([e for e in _backup_entries() if e["name"] != name])
+    return M("rkboard.backup.deleted", "Removed {name}.", name=name)
+
+
+@_exclusive
+def stage_bundle(bundle, name, temp):
+    """Stage an uploaded bundle file after checking it against the sha256 in bootloaders.json."""
+    meta = next((b for b in rkusb.bootloaders() if b.get("id") == bundle), None)
+    if not meta:
+        raise Refused(M("rkboard.bundle.unknown", "That bootloader is not described on this box."))
+    item = next((f for f in meta.get("files") or [] if f.get("name") == name), None)
+    if not item:
+        raise Refused(
+            M("rkboard.bundle.file", "{name} is not a file of {title}.", name=name, title=meta.get("title") or bundle)
+        )
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}", temp):
+        raise Refused(M("rkboard.bundle.upload", "That upload cannot be read."))
+    source = UPLOAD / temp
+    if not source.is_file() or source.is_symlink():
+        raise Refused(M("rkboard.bundle.upload", "That upload cannot be read."))
+    expected = str(item.get("sha256") or "").lower()
+    actual = _digest(source)
+    if expected and actual != expected:
+        source.unlink(missing_ok=True)
+        raise Refused(
+            M(
+                "rkboard.bundle.mismatch",
+                "{name} does not match its sha256 ({actual}), so nothing was staged.",
+                name=name,
+                actual=actual,
+            )
+        )
+    dest = rkusb.BOOTLOADER_STATE / bundle / name
+    try:
+        dest.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        shutil.move(str(source), str(dest))
+        os.chmod(dest, 0o644)
+    except OSError as exc:
+        source.unlink(missing_ok=True)
+        raise Refused(
+            M("rkboard.bundle.write", "The file could not be staged: {detail}", detail=str(exc)[-160:])
+        ) from None
+    return M("rkboard.bundle.staged", "Staged {name} for {title}.", name=name, title=meta.get("title") or bundle)
+
+
+@_exclusive
+def restore(name, loader_id=None, confirm=None):
+    """Write a saved full copy back to the board, read it back and compare. The same read/confirm rule as an install."""
+    entry = next((e for e in _backup_entries() if e["name"] == name), None)
+    path = BACKUPS / name
+    if not entry or not path.is_file():
+        raise Refused(M("rkboard.backup.missing", "That saved copy is no longer on the box."))
+    board = _one(("loader", "maskrom"))
+    _need("rkdeveloptool")
+    if board["mode"] == "maskrom":
+        _send_loader(loader_id)
+    shown = storage()
+    if shown["card"]:
+        raise Refused(
+            M(
+                "rkboard.restore.card-shown",
+                "The board's loader shows its SD card, not its onboard flash, so nothing was written.",
+            )
+        )
+    want = (shown.get("sectors") or 0) * SECTOR
+    if not want or path.stat().st_size != want:
+        raise Refused(
+            M(
+                "rkboard.restore.size",
+                "The saved copy is {size} bytes, not the {want} the board's flash holds, so nothing was written.",
+                size=path.stat().st_size,
+                want=want,
+            )
+        )
+    token, said = held_words(contents(shown))
+    if token != "blank" and confirm != token:  # nosec B105 - a state word, not a password
+        raise Refused(
+            M(
+                "rkboard.restore.unconfirmed",
+                "The onboard flash is not blank: {held} Read it first, then confirm the restore.",
+                held=said,
+            )
+        )
+    r = run("rkdeveloptool", "wl", "0", str(path), timeout=1800)
+    if r.returncode:
+        raise Refused(
+            M(
+                "rkboard.restore.failed",
+                "Writing the saved copy failed: {detail}",
+                detail=(r.stderr or r.stdout).strip()[-200:],
+            )
+        )
+    verify = BACKUPS / f".{name}.verify"
+    try:
+        back = run("rkdeveloptool", "rl", "0", str(want), str(verify), timeout=900)
+        if back.returncode or not verify.is_file() or _digest(verify) != entry.get("sha256"):
+            raise Refused(
+                M("rkboard.restore.verify", "The board did not read back the saved copy. Check it before rebooting.")
+            )
+    finally:
+        verify.unlink(missing_ok=True)
+    run("rkdeveloptool", "rd", timeout=60)
+    return M(
+        "rkboard.restored", "Restored {name} to the onboard flash, read back identical, and reset the board.", name=name
+    )
 
 
 def _one(modes):
@@ -231,6 +476,7 @@ def read_flash(loader_id=None):
     return message
 
 
+@_exclusive
 def backup(loader_id=None):
     """Read and save the whole onboard flash before an erase, in the state's rk-backups folder, with its SHA-256.
     Refused when the loader shows the SD card, and it never writes to the board."""
@@ -250,9 +496,14 @@ def backup(loader_id=None):
     sectors = shown.get("sectors") or 0
     if not sectors:
         raise Refused(M("rkboard.backup.no-size", "The board's flash size could not be read, so nothing was saved."))
-    backups = rkusb.STATE / "rk-backups"
+    backups = BACKUPS
+    want = sectors * SECTOR
     try:
-        backups.mkdir(mode=0o700, parents=True, exist_ok=True)
+        backups.mkdir(mode=0o755, parents=True, exist_ok=True)
+        try:
+            os.chmod(backups, 0o755)
+        except OSError:
+            pass
     except OSError as exc:
         raise Refused(
             M(
@@ -262,11 +513,41 @@ def backup(loader_id=None):
                 detail=str(exc)[-160:],
             )
         ) from None
+    try:
+        free = shutil.disk_usage(backups).free
+    except OSError:
+        free = 0
+    if free < want + BACKUP_MARGIN:
+        raise Refused(
+            M(
+                "rkboard.backup.space",
+                "The box has {free} MB free. A {want} MB copy needs {need} MB. Free space first.",
+                free=free >> 20,
+                want=want >> 20,
+                need=(want + BACKUP_MARGIN) >> 20,
+            )
+        )
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
     serial = re.sub(r"[^A-Za-z0-9._-]", "", str(board.get("serial") or ""))[:32] or "board"
     path = backups / f"{stamp}-{serial}.bin"
-    r = run("rkdeveloptool", "rl", "0", str(sectors * SECTOR), str(path), timeout=900)
-    want = sectors * SECTOR
+    _progress("backup", 0, want, str(path))
+    stop = threading.Event()
+
+    def poll():
+        while not stop.wait(0.5):
+            try:
+                done = path.stat().st_size
+            except OSError:
+                done = 0
+            _progress("backup", min(done, want), want, str(path))
+
+    poller = threading.Thread(target=poll, daemon=True)
+    poller.start()
+    try:
+        r = run("rkdeveloptool", "rl", "0", str(want), str(path), timeout=900)
+    finally:
+        stop.set()
+        poller.join(timeout=1)
     if r.returncode:
         path.unlink(missing_ok=True)
         raise Refused(
@@ -290,7 +571,13 @@ def backup(loader_id=None):
                 want=want,
             )
         )
+    _progress("backup", want, want, str(path))
+    try:
+        os.chmod(path, 0o644)
+    except OSError:
+        pass
     digest = _digest(path)
+    _index_add(path, digest, serial, want)
     message = M(
         "rkboard.backed-up",
         "Saved a full copy of the onboard flash: {mb} MB at {path} (sha256 {sha}). Keep it: the install erases "
@@ -370,6 +657,7 @@ def _digest(path):
     return h.hexdigest()
 
 
+@_exclusive
 def install(bootloader_id, confirm=None, loader_id=None):
     """A bootloader from rkusb.BOOTLOADER_STATE written to the board's onboard SPI NAND: the whole flash erased
     first (this is where logs kept on the NAND go), then each file at its recorded offset, in pieces, each read back
@@ -443,6 +731,8 @@ def install(bootloader_id, confirm=None, loader_id=None):
             )
         _check_at(entry["offset"], len(data), limit)
         prepared.append((data, entry["offset"]))
+    total = sum(len(data) for data, _ in prepared)
+    _progress("install", 0, total)
     r = run("rkdeveloptool", "ef", timeout=900)
     if r.returncode:
         raise Refused(
@@ -456,7 +746,9 @@ def install(bootloader_id, confirm=None, loader_id=None):
     wrote = 0
     for data, offset in prepared:
         wrote += _write_at(data, offset, limit)
+        _progress("install", min(wrote, total), total)
     run("rkdeveloptool", "rd", timeout=60)
+    _progress("install", total, total)
     return M(
         "rkboard.installed",
         "The {name} is installed on the board's onboard flash: {mb} MB written and read back, and the board is "

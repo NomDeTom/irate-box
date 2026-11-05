@@ -91,6 +91,11 @@ _PRIVILEGED = [
     "config/irate-box.service",
 ]
 _PATH_ACTIONS = {
+    "rk-backup": {"reads": [], "writes": ["control/rkboard.json", "rk-backups"]},
+    "rk-backup-delete": {"reads": [], "writes": ["control/rkboard-backups.json", "rk-backups"]},
+    "rk-backup-keep": {"reads": [], "writes": ["control/rkboard-settings.json", "rk-backups"]},
+    "rk-backup-restore": {"reads": ["rk-backups"], "writes": ["rk-backups"]},
+    "rk-bundle-stage": {"reads": ["rk-upload"], "writes": ["rk-bootloaders"]},
     "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
     "hw-set": {
         "reads": [],

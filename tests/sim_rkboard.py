@@ -404,6 +404,25 @@ check(
     refused(rkboard.install, "nand-uboot", None) == "rkboard.bootloader-not-ready",
 )
 (boot_state / "nand-uboot" / "u-boot.itb").write_bytes(itb)
+rkboard.UPLOAD.mkdir(parents=True, exist_ok=True)
+(rkboard.UPLOAD / "upload.part").write_bytes(b"tampered")
+check(
+    "  an uploaded file that does not match its sha256: refused, nothing staged",
+    refused(rkboard.stage_bundle, "nand-uboot", "u-boot.itb", "upload.part") == "rkboard.bundle.mismatch"
+    and not (rkboard.UPLOAD / "upload.part").exists(),
+)
+(rkboard.UPLOAD / "upload.part").write_bytes(itb)
+staged = hub_control.ACTIONS["rk-bundle-stage"](
+    {"action": "rk-bundle-stage", "bundle": "nand-uboot", "name": "u-boot.itb", "temp": "upload.part"}
+)
+check(
+    "  an uploaded file that matches: staged, ready, the upload removed",
+    staged.get("id") == "rkboard.bundle.staged"
+    and (boot_state / "nand-uboot" / "u-boot.itb").read_bytes() == itb
+    and not (rkboard.UPLOAD / "upload.part").exists()
+    and rkusb.bootloaders()[1]["ready"],
+    staged,
+)
 
 unplug_all()
 plug("1-1.2", "loader")
@@ -531,6 +550,23 @@ check(
     and not any(c[:2] == ("rkdeveloptool", "wl") for c in ran),
     (said, ran, backups),
 )
+index = json.loads((T / "state" / "control" / "rkboard-backups.json").read_text())
+check(
+    "  the saved copy is listed with its serial, size and sha256, and can be read back and removed",
+    len(index) == 1
+    and index[0]["name"] == backups[0].name
+    and index[0]["sha256"] == said.get("sha256")
+    and index[0]["size"] == 2048 * 512
+    and index[0]["serial"] == rkboard._one(("loader",))["serial"]
+    and rkboard.backups_list()[0]["name"] == backups[0].name
+    and rkboard.set_keep(1).get("id") == "rkboard.keep"
+    and rkboard.restore(backups[0].name, None, rkboard.held_words(rkboard.contents(shows))[0]).get("id")
+    == "rkboard.restored"
+    and rkboard.delete_backup(backups[0].name).get("id") == "rkboard.backup.deleted"
+    and not backups[0].exists()
+    and not (T / "state" / "control" / "rkboard-backups.json").read_text().strip().strip("[]"),
+    (index, rkboard.backups_list()),
+)
 shows.update(NAND)
 
 # A missing tool.
@@ -586,13 +622,28 @@ check(
     and "alpine-rescue" in (REPO / "rockchip" / "rescues" / "README.md").read_text(),
 )
 check(
-    "the recovery page and the backup action are wired",
+    "the recovery page and the backup actions are wired",
     '"action": "rk-backup"' in src
-    and '"rk-backup": rk_backup' in (REPO / "irate_box" / "root" / "hub_control.py").read_text()
+    and '"action": "rk-backup-delete"' in src
+    and '"action": "rk-backup-keep"' in src
+    and '"action": "rk-backup-restore"' in src
+    and '"action": "rk-bundle-stage"' in src
+    and 'path == "/admin/rkboard/upload"' in src
+    and '"X-Rk-File"' in src
+    and '"rk-backup": rk_backup' in control_src
+    and '"rk-backup-delete": rk_backup_delete' in control_src
+    and '"rk-backup-keep": rk_backup_keep' in control_src
+    and '"rk-backup-restore": rk_backup_restore' in control_src
+    and '"rk-bundle-stage": rk_bundle_stage' in control_src
     and "Recover a dead Lyra" in (REPO / "web" / "admin-rockchip.html").read_text()
-    and "maskrom-pins.png" in (REPO / "web" / "admin-rockchip.html").read_text()
+    and 'class="rk-pins"' in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "maskrom-pins.png" not in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "Saved copies" in (REPO / "web" / "admin-rockchip.html").read_text()
     and "Save a full copy" in (REPO / "web" / "admin-rockchip.js").read_text()
-    and "action: 'backup'" in (REPO / "web" / "admin-rockchip.js").read_text(),
+    and "action: 'backup'" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup-restore'" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup-delete'" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup-keep'" in (REPO / "web" / "admin-rockchip.js").read_text(),
 )
 rescue_build = subprocess.run(
     [

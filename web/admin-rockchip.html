@@ -43,6 +43,17 @@
       </div>
     </section>
 
+    <section class="admin-pane" id="rk-copies-pane" aria-labelledby="rk-copies-title">
+      <h2 id="rk-copies-title" data-i18n="admin-rockchip.copies.title">Saved copies</h2>
+      <p class="setting-desc" data-i18n="admin-rockchip.copies.intro">
+        Full copies of a board's onboard flash, saved before an install. Download one to keep it elsewhere.
+        Restore writes one back to the board and reads it back to compare. The board's flash has to be blank or
+        confirmed first, as for an install.
+      </p>
+      <div id="rk-backups"></div>
+      <p class="setting-desc action-note" id="rk-copies-note" role="status" hidden></p>
+    </section>
+
     <!-- Board images (library/rkimages.py): the newest mPWRD-OS and Armbian releases the librarian mirrors into
          rk-images, one per Lyra board. The shared parts in the approved order: state, access, schedule, space,
          Check now and Update, then the images themselves. -->
@@ -55,32 +66,55 @@
       <div id="rk-images-panel" class="card-grid source-grid"></div>
     </section>
 
-    <!-- Recovering a board whose NAND boot chain is damaged: Tom's invasive route. The owner shorts the W25N02KV's
-         CLK pad to GND while powering the board; the box sees MaskROM, reads and saves the flash, then writes the
-         NAND U-Boot and the Alpine rescue. The photo at /maskrom-pins.png is added later. -->
+    <!-- Recovering a board whose NAND boot chain is damaged: bridge the two underside MaskROM pads while
+         powering on. The box reads and saves the flash, then writes the NAND U-Boot and the Alpine rescue. -->
     <section class="admin-pane" id="rk-recovery-pane" aria-labelledby="rk-recovery-title">
       <h2 id="rk-recovery-title" data-i18n="admin-rockchip.recovery.title">Recover a dead Lyra in MaskROM</h2>
+      <p class="setting-desc warn-text" id="rk-recovery-status" role="status" hidden></p>
       <p class="setting-desc" data-i18n="admin-rockchip.recovery.intro">
         A Lyra whose NAND boot chain is damaged, or whose U-Boot no longer starts, can be recovered from this
         page without removing the NAND. Connect the board's OTG0 USB-C to this box (data and power), and its debug
         UART to a USB serial adapter on this box. The Lyra's console is 1,500,000 baud. Open the
-        <a href="/serial/">serial terminal</a> to watch it.
+        <a href="/serial/?baud=1500000">serial terminal</a> to watch it.
       </p>
       <ol class="setting-desc">
-        <li data-i18n="admin-rockchip.recovery.step-1">Power the board off. On the <strong>W25N02KV</strong> (the 8-pad flash near the SoC), hold
-          <strong>pad 6 (CLK)</strong> to <strong>pad 4 (GND)</strong> with fine tweezers or a jumper. Pin 1 is the
-          dot. Pad 6 is the third pad down on the right, pad 4 is bottom-left. Do not touch pad 8 (VCC).</li>
-        <li data-i18n="admin-rockchip.recovery.step-2">Power the board on while holding the short. When it appears below in <strong>MaskROM</strong>, release
-          the short at once. If it does not appear, power off, re-seat the short and try again.</li>
-        <li data-i18n="admin-rockchip.recovery.step-3">In <em>Install a bootloader</em> below, select <strong>irate-box NAND U-Boot and Alpine rescue (C)</strong>.
-          Keep <em>Save a full copy of the onboard flash first</em> ticked. The box reads and saves the whole NAND,
-          then erases it and writes the boot chain, the rescue FIT and the UBI rescue. The board is standalone
-          afterwards: it boots its card first, then USB, then C.</li>
+        <li data-i18n="admin-rockchip.recovery.step-1">Power the board off and turn it over. The MaskROM pads are the
+          two pads in the red box on the underside, just left of the large flash chip (above the header's left end,
+          beside the 220 resistor block). Bridge those two pads with fine tweezers or a wire. Do not touch anything
+          else.</li>
+        <li data-i18n="admin-rockchip.recovery.step-2">Power the board on while bridging the pads. When it appears below
+          in <strong>MaskROM</strong>, release the pads at once. If it does not appear, power off, re-seat the bridge
+          and try again.</li>
+        <li data-i18n="admin-rockchip.recovery.step-3">In <em>Install a bootloader</em> below, select
+          <strong>irate-box NAND U-Boot and Alpine rescue (C)</strong>. Keep
+          <em>Save a full copy of the onboard flash first</em> ticked. The box reads and saves the whole NAND, then
+          erases it and writes the boot chain, the rescue FIT and the UBI rescue. The board is standalone afterwards:
+          it boots its card first, then USB, then C.</li>
       </ol>
       <figure class="rk-pins">
-        <img src="/maskrom-pins.png" alt="Jumper pad 6 (CLK) to pad 4 (GND) on the W25N02KV" data-i18n-alt="admin-rockchip.recovery.photo-alt" loading="lazy">
-        <figcaption data-i18n="admin-rockchip.recovery.photo-caption">W25N02KV, 8-pad WSON: pin 1 is the dot, pad 6 is CLK and pad 4 is GND. The photo is added at
-          <code>/maskrom-pins.png</code>.</figcaption>
+        <svg viewBox="0 0 900 470" role="img" translate="no" aria-label="Underside of the Lyra: two MaskROM pads in a red box, left of the large flash chip, above the header's left end; bridge the two pads.">
+          <rect x="18" y="18" width="864" height="434" rx="34" fill="var(--surface)" stroke="var(--muted)" stroke-width="3"/>
+          <circle cx="55" cy="55" r="22" fill="var(--bg)" stroke="var(--muted)" stroke-width="4"/>
+          <circle cx="845" cy="55" r="22" fill="var(--bg)" stroke="var(--muted)" stroke-width="4"/>
+          <circle cx="55" cy="415" r="22" fill="var(--bg)" stroke="var(--muted)" stroke-width="4"/>
+          <circle cx="845" cy="415" r="22" fill="var(--bg)" stroke="var(--muted)" stroke-width="4"/>
+          <rect x="300" y="6" width="90" height="30" rx="8" fill="var(--muted)" stroke="var(--border)" stroke-width="2"/>
+          <rect x="560" y="6" width="90" height="30" rx="8" fill="var(--muted)" stroke="var(--border)" stroke-width="2"/>
+          <text x="345" y="66" text-anchor="middle" font-size="14" fill="currentColor">USB-C</text>
+          <text x="605" y="66" text-anchor="middle" font-size="14" fill="currentColor">USB-C</text>
+          <circle cx="120" cy="386" r="6" fill="var(--muted)"/><circle cx="120" cy="414" r="6" fill="var(--muted)"/><circle cx="154" cy="386" r="6" fill="var(--muted)"/><circle cx="154" cy="414" r="6" fill="var(--muted)"/><circle cx="188" cy="386" r="6" fill="var(--muted)"/><circle cx="188" cy="414" r="6" fill="var(--muted)"/><circle cx="222" cy="386" r="6" fill="var(--muted)"/><circle cx="222" cy="414" r="6" fill="var(--muted)"/><circle cx="256" cy="386" r="6" fill="var(--muted)"/><circle cx="256" cy="414" r="6" fill="var(--muted)"/><circle cx="290" cy="386" r="6" fill="var(--muted)"/><circle cx="290" cy="414" r="6" fill="var(--muted)"/><circle cx="324" cy="386" r="6" fill="var(--muted)"/><circle cx="324" cy="414" r="6" fill="var(--muted)"/><circle cx="358" cy="386" r="6" fill="var(--muted)"/><circle cx="358" cy="414" r="6" fill="var(--muted)"/><circle cx="392" cy="386" r="6" fill="var(--muted)"/><circle cx="392" cy="414" r="6" fill="var(--muted)"/><circle cx="426" cy="386" r="6" fill="var(--muted)"/><circle cx="426" cy="414" r="6" fill="var(--muted)"/><circle cx="460" cy="386" r="6" fill="var(--muted)"/><circle cx="460" cy="414" r="6" fill="var(--muted)"/><circle cx="494" cy="386" r="6" fill="var(--muted)"/><circle cx="494" cy="414" r="6" fill="var(--muted)"/><circle cx="528" cy="386" r="6" fill="var(--muted)"/><circle cx="528" cy="414" r="6" fill="var(--muted)"/><circle cx="562" cy="386" r="6" fill="var(--muted)"/><circle cx="562" cy="414" r="6" fill="var(--muted)"/><circle cx="596" cy="386" r="6" fill="var(--muted)"/><circle cx="596" cy="414" r="6" fill="var(--muted)"/><circle cx="630" cy="386" r="6" fill="var(--muted)"/><circle cx="630" cy="414" r="6" fill="var(--muted)"/><circle cx="664" cy="386" r="6" fill="var(--muted)"/><circle cx="664" cy="414" r="6" fill="var(--muted)"/><circle cx="698" cy="386" r="6" fill="var(--muted)"/><circle cx="698" cy="414" r="6" fill="var(--muted)"/><circle cx="732" cy="386" r="6" fill="var(--muted)"/><circle cx="732" cy="414" r="6" fill="var(--muted)"/><circle cx="766" cy="386" r="6" fill="var(--muted)"/><circle cx="766" cy="414" r="6" fill="var(--muted)"/>
+          <text x="450" y="455" text-anchor="middle" font-size="14" fill="currentColor">2×20 header</text>
+          <rect x="250" y="300" width="170" height="110" rx="4" fill="var(--muted)" stroke="var(--border)" stroke-width="3"/>
+          <text x="335" y="362" text-anchor="middle" font-size="15" fill="var(--bg)">flash chip</text>
+          <rect x="178" y="265" width="54" height="72" rx="6" fill="none" stroke="var(--accent)" stroke-width="4"/>
+          <circle cx="205" cy="288" r="7" fill="var(--accent)"/>
+          <circle cx="205" cy="316" r="7" fill="var(--accent)"/>
+          <path d="M168 248 L192 273" fill="none" stroke="var(--accent)" stroke-width="2"/>
+          <text x="60" y="242" font-size="17" fill="currentColor">bridge these two</text>
+          <text x="60" y="264" font-size="13" fill="var(--muted)">while powering on</text>
+        </svg>
+        <figcaption data-i18n="admin-rockchip.recovery.photo-caption">The board's underside: bridge the two pads in
+          the red box, just left of the flash chip.</figcaption>
       </figure>
     </section>
 
