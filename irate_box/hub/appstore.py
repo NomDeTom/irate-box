@@ -778,7 +778,11 @@ def _file(handler, parts, level):
         return _not_found(handler)
     if not any(version["tag"] == tag for version in entry["versions"]):
         return _not_found(handler)
-    recorded = librarian._read_json(holder.ROOT / holder_id / tag / holder.DIGESTS, {})
+    try:
+        digests = confine.under(holder.ROOT, holder_id, tag, holder.DIGESTS)
+    except ValueError:
+        return _not_found(handler)
+    recorded = librarian._read_json(digests, {})
     note = recorded.get(name)
     if not (isinstance(note, list) and len(note) == 3):
         return _not_found(handler)

@@ -41,11 +41,12 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET  # DOCTYPE/ENTITY refused before parsing. # nosec B405
+import xml.etree.ElementTree as ET  # only its tree and its TreeBuilder: the parse is _parse_xml's, on expat. # nosec B405
 from datetime import datetime
 from pathlib import Path
+from xml.parsers import expat  # nosec B405 - read with a document type and entities refused
 
-from irate_box import validate, webfetch
+from irate_box import confine, validate, webfetch
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
@@ -247,15 +248,50 @@ def _pubdate(text):
         return 0
 
 
+class _DocumentType(Exception):
+    pass
+
+
+def _parse_xml(data, refused):
+    """The element tree of `data`, built here from expat's events: a document type declaration or an
+    entity is refused the moment expat reads one, in any spelling and any encoding (UTF-16 included),
+    before anything is expanded, and no external entity or DTD is ever read. `refused` is the message
+    said when one is found. A malformed document raises ET.ParseError, as ET.fromstring does. (The
+    box's expat is whichever its Debian release links, 2.2 to 2.8; this does not rely on the versions
+    from 2.4.1 that bound entity expansion themselves.) The standard `ET.fromstring` is not used: no
+    parser in `xml.etree` can be told to refuse them."""
+
+    def refuse(*arguments):
+        raise _DocumentType
+
+    def name(text):  # expat's "uri local" is ElementTree's "{uri}local"
+        return "{" + text.replace(" ", "}", 1) if " " in text else text
+
+    builder = ET.TreeBuilder()
+    parser = expat.ParserCreate(namespace_separator=" ")
+    parser.buffer_text = True
+    parser.StartDoctypeDeclHandler = refuse
+    parser.EntityDeclHandler = refuse
+    parser.StartElementHandler = lambda tag, attributes: builder.start(
+        name(tag), {name(key): value for key, value in attributes.items()}
+    )
+    parser.EndElementHandler = lambda tag: builder.end(name(tag))
+    parser.CharacterDataHandler = builder.data
+    try:
+        parser.Parse(data, True)
+    except _DocumentType:
+        raise LibrarianError(refused) from None
+    except expat.ExpatError as error:
+        raise ET.ParseError(str(error)) from None
+    return builder.close()
+
+
 def parse_feed(data, url):
     """{title, cover, new_url, episodes}: RSS with iTunes tags or basic Atom. Text is text."""
     if isinstance(data, str):
         data = data.encode()
-    if b"<!DOCTYPE" in data[:1000] or b"<!ENTITY" in data:
-        # Expat's own refusal also stops an entity expansion; make the words plain.
-        raise LibrarianError(M("podcast.feed.doctype", "This feed uses a document type the box does not read."))
     try:
-        root = ET.fromstring(data)  # a DOCTYPE or ENTITY was refused just above. # nosec B314 B405
+        root = _parse_xml(data, M("podcast.feed.doctype", "This feed uses a document type the box does not read."))
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.feed.invalid-xml", "The feed is not valid XML: {error}.", error=str(exc)[:120])
@@ -416,7 +452,12 @@ def feed_dir(feed_id):
     base = root()
     if base is None:
         raise LibrarianError(librarydrive.said_drive_missing("podcasts"))
-    return base / feed_id
+    try:
+        return confine.under(base, validate.name(feed_id, "The feed name"))
+    except (ValueError, TypeError):
+        raise LibrarianError(
+            M("podcast.feed.id", "Invalid feed name. Use letters, digits, dots, hyphens and underscores.")
+        ) from None
 
 
 def _index_path(feed_id):
@@ -897,7 +938,10 @@ def _xml(text):
 
 def import_opml(text):
     try:
-        root = ET.fromstring(text.encode() if isinstance(text, str) else text)  # OPML, pasted by the admin. # nosec B314 B405
+        root = _parse_xml(
+            text.encode() if isinstance(text, str) else text,
+            M("podcast.opml.doctype", "This file uses a document type the box does not read."),
+        )
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.opml.invalid", "That is not an OPML file: {error}.", error=str(exc)[:120])

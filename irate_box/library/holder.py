@@ -48,6 +48,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from irate_box import confine
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
@@ -274,7 +275,11 @@ def remove_files(holder_id):
     """The files of a holder, for when the admin removes it or asks for the files gone."""
     if not isinstance(holder_id, str) or not librarian.NAME_RE.fullmatch(holder_id):
         return
-    shutil.rmtree(ROOT / holder_id, ignore_errors=True)
+    try:
+        folder = confine.under(ROOT, holder_id)
+    except ValueError:
+        return
+    shutil.rmtree(folder, ignore_errors=True)
 
 
 # --- the releases --------------------------------------------------------------------------
