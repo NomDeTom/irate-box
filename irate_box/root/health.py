@@ -6682,6 +6682,33 @@ def setting_groups(s, wd):
             }
         )
     groups += memguard.groups()
+
+    groups.append(
+        {
+            "key": "boot-journal",
+            "label": M("hs.boot-journal", "Each boot's last minutes"),
+            "desc": M(
+                "hs.boot-journal.desc",
+                "Crash watch keeps the last minutes of a boot at shutdown and at the next boot. A hard reset "
+                "reaches neither, so an interval copies them to the card while the box runs. That "
+                "writes the card, so it is off by default.",
+            ),
+            "current": s.get("boot_journal", "off"),
+            "options": [
+                {"value": "off", "label": OFF, "choice": "crashwatch-boot-journal:off"},
+                {
+                    "value": "15min",
+                    "label": M("hs.boot-journal.15", "Every 15 minutes"),
+                    "choice": "crashwatch-boot-journal:15min",
+                },
+                {
+                    "value": "1h",
+                    "label": M("hs.boot-journal.1h", "Every hour"),
+                    "choice": "crashwatch-boot-journal:1h",
+                },
+            ],
+        }
+    )
     return groups
 
 

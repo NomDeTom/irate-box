@@ -173,16 +173,19 @@ check(
     "  a second keep leaves the first one as it is",
     cw.keep_boot_journal("aaaaaaaa-0000", now=6000.0) is None and path.read_text() == "kept before\n",
 )
-said = cw.keep_boot_journal("bbbbbbbb-0000", boot_offset=-1, now=7000.0, why="at the next boot")
+asked = []
+cw.last_journal_time = lambda boot=-1, timeout=30: asked.append(boot) or 1000.0
+said = cw.keep_boot_journal("bbbbbbbb-0000", journal_boot="bbbbbbbb-0000", now=7000.0, why="at the next boot")
 kept = (cw.BOOTS / "bbbbbbbb-0000.log").read_text()
 check(
     "the next boot with no shutdown: the previous boot's last minutes read from the journal",
     said is None and "at the next boot" in kept and "-71" in kept,
     kept[:200],
 )
+check("  read by the previous boot's ID, never by offset -1", asked == ["bbbbbbbb-0000"], asked)
 cw.journal_since = lambda *a, **k: ""
 cw.last_journal_time = lambda *a, **k: None
-cw.keep_boot_journal("cccccccc-0000", boot_offset=-1, now=8000.0, why="at the next boot")
+cw.keep_boot_journal("cccccccc-0000", journal_boot="cccccccc-0000", now=8000.0, why="at the next boot")
 check(
     "  a journal with nothing for that boot: said in the file, not raised",
     "# the journal had nothing for this boot" in (cw.BOOTS / "cccccccc-0000.log").read_text(),
@@ -213,6 +216,48 @@ check(
     and "at shutdown" in (cw.BOOTS / "dddddddd-0000-0000-0000-000000000000.log").read_text(),
 )
 put(PROC / "sys/kernel/random/boot_id", "163672e1-5e3e-44f8-94a4-994042b8f0fc\n")
+
+# The rolling copy: a hard reset keeps nothing that only reached disk at shutdown.
+cw.SETTINGS.write_text("{}")
+check("a rolling copy: off by default", cw.load_settings()["boot_journal"] == "off", cw.load_settings())
+said = cw.set_option("boot-journal", "15min")
+check(
+    "  every 15 minutes when chosen, said so",
+    cw.load_settings()["boot_journal"] == "15min" and said["id"] == "crashwatch-set.boot-journal.on",
+    said,
+)
+g = {x["key"]: x for x in health.doctor_settings()["groups"]}
+check(
+    "  the doctor's settings offer it, safest first",
+    g["boot-journal"]["current"] == "15min"
+    and [o["value"] for o in g["boot-journal"]["options"]] == ["off", "15min", "1h"],
+    g["boot-journal"],
+)
+for old in cw.BOOTS.glob("*.log"):
+    old.unlink()
+check(
+    "  off: no rolling copy is made",
+    cw.roll_boot_journal(20000.0, {"boot_journal": "off"}, 0, boot="roll") == 0
+    and not (cw.BOOTS / "roll.log").exists(),
+)
+cw.journal_since = lambda *a, **k: "[1.0] first copy"
+last = cw.roll_boot_journal(20000.0, cw.load_settings(), 0, boot="roll")
+check(
+    "  due: this boot's last minutes written", last == 20000.0 and "first copy" in (cw.BOOTS / "roll.log").read_text()
+)
+cw.journal_since = lambda *a, **k: "[2.0] second copy"
+check(
+    "  not due: nothing written",
+    cw.roll_boot_journal(20001.0, cw.load_settings(), last, boot="roll") == last
+    and "second copy" not in (cw.BOOTS / "roll.log").read_text(),
+)
+roll = cw.roll_boot_journal(20000.0 + 901, cw.load_settings(), last, boot="roll")
+check(
+    "  due again: the file replaced with the newer minutes",
+    roll == 20901.0 and "second copy" in (cw.BOOTS / "roll.log").read_text(),
+)
+cw.journal_since = lambda since, boot=None, timeout=30: HANG_FIXTURE
+cw.SETTINGS.write_text("{}")
 
 
 # --- the radio: failing, or only its link ---

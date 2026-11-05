@@ -112,7 +112,9 @@ DEFAULT = {
     "undervoltage": True,
     "undervoltage_mv": UNDERVOLTAGE_MV,
     "power_action": "log",
+    "boot_journal": "off",
 }
+BOOT_JOURNAL = {"off": 0, "15min": 900, "1h": 3600}
 FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5  # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
@@ -151,6 +153,8 @@ def load_settings():
         out["undervoltage_mv"] = raw["undervoltage_mv"]
     if raw.get("power_action") in POWER_ACTIONS:
         out["power_action"] = raw["power_action"]
+    if raw.get("boot_journal") in BOOT_JOURNAL:
+        out["boot_journal"] = raw["boot_journal"]
     return out
 
 
@@ -444,21 +448,23 @@ def last_journal_time(boot=-1, timeout=30):
         return None
 
 
-def keep_boot_journal(boot, boot_offset=None, now=None, why="", minutes=KEEP_MINUTES):
+def keep_boot_journal(boot, journal_boot=None, now=None, why="", minutes=KEEP_MINUTES, overwrite=False):
     """The last `minutes` of one boot, kept in BOOTS/<boot>.log before a flood can rotate it out of the
-    journal. At shutdown (boot_offset None) it reads this boot; at the next boot it reads the previous
-    one. An existing file is left as it is, and a failure is returned, never raised."""
+    journal. At shutdown (journal_boot None) it reads this boot; at the next boot it reads the previous
+    one by its ID, never by offset: after a hard reset the previous boot is often missing from disk, and
+    -1 would then name an older boot. An existing file is left as it is unless overwrite, and a failure
+    is returned, never raised."""
     now = now or time.time()
     path = BOOTS / f"{boot}.log"
-    if path.exists():
+    if path.exists() and not overwrite:
         return None
     since, text = (now - minutes * 60), ""
-    if boot_offset is None:
+    if journal_boot is None:
         text = journal_since(since)
     else:
-        last = last_journal_time(boot_offset)
+        last = last_journal_time(journal_boot)
         if last is not None:
-            text = journal_since(last - minutes * 60, boot_offset)
+            text = journal_since(last - minutes * 60, journal_boot)
     keep, flood = floods(text.splitlines(), limit=30)
     head = [
         f"# crash watch: the last {minutes} minutes of boot {boot}",
@@ -476,6 +482,24 @@ def keep_boot_journal(boot, boot_offset=None, now=None, why="", minutes=KEEP_MIN
     except OSError as exc:
         return f"the boot's last minutes not kept: {exc}"
     return None
+
+
+def roll_boot_journal(now, settings, last=0.0, boot=None):
+    """A rolling copy of this boot's last minutes while the administrator chose an interval. Returns
+    the time of the last copy (last itself when it is not due). Off by default: it writes the card."""
+    interval = BOOT_JOURNAL.get(settings.get("boot_journal", "off"), 0)
+    if not interval or now - last < interval:
+        return last
+    said = keep_boot_journal(
+        boot or boot_id(),
+        now=now,
+        why=f"a rolling copy every {interval // 60} minutes",
+        minutes=max(KEEP_MINUTES, interval // 60),
+        overwrite=True,
+    )
+    if said:
+        print(f"crashwatch: {said}", file=sys.stderr)
+    return now
 
 
 def snapshots_tail(nbytes=200_000, since=None):
@@ -592,7 +616,7 @@ def boot(now=None):
     cur, prev = boot_id(), _json(RUN, None)
     filed = None
     if prev and prev.get("boot") and prev["boot"] != cur:
-        said = keep_boot_journal(prev["boot"], boot_offset=-1, now=now, why="at the next boot")
+        said = keep_boot_journal(prev["boot"], journal_boot=prev["boot"], now=now, why="at the next boot")
         if said:
             print(f"crashwatch: {said}", file=sys.stderr)
     if prev and prev.get("boot") and prev["boot"] != cur and not prev.get("clean"):
@@ -632,7 +656,7 @@ def boot(now=None):
 def shutdown():
     rec = _json(RUN, {})
     now = time.time()
-    said = keep_boot_journal(boot_id(), now=now, why="at shutdown")
+    said = keep_boot_journal(boot_id(), now=now, why="at shutdown", overwrite=True)
     if said:
         print(f"crashwatch: {said}", file=sys.stderr)
     if rec.get("boot") == boot_id():
@@ -1136,6 +1160,20 @@ def set_option(key, value):
             "The supply's low point is {mv} mV.",
             mv=int(value),
         )
+    elif key == "boot-journal" and value in BOOT_JOURNAL:
+        s["boot_journal"] = value
+        msg = (
+            M(
+                "crashwatch-set.boot-journal.off",
+                "The last minutes of each boot are kept at shutdown and at the next boot only.",
+            )
+            if value == "off"
+            else M(
+                "crashwatch-set.boot-journal.on",
+                "The last minutes of this boot are copied to the card every {every}, so a hard reset keeps them.",
+                every=duration(BOOT_JOURNAL[value]),
+            )
+        )
     elif key == "power-action" and value in POWER_ACTIONS:
         s["power_action"] = value
         if value == "shutdown":
@@ -1189,6 +1227,7 @@ def run(once=False):
     floods_hour = Counter()
     hour_start = time.time()
     status_at = 0.0
+    rolled_at = 0.0
     pending = {"snap": None, "lines": []}
 
     def log(now, iface, kind, text, snapshot=False):
@@ -1247,6 +1286,7 @@ def run(once=False):
             mtime, settings = m, load_settings()
         lines = kmsg.read()
         pending["lines"] = lines
+        rolled_at = roll_boot_journal(now, settings, rolled_at)
         keep, flood = floods(lines)
         floods_hour.update(flood)
         for i, r in radios().items():
