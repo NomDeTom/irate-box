@@ -99,13 +99,13 @@ def mac_of(addr, neigh=""):
     try:
         for line in LEASES.read_text().splitlines():
             f = line.split()
-            if len(f) >= 3 and f[2] == addr and MAC_RE.match(f[1].lower()):
+            if len(f) >= 3 and f[2] == addr and MAC_RE.fullmatch(f[1].lower()):
                 return f[1].lower()
     except OSError:
         pass
     for line in neigh.splitlines():
         f = line.split()
-        if f and f[0] == addr and "lladdr" in f and MAC_RE.match(f[f.index("lladdr") + 1].lower()):
+        if f and f[0] == addr and "lladdr" in f and MAC_RE.fullmatch(f[f.index("lladdr") + 1].lower()):
             return f[f.index("lladdr") + 1].lower()
     return None
 
@@ -120,7 +120,7 @@ def guest_dns_unit(iface):
     """The resolver for guests let out (dns_hold): dnsmasq on GUEST_DNS_PORT, the hotspot's interface
     only, no DHCP, answering from the box's own resolv.conf. The hotspot's own dnsmasq keeps its
     catch-all; firewall.py sends only those let out here."""
-    if not re.match(r"^[A-Za-z0-9_.-]{1,15}$", iface):
+    if not re.fullmatch(r"^[A-Za-z0-9_.-]{1,15}$", iface):
         raise Refused(
             M("guest-share.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface))
         )

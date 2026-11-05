@@ -47,7 +47,7 @@ def key(name):
     """A login's notebook name, or None for a name that cannot be one (the accounts' names are
     lower-cased already; a leading dot would hide its folder)."""
     k = str(name or "").lower()
-    return k if NAME_RE.match(k) else None
+    return k if NAME_RE.fullmatch(k) else None
 
 
 def mode(st, signup):
@@ -187,7 +187,9 @@ class Notebooks:
 
     def view(self):
         """For /admin: who has one, and which are running."""
-        names = sorted(p.name for p in ROOT.iterdir() if p.is_dir() and NAME_RE.match(p.name)) if ROOT.is_dir() else []
+        names = (
+            sorted(p.name for p in ROOT.iterdir() if p.is_dir() and NAME_RE.fullmatch(p.name)) if ROOT.is_dir() else []
+        )
         with self.lock:
             return {
                 "mode": self.mode(),

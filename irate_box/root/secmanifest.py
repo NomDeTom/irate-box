@@ -280,7 +280,7 @@ def secrets(tree):
             if path in declared:
                 declared[path]["owner"] = owner
                 declared[path]["group"] = group
-        match = _INSTALL_RE.match(line)
+        match = _INSTALL_RE.fullmatch(line)
         if match and line.rstrip().endswith(tuple('"' + p + '"' for p in declared)):
             mode = match.group(1)
             for path in declared:

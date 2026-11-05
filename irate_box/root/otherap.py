@@ -62,7 +62,7 @@ def _save(rec):
 
 def _profile(uuid):
     """(name, ssid, file) of an access-point profile that is not irate-box's, or Refused saying why not."""
-    if not isinstance(uuid, str) or not UUID_RE.match(uuid):
+    if not isinstance(uuid, str) or not UUID_RE.fullmatch(uuid):
         raise Refused(M("other-ap.request.uuid", "The request is not valid: the connection ID is not a UUID."))
     code, out = run(
         "nmcli", "-t", "-f", "connection.id,802-11-wireless.mode,802-11-wireless.ssid", "con", "show", "uuid", uuid

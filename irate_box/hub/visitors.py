@@ -60,7 +60,7 @@ def macs():
                 seen.add(parts[3].lower())
     except OSError:
         pass
-    return {m for m in seen if MAC_RE.match(m) and m != NOBODY}
+    return {m for m in seen if MAC_RE.fullmatch(m) and m != NOBODY}
 
 
 class Counter:

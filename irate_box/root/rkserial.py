@@ -33,9 +33,9 @@ BOARD_SPEEDS = {"rockchip": 1500000, "allwinner": 115200, "raspberrypi": 115200}
 SPEEDS = (1500000, 921600, 115200, 57600, 38400, 9600)
 PACE = 0.004  # seconds between characters sent
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][0-9A-Za-z]|\x1b[=>78]")
-SHELL_RE = re.compile(r"root@[\w.-]+:[^\r\n#]*#\s*$")
-LOGIN_RE = re.compile(r"login:\s*$")
-INITRAMFS_RE = re.compile(r"\(initramfs\)\s*$")
+SHELL_RE = re.compile(r"root@[\w.-]+:[^\r\n#]*#\s*\Z")
+LOGIN_RE = re.compile(r"login:\s*\Z")
+INITRAMFS_RE = re.compile(r"\(initramfs\)\s*\Z")
 # Armbian 26.11's first login on an autologin console waits for an Enter before its first question
 # (armbian-firstlogin: `until read -r -t 1 _`, which Ctrl-C does not end). Only this line asks for it.
 ENTER_RE = re.compile(r"Press Enter to start the first login setup")

@@ -220,7 +220,7 @@ def parse_lock(value):
 def advance_lock(lock, proof):
     """The lock after a valid proof, or None if the proof is not the next step of the chain."""
     proof = (proof or "").strip().lower()
-    if not lock or not _HEX64.match(proof) or lock.get("n", 0) < 1:
+    if not lock or not _HEX64.fullmatch(proof) or lock.get("n", 0) < 1:
         return None
     if hashlib.sha256(bytes.fromhex(proof)).hexdigest() != lock.get("head"):
         return None

@@ -55,9 +55,9 @@ def problem(value, kind="text"):
         return "A WiFi password is 8 to 63 characters."
     if kind == "password" and len(value) < 8:
         return "A password here is at least 8 characters."
-    if kind == "hostname" and not HOSTNAME_RE.match(value):
+    if kind == "hostname" and not HOSTNAME_RE.fullmatch(value):
         return "A name is lower-case letters, digits and hyphens, up to 63, not starting or ending with a hyphen."
-    if kind == "user" and not USER_RE.match(value):
+    if kind == "user" and not USER_RE.fullmatch(value):
         return "A user name is lower-case letters, digits, hyphens and underscores, starting with a letter."
     return None
 
@@ -74,7 +74,7 @@ def hotspots(nets=None):
         nets = _scan["nets"]
     out = []
     for n in nets:
-        found = HOTSPOT_RE.match(n.get("ssid") or "")
+        found = HOTSPOT_RE.fullmatch(n.get("ssid") or "")
         if found:
             host = found.group("host") or found.group("host2") or ""
             out.append({"ssid": n["ssid"], "host": host, "signal": n.get("signal", 0), "boards": n.get("aps", 1)})
@@ -150,7 +150,7 @@ def consoles():
         names = sorted(p.name for p in SERIAL_BY_ID.iterdir() if p.is_file() and not p.is_symlink())
     except OSError:
         return []
-    return [name for name in names if CONSOLE_RE.match(name)]
+    return [name for name in names if CONSOLE_RE.fullmatch(name)]
 
 
 def board_model():

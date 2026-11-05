@@ -68,7 +68,7 @@ def box_key():
 def ssh(address, command, timeout=120, key=None):
     """One command at the board as root, with the box's key. Nothing of the command is built from an unchecked
     value: the caller quotes what it puts in."""
-    if not ADDRESS_RE.match(address or ""):
+    if not ADDRESS_RE.fullmatch(address or ""):
         raise Refused(M("rkfinish.address", "The board's address is not valid."))
     if not Path(key or KEY).is_file():
         box_key()
@@ -79,7 +79,7 @@ def ssh(address, command, timeout=120, key=None):
 def ssh_password(address, command, password, timeout=180):
     """One command at the board as root with a password, for the first visit before the box's key is on it. The
     password goes to ssh through an askpass helper in root's own temporary folder, never on its command line."""
-    if not ADDRESS_RE.match(address or ""):
+    if not ADDRESS_RE.fullmatch(address or ""):
         raise Refused(M("rkfinish.address", "The board's address is not valid."))
     KEY.parent.mkdir(parents=True, exist_ok=True)
     fd, helper = tempfile.mkstemp(prefix="board-askpass-", dir=str(KEY.parent))
@@ -214,7 +214,7 @@ def install(address, options=None, key=None):
             branch = one.split("=", 1)[1]
         else:
             rest.append(one)
-    if not re.match(r"^https://[A-Za-z0-9./_-]+$", repo):
+    if not re.fullmatch(r"^https://[A-Za-z0-9./_-]+$", repo):
         raise Refused(M("rkfinish.repo", "This box's recorded repository is not an https address the box can use."))
     for one in (repo, branch, *rest):
         if any(ch in one for ch in "\"'`$\\\n\r"):

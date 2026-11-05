@@ -63,7 +63,7 @@ def _one_of(*allowed):
 
 
 def _mac_or_empty(n, v):
-    if v and not MAC_RE.match(v):
+    if v and not MAC_RE.fullmatch(v):
         raise Refused(
             M(
                 "nm-conn.setting.bssid",
@@ -172,7 +172,7 @@ def lasts(uuid, integrated):
 
 def change(uuid, changes, integrated=False):
     """Set one connection's own settings ({name: value | "default"}). A message saying what was done."""
-    if not isinstance(uuid, str) or not UUID_RE.match(uuid):
+    if not isinstance(uuid, str) or not UUID_RE.fullmatch(uuid):
         raise Refused(M("nm-conn.request.uuid", "The request is not valid: the connection ID is not a UUID."))
     if not isinstance(changes, dict) or not changes:
         raise Refused(M("nm-conn.request.empty", "The request is not valid: it changes no setting."))

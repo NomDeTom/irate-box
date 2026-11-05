@@ -213,11 +213,11 @@ def _kernel_headers():
     owner = found.stdout.strip() if found.returncode == 0 else ""
     if owner and ":" in owner:
         name = owner.split(":", 1)[0].strip()
-        if PKG_RE.match(name):
+        if PKG_RE.fullmatch(name):
             return name
     name = f"linux-headers-{release}"
     if (
-        PKG_RE.match(name)
+        PKG_RE.fullmatch(name)
         and run(["apt-cache", "show", "--no-all-versions", name], check=False, timeout=120).stdout.strip()
     ):
         return name
@@ -408,7 +408,7 @@ def _fetch_wheels(kit_id, pip_pkgs, stage, log):
     )
     wheels = []
     for w in sorted(wstage.iterdir()):
-        if WHEEL_RE.match(w.name) and w.is_file():
+        if WHEEL_RE.fullmatch(w.name) and w.is_file():
             wheels.append({"file": w.name, "size": w.stat().st_size, "sha256": sha256(w)})
     return wheels
 
@@ -436,7 +436,7 @@ def _wanted(said):
     return {
         m["file"]: (int(m["size"]), m["sha256"])
         for m in map(URI_RE.match, said.splitlines())
-        if m and DEB_RE.match(m["file"])
+        if m and DEB_RE.fullmatch(m["file"])
     }
 
 
@@ -954,7 +954,9 @@ def install(kit_id, hours=24, log=print):
     upgraded = sorted(f"{p} {before[p]} → {after[p]}" for p in before if p in after and after[p] != before[p])
     # A service the kit is for (the debug kit's core dumps: systemd-coredump.socket) runs; every
     # other one its packages brought stays stopped and disabled.
-    wanted = {u for u in kit.get("services", []) if isinstance(u, str) and UNIT_RE.match(f"/lib/systemd/system/{u}")}
+    wanted = {
+        u for u in kit.get("services", []) if isinstance(u, str) and UNIT_RE.fullmatch(f"/lib/systemd/system/{u}")
+    }
     units = _disable_units(added, keep=wanted)
     for u in sorted(wanted):
         run(["systemctl", "enable", "--now", u], check=False, timeout=120)
@@ -1052,7 +1054,7 @@ def install_from_cache(names, run=run, log=print):
     """Packages a kit has already cached, installed from the local repository alone (no internet): for a
     tool the box needs now, such as hostapd for a hotspot. The names must be in a cached kit's manifest.
     Services the packages bring stay stopped. Returns the names installed."""
-    wanted = [n for n in names if isinstance(n, str) and PKG_RE.match(n)]
+    wanted = [n for n in names if isinstance(n, str) and PKG_RE.fullmatch(n)]
     missing = [n for n in wanted if n not in _installed_packages()]
     if not missing:
         return []
@@ -1167,7 +1169,11 @@ MAX_OWN = 40
 def _checked_packages(pkgs, most):
     """Package names the page typed: Debian's rules, no repeats, and each one this box's package
     lists know (apt-cache), so a typo is refused now rather than at the next fetch."""
-    if not isinstance(pkgs, list) or len(pkgs) > most or not all(isinstance(p, str) and PKG_RE.match(p) for p in pkgs):
+    if (
+        not isinstance(pkgs, list)
+        or len(pkgs) > most
+        or not all(isinstance(p, str) and PKG_RE.fullmatch(p) for p in pkgs)
+    ):
         raise Refused(
             M(
                 "kits.packages.invalid",
@@ -1199,7 +1205,7 @@ def define(spec):
     if not isinstance(spec, dict):
         raise Refused(M("kits.define.not-object", "The request is not valid: the kit must be an object."))
     kid = str(spec.get("id", ""))
-    if not ID_RE.match(kid) or kid == "extras":
+    if not ID_RE.fullmatch(kid) or kid == "extras":
         raise Refused(M("kits.define.bad-id", "The ID is not valid. Use up to 32 lowercase letters, digits and '-'."))
     if kid in kitdefs.shipped():
         raise Refused(
@@ -1542,7 +1548,7 @@ def _vouching(want):
     files' hashes. want: {file: sha256}."""
     lists, vouched = [], set()
     for pk in sorted(p for d in (APT_LISTS, DEBUG_LISTS) for p in d.glob("*_Packages")):
-        m = LIST_RE.match(pk.name)
+        m = LIST_RE.fullmatch(pk.name)
         if not m or not (pk.parent / f"{m.group('release')}_InRelease").exists():
             continue
         # By hash alone: apt saves a .deb with its version's epoch in the name (valgrind_1%3a3.24…),
@@ -1631,7 +1637,7 @@ def stick_kits(root):
         if m.is_symlink():
             continue
         man = _read(m, None)
-        if isinstance(man, dict) and ID_RE.match(m.parent.name) and isinstance(man.get("packages"), list):
+        if isinstance(man, dict) and ID_RE.fullmatch(m.parent.name) and isinstance(man.get("packages"), list):
             out.append(
                 {
                     "kit": m.parent.name,
@@ -1795,7 +1801,7 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
     try:
         vouch = set()
         for pk in sorted([*(folder / "lists").glob("*_Packages"), *(folder / "lists").glob("*_Packages.xz")]):
-            m = LIST_RE.match(pk.name.removesuffix(".xz"))
+            m = LIST_RE.fullmatch(pk.name.removesuffix(".xz"))
             rel = folder / "lists" / f"{m.group('release')}_InRelease" if m else None
             if not rel or not rel.is_file() or pk.is_symlink() or rel.is_symlink():
                 continue
@@ -1820,7 +1826,7 @@ def import_usb(src_root, kit_id, budget_mb=500, report=None, freshness=None):
         for p in man["packages"]:
             name = str(p.get("file", ""))
             deb = folder / "debs" / name
-            if not DEB_RE.match(name) or deb.is_symlink() or not deb.is_file():
+            if not DEB_RE.fullmatch(name) or deb.is_symlink() or not deb.is_file():
                 if not name:
                     raise Refused(
                         M(

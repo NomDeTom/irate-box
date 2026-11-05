@@ -150,15 +150,15 @@ def validate_feed(raw, existing=True):
     if not isinstance(raw, dict):
         raise LibrarianError(M("podcast.feed.invalid", "Invalid feed. It must have an address."))
     url = str(raw.get("url", "")).strip()
-    if not URL_RE.match(url) or len(url) > 1000:
+    if not URL_RE.fullmatch(url) or len(url) > 1000:
         raise LibrarianError(M("podcast.feed.url", "Enter the feed's address, starting with http:// or https://."))
     title = str(raw.get("title", "")).strip()[:200]
     feed_id = raw.get("id")
     if not feed_id:
         feed_id = re.sub(r"[^a-z0-9]+", "-", (title or urllib.parse.urlparse(url).netloc).lower()).strip("-")[:32]
-        if not feed_id or not NAME_RE.match(feed_id):
+        if not feed_id or not NAME_RE.fullmatch(feed_id):
             feed_id = hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest()[:16]
-    if not isinstance(feed_id, str) or not NAME_RE.match(feed_id):
+    if not isinstance(feed_id, str) or not NAME_RE.fullmatch(feed_id):
         raise LibrarianError(
             M("podcast.feed.id", "Invalid feed name. Use letters, digits, dots, hyphens and underscores.")
         )
@@ -891,7 +891,7 @@ def import_opml(text):
         if node.tag.rsplit("}", 1)[-1].lower() != "outline":
             continue
         url = _attr(node, "xmlUrl")
-        if not url or url in known or not URL_RE.match(url):
+        if not url or url in known or not URL_RE.fullmatch(url):
             continue
         feed = validate_feed({"url": url, "title": _attr(node, "title") or _attr(node, "text")})
         if any(f["id"] == feed["id"] for f in cfg["feeds"]):

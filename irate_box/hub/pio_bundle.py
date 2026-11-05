@@ -177,7 +177,7 @@ def manifest_at(source, ref):
     """A manifest read from a source's tag or branch with git, without a checkout: a bare mirror is
     enough. The same shape as manifest(), with the tag's commit."""
     source = Path(source)
-    if not REF_RE.match(ref or "") or ".." in ref:
+    if not REF_RE.fullmatch(ref or "") or ".." in ref:
         raise ValueError("select a valid branch or tag")
     commit = _git(source, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
     if not commit:

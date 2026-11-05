@@ -79,7 +79,7 @@ def validate(report):
             if not isinstance(cvss, (int, float)) or not 0 <= cvss <= 10:
                 raise Refused(M("secimport.cvss.invalid", "Scan data invalid. The CVSS score must be 0 to 10."))
             cves = r.get("cves") or []
-            if not isinstance(cves, list) or not all(isinstance(c, str) and CVE_RE.match(c) for c in cves[:50]):
+            if not isinstance(cves, list) or not all(isinstance(c, str) and CVE_RE.fullmatch(c) for c in cves[:50]):
                 raise Refused(
                     M(
                         "secimport.cves.invalid",

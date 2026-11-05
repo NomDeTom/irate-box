@@ -58,6 +58,7 @@ run sim_front_writes.py
 run sim_write_checked.py
 run write_guard.py
 run subprocess_guard.py
+run regex_anchor_guard.py
 run sim_retain.py
 run sim_nand_health.py
 run sim_led.py

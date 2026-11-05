@@ -57,13 +57,13 @@ def leases():
                 continue
             for line in text.splitlines():
                 fields = line.split()
-                if len(fields) >= 4 and ADDRESS_RE.match(fields[2]) and _mac(fields[1]):
+                if len(fields) >= 4 and ADDRESS_RE.fullmatch(fields[2]) and _mac(fields[1]):
                     found[fields[2]] = {"mac": fields[1].lower(), "host": fields[3] if fields[3] != "*" else ""}
             for block in re.findall(r"lease\s*\{([^}]*)\}", text):
                 ip = re.search(r"(?:fixed-address|option\s+ip-address)\s+([\d.]+)", block)
                 mac = re.search(r"hardware\s+ethernet\s+([0-9a-fA-F:]{17})", block)
                 host = re.search(r'client-hostname\s+"([^"]*)"', block)
-                if ip and ADDRESS_RE.match(ip.group(1)):
+                if ip and ADDRESS_RE.fullmatch(ip.group(1)):
                     found[ip.group(1)] = {
                         "mac": (mac.group(1).lower() if mac else ""),
                         "host": host.group(1) if host else "",
@@ -77,7 +77,7 @@ def neighbours():
     found = {}
     for line in (got.stdout or "").splitlines():
         fields = line.split()
-        if fields and ADDRESS_RE.match(fields[0]) and "lladdr" in fields:
+        if fields and ADDRESS_RE.fullmatch(fields[0]) and "lladdr" in fields:
             mac = fields[fields.index("lladdr") + 1]
             if _mac(mac):
                 found[fields[0]] = mac.lower()

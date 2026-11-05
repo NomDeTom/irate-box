@@ -176,7 +176,7 @@ def _req_spec(line):
     line = (line or "").split("#", 1)[0].strip()
     if not line or line.startswith(("-", "git+", "http:", "https:", "file:", ".", "/")):
         return None
-    m = re.match(
+    m = re.fullmatch(
         r"^([A-Za-z0-9][A-Za-z0-9_.-]*)(?:\[[^\]]*\])?\s*(===|==|>=|<=|~=|!=|>|<)?\s*([A-Za-z0-9_.*+!-]+)?$",
         line,
     )
@@ -220,9 +220,9 @@ def wheelhouse_packages():
     for path in sorted(root.iterdir()):
         if path.suffix == ".whl":
             # A wheel: distribution-version-python-abi-platform.whl (dashes only separate the parts).
-            m = re.match(r"^([^-]+)-([^-]+)-.*\.whl$", path.name)
+            m = re.fullmatch(r"^([^-]+)-([^-]+)-.*\.whl$", path.name)
         else:
-            m = re.match(r"^(.+?)-([0-9][A-Za-z0-9.!+_-]*)\.(tar\.gz|zip)$", path.name)
+            m = re.fullmatch(r"^(.+?)-([0-9][A-Za-z0-9.!+_-]*)\.(tar\.gz|zip)$", path.name)
         if m:
             out.setdefault(_name(m.group(1)), m.group(2))
     return out
@@ -834,7 +834,7 @@ def ensure_cache(job, log=print):
     from irate_box.hub import pio_bundle
 
     version = str(job.get("version") or "").lstrip("v")
-    if not VERSION_RE.match(version):
+    if not VERSION_RE.fullmatch(version):
         log("proving: the release name is not one a cache can be filed under")
         return None
     cache = cache_dir(job.get("family"), version)
@@ -879,7 +879,7 @@ def extract_bundle(path, family, version, log=print):
     from irate_box.library import firmware
 
     version = str(version or "").lstrip("v")
-    if not VERSION_RE.match(version):
+    if not VERSION_RE.fullmatch(version):
         log("proving: the release name is not one a cache can be filed under")
         return None
     if not pio_bundle.verify(path).get("ok"):

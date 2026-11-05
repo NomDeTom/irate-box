@@ -534,7 +534,7 @@ def migrate(raw):
     if "watch_new" not in raw:
         # One interface chosen to watch (the old "Watch" field): that one watched, no other; "auto": the route's link.
         iface = raw.get("iface", "auto")
-        if isinstance(iface, str) and iface != "auto" and IFACE_RE.match(iface):
+        if isinstance(iface, str) and iface != "auto" and IFACE_RE.fullmatch(iface):
             raw["watch"] = {**(raw.get("watch") if isinstance(raw.get("watch"), dict) else {}), iface: True}
             raw["watch_new"] = "none"
             raw["iface"] = "auto"
@@ -595,7 +595,7 @@ def validate(raw):
     if guests not in GUESTS:
         raise Refused(_not_one_of("guests", GUESTS))
     iface = str(raw.get("iface", "auto"))
-    if not IFACE_RE.match(iface):
+    if not IFACE_RE.fullmatch(iface):
         raise Refused(_bad_iface(iface))
     w = raw.get("on_wedge", "ladder")
     if w not in ON_WEDGE:
@@ -614,7 +614,7 @@ def validate(raw):
         raise Refused(_not_one_of("roaming", ROAMING))
     lock = raw.get("lock_bssid")
     lock = lock.lower() if isinstance(lock, str) else None
-    if roaming == "lock" and not (lock and BSSID_RE.match(lock)):
+    if roaming == "lock" and not (lock and BSSID_RE.fullmatch(lock)):
         raise Refused(
             M(
                 "uplink.lock.no-bssid",
@@ -630,7 +630,7 @@ def validate(raw):
             )
         )
     for name, on in watch.items():
-        if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(on, bool):
+        if not IFACE_RE.fullmatch(str(name)) or name == "auto" or not isinstance(on, bool):
             raise Refused(
                 M(
                     "uplink.watch.entry",
@@ -648,7 +648,7 @@ def validate(raw):
         )
     clean_hw = {}
     for name, h in hw.items():
-        if not IFACE_RE.match(str(name)) or name == "auto" or not isinstance(h, dict):
+        if not IFACE_RE.fullmatch(str(name)) or name == "auto" or not isinstance(h, dict):
             raise Refused(
                 M(
                     "uplink.watch-hw.entry",
@@ -657,7 +657,7 @@ def validate(raw):
                 )
             )
         mac, path = h.get("mac"), h.get("path")
-        if mac is not None and not (isinstance(mac, str) and BSSID_RE.match(mac)):
+        if mac is not None and not (isinstance(mac, str) and BSSID_RE.fullmatch(mac)):
             raise Refused(
                 M(
                     "uplink.watch-hw.mac",
@@ -665,7 +665,7 @@ def validate(raw):
                     name=name,
                 )
             )
-        if path is not None and not (isinstance(path, str) and HW_PATH_RE.match(path)):
+        if path is not None and not (isinstance(path, str) and HW_PATH_RE.fullmatch(path)):
             raise Refused(
                 M("uplink.watch-hw.path", "The hardware path of {name} must name a bus and a device.", name=name)
             )
@@ -765,7 +765,7 @@ def validate(raw):
         )
     out["steps_off"] = {}
     for name, steps in off.items():
-        if not IFACE_RE.match(str(name)) or name == "auto":
+        if not IFACE_RE.fullmatch(str(name)) or name == "auto":
             raise Refused(_bad_iface(name))
         if not isinstance(steps, list) or any(x not in STEPS for x in steps):
             raise Refused(
@@ -788,7 +788,7 @@ def validate(raw):
         )
     out["per_iface"] = {}
     for name, own in per.items():
-        if not IFACE_RE.match(str(name)) or name == "auto":
+        if not IFACE_RE.fullmatch(str(name)) or name == "auto":
             raise Refused(_bad_iface(name))
         if not isinstance(own, dict) or any(k not in PER_IFACE for k in own):
             raise Refused(
@@ -2337,8 +2337,8 @@ def link_hw(iface, run=run):
         path = f"{(dev / 'subsystem').resolve().name}:{dev.name}" if (dev / "subsystem").exists() else None
     except OSError:
         path = None
-    mac = mac.lower() if mac and BSSID_RE.match(mac.lower()) and mac != "00:00:00:00:00:00" else None
-    return {"mac": mac, "path": path if path and HW_PATH_RE.match(path) else None}
+    mac = mac.lower() if mac and BSSID_RE.fullmatch(mac.lower()) and mac != "00:00:00:00:00:00" else None
+    return {"mac": mac, "path": path if path and HW_PATH_RE.fullmatch(path) else None}
 
 
 def aliases(chosen, candidates, hw=link_hw):

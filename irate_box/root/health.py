@@ -7667,7 +7667,7 @@ def _installed_commit():
         first = (CODE / "VERSION").read_text().split()[0].removesuffix("-dirty")
     except (OSError, IndexError):
         return None
-    match = re.search(r"-g([0-9a-f]{7,40})$", first) or re.match(r"^([0-9a-f]{7,40})$", first)
+    match = re.search(r"-g([0-9a-f]{7,40})\Z", first) or re.fullmatch(r"^([0-9a-f]{7,40})$", first)
     return match.group(1) if match else None
 
 
@@ -7790,7 +7790,7 @@ ARMBIAN_BY_DESIGN = re.compile(
 
 
 def _by_design(path):
-    return bool(CHANGED_BY_DESIGN.match(path) or (ARMBIAN_RELEASE.exists() and ARMBIAN_BY_DESIGN.match(path)))
+    return bool(CHANGED_BY_DESIGN.fullmatch(path) or (ARMBIAN_RELEASE.exists() and ARMBIAN_BY_DESIGN.fullmatch(path)))
 
 
 def _package_findings(damaged, scope):
@@ -8831,7 +8831,7 @@ def doctor_settings():
 
 
 def fix(choice):
-    if not CHOICES_RE.match(choice):
+    if not CHOICES_RE.fullmatch(choice):
         raise Refused(M("repair.unknown", "The Box doctor has no repair called {choice}.", choice=choice))
     from irate_box.root import hardware
 
@@ -8919,7 +8919,7 @@ def fix(choice):
         if (
             arg not in failed
             or ours(arg)
-            or not re.match(r"^[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]*\.(service|socket|timer|mount)$", arg)
+            or not re.fullmatch(r"^[A-Za-z0-9@_][A-Za-z0-9@_.:\\-]*\.(service|socket|timer|mount)$", arg)
         ):
             raise Refused(
                 M(
@@ -9132,7 +9132,7 @@ def fix(choice):
         from irate_box.hub import uplink
 
         iface, _, step = arg.partition(":")
-        if step not in uplink.STEPS or not uplink.IFACE_RE.match(iface) or iface == "auto":
+        if step not in uplink.STEPS or not uplink.IFACE_RE.fullmatch(iface) or iface == "auto":
             raise Refused(M("repair.step.unknown", "{choice} does not name a link and a recovery action.", choice=arg))
         chosen = uplink.load_settings()
         steps = set(chosen.get("steps_off", {}).get(iface, [])) | {step}

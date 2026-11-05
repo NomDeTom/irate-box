@@ -146,7 +146,7 @@ def validate_holder(raw):
         raise LibrarianError(M("library.holder.invalid", "Invalid holder. It must be an object."))
     holder = {**HOLDER_DEFAULTS, **{key: raw[key] for key in HOLDER_DEFAULTS if key in raw}}
     holder["id"] = raw.get("id")
-    if not isinstance(holder["id"], str) or not librarian.NAME_RE.match(holder["id"]):
+    if not isinstance(holder["id"], str) or not librarian.NAME_RE.fullmatch(holder["id"]):
         raise LibrarianError(
             M(
                 "library.holder.id-invalid",
@@ -170,7 +170,7 @@ def validate_holder(raw):
             )
         )
     repo = raw.get("repo")
-    if not isinstance(repo, str) or not librarian.REPO_RE.match(repo):
+    if not isinstance(repo, str) or not librarian.REPO_RE.fullmatch(repo):
         raise LibrarianError(
             M(
                 "library.holder.repo-invalid",
@@ -216,7 +216,11 @@ def validate_holder(raw):
     seen = {"stable", "pre-release"}
     cleaned_extras = []
     for extra in extras:
-        if not isinstance(extra, dict) or not isinstance(extra.get("name"), str) or not CHANNEL_RE.match(extra["name"]):
+        if (
+            not isinstance(extra, dict)
+            or not isinstance(extra.get("name"), str)
+            or not CHANNEL_RE.fullmatch(extra["name"])
+        ):
             raise LibrarianError(M("library.holder.extras-invalid", "Invalid list of other channels."))
         if extra["name"] in seen:
             raise LibrarianError(M("library.holder.extras-repeated", "Each channel needs a name of its own."))
@@ -268,7 +272,7 @@ def set_settings(**changes):
 
 def remove_files(holder_id):
     """The files of a holder, for when the admin removes it or asks for the files gone."""
-    if not isinstance(holder_id, str) or not librarian.NAME_RE.match(holder_id):
+    if not isinstance(holder_id, str) or not librarian.NAME_RE.fullmatch(holder_id):
         return
     shutil.rmtree(ROOT / holder_id, ignore_errors=True)
 
@@ -344,7 +348,7 @@ def held_files(release, holder):
     direct = [
         asset
         for asset in release["assets"]
-        if FILE_RE.match(asset["name"])
+        if FILE_RE.fullmatch(asset["name"])
         and any(
             include.search(asset["name"]) and not (exclude and exclude.search(asset["name"]))
             for include, exclude in holds
@@ -359,7 +363,7 @@ def held_files(release, holder):
     extra = []
     for asset in release["assets"]:
         name = asset["name"]
-        if name in held or not FILE_RE.match(name):
+        if name in held or not FILE_RE.fullmatch(name):
             continue
         parent = holdsurvey.parent_of(name, names)
         if parent in held:
@@ -394,7 +398,7 @@ def plan(holder, releases, now=None, record=None):
     kept, counts = [], {}
     for release in ordered:
         channel = channel_of(release, holder)
-        if channel is None or not TAG_RE.match(release["tag"]):
+        if channel is None or not TAG_RE.fullmatch(release["tag"]):
             continue
         if counts.get(channel, 0) >= keep_for(holder, channel):
             continue
@@ -421,7 +425,7 @@ def plan(holder, releases, now=None, record=None):
             (
                 release
                 for release in ordered
-                if channel_of(release, holder) is not None and TAG_RE.match(release["tag"])
+                if channel_of(release, holder) is not None and TAG_RE.fullmatch(release["tag"])
             ),
             None,
         )
@@ -491,7 +495,7 @@ def _mirror_version(holder, entry, policy, log, changes=None):
     have = {}
     for asset in entry["files"]:
         name = asset["name"]
-        match = DIGEST_RE.match(asset["digest"] or "")
+        match = DIGEST_RE.fullmatch(asset["digest"] or "")
         if not match:
             log(f"holder {holder['id']} {entry['tag']}: {name} left out: GitHub gave no SHA-256 for it")
             continue
@@ -559,11 +563,11 @@ def disk_uses(holder_id):
     index = librarian._read_json(ROOT / holder_id / "index.json", {})
     versions, total = [], 0
     for version in index.get("versions", []) if isinstance(index, dict) else []:
-        if not TAG_RE.match(str(version.get("tag", ""))):
+        if not TAG_RE.fullmatch(str(version.get("tag", ""))):
             continue
         files = []
         for file in version.get("files", []):
-            if not FILE_RE.match(str(file.get("name", ""))):
+            if not FILE_RE.fullmatch(str(file.get("name", ""))):
                 continue
             path = ROOT / holder_id / version["tag"] / file["name"]
             if path.is_file() and not path.is_symlink():

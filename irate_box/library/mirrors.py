@@ -102,7 +102,7 @@ def _not_found(name):
 
 
 def _ref_ok(r):
-    return isinstance(r, str) and REF_RE.match(r) and ".." not in r and not r.endswith((".", "/", ".lock"))
+    return isinstance(r, str) and REF_RE.fullmatch(r) and ".." not in r and not r.endswith((".", "/", ".lock"))
 
 
 def validate(m):
@@ -112,7 +112,7 @@ def validate(m):
     name = str(m.get("name", "")).strip()
     if name.endswith(".git"):
         name = name[:-4]
-    if not gitrepos.NAME_RE.match(name):
+    if not gitrepos.NAME_RE.fullmatch(name):
         raise LibrarianError(
             M(
                 "mirrors.name.invalid",
@@ -157,7 +157,7 @@ def validate(m):
                 )
             )
         pattern = str(g.get("pattern") or "*")
-        if len(pattern) > 64 or not re.match(r"^[A-Za-z0-9*?._/\-\[\]]+$", pattern):
+        if len(pattern) > 64 or not re.fullmatch(r"^[A-Za-z0-9*?._/\-\[\]]+$", pattern):
             raise LibrarianError(
                 M(
                     "mirrors.group.pattern-invalid",
@@ -481,12 +481,16 @@ def readme_title(text):
     lines = text.splitlines()[:200]
     for i, line in enumerate(lines):
         rule = lines[i + 1] if i + 1 < len(lines) else ""
-        heading = re.match(r"^ {0,3}#{1,6}\s+(.+)$", line)
+        heading = re.fullmatch(r"^ {0,3}#{1,6}\s+(.+)$", line)
         if heading:
             found = _plain(heading.group(1))
-        elif RST_RULE_RE.match(line) and i + 2 < len(lines) and lines[i + 2].strip() == line.strip() and rule.strip():
+        elif (
+            RST_RULE_RE.fullmatch(line) and i + 2 < len(lines) and lines[i + 2].strip() == line.strip() and rule.strip()
+        ):
             found = _plain(rule)  # an overline too: the line between two rules
-        elif line.strip() and not RST_RULE_RE.match(line) and RST_RULE_RE.match(rule) and len(rule.strip()) >= 3:
+        elif (
+            line.strip() and not RST_RULE_RE.fullmatch(line) and RST_RULE_RE.fullmatch(rule) and len(rule.strip()) >= 3
+        ):
             found = _plain(line)
         else:
             continue
