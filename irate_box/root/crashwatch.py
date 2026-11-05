@@ -67,6 +67,9 @@ DIR = safeio.ROOT_STATE / "crashwatch"
 OLD_DIR = STATE / "crashwatch"  # before 2026-10; migrate() moves its files over
 SNAP = DIR / "snap.log"
 RUN = DIR / "run.json"  # this boot: its id, when it started, whether it stopped cleanly
+BOOTS = DIR / "boots"  # the last minutes of each of the last few boots, kept apart from the journal
+KEEP_BOOTS = 5
+KEEP_MINUTES = 10
 CRASHES = DIR / "crashes"
 INDEX = DIR / "crashes.json"
 INCIDENTS = DIR / "incidents.json"  # a radio's failures, filed as they happen (the box may never stop)
@@ -412,6 +415,69 @@ def journal_tail(n=300):
     return "\n".join([f'({n} lines like "{k}" left out)' for k, n in flood.items()] + keep[-n:])
 
 
+def journal_since(since, boot=None, timeout=30):
+    """The journal from `since` (epoch), for this boot or a journal boot offset such as -1. Empty when
+    journalctl is missing, fails or is stopped at its deadline: a boot note is never worth a hang."""
+    cmd = ["journalctl", "--no-pager", "-o", "short-monotonic"]
+    if boot is not None:
+        cmd += ["-b", str(boot)]
+    cmd.append(f"--since=@{int(since)}")
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def last_journal_time(boot=-1, timeout=30):
+    """The epoch of a journal boot's last line, or None when that boot is not in the journal."""
+    try:
+        r = subprocess.run(  # noqa: TID251
+            ["journalctl", "-b", str(boot), "--no-pager", "-o", "short-unix", "-n", "1"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        line = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else ""
+        return float(line.split()[0]) if line else None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def keep_boot_journal(boot, boot_offset=None, now=None, why="", minutes=KEEP_MINUTES):
+    """The last `minutes` of one boot, kept in BOOTS/<boot>.log before a flood can rotate it out of the
+    journal. At shutdown (boot_offset None) it reads this boot; at the next boot it reads the previous
+    one. An existing file is left as it is, and a failure is returned, never raised."""
+    now = now or time.time()
+    path = BOOTS / f"{boot}.log"
+    if path.exists():
+        return None
+    since, text = (now - minutes * 60), ""
+    if boot_offset is None:
+        text = journal_since(since)
+    else:
+        last = last_journal_time(boot_offset)
+        if last is not None:
+            text = journal_since(last - minutes * 60, boot_offset)
+    keep, flood = floods(text.splitlines(), limit=30)
+    head = [
+        f"# crash watch: the last {minutes} minutes of boot {boot}",
+        f"# kept {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))} ({why or 'no reason given'})",
+    ]
+    head += [f'# {n} lines like "{k}" left out' for k, n in flood.items()]
+    if not text:
+        head.append("# the journal had nothing for this boot")
+    try:
+        BOOTS.mkdir(parents=True, exist_ok=True)
+        safeio.write(path, "\n".join(head + keep) + "\n", mode=0o600)
+        old = sorted(BOOTS.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for stale in old[KEEP_BOOTS:]:
+            stale.unlink(missing_ok=True)
+    except OSError as exc:
+        return f"the boot's last minutes not kept: {exc}"
+    return None
+
+
 def snapshots_tail(nbytes=200_000, since=None):
     """The last snapshots: nbytes of them, or, if it reaches further back, from the snapshot taken
     at or just before `since` (epoch; a boot with a radio failure: a few minutes before it), at
@@ -519,11 +585,16 @@ def last_snapshot(text):
 
 
 def boot(now=None):
-    """At the service's start: a previous boot that never stopped cleanly is filed as a crash."""
+    """At the service's start: a previous boot that never stopped cleanly is filed as a crash, and its
+    last minutes are kept if the shutdown did not keep them."""
     now = now or time.time()
     safeio.root_dir("crashwatch")
     cur, prev = boot_id(), _json(RUN, None)
     filed = None
+    if prev and prev.get("boot") and prev["boot"] != cur:
+        said = keep_boot_journal(prev["boot"], boot_offset=-1, now=now, why="at the next boot")
+        if said:
+            print(f"crashwatch: {said}", file=sys.stderr)
     if prev and prev.get("boot") and prev["boot"] != cur and not prev.get("clean"):
         stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(now))
         d = CRASHES / stamp
@@ -560,8 +631,12 @@ def boot(now=None):
 
 def shutdown():
     rec = _json(RUN, {})
+    now = time.time()
+    said = keep_boot_journal(boot_id(), now=now, why="at shutdown")
+    if said:
+        print(f"crashwatch: {said}", file=sys.stderr)
     if rec.get("boot") == boot_id():
-        _write(RUN, dict(rec, clean=True, stopped=time.time()))
+        _write(RUN, dict(rec, clean=True, stopped=now))
 
 
 # --- the radio ---------------------------------------------------------------------------------
