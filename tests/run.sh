@@ -184,6 +184,7 @@ run sim_netinv.py
 run sim_apmode.py
 run sim_syncthing_gui.py
 run sim_confine.py
+run root_trust_guard.py
 run sim_reach.py
 run theme_guard.py
 run link_guard.py

@@ -42,5 +42,17 @@ check(
     and refused("/srv/git", "a/../../x"),
 )
 check("  but a/../b stays inside, and is b", confine.under("/srv/git", "a/../b") == Path("/srv/git/b"))
+from irate_box import validate
+
+check("validate.under is confine.under: the two path checks are named together", validate.under is confine.under)
+doc = validate.__doc__ or ""
+check(
+    "validate.py's docstring says which of the two to use, and that neither is a handle",
+    "Two path checks" in doc and "under(base, *parts)" in doc and "path(value, root)" in doc and "not a handle" in doc,
+)
+check(
+    "confine.py points to it",
+    "validate.path" in (confine.__doc__ or "") and "Two path checks" in (confine.__doc__ or ""),
+)
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)
