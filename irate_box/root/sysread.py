@@ -20,7 +20,7 @@ from pathlib import Path
 TIMEOUT = 5  # seconds a USB sysfs read may take
 KILL_AFTER = 1  # seconds between timeout's TERM and KILL
 USB_ROOTS = ("/sys/bus/usb", "/sys/kernel/debug/usb")
-USB_SEGMENT = re.compile(r"/usb\d*(?:/|$)")
+USB_SEGMENT = re.compile(r"/usb\d*(?:/|\Z)")
 _TIMED_OUT = set()  # paths whose read was cut off in this process (one boot's worth)
 
 
