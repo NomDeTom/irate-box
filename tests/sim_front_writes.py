@@ -124,6 +124,44 @@ check(
 )
 check("  and the transaction is restored", nginx_front.transaction_state(tx)["state"] == "restored")
 
+
+# A rollback on a box that had no hub must not probe the hub: on a first install the restore is
+# what it should be, and probing left it marked for console recovery (bench Lyra, 2026-11-05).
+def good_runner(*_argv):
+    return type("R", (), {"returncode": 0})()
+
+
+tx_first, first_site, first_env = T / "tx-first", T / "first-site.conf", T / "first-hub.env"
+nginx_front.begin(tx_first, [first_site, first_env])
+calls = []
+check(
+    "a first-install rollback restores without probing the hub",
+    nginx_front.rollback(tx_first, runner=good_runner, probe=lambda _s: calls.append(_s)) is True
+    and nginx_front.transaction_state(tx_first)["state"] == "restored"
+    and calls == [],
+    calls,
+)
+tx_hub, hub_site, hub_env = T / "tx-hub", T / "hub-site.conf", T / "hub.env"
+hub_site.write_text("server {}\n")
+hub_env.write_text("PORT=80\n")
+nginx_front.begin(tx_hub, [hub_site, hub_env])
+
+
+def bad_probe(_settings):
+    raise ValueError("the hub did not answer")
+
+
+try:
+    nginx_front.rollback(tx_hub, runner=good_runner, probe=bad_probe)
+except ValueError as exc:
+    refused = "console recovery" in str(exc)
+else:
+    refused = False
+check(
+    "a rollback on a box that had a hub still probes it and says console recovery when it fails",
+    refused and nginx_front.transaction_state(tx_hub)["state"] == "recovery-required",
+)
+
 inst = (REPO / "install.sh").read_text()
 check("install.sh has the write-if-changed helper", "write_if_changed() {" in inst and 'cmp -s "$tmp" "$path"' in inst)
 for call in (
@@ -144,6 +182,15 @@ check(
     "  the generation names the front's secrets too",
     'front_id="$(git -C "${SRC:-$CODE}" rev-parse HEAD 2>/dev/null || echo installed-source)-$(printf' in inst
     and '"$FRONT_SECRET" "$VIA_SECRET" "$hash" | sha256sum' in inst,
+)
+check(
+    "  a first install's InspIRCd key reads a file that is not there yet without stopping",
+    "irate-box.conf 2>/dev/null | head -1 || true" in inst,
+)
+check(
+    "  the collaboration relay's unit is written only when its app is there",
+    'if [ -f "$ROOM/dist/index.js" ]; then\n\t\tcat >/etc/systemd/system/excalidraw-room.service' in inst
+    and '[ "$WITH_COLLAB" = 1 ] && [ -f "$ROOM/dist/index.js" ] && units+=(excalidraw-room)' in inst,
 )
 check(
     "  the secrets are not in python3's arguments",
