@@ -123,6 +123,11 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "box-hostname", "hostname": "lyra-2"}
       The box's name on its networks (hostnamectl, and /etc/hosts' 127.0.1.1 line).
   {"id": ..., "action": "rk-loader"} | {"id": ..., "action": "rk-read", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-backup", "loader": "rk3506b"|null}
+  {"id": ..., "action": "rk-backup-delete", "name": "<backup>.bin"}
+  {"id": ..., "action": "rk-backup-restore", "name": "<backup>.bin", "loader": "rk3506b"|null, "confirm": "<token>"|null}
+  {"id": ..., "action": "rk-backup-keep", "keep": 1-20}
+  {"id": ..., "action": "rk-bundle-stage", "bundle": "nand-uboot", "name": "u-boot.itb", "temp": "<upload>.part"}
   {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null, "confirm": "<token>"|null}
   {"id": ..., "action": "rk-install", "bootloader": "nand-uboot", "loader": null, "confirm": "<token>"|null,
    "rescue": {"image": "alpine-rescue.img", "sha256": "<64 hex>", "card": "sda", "size": <bytes>, "serial": "..."}|null}
@@ -8411,6 +8416,58 @@ def rk_read(req):
         safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
 
 
+def rk_backup(req):
+    """A full copy of the board's onboard flash, saved before an erase."""
+    from irate_box.root import rkboard
+
+    try:
+        return rkboard.backup(req.get("loader"))
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_bundle_stage(req):
+    """Stage an uploaded bootloader bundle file, checked against bootloaders.json."""
+    from irate_box.root import rkboard
+
+    try:
+        return rkboard.stage_bundle(
+            str(req.get("bundle") or ""), str(req.get("name") or ""), str(req.get("temp") or "")
+        )
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_backup_delete(req):
+    """Remove a saved full copy."""
+    from irate_box.root import rkboard
+
+    try:
+        return rkboard.delete_backup(str(req.get("name") or ""))
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_backup_restore(req):
+    """Write a saved full copy back to the board."""
+    from irate_box.root import rkboard
+
+    try:
+        return rkboard.restore(str(req.get("name") or ""), req.get("loader"), req.get("confirm"))
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
+def rk_backup_keep(req):
+    """How many saved copies to keep."""
+    from irate_box.root import rkboard
+
+    try:
+        return rkboard.set_keep(req.get("keep"))
+    finally:
+        safeio.write(CONTROL / "rkboard.json", json.dumps(rkboard.status()))
+
+
 def rk_erase(req):
     """The board's onboard flash erased, through its loader."""
     from irate_box.root import rkboard
@@ -9461,6 +9518,11 @@ ACTIONS = {
     "rk-erase": rk_erase,
     "rk-install": rk_install,
     "rk-read": rk_read,
+    "rk-backup": rk_backup,
+    "rk-bundle-stage": rk_bundle_stage,
+    "rk-backup-delete": rk_backup_delete,
+    "rk-backup-restore": rk_backup_restore,
+    "rk-backup-keep": rk_backup_keep,
     "rk-write": rk_write,
     "rk-serial-setup": _rk_serial_setup,
     "rk-own-serial": _rk_own_serial,

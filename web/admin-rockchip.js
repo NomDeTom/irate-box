@@ -20,10 +20,16 @@
   // A result of the root helper in the reader's language: its message (msg.py), else its English.
   const resultSaid = (result) => (result.msg ? AW.say(result.msg) : result.message);
   // The root helper answers a step by writing a result; wait for that one, not the next poll's.
-  async function awaitResult(id) {
-    for (let i = 0; i < 60; i++) {
+  async function awaitResult(id, at) {
+    // A full NAND backup can take up to the root helper's 15 minutes: wait as long.
+    for (let i = 0; i < 1900; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const data = await getJSON('/admin/rkboard');
+      const progress = data.progress;
+      if (at && progress && progress.total && progress.action === 'backup') {
+        const pct = Math.min(100, Math.floor((100 * (progress.done || 0)) / progress.total));
+        say(`Saving a full copy… ${pct}% (${((progress.done || 0) / 2 ** 20).toFixed(0)} of ${(progress.total / 2 ** 20).toFixed(0)} MB)`, true, at);
+      }
       const done = (data.results || []).find((result) => result.id === id);
       if (done) return done;
     }
@@ -51,7 +57,10 @@
     }
   }
   // The same guard for installing a bootloader: read, say what is there, then ask with what will be written.
-  async function readThenInstall(body, at, anchor, title, what) {
+  async function readThenInstall(body, at, anchor, title, what, saveFirst) {
+    if (running) return say('A recovery is already running. Wait for it to finish.', false, at);
+    running = true;
+    let keepRunning = false;
     say('Reading the onboard flash…', true, at);
     try {
       const id = (await postJSON('/admin/rkboard', { action: 'read', loader: body.loader })).id;
@@ -61,12 +70,86 @@
       const token = (read.msg && read.msg.token) || '';
       const ask = `${resultSaid(read)} ${what} This erases the board's onboard flash, including any logs kept on the NAND. It cannot be undone.`;
       if (!(await AW.confirmHere(ask, { anchor, label: title }))) return say('Nothing was written.', true, at);
-      say('Writing the bootloader to the board…', true, at);
-      waiting = (await postJSON('/admin/rkboard', { ...body, confirm: token })).id;
+      if (saveFirst) {
+        say('Saving a full copy of the onboard flash first…', true, at);
+        const bid = (await postJSON('/admin/rkboard', { action: 'backup', loader: body.loader })).id;
+        const backed = await awaitResult(bid, at);
+        if (!backed) return say('The onboard flash was not saved in time; nothing was written.', false, at);
+        if (!backed.ok) return say(resultSaid(backed), false, at);
+        say(`${resultSaid(backed)} Writing the bootloader…`, true, at);
+      } else {
+        say('Writing the bootloader to the board…', true, at);
+      }
+      keepRunning = true;
+      const installId = (await postJSON('/admin/rkboard', { ...body, confirm: token })).id;
+      waiting = installId;
+      const timer = setInterval(async () => {
+        if (waiting !== installId) { clearInterval(timer); return; }
+        try {
+          const data = await getJSON('/admin/rkboard');
+          const progress = data.progress;
+          if (progress && progress.action === 'install' && progress.total) {
+            const pct = Math.min(100, Math.floor((100 * (progress.done || 0)) / progress.total));
+            say(`Writing the recovery image… ${pct}%`, true, at);
+          }
+        } catch (e) { /* the next poll tries again */ }
+      }, 1000);
       shown = '';
       load();
     } catch (err) {
       say(err.message, false, at);
+    } finally {
+      if (!keepRunning) running = false;
+    }
+  }
+  // Upload one file of a bootloader bundle. Root checks its sha256 against bootloaders.json before staging it.
+  async function uploadBundleFile(bundle, file) {
+    const response = await fetch('/admin/rkboard/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Irate-Admin': '1',
+        'X-Rk-Bundle': bundle,
+        'X-Rk-File': file.name,
+      },
+      body: file,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error((data.message && AW.say(data.message)) || data.error || `HTTP ${response.status}`);
+    const done = await awaitResult(data.id);
+    if (!done) throw new Error('The file was not staged in time.');
+    if (!done.ok) throw new Error(resultSaid(done));
+    return done;
+  }
+
+  // Restoring a saved full copy: the same read and confirm guard, then the root helper writes it and reads it back.
+  async function readThenRestore(copy, at, data) {
+    if (running) return say('A recovery is already running. Wait for it to finish.', false, at);
+    const board = (data.boards || [])[0];
+    if (!board || (board.mode !== 'loader' && board.mode !== 'maskrom')) {
+      return say('Connect one board in Loader or MaskROM mode first.', false, at);
+    }
+    running = true;
+    let keepRunning = false;
+    say('Reading the onboard flash…', true, at);
+    try {
+      const loader = board.mode === 'maskrom' ? chipChosen : null;
+      const id = (await postJSON('/admin/rkboard', { action: 'read', loader })).id;
+      const read = await awaitResult(id);
+      if (!read) return say('The flash was not read in time.', false, at);
+      if (!read.ok) return say(resultSaid(read), false, at);
+      const token = (read.msg && read.msg.token) || '';
+      const ask = `${resultSaid(read)} Restore ${copy.name}? This erases the board's onboard flash and writes the saved copy back. It cannot be undone.`;
+      if (!(await AW.confirmHere(ask, { anchor: at, label: 'Restore the saved copy' }))) return say('Nothing was written.', true, at);
+      keepRunning = true;
+      say(`Writing ${copy.name} to the board and reading it back…`, true, at);
+      waiting = (await postJSON('/admin/rkboard', { action: 'backup-restore', name: copy.name, loader, confirm: token })).id;
+      shown = '';
+      load();
+    } catch (err) {
+      say(err.message, false, at);
+    } finally {
+      if (!keepRunning) running = false;
     }
   }
   // "a", "a and b", "a, b and c".
@@ -80,9 +163,11 @@
   };
   const ERASE_ASK = "Erase the board's onboard flash? This deletes the system on it, and it cannot be undone.";
   let waiting = null;
+  let running = false;
   let chipChosen = 'rk3506b';
   let poll = null;
   let shown = '';
+  let copiesShown = '';
   // The loader showed the SD card when an erase was asked (rkboard.card-shown): writing an image to it is offered.
   let cardShown = false;
   let imageChosen = '';
@@ -100,17 +185,24 @@
     } catch (_) {
       data = null;
     }
-    if (data) { render(data); renderCards(data); renderImages(data); renderSetup(data.setup); renderFinish(data.setup); renderInstallLog(data.install_log); }
+    if (data) { render(data); renderBackups(data); renderCards(data); renderImages(data); renderSetup(data.setup); renderFinish(data.setup); renderInstallLog(data.install_log); }
     poll = setTimeout(load, document.hidden ? 30000 : waiting ? 2000 : 3000);
   }
 
   function render(data) {
     renderFinish(data.setup);
+    const rec = document.getElementById('rk-recovery-status');
+    if (rec) {
+      const mask = (data.boards || []).find((b) => b.mode === 'maskrom');
+      rec.hidden = !mask;
+      rec.textContent = mask ? 'MaskROM found: release the short now.' : '';
+    }
     const note = document.getElementById('rk-note');
     if (waiting) {
       const done = (data.results || []).find((r) => r.id === waiting);
       if (done) {
         waiting = null;
+        running = false;
         if (done.msg && /^(?:rkserial|rkssh|rkspot|rkpresets|rkfinish)\./.test(done.msg.id || '')) setupResult(done);
         else if (waitingCard) { waitingCard = false; say(resultSaid(done), done.ok, document.getElementById('rk-card-result')); cardsShown = ''; }
         else say(resultSaid(done), done.ok, note);
@@ -199,6 +291,9 @@
       el('h3', { textContent: 'Install a bootloader' }),
       el('p', { className: 'setting-desc', textContent: "Write a bootloader to the board's onboard flash. The original is the one Luckfox ships; the irate-box NAND U-Boot boots from the SPI NAND. The Alpine rescue image can be written to a card in a reader in the same step." }),
       el('p', { className: 'setting-desc warn-text', textContent: "Installing a bootloader erases the board's onboard flash. If logs were being kept on the NAND, they are erased. There is no migration: the board is prepared again from scratch." }));
+    const save = el('input', { type: 'checkbox', id: 'rk-backup-first' });
+    save.checked = true;
+    box.append(el('label', { className: 'setting-desc' }, save, ' Save a full copy of the onboard flash first (recommended)'));
     const boots = data.bootloaders || [];
     if (!boots.length) {
       box.append(el('p', { className: 'setting-desc', textContent: 'No bootloader is described on this box.' }));
@@ -246,6 +341,40 @@
     const chosen = boots.find((x) => x.id === bootloaderChosen) || boots[0];
     const rescue = rescues.find((x) => x.name === rescueChosen);
     const card = cards.find((c) => c.name === rescueCard);
+    if (!chosen.ready) {
+      const files = el('input', { type: 'file', multiple: true });
+      const upload = el('button', { type: 'button', className: 'action-btn', textContent: 'Upload the files' });
+      upload.addEventListener('click', async () => {
+        const picked = [...files.files];
+        if (!picked.length) return say('Choose the files to upload.', false, note);
+        upload.disabled = true;
+        try {
+          for (const file of picked) {
+            if (!(chosen.files || []).some((f) => f.name === file.name)) {
+              throw new Error(`${file.name} is not one of this bootloader's files.`);
+            }
+            say(`Uploading ${file.name}…`, true, note);
+            await uploadBundleFile(chosen.id, file);
+          }
+          say('The files are staged; choose the bootloader again to install it.', true, note);
+          shown = '';
+          load();
+        } catch (err) {
+          say(err.message, false, note);
+        } finally {
+          upload.disabled = false;
+        }
+      });
+      box.append(
+        el('p', {
+          className: 'setting-desc',
+          textContent: `Not staged: ${[...(chosen.missing || []), ...(chosen.damaged || [])].join(', ') || 'its files are not here'}. Upload them here, or put them in the box's rk-bootloaders folder (see the bootloaders README).`,
+        }),
+        el('span', { className: 'setting-name', textContent: 'Stage the bundle' }),
+        files,
+        upload,
+      );
+    }
     const go = el('button', { type: 'button', className: 'action-btn', textContent: rescue ? 'Install the bootloader and the rescue' : 'Install the bootloader' });
     go.disabled = busy || !(data.tools || {}).rkdeveloptool || !chosen.ready || (!!rescue && (!card || !rescue.sha256));
     go.addEventListener('click', (event) => {
@@ -254,7 +383,7 @@
         body.rescue = { image: rescue.name, sha256: rescue.sha256, card: card.name, size: card.size, serial: card.serial };
       }
       readThenInstall(body, note, event.currentTarget, go.textContent,
-        `Install ${chosen.title}${rescue ? ` and write ${rescue.name} to the card` : ''}?`);
+        `Install ${chosen.title}${rescue ? ` and write ${rescue.name} to the card` : ''}?`, save.checked);
     });
     box.append(el('div', { className: 'library-buttons' }, go));
     return box;
@@ -304,6 +433,73 @@
   let cardsShown = '';
   let waitingCard = false;
   const cardImage = new Map();   // card name -> {image, sha}
+  // The full copies saved before installs: download, restore or delete one, and choose how many to keep.
+  function renderBackups(data) {
+    const box = document.getElementById('rk-backups');
+    if (!box) return;
+    const note = document.getElementById('rk-copies-note');
+    const copies = data.backups || [];
+    const board = (data.boards || [])[0];
+    const canRestore = !!board && (board.mode === 'loader' || board.mode === 'maskrom');
+    const key = JSON.stringify([copies, data.backup_keep, board && board.mode, waiting, running]);
+    if (key === copiesShown) return;
+    copiesShown = key;
+    const rows = copies.map((copy) => {
+      const row = el('div', { className: 'rk-copy' });
+      const facts = `${copy.created || 'date unknown'} · serial ${copy.serial || 'unknown'} · ${(copy.size / 2 ** 20).toFixed(1)} MB · sha256 ${copy.sha256 || 'unknown'}`;
+      const download = el('a', {
+        className: 'action-btn',
+        href: `/admin/rkboard/backup?name=${encodeURIComponent(copy.name)}`,
+        textContent: 'Download',
+      });
+      const restore = el('button', { type: 'button', className: 'action-btn', textContent: 'Restore' });
+      restore.disabled = !canRestore || !!waiting || running;
+      restore.addEventListener('click', (event) => readThenRestore(copy, event.currentTarget, data));
+      const remove = el('button', { type: 'button', className: 'action-btn', textContent: 'Delete' });
+      remove.disabled = !!waiting || running;
+      remove.addEventListener('click', async (event) => {
+        if (!(await AW.confirmHere(`Delete ${copy.name}? The copy is removed from this box.`, { anchor: event.currentTarget, label: 'Delete the copy' }))) return;
+        try {
+          const id = (await postJSON('/admin/rkboard', { action: 'backup-delete', name: copy.name })).id;
+          const done = await awaitResult(id);
+          say(done ? resultSaid(done) : 'The copy was not removed in time.', !!(done && done.ok), note);
+          copiesShown = '';
+          load();
+        } catch (err) {
+          say(err.message, false, note);
+        }
+      });
+      row.append(
+        el('strong', { textContent: copy.name }),
+        el('p', { className: 'setting-desc', textContent: facts }),
+        el('div', { className: 'library-buttons' }, download, restore, remove),
+      );
+      return row;
+    });
+    const keep = el('input', { type: 'number', min: '1', max: '20', value: String(data.backup_keep || 2) });
+    const saveKeep = el('button', { type: 'button', className: 'action-btn', textContent: 'Save' });
+    saveKeep.addEventListener('click', async () => {
+      const n = Number(keep.value);
+      if (!Number.isInteger(n) || n < 1 || n > 20) return say('Choose how many copies to keep, from 1 to 20.', false, note);
+      try {
+        const id = (await postJSON('/admin/rkboard', { action: 'backup-keep', keep: n })).id;
+        const done = await awaitResult(id);
+        say(done ? resultSaid(done) : 'The setting was not saved in time.', !!(done && done.ok), note);
+        copiesShown = '';
+        load();
+      } catch (err) {
+        say(err.message, false, note);
+      }
+    });
+    box.replaceChildren(
+      ...(copies.length
+        ? rows
+        : [el('p', { className: 'setting-desc', textContent: 'No full copy is saved yet. Keep "Save a full copy" ticked when installing a bootloader.' })]),
+      el('div', { className: 'library-buttons rk-copy-keep' },
+        el('span', { className: 'setting-name', textContent: 'Copies to keep' }), keep, saveKeep),
+    );
+  }
+
   function renderCards(data) {
     const at = document.getElementById('rk-cards');
     if (!at) return;

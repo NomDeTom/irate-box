@@ -334,6 +334,19 @@ check(
     and any(f["sha256"] for f in shipped_bootloaders[1]["files"]),
     shipped_bootloaders,
 )
+nand_files = [(f["name"], f["offset"]) for f in shipped_bootloaders[1]["files"]]
+check(
+    "  the NAND rescue bundle carries the chain, the FIT and the UBI at the tested offsets",
+    nand_files
+    == [
+        ("idbloader.img", 0),
+        ("idbloader.img", 4194304),
+        ("u-boot.itb", 8388608),
+        ("rescue.itb", 12582912),
+        ("irate-nand.ubi", 33554432),
+    ],
+    nand_files,
+)
 boot_meta = T / "bootloaders"
 boot_state = T / "state" / "rk-bootloaders"
 boot_meta.mkdir()
@@ -391,6 +404,74 @@ check(
     refused(rkboard.install, "nand-uboot", None) == "rkboard.bootloader-not-ready",
 )
 (boot_state / "nand-uboot" / "u-boot.itb").write_bytes(itb)
+rkboard.UPLOAD.mkdir(parents=True, exist_ok=True)
+(rkboard.UPLOAD / "upload.part").write_bytes(b"tampered")
+check(
+    "  an uploaded file that does not match its sha256: refused, nothing staged",
+    refused(rkboard.stage_bundle, "nand-uboot", "u-boot.itb", "upload.part") == "rkboard.bundle.mismatch"
+    and not (rkboard.UPLOAD / "upload.part").exists(),
+)
+(rkboard.UPLOAD / "upload.part").write_bytes(itb)
+staged = hub_control.ACTIONS["rk-bundle-stage"](
+    {"action": "rk-bundle-stage", "bundle": "nand-uboot", "name": "u-boot.itb", "temp": "upload.part"}
+)
+check(
+    "  an uploaded file that matches: staged, ready, the upload removed",
+    staged.get("id") == "rkboard.bundle.staged"
+    and (boot_state / "nand-uboot" / "u-boot.itb").read_bytes() == itb
+    and not (rkboard.UPLOAD / "upload.part").exists()
+    and rkusb.bootloaders()[1]["ready"],
+    staged,
+)
+# A link where the upload should be: O_NOFOLLOW refuses it, and the link is removed rather than followed.
+evil = T / "evil"
+evil.write_bytes(b"not the bundle")
+(rkboard.UPLOAD / "upload.part").symlink_to(evil)
+check(
+    "  an upload that is a symlink: refused, the link removed, its target untouched",
+    refused(rkboard.stage_bundle, "nand-uboot", "u-boot.itb", "upload.part") == "rkboard.bundle.upload"
+    and not (rkboard.UPLOAD / "upload.part").exists()
+    and evil.read_bytes() == b"not the bundle"
+    and (boot_state / "nand-uboot" / "u-boot.itb").read_bytes() == itb,
+)
+# The hub swaps the name after root opened it: root copies the descriptor it opened, not the new link.
+(boot_state / "nand-uboot" / "u-boot.itb").write_bytes(b"OLD")
+(rkboard.UPLOAD / "upload.part").write_bytes(itb)
+real_open = rkboard.os.open
+swapped = []
+
+
+def swap_open(path, flags, *args, **kwargs):
+    fd = real_open(path, flags, *args, **kwargs)
+    if path == "upload.part" and kwargs.get("dir_fd") is not None and not swapped:
+        (rkboard.UPLOAD / "upload.part").unlink()
+        (rkboard.UPLOAD / "upload.part").symlink_to(evil)
+        swapped.append(True)
+    return fd
+
+
+rkboard.os.open = swap_open
+try:
+    swapped_result = rkboard.stage_bundle("nand-uboot", "u-boot.itb", "upload.part")
+finally:
+    rkboard.os.open = real_open
+check(
+    "  the upload swapped for a link after it was opened: the opened bytes staged, the link not followed",
+    swapped
+    and swapped_result.get("id") == "rkboard.bundle.staged"
+    and (boot_state / "nand-uboot" / "u-boot.itb").read_bytes() == itb
+    and not (rkboard.UPLOAD / "upload.part").exists()
+    and evil.read_bytes() == b"not the bundle",
+)
+# A lock left by a dead helper is broken, not waited on until the next reboot.
+busy = rkboard.RUN / "rkboard-busy"
+busy.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+busy.write_text("999999 0")
+check(
+    "  a stale lock: broken, and the step goes on to refuse the missing upload",
+    refused(rkboard.stage_bundle, "nand-uboot", "u-boot.itb", "missing.part") == "rkboard.bundle.upload"
+    and not busy.exists(),
+)
 
 unplug_all()
 plug("1-1.2", "loader")
@@ -499,6 +580,52 @@ rkcard.run = real_rkcard_run
 rkusb.cards = real_cards
 rkusb.BOOTLOADERS, rkusb.BOOTLOADER_STATE = real_bootloaders, real_state
 
+# A full copy of the onboard flash, saved before the erase. A small flash keeps the test quick.
+shows.update(mb=1, sectors=2048)
+card[:] = bytes((i * 7) & 0xFF for i in range(2048 * 512))
+unplug_all()
+plug("1-1.2", "loader")
+ran.clear()
+said = hub_control.ACTIONS["rk-backup"]({"action": "rk-backup", "loader": None})
+backups = sorted((T / "state" / "rk-backups").glob("*.bin"))
+check(
+    "the full copy: the whole flash read and saved, nothing written to the board",
+    said.get("id") == "rkboard.backed-up"
+    and len(backups) == 1
+    and backups[0].stat().st_size == 2048 * 512
+    and (backups[0].stat().st_mode & 0o777) == 0o640
+    and ((T / "state" / "rk-backups").stat().st_mode & 0o777) == 0o750
+    and hashlib.sha256(backups[0].read_bytes()).hexdigest() == said.get("sha256")
+    and any(c[:2] == ("rkdeveloptool", "rl") for c in ran)
+    and not any(c[:2] == ("rkdeveloptool", "ef") for c in ran)
+    and not any(c[:2] == ("rkdeveloptool", "wl") for c in ran),
+    (said, ran, backups),
+)
+index = json.loads((T / "state" / "control" / "rkboard-backups.json").read_text())
+check(
+    "  the saved copy is listed with its serial, size and sha256, and can be read back and removed",
+    len(index) == 1
+    and index[0]["name"] == backups[0].name
+    and index[0]["sha256"] == said.get("sha256")
+    and index[0]["size"] == 2048 * 512
+    and index[0]["serial"] == rkboard._one(("loader",))["serial"]
+    and rkboard.backups_list()[0]["name"] == backups[0].name
+    and rkboard.set_keep(1).get("id") == "rkboard.keep"
+    and rkboard.restore(backups[0].name, None, rkboard.held_words(rkboard.contents(shows))[0]).get("id")
+    == "rkboard.restored"
+    and rkboard.delete_backup(backups[0].name).get("id") == "rkboard.backup.deleted"
+    and not backups[0].exists()
+    and not (T / "state" / "control" / "rkboard-backups.json").read_text().strip().strip("[]"),
+    (index, rkboard.backups_list()),
+)
+check(
+    "  a saved-copy name with a path or the wrong suffix: refused in root, before anything is touched",
+    refused(rkboard.delete_backup, "../evil.bin") == "rkboard.backup.name"
+    and refused(rkboard.restore, "../evil.bin") == "rkboard.backup.name"
+    and refused(rkboard.delete_backup, "notes.txt") == "rkboard.backup.name",
+)
+shows.update(NAND)
+
 # A missing tool.
 del have["rkdeveloptool"]
 unplug_all()
@@ -550,6 +677,32 @@ check(
     and "logs were being kept on the NAND" in (REPO / "web" / "admin-rockchip.js").read_text()
     and "rk-bootloaders" in (REPO / "web" / "admin-rockchip.js").read_text()
     and "alpine-rescue" in (REPO / "rockchip" / "rescues" / "README.md").read_text(),
+)
+check(
+    "the recovery page and the backup actions are wired",
+    '"action": "rk-backup"' in src
+    and '"action": "rk-backup-delete"' in src
+    and '"action": "rk-backup-keep"' in src
+    and '"action": "rk-backup-restore"' in src
+    and '"action": "rk-bundle-stage"' in src
+    and 'path == "/admin/rkboard/upload"' in src
+    and '"X-Rk-File"' in src
+    and 'if "rk-backup" in transport.HTTPS_ONLY and not self._https():' in src
+    and 'validate.path(name, STATE_DIR / "rk-backups"' in src
+    and '"rk-backup": rk_backup' in control_src
+    and '"rk-backup-delete": rk_backup_delete' in control_src
+    and '"rk-backup-keep": rk_backup_keep' in control_src
+    and '"rk-backup-restore": rk_backup_restore' in control_src
+    and '"rk-bundle-stage": rk_bundle_stage' in control_src
+    and "Recover a dead Lyra" in (REPO / "web" / "admin-rockchip.html").read_text()
+    and 'class="rk-pins"' in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "maskrom-pins.png" not in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "Saved copies" in (REPO / "web" / "admin-rockchip.html").read_text()
+    and "Save a full copy" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup'" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup-restore'" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup-delete'" in (REPO / "web" / "admin-rockchip.js").read_text()
+    and "action: 'backup-keep'" in (REPO / "web" / "admin-rockchip.js").read_text(),
 )
 rescue_build = subprocess.run(
     [
