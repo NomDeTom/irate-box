@@ -112,6 +112,10 @@ check(
     opt["defaults"],
 )
 check(
+    "a pin that offers both CS numbers uses the one the display does not",
+    mui._cs_candidate(1, 37, avoid=0)["cs"] == 1 and mui._validate({})["_touch_cs"]["cs"] == 1,
+)
+check(
     "the overlay names the selected bus, CS and backlight",
     "target = <&spi1>" in mui.dts(sel)
     and "&rm_io24_spi1_clk" in mui.dts(sel)

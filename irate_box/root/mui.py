@@ -194,10 +194,11 @@ def _spi_candidate(bus, signal, pin):
     return None
 
 
-def _cs_candidate(bus, pin):
+def _cs_candidate(bus, pin, avoid=None):
+    """The first CS signal for a pin, or the first whose CS number is not `avoid`."""
     for signal in ("csn0", "csn1"):
         item = _spi_candidate(bus, signal, pin)
-        if item:
+        if item and (avoid is None or item["cs"] != avoid):
             return item
     return None
 
@@ -320,12 +321,8 @@ def _validate(selection, check_binary=False):
         )
     sel["_display_cs"] = display
     if sel["touch"] == "lgfx":
-        touch = _cs_candidate(sel["bus"], sel["touch_cs"])
+        touch = _cs_candidate(sel["bus"], sel["touch_cs"], avoid=display["cs"])
         if touch is None:
-            raise Refused(
-                M("mui.not-touch-cs", "Pin {pin} is not a SPI{bus} chip select.", pin=sel["touch_cs"], bus=sel["bus"])
-            )
-        if touch["cs"] == display["cs"]:
             raise Refused(M("mui.same-cs", "The display and touch cannot share one chip select."))
         sel["_touch_cs"] = touch
     if not (1000000 <= sel["bus_frequency"] <= 40000000):

@@ -212,8 +212,9 @@
         }
       }
       if (touchSelect.selectedOptions[0] && touchSelect.selectedOptions[0].disabled) {
-        const other = [...touchSelect.options].find((option) => !option.disabled);
-        if (other) touchSelect.value = other.value;
+        const same = [...touchSelect.options].find((option) => option.value === touchSelect.value && !option.disabled);
+        const other = same || [...touchSelect.options].find((option) => !option.disabled);
+        if (other) touchSelect.selectedIndex = [...touchSelect.options].indexOf(other);
       }
     }
     const sel = muiSelectionNow();
