@@ -37,6 +37,9 @@
   <ul><li>The installer: <code>/var/log/irate-box/install.log</code></li><li>The hub: <code>journalctl -u irate-box -n 50</code></li><li>The network watchdog: <code>journalctl -u irate-box-uplink -n 50</code></li><li>The status LED: <code>journalctl -u irate-box-led -n 50</code></li></ul>
   <h2>If the box stops answering</h2>
   <p class="help-note">Crash watch keeps crash evidence on the storage card. After a restart, the Box doctor tells you if the box stopped without a shutdown. It shows the last record.</p>
+  <h2>If the WiFi is gone</h2>
+  <p class="help-note">The Box doctor reports <strong>WiFi chip gone, driver still loaded</strong> when the WiFi chip has left the USB bus while its driver is still running. A soft reboot can hang while it stops the device. Use the box's reset pin, or a hardware watchdog if one is set, rather than <strong>Restart</strong> or <strong>Shut down</strong>.</p>
+  <p class="help-note">If the board offers USB networking, that port is the way in while the WiFi is gone: connect the USB cable and open <code>http://192.168.7.1/</code>. The same cable gives a serial console on <code>/dev/ttyGS0</code>. The Box doctor says whether USB networking is on.</p>
   <h2>The status LED</h2>
   <p class="help-note">The box can blink one LED of the board. The LED shows the state of the box from across the room. In the mode <strong>Alive, on its network, nothing wrong</strong>, the patterns are:</p>
   <ul><li><strong>1 second on, 1 second off</strong>: all the items that the box reports are well.</li><li><strong>Off</strong>: the network is down or the hub is not running.</li><li><strong>Quick flashes</strong>: the network is being repaired.</li><li><strong>Two short flashes</strong>: the Box doctor has a problem to read, or another link that the watchdog monitors is down.</li><li><strong>Steady on</strong>: the box is starting or updating.</li></ul>

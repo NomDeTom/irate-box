@@ -38,6 +38,9 @@ from irate_box.root import crashwatch as cw
 from irate_box.root import health
 
 fails = 0
+HANG_FIXTURE = (REPO / "tests/fixtures/aic8800-usb-hang-2026-11-04/journal.txt").read_text()
+cw.journal_since = lambda since, boot=None, timeout=30: HANG_FIXTURE
+cw.last_journal_time = lambda boot=-1, timeout=30: 1000.0
 
 
 def check(name, cond, info=""):
@@ -140,6 +143,128 @@ index = json.loads(cw.INDEX.read_text())
 check(
     "  the last few kept, the older ones' folders gone", len(index) == 2 and len(list(cw.CRASHES.iterdir())) == 2, index
 )
+
+# --- each boot's last minutes, kept before a flood can rotate them away ---
+for old in cw.BOOTS.glob("*.log"):
+    old.unlink()
+said = cw.keep_boot_journal("aaaaaaaa-0000", now=5000.0, why="at shutdown")
+kept = (cw.BOOTS / "aaaaaaaa-0000.log").read_text()
+check(
+    "a boot's last minutes: kept in its own file, with the time and why",
+    said is None and "# crash watch: the last 10 minutes of boot aaaaaaaa-0000" in kept and "at shutdown" in kept,
+    kept[:200],
+)
+check(
+    "  the -19 flood is counted once and left out",
+    "lines like" in kept
+    and not any("AICWFDBG(LOGERROR)" in line for line in kept.splitlines() if not line.startswith("#")),
+    kept,
+)
+check(
+    "  the -71, the udev kill and the watchdog kill survive",
+    "device descriptor read/64, error -71" in kept
+    and "Worker [265] processing SEQNUM=1275 killed" in kept
+    and "Watchdog timeout (limit 6min)!" in kept,
+    kept,
+)
+path = cw.BOOTS / "aaaaaaaa-0000.log"
+path.write_text("kept before\n")
+check(
+    "  a second keep leaves the first one as it is",
+    cw.keep_boot_journal("aaaaaaaa-0000", now=6000.0) is None and path.read_text() == "kept before\n",
+)
+asked = []
+cw.last_journal_time = lambda boot=-1, timeout=30: asked.append(boot) or 1000.0
+said = cw.keep_boot_journal("bbbbbbbb-0000", journal_boot="bbbbbbbb-0000", now=7000.0, why="at the next boot")
+kept = (cw.BOOTS / "bbbbbbbb-0000.log").read_text()
+check(
+    "the next boot with no shutdown: the previous boot's last minutes read from the journal",
+    said is None and "at the next boot" in kept and "-71" in kept,
+    kept[:200],
+)
+check("  read by the previous boot's ID, never by offset -1", asked == ["bbbbbbbb-0000"], asked)
+cw.journal_since = lambda *a, **k: ""
+cw.last_journal_time = lambda *a, **k: None
+cw.keep_boot_journal("cccccccc-0000", journal_boot="cccccccc-0000", now=8000.0, why="at the next boot")
+check(
+    "  a journal with nothing for that boot: said in the file, not raised",
+    "# the journal had nothing for this boot" in (cw.BOOTS / "cccccccc-0000.log").read_text(),
+)
+cw.journal_since = lambda since, boot=None, timeout=30: HANG_FIXTURE
+cw.last_journal_time = lambda boot=-1, timeout=30: 1000.0
+for i in range(8):
+    boot = f"{i:08d}-0000"
+    cw.keep_boot_journal(boot, now=9000.0 + i)
+    os.utime(cw.BOOTS / f"{boot}.log", (9000 + i, 9000 + i))
+have = sorted(p.stem for p in cw.BOOTS.glob("*.log"))
+check("  the last five boots are kept, the older ones removed", len(have) == 5 and "00000000-0000" not in have, have)
+for old in cw.BOOTS.glob("*.log"):
+    old.unlink()
+put(PROC / "sys/kernel/random/boot_id", "dddddddd-0000-0000-0000-000000000000\n")
+cw._write(cw.RUN, {"boot": "eeeeeeee-0000", "at": 100.0, "clean": True})
+cw.boot(now=10000.0)
+check(
+    "at boot, a previous boot with no kept file gets one",
+    (cw.BOOTS / "eeeeeeee-0000.log").exists() and "-71" in (cw.BOOTS / "eeeeeeee-0000.log").read_text(),
+)
+cw._write(cw.RUN, {"boot": "dddddddd-0000-0000-0000-000000000000", "at": 101.0, "clean": False})
+cw.shutdown()
+check(
+    "at shutdown, this boot's last minutes are kept and the stop marked clean",
+    (cw.BOOTS / "dddddddd-0000-0000-0000-000000000000.log").exists()
+    and json.loads(cw.RUN.read_text())["clean"] is True
+    and "at shutdown" in (cw.BOOTS / "dddddddd-0000-0000-0000-000000000000.log").read_text(),
+)
+put(PROC / "sys/kernel/random/boot_id", "163672e1-5e3e-44f8-94a4-994042b8f0fc\n")
+
+# The rolling copy: a hard reset keeps nothing that only reached disk at shutdown.
+cw.SETTINGS.write_text("{}")
+check("a rolling copy: off by default", cw.load_settings()["boot_journal"] == "off", cw.load_settings())
+said = cw.set_option("boot-journal", "15min")
+check(
+    "  every 15 minutes when chosen, said so",
+    cw.load_settings()["boot_journal"] == "15min" and said["id"] == "crashwatch-set.boot-journal.on",
+    said,
+)
+g = {x["key"]: x for x in health.doctor_settings()["groups"]}
+check(
+    "  the doctor's settings offer it, safest first",
+    g["boot-journal"]["current"] == "15min"
+    and [o["value"] for o in g["boot-journal"]["options"]] == ["off", "15min", "1h"],
+    g["boot-journal"],
+)
+for old in cw.BOOTS.glob("*.log"):
+    old.unlink()
+check(
+    "  off: no rolling copy is made",
+    cw.roll_boot_journal(20000.0, {"boot_journal": "off"}, 0, boot="roll") == 0
+    and not (cw.BOOTS / "roll.log").exists(),
+)
+cw.journal_since = lambda *a, **k: "[1.0] first copy"
+last = cw.roll_boot_journal(20000.0, cw.load_settings(), 0, boot="roll")
+check(
+    "  due: this boot's last minutes written", last == 20000.0 and "first copy" in (cw.BOOTS / "roll.log").read_text()
+)
+cw.journal_since = lambda *a, **k: "[2.0] second copy"
+check(
+    "  not due: nothing written",
+    cw.roll_boot_journal(20001.0, cw.load_settings(), last, boot="roll") == last
+    and "second copy" not in (cw.BOOTS / "roll.log").read_text(),
+)
+roll = cw.roll_boot_journal(20000.0 + 901, cw.load_settings(), last, boot="roll")
+check(
+    "  due again: the file replaced with the newer minutes",
+    roll == 20901.0 and "second copy" in (cw.BOOTS / "roll.log").read_text(),
+)
+cw.journal_since = lambda *a, **k: ""
+cw.roll_boot_journal(22000.0, cw.load_settings(), 0, boot="roll")
+check(
+    "  a journal that answers nothing does not replace a copy already there",
+    "second copy" in (cw.BOOTS / "roll.log").read_text(),
+)
+cw.journal_since = lambda since, boot=None, timeout=30: HANG_FIXTURE
+cw.SETTINGS.write_text("{}")
+
 
 # --- the radio: failing, or only its link ---
 known = {"wlan0": {"driver": "aic8800_fdrv", "port": "1-1.1", "product": "AIC8800DC"}}

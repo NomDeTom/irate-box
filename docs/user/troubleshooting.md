@@ -53,6 +53,12 @@ Use SSH to sign in to the box. These commands are available:
 
 Crash watch keeps crash evidence on the storage card. After a restart, the Box doctor tells you if the box stopped without a shutdown. It shows the last record.
 
+## If the WiFi is gone
+
+The Box doctor reports **WiFi chip gone, driver still loaded** when the WiFi chip has left the USB bus while its driver is still running. A soft reboot can hang while it stops the device. Use the box's reset pin, or a hardware watchdog if one is set, rather than **Restart** or **Shut down**.
+
+If the board offers USB networking, that port is the way in while the WiFi is gone: connect the USB cable and open `http://192.168.7.1/`. The same cable gives a serial console on `/dev/ttyGS0`. The Box doctor says whether USB networking is on.
+
 ## The status LED
 
 The box can blink one LED of the board. The LED shows the state of the box from across the room. In the mode **Alive, on its network, nothing wrong**, the patterns are:
