@@ -67,7 +67,7 @@ jobs:
               python3 - <<"PY"
           p = "src/graphics/tftSetup.cpp"
           s = open(p).read()
-          anchor = '#include "configuration.h"'
+          anchor = "#include \"configuration.h\""
           if s.count(anchor) != 1:
               raise SystemExit("SPI include anchor is not unique")
           if "#include <SPI.h>" not in s:
