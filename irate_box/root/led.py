@@ -120,10 +120,10 @@ PI_ACT = ("ACT", "led0")
 # Never taken: a power LED (often under-voltage too), a keyboard's, a camera's, a network port's.
 # A known board's own entry above may name one, as bpi0's only LED is its pwr_led.
 NEVER = re.compile(
-    r"(^|[:_-])(pwr|power)($|[:_-])|^led1$|::(capslock|numlock|scrolllock|kana|compose)|camera|^mmc\d|:(lan|wan|link)",
+    r"(^|[:_-])(pwr|power)(\Z|[:_-])|^led1\Z|::(capslock|numlock|scrolllock|kana|compose)|camera|^mmc\d|:(lan|wan|link)",
     re.I,
 )
-STATUS_NAME = re.compile(r":(status|heartbeat|indicator)$|^(status|sys|work|user)[-_]?led\d*$|^heartbeat$", re.I)
+STATUS_NAME = re.compile(r":(status|heartbeat|indicator)\Z|^(status|sys|work|user)[-_]?led\d*\Z|^heartbeat\Z", re.I)
 DEFAULT = {
     "show": None,
     "led": "auto",

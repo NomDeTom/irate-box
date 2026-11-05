@@ -66,7 +66,7 @@ def settings():
             if isinstance(data.get(key), bool):
                 cfg[key] = data[key]
         if isinstance(data.get("armbian_boards"), list):
-            cfg["armbian_boards"] = [b for b in data["armbian_boards"] if isinstance(b, str) and BOARD_RE.match(b)]
+            cfg["armbian_boards"] = [b for b in data["armbian_boards"] if isinstance(b, str) and BOARD_RE.fullmatch(b)]
             if not cfg["armbian_boards"]:
                 cfg["armbian_boards"] = list(LYRA)
         for key in ("check_every_hours", "keep"):
@@ -81,7 +81,7 @@ def set_settings(**changes):
         if key in ("enabled", "mpwrd", "armbian"):
             cfg[key] = bool(value)
         elif key == "armbian_boards" and isinstance(value, list):
-            cfg[key] = [b for b in value if isinstance(b, str) and BOARD_RE.match(b)] or list(LYRA)
+            cfg[key] = [b for b in value if isinstance(b, str) and BOARD_RE.fullmatch(b)] or list(LYRA)
         elif key in ("check_every_hours", "keep") and isinstance(value, int) and value > 0:
             cfg[key] = value
     SETTINGS.parent.mkdir(parents=True, exist_ok=True)
@@ -128,8 +128,8 @@ def _assets(release):
     out = []
     for a in release.get("assets") or []:
         name = a.get("name") if isinstance(a, dict) else None
-        found = DIGEST_RE.match(str(a.get("digest") or "")) if isinstance(a, dict) else None
-        if not name or not IMAGE_RE.match(name) or not found:
+        found = DIGEST_RE.fullmatch(str(a.get("digest") or "")) if isinstance(a, dict) else None
+        if not name or not IMAGE_RE.fullmatch(name) or not found:
             continue
         out.append(
             {
@@ -147,7 +147,7 @@ def chosen(release, publisher, boards):
     """One image per board: the newest release's minimal Trixie image, or mPWRD-OS's Lyra image."""
     out = []
     for board in boards:
-        if not BOARD_RE.match(board):
+        if not BOARD_RE.fullmatch(board):
             continue
         if publisher == "mpwrd":
             match = [
@@ -270,7 +270,7 @@ def sync(check_only=False, log=print):
         for names in per_board.values():
             names.sort(reverse=True)
             for _, old in names[keep:]:
-                if RESCUE_RE.match(old):
+                if RESCUE_RE.fullmatch(old):
                     continue
                 (ROOT / old).unlink(missing_ok=True)
                 (ROOT / f"{old}.sha256").unlink(missing_ok=True)

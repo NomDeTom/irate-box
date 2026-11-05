@@ -54,7 +54,7 @@ def lock(bssid, run=None):
     """Hold the WiFi profile to one access point. Returns what was done; raises ValueError."""
     run = run or uplink.run
     bssid = (bssid or "").lower()
-    if not uplink.BSSID_RE.match(bssid):
+    if not uplink.BSSID_RE.fullmatch(bssid):
         raise Refused(uplink.BAD_BSSID)
     prof = _profile()
     rec = record()

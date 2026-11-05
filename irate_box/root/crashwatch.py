@@ -890,34 +890,22 @@ def _dt_watchdog():
 
 def _boot_env_overlays(add=None, remove=None):
     """Armbian's armbianEnv.txt: the user_overlays line with `add` put in or `remove` taken out. Returns the list."""
-    env = BOOT / "armbianEnv.txt"
-    lines = env.read_text().splitlines()
-    have, at = [], None
-    for i, line in enumerate(lines):
-        if line.startswith("user_overlays="):
-            have, at = line.split("=", 1)[1].split(), i
-    names = [n for n in have if n != remove] + ([add] if add and add not in have else [])
-    if names != have:
-        from irate_box.root import safeio
+    from irate_box.root import hardware
 
-        new = "user_overlays=" + " ".join(names)
-        if at is None:
-            lines.append(new)
-        elif names:
-            lines[at] = new
-        else:
-            del lines[at]
-        safeio.write(env, "\n".join(lines) + "\n")
-    return names
+    return hardware.set_overlay_names(add=add, remove=remove, boot=BOOT)
+
+
+def _dtc(argv, inp=None):
+    """The device tree compiler, through this module's subprocess so the tests can stand it in."""
+    return subprocess.run(argv, input=inp, capture_output=True, text=True)  # noqa: TID251
 
 
 def _board_watchdog(on):
     """The board's own watchdog switched on or off in the device tree, from the next boot: an Armbian user overlay."""
-    dtbo = BOOT / "overlay-user" / f"{OVERLAY_NAME}.dtbo"
+    from irate_box.root import hardware
+
     if not on:
-        dtbo.unlink(missing_ok=True)
-        if (BOOT / "armbianEnv.txt").is_file():
-            _boot_env_overlays(remove=OVERLAY_NAME)
+        hardware.remove_overlay(OVERLAY_NAME, boot=BOOT)
         return
     node = _dt_watchdog()
     if not node:
@@ -926,20 +914,16 @@ def _board_watchdog(on):
         '/dts-v1/;\n/plugin/;\n/ {\n\tfragment@0 {\n\t\ttarget-path = "%s";\n'
         '\t\t__overlay__ { status = "okay"; };\n\t};\n};\n' % node
     )
-    dtbo.parent.mkdir(parents=True, exist_ok=True)
-    r = subprocess.run(  # noqa: TID251
-        ["dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-"], input=src, capture_output=True, text=True
-    )
-    if r.returncode:
-        dtbo.unlink(missing_ok=True)
+    try:
+        hardware.add_overlay(OVERLAY_NAME, src, run=_dtc, boot=BOOT)
+    except hardware.OverlayError as exc:
         raise Refused(
             M(
                 "crashwatch-set.dtc-failed",
                 "The device tree compiler (dtc) failed: {detail}",
-                detail=r.stderr.strip()[:160],
+                detail=exc.detail,
             )
-        )
-    _boot_env_overlays(add=OVERLAY_NAME)
+        ) from None
 
 
 def board_watchdog_pending():

@@ -119,13 +119,13 @@ def hotspot_iface():
             from irate_box.root import ap
 
             iface = ap.ap_iface(rec["plan"])
-            if IFACE_RE.match(iface):
+            if IFACE_RE.fullmatch(iface):
                 return iface
     except (OSError, ValueError, KeyError, TypeError):
         pass
     try:
         for line in DNSMASQ_CONF.read_text().splitlines():
-            if line.startswith("interface=") and IFACE_RE.match(line[len("interface=") :].strip()):
+            if line.startswith("interface=") and IFACE_RE.fullmatch(line[len("interface=") :].strip()):
                 return line[len("interface=") :].strip()
     except OSError:
         pass
@@ -150,7 +150,7 @@ def ruleset(iface, fw=None, sharing=None, kept=()):
     kept: [(address, seconds left)] already let out, carried into the new set (kept_out)."""
     from irate_box.root import share
 
-    if not IFACE_RE.match(iface):
+    if not IFACE_RE.fullmatch(iface):
         raise Refused(
             M("fw-rules.iface.invalid", "The hotspot interface name {iface} is not valid.", iface=repr(iface))
         )
@@ -245,7 +245,7 @@ def service_ports(name):
     A name nothing knows any more (its add-on's manifest gone) opens nothing."""
     if name in SERVICES:
         return SERVICES[name]
-    m = PORT_SERVICE.match(name)
+    m = PORT_SERVICE.fullmatch(name)
     if m and 0 < int(m.group(2)) < 65536:
         return ((int(m.group(2)),), ()) if m.group(1) == "tcp" else ((), (int(m.group(2)),))
     from irate_box.hub import services
@@ -274,7 +274,7 @@ def services_here(wanted):
     for s in services.declared():
         if s["id"] in wanted and services.installed(s):
             have.append(s["id"])
-    have += [w for w in wanted if PORT_SERVICE.match(w)]
+    have += [w for w in wanted if PORT_SERVICE.fullmatch(w)]
     # The time, while the Clock page serves it to the hotspot: that page's switch is its switch.
     try:
         from irate_box.root import clock
@@ -324,7 +324,7 @@ def kept_out(sharing):
         for e in st.get("elem", []):
             e = e.get("elem", e) if isinstance(e, dict) else {"val": e}
             val, left = str(e.get("val", "")), e.get("expires")
-            if ADDR_RE.match(val) and isinstance(left, (int, float)) and left > 0:
+            if ADDR_RE.fullmatch(val) and isinstance(left, (int, float)) and left > 0:
                 out.append((val, int(left)))
     return out
 

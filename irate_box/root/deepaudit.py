@@ -140,7 +140,7 @@ def plain_cis(text):
         if m:
             out.append(f"{m.group(1)} {m.group(2)} → {m.group(3)}")
             continue
-        m = CIS_UPDATES.match(ln.strip())
+        m = CIS_UPDATES.fullmatch(ln.strip())
         if m:
             out.append(f"Updates waiting: {m.group(1)}")
             continue
@@ -162,7 +162,7 @@ CIS_WANTS_VALUE = re.compile(r"^(\S+) was not set to (\S+)$")
 def _cis_summary(msgs):
     """A shared check's summary: what it looks for, from its first message, else that it is not met."""
     first = msgs[0] if msgs else ""
-    m = CIS_WANTS_LINE.match(first)
+    m = CIS_WANTS_LINE.fullmatch(first)
     if m:
         return M(
             "cis.check.wants-line",
@@ -170,7 +170,7 @@ def _cis_summary(msgs):
             line=m.group(1),
             files=m.group(2).split(),
         )
-    m = CIS_WANTS_VALUE.match(first)
+    m = CIS_WANTS_VALUE.fullmatch(first)
     if m:
         return M(
             "cis.check.wants-value", "debian-cis wants {setting} set to {value}.", setting=m.group(1), value=m.group(2)
@@ -183,7 +183,7 @@ def parse_cis(text):
     failed check keeps only what failed ("/tmp has no option nodev"), not what passed on the way."""
     checks = []
     for line in text.splitlines():
-        m = CIS_LINE.match(line.strip())
+        m = CIS_LINE.fullmatch(line.strip())
         if m:
             said = [(s, ln) for s, t in CIS_MSG.findall(m.group(3)) for ln in plain_cis(t)]
             msgs = [t for s, t in said if s != "OK"] if m.group(1) != "OK" else []
@@ -207,7 +207,7 @@ def _script_vars(text):
     variable or a command is left out: it is not one fixed setting."""
     out = {}
     for line in text.splitlines():
-        m = CIS_VAR.match(line)
+        m = CIS_VAR.fullmatch(line)
         if m and m.group(3).strip() and not re.search(r"[$`]", m.group(3)):
             out[m.group(1)] = m.group(3).strip()
     return out
@@ -246,13 +246,13 @@ def cis_check_info(src, check):
     elif opts and v.get("FILE", "").startswith("/"):
         # Another file's settings (login.defs, journald.conf…): said, as their formats differ.
         info["say"] = M("cis.check.file-settings", "In {file}, set {settings}.", file=v["FILE"], settings=opts)
-    elif pkgs and not v.get("FILE") and all(CIS_PKG.match(p) for p in pkgs) and "apt_install" in body:
+    elif pkgs and not v.get("FILE") and all(CIS_PKG.fullmatch(p) for p in pkgs) and "apt_install" in body:
         # Only a check that is just the package: one whose package is a step before a setting is not.
         info["cmd"] = "sudo apt-get install " + " ".join(pkgs)
     elif (
         pkgs
         and not v.get("FILE")
-        and all(CIS_PKG.match(p) for p in pkgs)
+        and all(CIS_PKG.fullmatch(p) for p in pkgs)
         and re.search(r"apt-get (-y )?(purge|remove)|apt_remove", body)
     ):
         keep = sorted(HUB_KEEPS & set(pkgs))

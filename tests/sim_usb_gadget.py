@@ -212,21 +212,159 @@ check(
     health.check_usb_gadget(host) == [] and health.usb_gadget_groups(host) == [],
 )
 
-# The choice is saved and applied through the unit.
+# The choice is saved and applied to the live gadget, without a service restart.
 ran.clear()
 said = usbgadget.set_option("off")
 check(
-    "set off: saved, and the unit stopped",
-    usbgadget.load_settings()["on"] is False and ["systemctl", "stop", "irate-box-usb-gadget.service"] in ran,
-    said,
+    "set off: saved and the tree unbound, with no systemctl",
+    usbgadget.load_settings()["on"] is False
+    and not (T / "config/usb_gadget/irate").exists()
+    and not any(cmd and cmd[0] == "systemctl" for cmd in ran),
+    (said, ran),
 )
 ran.clear()
 said = usbgadget.set_option("on")
 check(
-    "set on: saved, and the unit restarted",
-    usbgadget.load_settings()["on"] is True and ["systemctl", "restart", "irate-box-usb-gadget.service"] in ran,
-    said,
+    "set on: saved and the tree bound again, with no systemctl",
+    usbgadget.load_settings()["on"] is True
+    and (T / "config/usb_gadget/irate/UDC").read_text() == "ff740000.usb"
+    and (T / "config/usb_gadget/irate/configs/c.1/ncm.usb0").is_symlink()
+    and not any(cmd and cmd[0] == "systemctl" for cmd in ran),
+    (said, ran),
 )
+
+# A service look between the save and the helper's apply must not compose twice.
+usbgadget.save_settings(on=False)
+usbgadget._tick([], sleep=lambda _: None)
+real_compose = usbgadget._compose
+count = {"n": 0}
+
+
+def counting_compose(*args, **kwargs):
+    count["n"] += 1
+    return real_compose(*args, **kwargs)
+
+
+usbgadget._compose = counting_compose
+usbgadget.save_settings(on=True)
+usbgadget._tick([], sleep=lambda _: None)
+after_service = count["n"]
+usbgadget.apply(sleep=lambda _: None)
+check(
+    "a service look between the save and apply: one compose, and the helper's apply does not make a second",
+    after_service == 1 and count["n"] == 1,
+    (after_service, count["n"]),
+)
+usbgadget._compose = real_compose
+
+# A failed change is remembered for this boot: the service does not retry it every look.
+usbgadget.BOOT_ID = T / "boot_id"
+usbgadget.BOOT_ID.write_text("boot-usb\n")
+usbgadget.clear_failure()
+usbgadget.save_settings(on=True, drive=True)
+real_prepare = usbgadget._prepare
+usbgadget._prepare = lambda settings, log=print: (["ff740000.usb"], None)
+composes = {"n": 0}
+
+
+def failing_compose(settings, udcs, *args, **kwargs):
+    if settings.get("drive"):
+        composes["n"] += 1
+        return False, "configfs: stood in failure", []
+    return real_compose(settings, udcs, *args, **kwargs)
+
+
+usbgadget._compose = failing_compose
+for _ in range(3):
+    usbgadget._tick([], sleep=lambda _: None)
+st = usbgadget.status()
+check(
+    "a failed compose is tried once in a boot, and status says it failed",
+    composes["n"] == 1 and st["failed"] is True and st["pending"] is False and "stood in failure" in st["why"],
+    (composes["n"], st),
+)
+
+usbgadget.clear_failure()
+prepares = {"n": 0}
+
+
+def failing_prepare(settings, log=print):
+    prepares["n"] += 1
+    return None, "the drive image could not be built"
+
+
+usbgadget._prepare = failing_prepare
+usbgadget.save_settings(on=True, drive_write=True)
+for _ in range(3):
+    usbgadget._tick([], sleep=lambda _: None)
+check(
+    "a failed prepare is tried once in a boot, not on every look",
+    prepares["n"] == 1,
+    prepares["n"],
+)
+usbgadget._prepare = real_prepare
+usbgadget._compose = real_compose
+usbgadget.clear_failure()
+usbgadget.save_settings(on=True, drive=False, drive_write=False)
+usbgadget._tick([], sleep=lambda _: None)
+
+# Networking off while the drive stays on stops dnsmasq and the console.
+real_stop_children = usbgadget.stop_children
+real_gadget_state = usbgadget.gadget_state
+stopped = []
+usbgadget.stop_children = lambda children: stopped.extend(children)
+usbgadget.gadget_state = lambda: {"up": True}
+usbgadget.save_settings(on=False, drive=True)
+usbgadget.ACTIVE.write_text(json.dumps(usbgadget.load_settings()))
+usbgadget._tick([object()], sleep=lambda _: None)
+check("networking off with the drive on stops the network's helpers", len(stopped) == 1, stopped)
+usbgadget.stop_children = real_stop_children
+usbgadget.gadget_state = real_gadget_state
+usbgadget.save_settings(on=True, drive=False)
+usbgadget._tick([], sleep=lambda _: None)
+usbgadget.clear_failure()
+
+# While usb0 is not back, the status says pending rather than up.
+usb0 = T / "sys/class/net/usb0"
+usb0.rename(T / "sys/class/net/usb0.away")
+check("a gadget still coming up: status says pending", usbgadget.status()["pending"] is True, usbgadget.status())
+usb0 = T / "sys/class/net/usb0.away"
+usb0.rename(T / "sys/class/net/usb0")
+check("  and no longer pending once usb0 is back", usbgadget.status()["pending"] is False)
+udc = T / "sys/class/udc/ff740000.usb"
+udc.rename(T / "sys/class/udc/ff740000.usb.away")
+check("  no peripheral port: not pending for ever", usbgadget.status()["pending"] is False)
+udc = T / "sys/class/udc/ff740000.usb.away"
+udc.rename(T / "sys/class/udc/ff740000.usb")
+
+
+# A change that cannot be made puts the previous configfs tree back.
+real_compose = usbgadget._compose
+
+
+def flaky_compose(settings, udcs, *a, **k):
+    if settings.get("drive"):
+        return False, "configfs: stood in failure", []
+    return real_compose(settings, udcs, *a, **k)
+
+
+usbgadget._compose = flaky_compose
+old_active = usbgadget.active_settings()
+ok, why = usbgadget.apply(
+    {"on": True, "drive": True, "drive_write": False, "drive_source": "drop"}, sleep=lambda _: None
+)
+g = T / "config/usb_gadget/irate"
+check(
+    "a failed live change: refused, and the old tree is back",
+    ok is False
+    and "stood in failure" in (why or "")
+    and (g / "UDC").read_text() == "ff740000.usb"
+    and (g / "configs/c.1/ncm.usb0").is_symlink()
+    and not (g / "functions/mass_storage.usb0").exists()
+    and usbgadget.active_settings() == old_active,
+    (ok, why, usbgadget.active_settings()),
+)
+usbgadget._compose = real_compose
 
 # The USB drive: the file drop as a FAT image, read-only by default, writable by choice.
 check("USB drive: off by default", usbgadget.load_settings()["drive"] is False)

@@ -18,7 +18,7 @@ os.environ.update(
 sys.path.insert(0, str(REPO))
 from irate_box import choices
 from irate_box.hub import server
-from irate_box.root import crashwatch, health
+from irate_box.root import crashwatch, hardware, health
 
 fails = 0
 
@@ -62,6 +62,13 @@ check(
     "card-set:journal:memory" in group_choices and all(choices.CHOICES_RE.match(choice) for choice in group_choices),
     [choice for choice in group_choices if not choices.CHOICES_RE.match(choice)],
 )
+hardware_choices = sorted({choice for choice in group_choices if hardware.handles(choice)})
+check(
+    "every hardware choice is one the hardware gate also handles (and the hardware groups were found)",
+    {"crashwatch-panic:on", "led-show:alive", "rfkill:wifi:off", "usb-gadget:on"} <= set(hardware_choices)
+    and all(hardware.handles(choice) for choice in hardware_choices),
+    hardware_choices,
+)
 source = ast.parse((REPO / "irate_box" / "root" / "health.py").read_text())
 actions = {
     node.args[0].value
@@ -84,6 +91,13 @@ check(
     "every literal finding action passes the shared pattern (and the actions were found)",
     "net-scan" in actions and all(choices.CHOICES_RE.match(action_choice(choice)) for choice in actions),
     sorted(choice for choice in actions if not choices.CHOICES_RE.match(action_choice(choice))),
+)
+hardware_actions = sorted({action_choice(choice) for choice in actions if hardware.handles(action_choice(choice))})
+check(
+    "every hardware finding action reaches the hardware gate (and the actions were found)",
+    {"rtc-look", "rtc-save", "rtc-remove", "clock-set:1791580000", "rfkill-apply"} <= set(hardware_actions)
+    and all(hardware.handles(choice) for choice in hardware_actions),
+    hardware_actions,
 )
 offered = [f"crashwatch-{k}:{v}" for k in ("snapshots", "panic", "watchdog", "undervoltage") for v in ("on", "off")] + [
     "crashwatch-undervoltage-mv:4630",

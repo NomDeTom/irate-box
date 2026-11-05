@@ -250,7 +250,7 @@ def _entries(source, inode=2):
             )
         )
     for line in said.stdout.splitlines():
-        match = LS_RE.match(line)
+        match = LS_RE.fullmatch(line)
         if not match:
             continue
         child, mode, rest = int(match[1]), int(match[2], 8), match[3]
@@ -1692,11 +1692,11 @@ def load_peers():
 
 
 def _valid_peer(name, host, user, port):
-    if not PEER_RE.match(name or ""):
+    if not PEER_RE.fullmatch(name or ""):
         raise Refused(M("housecall.peer.name", "Give the other box a short name: letters, digits, dots, dashes."))
-    if not HOST_RE.match(host or "") or host.startswith("-"):
+    if not HOST_RE.fullmatch(host or "") or host.startswith("-"):
         raise Refused(M("housecall.peer.host", "Give its address: a host name or an IP address."))
-    if not USER_RE.match(user or "") or user.startswith("-"):
+    if not USER_RE.fullmatch(user or "") or user.startswith("-"):
         raise Refused(
             M("housecall.peer.user", "Give the user this box signs in as: lower-case letters, digits, _ and -.")
         )

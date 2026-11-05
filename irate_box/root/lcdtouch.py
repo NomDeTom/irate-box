@@ -3,8 +3,8 @@
 """A 3.5" SPI TFT and XPT2046 resistive touch on the Luckfox Lyra Zero W's SPI1.
 
 The overlay puts SPI1 on header pins clear of SPI0 and the MeshAdv-Pi HAT: CLK 27, MOSI 29, MISO 31,
-display CS 35, touch CS 37. PEN (28), D/C (18) and RST (22) are plain GPIOs for the display and touch
-userspace code, or for an ads7846 node later. The overlay is an Armbian user overlay: the .dtbo in
+display CS 35, touch CS 37. D/C (26) and RST (28) are plain GPIOs for the display; the touch PEN
+will need another free pin when it is wired. The overlay is an Armbian user overlay: the .dtbo in
 /boot/overlay-user and its name on the user_overlays line of /boot/armbianEnv.txt. It applies at the
 next restart, so status says pending until both spidev1.0 and spidev1.1 have appeared.
 
@@ -36,9 +36,8 @@ PINS = [
     {"signal": "SPI1 MISO", "pin": 31, "soc": "GPIO1_B3", "rmio": 26, "gpio": 43},
     {"signal": "Display CS", "pin": 35, "soc": "GPIO0_C0", "rmio": 16, "gpio": 16},
     {"signal": "Touch TCS", "pin": 37, "soc": "GPIO1_C3", "rmio": 28, "gpio": 51},
-    {"signal": "Touch PEN", "pin": 28, "soc": "GPIO1_D3", "rmio": 31, "gpio": 59},
-    {"signal": "Display D/C", "pin": 18, "soc": "GPIO0_B4", "rmio": 12, "gpio": 12},
-    {"signal": "Display RST", "pin": 22, "soc": "GPIO0_B3", "rmio": 11, "gpio": 11},
+    {"signal": "Display D/C", "pin": 26, "soc": "GPIO0_B1", "rmio": 9, "gpio": 9},
+    {"signal": "Display RST", "pin": 28, "soc": "GPIO1_D3", "rmio": 31, "gpio": 59},
     {"signal": "Display BL", "pin": 36, "soc": "GPIO1_D1", "rmio": 29, "gpio": 57},
 ]
 DTS = """/dts-v1/;
@@ -106,10 +105,14 @@ def supported():
 
 def _overlays():
     """The names on user_overlays= in armbianEnv.txt, in order."""
-    for line in _read(ENV).splitlines():
-        if line.startswith("user_overlays="):
-            return line.split("=", 1)[1].split()
-    return []
+    from irate_box.root import hardware
+
+    return hardware.overlay_names(boot=BOOT)
+
+
+def _dtc(argv, inp=None):
+    """The device tree compiler, through this module's run so the tests can stand it in."""
+    return run(*argv, inp=inp)
 
 
 def _active():
@@ -176,56 +179,38 @@ def write_status():
     safeio.write(CONTROL, json.dumps(status(), sort_keys=True) + "\n", 0o644)
 
 
-def _boot_env(add=None, remove=None):
-    """Armbian's armbianEnv.txt: user_overlays with our overlay put in or taken out."""
-    if not ENV.is_file():
-        return []
-    lines = _read(ENV).splitlines()
-    have, at = [], None
-    for i, line in enumerate(lines):
-        if line.startswith("user_overlays="):
-            have, at = line.split("=", 1)[1].split(), i
-    names = [n for n in have if n != remove] + ([add] if add and add not in have else [])
-    if names != have:
-        new = "user_overlays=" + " ".join(names)
-        if at is None:
-            lines.append(new)
-        elif names:
-            lines[at] = new
-        else:
-            del lines[at]
-        safeio.write(ENV, "\n".join(lines) + "\n", 0o644)
-    return names
-
-
 def set_overlay(on):
     """Turn the overlay on or off in the boot files; it applies at the next restart."""
     if on and not supported():
         raise Refused(M("lcdtouch.unsupported", "This overlay is for the Luckfox Lyra Zero W only."))
     if on and not ENV.is_file():
         raise Refused(M("lcdtouch.no-boot-env", "This board has no Armbian boot environment (/boot/armbianEnv.txt)."))
+    from irate_box.root import hardware
+
     if on:
-        DTBO.parent.mkdir(parents=True, exist_ok=True)
-        r = run("dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(DTBO), "-", inp=DTS)
-        if r.returncode:
-            DTBO.unlink(missing_ok=True)
-            if r.returncode == 127:
-                raise Refused(M("lcdtouch.dtc-missing", "The device tree compiler (dtc) is not installed."))
+        try:
+            hardware.add_overlay(OVERLAY, DTS, run=_dtc, boot=BOOT)
+        except hardware.OverlayError as exc:
+            if exc.kind == "dtc-missing":
+                raise Refused(M("lcdtouch.dtc-missing", "The device tree compiler (dtc) is not installed.")) from None
             raise Refused(
                 M(
                     "lcdtouch.dtc-failed",
                     "The device tree compiler (dtc) failed: {detail}",
-                    detail=r.stderr.strip()[:160],
+                    detail=exc.detail,
                 )
-            )
-        _boot_env(add=OVERLAY)
+            ) from None
         write_status()
         return M("lcdtouch.on", "Saved. Restart the box to use the SPI1 display and touch.")
-    DTBO.unlink(missing_ok=True)
-    if ENV.is_file():
-        _boot_env(remove=OVERLAY)
+    hardware.remove_overlay(OVERLAY, boot=BOOT)
     write_status()
     return M("lcdtouch.off", "Saved. The SPI1 display and touch overlay is off after a restart.")
+
+
+def record_display(on):
+    """The panel's state after an operation, from the display service or a direct write."""
+    _save_state({"display_on": bool(on), "boot_id": _boot_id()})
+    write_status()
 
 
 def _require_display():

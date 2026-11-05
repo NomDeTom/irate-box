@@ -154,7 +154,7 @@ def _on_this_hub(href):
 
 def svg_icon(icon):
     """The picture's name when an icon is svg:<name> and web/icons has it; else None."""
-    m = SVG_ICON_RE.match(icon or "")
+    m = SVG_ICON_RE.fullmatch(icon or "")
     return m.group(1) if m and (ICONS / f"{m.group(1)}.svg").is_file() else None
 
 
@@ -251,25 +251,25 @@ def _check_docs(m, need):
             "docs.title: a string up to 120 characters",
         )
         need(
-            isinstance(doc.get("book"), str) and BOOK_RE.match(doc["book"]),
+            isinstance(doc.get("book"), str) and BOOK_RE.fullmatch(doc["book"]),
             "docs.book: letters, digits, '.', '_' and '-'",
         )
-        need(isinstance(doc.get("lang"), str) and LANG_RE.match(doc["lang"]), "docs.lang: a language such as en")
+        need(isinstance(doc.get("lang"), str) and LANG_RE.fullmatch(doc["lang"]), "docs.lang: a language such as en")
         need(type(doc.get("size_mb")) is int and 0 < doc["size_mb"] <= 100000, "docs.size_mb: whole megabytes")
         src = doc.get("source")
         need(isinstance(src, dict) and src.get("type") in DOC_TYPES, f"docs.source.type: one of {', '.join(DOC_TYPES)}")
         if src["type"] == "kiwix":
             need(
-                isinstance(src.get("kiwix_name"), str) and BOOK_RE.match(src["kiwix_name"]),
+                isinstance(src.get("kiwix_name"), str) and BOOK_RE.fullmatch(src["kiwix_name"]),
                 "docs.source.kiwix_name: a Kiwix catalogue name",
             )
         elif src["type"] == "url":
             need(str(src.get("url", "")).startswith("https://"), "docs.source.url: must start with https://")
         else:
-            need(isinstance(src.get("repo"), str) and REPO_RE.match(src["repo"]), "docs.source.repo: OWNER/REPO")
+            need(isinstance(src.get("repo"), str) and REPO_RE.fullmatch(src["repo"]), "docs.source.repo: OWNER/REPO")
             if src["type"] in ("actions", "nightly-link"):
                 need(
-                    isinstance(src.get("workflow"), str) and re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", src["workflow"]),
+                    isinstance(src.get("workflow"), str) and re.fullmatch(r"^[A-Za-z0-9_.-]+\.ya?ml$", src["workflow"]),
                     "docs.source.workflow: a file name",
                 )
             need("branch" not in src or isinstance(src["branch"], str), "docs.source.branch: a string")
@@ -283,7 +283,7 @@ def _check(m, where):
 
     need(isinstance(m, dict), "not a JSON object")
     need(_api_problem(m) is None, _api_problem(m) or "")
-    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: use lower-case letters, digits and hyphens")
+    need(isinstance(m.get("id"), str) and ID_RE.fullmatch(m["id"]), "id: use lower-case letters, digits and hyphens")
     need(type(m.get("order")) is int, "order: an integer")
     tile = m.get("tile")
     if tile is not None:
@@ -301,7 +301,7 @@ def _check(m, where):
     menu = m.get("menu")
     if menu is not None:
         need(
-            tile is not None and "href" in tile and re.match(r"^/[a-z0-9-]+\.html$", tile["href"]),
+            tile is not None and "href" in tile and re.fullmatch(r"^/[a-z0-9-]+\.html$", tile["href"]),
             "a menu needs a tile whose href is its page, /<name>.html",
         )
         for k in ("title", "subtitle"):
@@ -332,7 +332,7 @@ def _check(m, where):
                     isinstance(s, dict) and set(s) == {"id", "title"},
                     "menu.sections: each an id and a title",
                 )
-                need(isinstance(s["id"], str) and SECTION_RE.match(s["id"]), "menu.sections.id: a lower-case id")
+                need(isinstance(s["id"], str) and SECTION_RE.fullmatch(s["id"]), "menu.sections.id: a lower-case id")
                 need(
                     isinstance(s["title"], str) and 0 < len(s["title"]) <= 80,
                     "menu.sections.title: up to 80 characters",
@@ -358,13 +358,13 @@ def _check(m, where):
         need(_on_this_hub(e["href"]), "entries.href: a path on this hub")
         need(e.get("admin", False) in (True, False), "entries.admin: true or false")
         need(
-            "section" not in e or (isinstance(e["section"], str) and SECTION_RE.match(e["section"])),
+            "section" not in e or (isinstance(e["section"], str) and SECTION_RE.fullmatch(e["section"])),
             "entries.section: a lower-case section id",
         )
     disc = m.get("discover")
     if disc is not None:
         need(m.get("install") is not None, "discover needs an install")
-        need(re.match(r"^[a-z0-9_.-]+\.json$", str(disc.get("file", ""))), "discover.file: a .json name")
+        need(re.fullmatch(r"^[a-z0-9_.-]+\.json$", str(disc.get("file", ""))), "discover.file: a .json name")
         need("{page}" in str(disc.get("href", "")), "discover.href: containing {page}")
         need(isinstance(disc.get("groups"), dict), "discover.groups: group -> menu id")
     _check_docs(m, need)
@@ -374,14 +374,14 @@ def _check(m, where):
         need(status.get("path") is None or isinstance(status["path"], str), "status.path: a string or null")
         need(sum(k in status for k in ("port", "root_env", "socket")) == 1, "status: one of port, root_env or socket")
         need(
-            "socket" not in status or re.match(r"^/run/[a-z0-9-]+/[a-z0-9.-]+\.sock$", str(status["socket"])),
+            "socket" not in status or re.fullmatch(r"^/run/[a-z0-9-]+/[a-z0-9.-]+\.sock$", str(status["socket"])),
             "status.socket: a socket under /run",
         )
         need("port" not in status or type(status["port"]) is int, "status.port: an integer")
         need("web_port" not in status or type(status["web_port"]) is int, "status.web_port: an integer")
         need(not status.get("web_port") or status.get("path"), "status.web_port needs a path")
         need("websocket" not in status or type(status["websocket"]) is bool, "status.websocket: true or false")
-        need("unit" not in status or UNIT_RE.match(str(status["unit"])), "status.unit: a .service name")
+        need("unit" not in status or UNIT_RE.fullmatch(str(status["unit"])), "status.unit: a .service name")
         need(not status.get("control") or "unit" in status, "status.control needs a unit")
     net = m.get("network")
     if net is not None:
@@ -420,16 +420,16 @@ def _check(m, where):
             )
     inst = m.get("install")
     if inst is not None:
-        need(isinstance(inst.get("dir"), str) and DIR_RE.match(inst["dir"]), "install.dir: e.g. apps/draw")
+        need(isinstance(inst.get("dir"), str) and DIR_RE.fullmatch(inst["dir"]), "install.dir: e.g. apps/draw")
         need(
             isinstance(inst.get("needs"), str) and ".." not in inst["needs"] and not inst["needs"].startswith("/"),
             "install.needs: a relative file or glob",
         )
-        need("restart" not in inst or UNIT_RE.match(str(inst["restart"])), "install.restart: a .service name")
+        need("restart" not in inst or UNIT_RE.fullmatch(str(inst["restart"])), "install.restart: a .service name")
     addon = m.get("addon")
     if addon is not None:
         need(
-            re.match(
+            re.fullmatch(
                 r"^--with-(notes|sync|mqtt|irc|inspircd|term|collab|kiwix|tailscale)$", str(addon.get("option", ""))
             ),
             "addon.option: one of install.sh's --with-notes, --with-sync, --with-mqtt, --with-irc, --with-inspircd, --with-term, --with-collab, --with-kiwix, --with-tailscale",
@@ -440,7 +440,7 @@ def _check(m, where):
         need("needs" not in addon or isinstance(addon["needs"], str), "addon.needs: a string")
         need(
             "group" not in addon
-            or (isinstance(addon["group"], str) and re.match(r"^[a-z0-9][a-z0-9-]{0,31}$", addon["group"])),
+            or (isinstance(addon["group"], str) and re.fullmatch(r"^[a-z0-9][a-z0-9-]{0,31}$", addon["group"])),
             "addon.group: lower-case letters, digits and hyphens",
         )
         need(
@@ -452,7 +452,9 @@ def _check(m, where):
             or (
                 isinstance(addon["packages"], list)
                 and len(addon["packages"]) <= 40
-                and all(isinstance(p, str) and re.match(r"^[a-z0-9][a-z0-9+.-]{1,62}$", p) for p in addon["packages"])
+                and all(
+                    isinstance(p, str) and re.fullmatch(r"^[a-z0-9][a-z0-9+.-]{1,62}$", p) for p in addon["packages"]
+                )
             ),
             "addon.packages: Debian package names",
         )
@@ -464,7 +466,7 @@ def _check(m, where):
         need(
             isinstance(adm, dict)
             and isinstance(adm.get("sections", []), list)
-            and all(isinstance(x, str) and SECTION_RE.match(x) for x in adm.get("sections", [])),
+            and all(isinstance(x, str) and SECTION_RE.fullmatch(x) for x in adm.get("sections", [])),
             "admin.sections: a list of /admin section ids",
         )
         for k in ("title", "icon"):
@@ -479,15 +481,17 @@ def _check(m, where):
         need(inst is not None, "a source needs an install")
         need(src.get("type") in ("bundle", "git"), "source.type: bundle or git")
         if src["type"] == "bundle":
-            need(REPO_RE.match(str(src.get("repo", ""))), "source.repo: OWNER/REPO")
-            need(re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", str(src.get("workflow", ""))), "source.workflow: a file name")
-        else:
-            need(GIT_URL_RE.match(str(src.get("repo", ""))), "source.repo: an https:// git URL")
+            need(REPO_RE.fullmatch(str(src.get("repo", ""))), "source.repo: OWNER/REPO")
             need(
-                "adapt" not in src or re.match(r"^[a-z_]+\.py$", str(src["adapt"])),
+                re.fullmatch(r"^[A-Za-z0-9_.-]+\.ya?ml$", str(src.get("workflow", ""))), "source.workflow: a file name"
+            )
+        else:
+            need(GIT_URL_RE.fullmatch(str(src.get("repo", ""))), "source.repo: an https:// git URL")
+            need(
+                "adapt" not in src or re.fullmatch(r"^[a-z_]+\.py$", str(src["adapt"])),
                 "source.adapt: a script in the hub's code",
             )
-            need("pin" not in src or re.match(r"^[0-9a-f]{40}$", str(src["pin"])), "source.pin: a full commit hash")
+            need("pin" not in src or re.fullmatch(r"^[0-9a-f]{40}$", str(src["pin"])), "source.pin: a full commit hash")
 
 
 def _pattern(p):
@@ -506,7 +510,7 @@ def _check_checks(checks, need, local=False):
     for c in checks:
         need(isinstance(c, dict), "checks: each an object")
         cid = c.get("id")
-        need(isinstance(cid, str) and CHECK_ID_RE.match(cid), "checks.id: lower-case letters, digits and hyphens")
+        need(isinstance(cid, str) and CHECK_ID_RE.fullmatch(cid), "checks.id: lower-case letters, digits and hyphens")
         need(cid not in seen, f"checks.id: {cid} used twice")
         seen.add(cid)
         where = f"checks.{cid}"
@@ -535,7 +539,7 @@ def _check_checks(checks, need, local=False):
         )
         if c["kind"] == "unit":
             need(
-                isinstance(c.get("property"), str) and CHECK_PROPERTY_RE.match(c["property"]),
+                isinstance(c.get("property"), str) and CHECK_PROPERTY_RE.fullmatch(c["property"]),
                 f"{where}.property: a systemd property, e.g. ExecStart",
             )
             need(
@@ -551,13 +555,13 @@ def _check_checks(checks, need, local=False):
         if c["kind"] == "http":
             if local:
                 need(
-                    c.get("path") == "" or (isinstance(c.get("path"), str) and CHECK_LOCAL_RE.match(c["path"])),
+                    c.get("path") == "" or (isinstance(c.get("path"), str) and CHECK_LOCAL_RE.fullmatch(c["path"])),
                     f"{where}.path: a page inside the add-on, e.g. index.html",
                 )
                 need(c.get("via") == "front", f"{where}.via: front (a local add-on is reached through the web server)")
             else:
                 need(
-                    isinstance(c.get("path"), str) and CHECK_ROUTE_RE.match(c["path"]),
+                    isinstance(c.get("path"), str) and CHECK_ROUTE_RE.fullmatch(c["path"]),
                     f"{where}.path: a route, e.g. /wiki/",
                 )
                 need(c.get("via") in ("front", "direct"), f"{where}.via: front or direct")
@@ -573,7 +577,7 @@ def _check_checks(checks, need, local=False):
             )
             need(
                 ("header" in c) == ("match" in c)
-                and ("header" not in c or (isinstance(c["header"], str) and CHECK_HEADER_RE.match(c["header"])))
+                and ("header" not in c or (isinstance(c["header"], str) and CHECK_HEADER_RE.fullmatch(c["header"])))
                 and ("match" not in c or _pattern(c["match"]) is not None),
                 f"{where}: header and match together, a header name and a pattern",
             )
@@ -581,17 +585,20 @@ def _check_checks(checks, need, local=False):
             continue
         if local:
             need(
-                isinstance(c.get("path"), str) and CHECK_LOCAL_RE.match(c["path"]),
+                isinstance(c.get("path"), str) and CHECK_LOCAL_RE.fullmatch(c["path"]),
                 f"{where}.path: a file inside the add-on's own folder",
             )
         else:
-            need(isinstance(c.get("path"), str) and CHECK_PATH_RE.match(c["path"]), f"{where}.path: an absolute path")
+            need(
+                isinstance(c.get("path"), str) and CHECK_PATH_RE.fullmatch(c["path"]), f"{where}.path: an absolute path"
+            )
         if c["kind"] == "file":
             need(type(c.get("exists", True)) is bool, f"{where}.exists: true or false")
             for k in ("owner", "group"):
-                need(k not in c or (isinstance(c[k], str) and CHECK_NAME_RE.match(c[k])), f"{where}.{k}: a name")
+                need(k not in c or (isinstance(c[k], str) and CHECK_NAME_RE.fullmatch(c[k])), f"{where}.{k}: a name")
             need(
-                "max_mode" not in c or (isinstance(c["max_mode"], str) and re.match(r"^0?[0-7]{3}$", c["max_mode"])),
+                "max_mode" not in c
+                or (isinstance(c["max_mode"], str) and re.fullmatch(r"^0?[0-7]{3}$", c["max_mode"])),
                 f'{where}.max_mode: octal, e.g. "0640"',
             )
         else:
@@ -738,7 +745,7 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
     need(_api_problem(m) is None, _api_problem(m) or "")
     extra = set(m) - LOCAL_KEYS
     need(not extra, f"a local add-on cannot use these fields: {', '.join(sorted(extra))}")
-    need(isinstance(m.get("id"), str) and ID_RE.match(m["id"]), "id: use lower-case letters, digits and hyphens")
+    need(isinstance(m.get("id"), str) and ID_RE.fullmatch(m["id"]), "id: use lower-case letters, digits and hyphens")
     need(m["id"] not in builtin_ids and m["id"] not in _hub_pages(), f"id: {m['id']} is already used by the hub server")
     need(type(m.get("order")) is int, "order: an integer")
     tile = m.get("tile")
@@ -747,7 +754,7 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
         "tile: icon, name and desc",
     )
     need(set(tile) <= {"icon", "name", "desc", "path"}, "tile: icon, name, desc and path only")
-    need(LOCAL_PATH_RE.match(str(tile.get("path", ""))), "tile.path: a path inside the add-on")
+    need(LOCAL_PATH_RE.fullmatch(str(tile.get("path", ""))), "tile.path: a path inside the add-on")
     menu = m.get("menu")
     if menu is not None:
         need(
@@ -773,7 +780,9 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
             and all(type(v) is int for v in e["menus"].values()),
             "entries.menus: this add-on's own list, or a folder that takes add-ons",
         )
-        need(isinstance(e.get("name"), str) and LOCAL_PATH_RE.match(str(e.get("path", ""))), "entries: name and path")
+        need(
+            isinstance(e.get("name"), str) and LOCAL_PATH_RE.fullmatch(str(e.get("path", ""))), "entries: name and path"
+        )
     need(
         not any(m["id"] in e["menus"] for e in m.get("entries", [])) or menu is not None,
         "entries for the add-on's own list need a menu",
@@ -783,12 +792,12 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
     need(isinstance(src, dict) and src.get("type") in ("git", "bundle"), "source: git or bundle")
     if src["type"] == "git":
         need(set(src) <= {"type", "repo", "branch", "pin", "adapt"}, "source: type, repo, branch, pin, adapt")
-        need(GIT_URL_RE.match(str(src.get("repo", ""))), "source.repo: an https:// git URL")
-        need(SHA_RE.match(str(src.get("pin", ""))), "source.pin: the full hash of a commit (required)")
+        need(GIT_URL_RE.fullmatch(str(src.get("repo", ""))), "source.repo: an https:// git URL")
+        need(SHA_RE.fullmatch(str(src.get("pin", ""))), "source.pin: the full hash of a commit (required)")
         need(
             "adapt" not in src
             or (
-                re.match(r"^adapt_[a-z_]+\.py$", str(src["adapt"]))
+                re.fullmatch(r"^adapt_[a-z_]+\.py$", str(src["adapt"]))
                 and (CHECKOUT / "irate_box" / "library" / src["adapt"]).is_file()
             ),
             "source.adapt: an adapt script of the hub's own (irate_box/library/adapt_*.py)",
@@ -798,10 +807,10 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
             set(src) <= {"type", "repo", "workflow", "branch", "pattern"},
             "source: type, repo, workflow, branch, pattern",
         )
-        need(REPO_RE.match(str(src.get("repo", ""))), "source.repo: OWNER/REPO")
-        need(re.match(r"^[A-Za-z0-9_.-]+\.ya?ml$", str(src.get("workflow", ""))), "source.workflow: a file name")
+        need(REPO_RE.fullmatch(str(src.get("repo", ""))), "source.repo: OWNER/REPO")
+        need(re.fullmatch(r"^[A-Za-z0-9_.-]+\.ya?ml$", str(src.get("workflow", ""))), "source.workflow: a file name")
     need(
-        isinstance(m.get("needs"), str) and LOCAL_PATH_RE.match(m["needs"]) and m["needs"],
+        isinstance(m.get("needs"), str) and LOCAL_PATH_RE.fullmatch(m["needs"]) and m["needs"],
         "needs: a file inside the add-on",
     )
     addon = m.get("addon")
@@ -819,7 +828,7 @@ def check_local(m, where="local manifest", builtin_ids=(), folder_ids=()):
     need(
         isinstance(caps.get("connect", []), list)
         and len(caps.get("connect", [])) <= 8
-        and all(isinstance(c, str) and CONNECT_RE.match(c) for c in caps.get("connect", [])),
+        and all(isinstance(c, str) and CONNECT_RE.fullmatch(c) for c in caps.get("connect", [])),
         "capabilities.connect: up to 8 of ws://, wss://, http:// or https:// with a host or {box}",
     )
     need(type(caps.get("storage", False)) is bool, "capabilities.storage: true or false")
@@ -983,7 +992,7 @@ def entries_for(menu_id, manifests, skip=()):
             except (OSError, ValueError):
                 found = []
             for n, item in enumerate(found if isinstance(found, list) else []):
-                if not isinstance(item, dict) or not PAGE_RE.match(str(item.get("page", ""))):
+                if not isinstance(item, dict) or not PAGE_RE.fullmatch(str(item.get("page", ""))):
                     continue
                 href = disc["href"].replace("{page}", item["page"])
                 if href in named or disc["groups"].get(item.get("group")) != menu_id:

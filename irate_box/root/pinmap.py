@@ -227,7 +227,7 @@ def parse(text):
             continue
         if not chip:
             continue
-        found = V2_RE.match(raw)
+        found = V2_RE.fullmatch(raw)
         if found:
             name = found.group(2) if found.group(2) is not None else found.group(3)
             consumer = CONSUMER_RE.search(found.group(5))
@@ -243,7 +243,7 @@ def parse(text):
                 }
             )
             continue
-        found = V1_RE.match(raw)
+        found = V1_RE.fullmatch(raw)
         if not found:
             continue
         name = found.group(2) if found.group(2) is not None else found.group(3)
@@ -273,7 +273,7 @@ def parse_pinmux(text):
     ("pin", N). The function and group are kept, so a claimed pin can be named by what it does."""
     out = {}
     for raw in text.splitlines():
-        found = PINMUX_RE.match(raw)
+        found = PINMUX_RE.fullmatch(raw)
         if not found:
             continue
         pin_no, name, rest = int(found.group(1)), found.group(2).strip(), found.group(3).split()
@@ -346,7 +346,7 @@ def parse_aliases(text):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        found = re.match(r'([A-Za-z0-9_-]+)\s*=\s*"?([^";]+)"?;?$', line)
+        found = re.fullmatch(r'([A-Za-z0-9_-]+)\s*=\s*"?([^";]+)"?;?$', line)
         if found:
             out[found.group(1)] = found.group(2).strip()
     return out
@@ -419,7 +419,7 @@ def bus_occupant(bus):
 def name_for(claim, table=None, of_node=None):
     """A claimed pin's name, best first: the pinmux group (SPI0 MOSI), the owner's alias (SERIAL1), then the owner."""
     group = claim.get("group") or ""
-    found = re.match(r"rm-io\d+-(.+)$", group)
+    found = re.fullmatch(r"rm-io\d+-(.+)$", group)
     if found:
         parts = found.group(1).split("-")
         bus = parts[0].upper()

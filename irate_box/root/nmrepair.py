@@ -82,12 +82,12 @@ def _wifi_device(text):
             continue
         indent = len(line) - len(line.lstrip())
         if base is None:
-            if re.match(r"^\s*wifis:\s*$", line):
+            if re.fullmatch(r"^\s*wifis:\s*$", line):
                 base = indent
             continue
         if indent <= base:
             break
-        m = re.match(r"^\s*([A-Za-z0-9_.:-]+):\s*$", line)
+        m = re.fullmatch(r"^\s*([A-Za-z0-9_.:-]+):\s*$", line)
         if m:
             return m.group(1)
     return None
@@ -97,7 +97,7 @@ def _renderer(text):
     """The netplan file with `renderer: NetworkManager` under `network:`. None when it has no network block."""
     lines = text.splitlines()
     for i, line in enumerate(lines):
-        if not re.match(r"^network:\s*$", line):
+        if not re.fullmatch(r"^network:\s*$", line):
             continue
         # The renderer belongs to the network block, at two spaces. An older line there is replaced.
         j = i + 1

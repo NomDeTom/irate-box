@@ -105,17 +105,19 @@ def _link_ok(link):
 def _ok(k, stem):
     return (
         isinstance(k, dict)
-        and ID_RE.match(str(k.get("id", "")))
+        and ID_RE.fullmatch(str(k.get("id", "")))
         and k["id"] == stem
         and isinstance(k.get("packages"), list)
         and k["packages"]
-        and all(isinstance(p, str) and PKG_RE.match(p) for p in k["packages"])
+        and all(isinstance(p, str) and PKG_RE.fullmatch(p) for p in k["packages"])
         and isinstance(k.get("needs_64bit", []), list)
         and all(p in k["packages"] for p in k.get("needs_64bit", []))
         and isinstance(k.get("pip", []), list)
-        and all(isinstance(p, str) and PIP_RE.match(p) for p in k.get("pip", []))
+        and all(isinstance(p, str) and PIP_RE.fullmatch(p) for p in k.get("pip", []))
         and isinstance(k.get("alternatives", []), list)
-        and all(isinstance(p, str) and PKG_RE.match(p) and p not in k["packages"] for p in k.get("alternatives", []))
+        and all(
+            isinstance(p, str) and PKG_RE.fullmatch(p) and p not in k["packages"] for p in k.get("alternatives", [])
+        )
         and isinstance(k.get("only_where", {}), dict)
         and all(p in k["packages"] and c in CONDITIONS for p, c in k.get("only_where", {}).items())
         and k.get("kernel_headers", False) in (True, False)
@@ -146,7 +148,7 @@ def definitions():
     out = shipped()
     extras = _load(OWNER / "extras.json") or {}
     for kid, pkgs in extras.items() if isinstance(extras, dict) else ():
-        if kid in out and isinstance(pkgs, list) and all(isinstance(p, str) and PKG_RE.match(p) for p in pkgs):
+        if kid in out and isinstance(pkgs, list) and all(isinstance(p, str) and PKG_RE.fullmatch(p) for p in pkgs):
             add = [p for p in pkgs if p not in out[kid]["packages"]]
             out[kid] = dict(out[kid], packages=out[kid]["packages"] + add, extra=add)
     for f in sorted(OWNER.glob("*.json")) if OWNER.is_dir() else []:

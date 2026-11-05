@@ -142,7 +142,7 @@ def set_settings(**changes):
         cfg["configs"] = bool(changes["configs"])
     if "boards" in changes:
         b = changes["boards"]
-        if b != "all" and not (isinstance(b, list) and all(isinstance(x, str) and BOARD_RE.match(x) for x in b)):
+        if b != "all" and not (isinstance(b, list) and all(isinstance(x, str) and BOARD_RE.fullmatch(x) for x in b)):
             raise LibrarianError(
                 M("firmware.boards.invalid", 'Invalid boards setting. Enter "all" or a list of board names.')
             )
@@ -184,7 +184,7 @@ def set_settings(**changes):
     if "proving_families" in changes:
         value = changes["proving_families"]
         if value not in ("chosen", "all") and not (
-            isinstance(value, list) and all(isinstance(x, str) and FAMILY_RE.match(x) for x in value)
+            isinstance(value, list) and all(isinstance(x, str) and FAMILY_RE.fullmatch(x) for x in value)
         ):
             raise LibrarianError(
                 M(
@@ -200,7 +200,7 @@ def set_settings(**changes):
         cfg["proving_keep"] = n
     for key in ("proving_window_start", "proving_window_end"):
         if key in changes:
-            if not CLOCK_RE.match(str(changes[key] or "")):
+            if not CLOCK_RE.fullmatch(str(changes[key] or "")):
                 raise LibrarianError(M("firmware.proving.clock", "Give a time as HH:MM, from 00:00 to 23:59."))
             cfg[key] = changes[key]
     librarian._write_json(SETTINGS, cfg)
@@ -257,7 +257,7 @@ def _releases(cfg):
             continue
         version = rel["tag_name"].lstrip("v")
         names = {a["name"]: a for a in rel.get("assets", [])}
-        if not VERSION_RE.match(version) or f"firmware-{version}.json" not in names:
+        if not VERSION_RE.fullmatch(version) or f"firmware-{version}.json" not in names:
             continue
         sums = _bundle_sums(names)
         deps_all = {}
@@ -392,7 +392,7 @@ def _mirror_version(rel, cfg, policy, log):
     list_check = _against_github(raw, rel.get("list_digest"), f"firmware-{version}.json")
     board_list = json.loads(raw)
     _publish(vdir / f"firmware-{version}.json", board_list)
-    targets = sorted({t["board"] for t in board_list.get("targets", []) if BOARD_RE.match(t.get("board", ""))})
+    targets = sorted({t["board"] for t in board_list.get("targets", []) if BOARD_RE.fullmatch(t.get("board", ""))})
     wanted = targets if cfg["boards"] == "all" else [b for b in targets if b in cfg["boards"]]
     got, files, size, unavailable = [], 0, 0, []
     for board in wanted:
@@ -440,7 +440,7 @@ def _mirror_board(base, vdir, version, mt, policy):
     files = size = 0
     for entry in mt.get("files", []):
         name = entry.get("name", "")
-        if not FILE_RE.match(name) or name.endswith(".elf"):
+        if not FILE_RE.fullmatch(name) or name.endswith(".elf"):
             continue
         dest = vdir / name
         if not _have(dest, entry):
@@ -1023,7 +1023,7 @@ def sync(check_only=False, log=print):
             versions[rel["version"]] = _mirror_version(rel, cfg, policy, log)
         # Releases no longer kept go, and so does anything else a version-shaped folder holds.
         for d in ROOT.iterdir() if ROOT.is_dir() else []:
-            if d.is_dir() and VERSION_RE.match(d.name) and d.name not in versions:
+            if d.is_dir() and VERSION_RE.fullmatch(d.name) and d.name not in versions:
                 shutil.rmtree(d, ignore_errors=True)
         st["versions"] = versions
         st["cache"] = _carry_cache(kept[0], cfg, policy, log) if kept else None
@@ -1047,7 +1047,7 @@ def _drop_flash_files():
     a folder left empty goes too. Returns the bytes freed."""
     gone = 0
     for d in ROOT.iterdir() if ROOT.is_dir() else []:
-        if not (d.is_dir() and VERSION_RE.match(d.name)):
+        if not (d.is_dir() and VERSION_RE.fullmatch(d.name)):
             continue
         for f in d.iterdir():
             if f.name == "pio-deps" or f.is_dir():
@@ -1073,7 +1073,7 @@ def cache_dir():
 def targets():
     """The boards the newest kept release offers, for /admin's picker: [{board, platform}]."""
     for v in (
-        sorted((d for d in ROOT.iterdir() if d.is_dir() and VERSION_RE.match(d.name)), reverse=True)
+        sorted((d for d in ROOT.iterdir() if d.is_dir() and VERSION_RE.fullmatch(d.name)), reverse=True)
         if ROOT.is_dir()
         else []
     ):

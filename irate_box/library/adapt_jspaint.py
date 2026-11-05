@@ -139,7 +139,7 @@ def local_images(text, tree):
     """The page's outside pictures: JS Paint's own files from this copy where it has them, the others left out."""
 
     def swap(match):
-        own = OWN_RAW.match(match.group(1))
+        own = OWN_RAW.fullmatch(match.group(1))
         if own and (Path(tree) / own.group(1)).is_file():
             return match.group(0).replace(match.group(1), own.group(1))
         return ""

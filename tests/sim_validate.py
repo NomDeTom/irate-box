@@ -243,6 +243,8 @@ for bad in ("a\r\nX-Evil: 1", "a\n", "a\x00", "a\x7f"):
 refused("header_value: not text", V.header_value, None)
 refused("config line: newline", V.config_line, "ssid", "a\nb")
 refused("config line: bad key", V.config_line, "ss id", "x")
+refused("config line: a key with a trailing newline", V.config_line, "ssid\n", "x")
+refused("config line: an empty key", V.config_line, "", "x")
 check("config line: a plain line", V.config_line("channel", "6") == "channel=6")
 check("html: text, never markup", V.html_text("<b>&") == "&lt;b&gt;&amp;")
 

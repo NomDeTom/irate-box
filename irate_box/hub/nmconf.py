@@ -208,7 +208,7 @@ def validate(changes, iface=None):
     """{name: value or "default"} as asked (for one interface when iface is given), or ValueError."""
     if not isinstance(changes, dict) or not changes:
         raise Refused(M("nmconf.changes.none", "No change to save. Change a network default first."))
-    if iface is not None and not IFACE_RE.match(str(iface)):
+    if iface is not None and not IFACE_RE.fullmatch(str(iface)):
         raise Refused(M("nmconf.iface.invalid", "Invalid network interface name: {iface}.", iface=str(iface)))
     clean = {}
     for n, v in changes.items():

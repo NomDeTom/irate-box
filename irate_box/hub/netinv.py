@@ -218,7 +218,7 @@ def parse_phy(text):
             in_modes = True
             continue
         if in_modes:
-            m = re.match(r"^\t\t \* (.+)$", line)
+            m = re.fullmatch(r"^\t\t \* (.+)$", line)
             if m:
                 modes.append(m.group(1).strip())
                 continue

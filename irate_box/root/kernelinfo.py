@@ -40,10 +40,10 @@ def config():
             continue
         out = {}
         for line in text.splitlines():
-            m = re.match(r"^(CONFIG_[A-Z0-9_]+)=(.*)$", line)
+            m = re.fullmatch(r"^(CONFIG_[A-Z0-9_]+)=(.*)$", line)
             if m:
                 out[m[1]] = m[2].strip()
-            m = re.match(r"^# (CONFIG_[A-Z0-9_]+) is not set$", line)
+            m = re.fullmatch(r"^# (CONFIG_[A-Z0-9_]+) is not set$", line)
             if m:
                 out[m[1]] = "n"
         if out:

@@ -31,6 +31,18 @@ const map = (at) => ({
   ],
 });
 w.fetch = async (u, opts = {}) => {
+  // The page reads the hardware document too, for the overlay and display state without a scan.
+  if (u === '/admin/hardware') {
+    return new Response(
+      JSON.stringify({
+        overlays: { items: { lcd: state.overlay } },
+        display: state.overlay ? { on: !!state.overlay.display_on } : { supported: false },
+        pins: state.pins,
+        assignments: state.assignments || [],
+      }),
+      { status: 200 },
+    );
+  }
   if (u !== '/admin/pins') return new Response('{}', { status: 404 });
   if (opts.method === 'POST') {
     const body = JSON.parse(opts.body);
@@ -119,8 +131,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     /\.pinrow\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 2\.15rem 2\.15rem minmax\(0, 1fr\)/.test(css),
   );
   check(
-    '  the legend uses the same five squares',
-    ['pin-3v3', 'pin-5v', 'pin-gnd', 'pin-free', 'pin-taken'].every((name) => d.querySelector(`#pins .pin-key.${name}`)),
+    '  the legend uses the same seven squares',
+    ['pin-3v3', 'pin-5v', 'pin-gnd', 'pin-free', 'pin-assigned', 'pin-taken', 'pin-conflict'].every((name) =>
+      d.querySelector(`#pins .pin-key.${name}`),
+    ),
   );
   check(
     '  the header does not mix in the board role; the roles table has it separately',
@@ -133,6 +147,29 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     text('pins-claims'),
   );
   check('  copy is offered once a map is drawn', !d.getElementById('pins-copy').disabled);
+  // An assignment means a free pin is not free: assigned-idle is its own state, and a live stranger is a conflict.
+  const assigned = map(Date.now() / 1000);
+  assigned.header = [
+    { pin: 5, type: 'gpio', name: 'GPIO0_A1', gpio: 5, rmio: 5, role: '', consumer: '', used: false },
+    { pin: 6, type: 'gpio', name: 'GPIO0_B6', gpio: 6, rmio: 6, role: '', consumer: '', used: false },
+  ];
+  w.rkRenderPins({
+    pins: assigned,
+    assignments: [
+      { pin: 5, role: 'Display D/C', by: 'display', state: 'idle', source: 'lcdtouch' },
+      { pin: 6, role: 'UART TX', by: 'serial', state: 'conflict', source: 'ownserial' },
+    ],
+  });
+  const states = [...d.querySelectorAll('#pins-map .pin-square')].filter((square) => !square.classList.contains('pin-empty'));
+  check(
+    'an assignment not in use: assigned, not free; a foreign claim: conflict',
+    states[0].classList.contains('pin-assigned')
+      && /○/.test(states[0].textContent)
+      && /assigned to Display D\/C/.test(states[0].title)
+      && states[1].classList.contains('pin-conflict')
+      && /!/.test(states[1].textContent),
+    states.map((square) => [square.className, square.textContent, square.title]),
+  );
   state = { ...state, pending: 1, results: [] };
   d.getElementById('pins-scan').click();
   await wait(100);
@@ -270,6 +307,75 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       && d.getElementById('pins-test').disabled
       && /Enable the overlay/.test(text('pins-display-state')),
     [text('pins-display-state'), d.getElementById('pins-display-toggle').disabled],
+  );
+  // A free pin: read once, then keep it set as a pin hog pending a restart, then remove it.
+  const gpioMap = map(Date.now() / 1000);
+  gpioMap.header = [
+    { pin: 7, type: 'gpio', name: 'GPIO0_A2', gpio: 2, rmio: 2, role: '', consumer: '', used: false },
+    { pin: 8, type: 'gpio', name: 'GPIO0_C6', gpio: 22, rmio: 22, role: '', consumer: '', used: false },
+  ];
+  w.rkRenderPins({ pins: gpioMap, assignments: [] });
+  const pinSelect = d.getElementById('pins-gpio-pin');
+  check(
+    'read or keep a pin: the free header pins are offered',
+    pinSelect.options.length === 2 && /Pin 7/.test(pinSelect.textContent) && !d.getElementById('pins-gpio-read').disabled,
+    [pinSelect.options.length, pinSelect.textContent],
+  );
+  posted.length = 0;
+  d.getElementById('pins-gpio-read').click();
+  await wait(100);
+  check(
+    '  Read once sends pins-gpio for the chosen pin',
+    posted.length === 1 && posted[0].action === 'pins-gpio' && posted[0].pin === 7 && posted[0].mode === 'in',
+    posted,
+  );
+  state = {
+    pins: gpioMap,
+    overlay: { supported: true, on: false, enabled: false, installed: false, active: false, pending: false },
+    assignments: [],
+    pending: 0,
+    results: [{ id: 'p8', ok: true, msg: { id: 'pins-gpio.in.low', en: 'Pin 7 reads low.' } }],
+  };
+  await wait(700);
+  check('  the answer is shown', /Pin 7 reads low/.test(text('pins-gpio-note')), text('pins-gpio-note'));
+  posted.length = 0;
+  d.getElementById('pins-gpio-hog').click();
+  await wait(50);
+  check('  Keep it set asks before changing the boot files', !!d.querySelector('.aw-ask'));
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  the pin hog sent',
+    posted.length === 1 && posted[0].action === 'pins-hog' && posted[0].pin === 7 && posted[0].mode === 'in',
+    posted,
+  );
+  state = {
+    ...state,
+    assignments: [
+      { pin: 7, role: 'Pin hog', by: 'pinhog', state: 'idle', source: 'pinhog', pending: true, mode: 'input', bias: 'none', value: null },
+    ],
+    results: [{ id: 'p9', ok: true, msg: { id: 'pinhog.added.in', en: 'Pin 7 is held as an input. Restart the box to apply it.' } }],
+  };
+  await wait(700);
+  const hogOption = [...pinSelect.options].find((option) => option.value === '7');
+  check(
+    '  the hog is listed, waiting for a restart, and its pin can be chosen to change it',
+    /After a restart/.test(text('pins-hogs'))
+      && hogOption
+      && /\(hog\)/.test(hogOption.textContent)
+      && d.getElementById('pins-gpio-mode').value === 'in',
+    [text('pins-hogs'), pinSelect.textContent, hogOption && hogOption.textContent],
+  );
+  posted.length = 0;
+  const remove = [...d.querySelectorAll('#pins-hogs button')].find((button) => button.textContent === 'Remove');
+  remove.click();
+  await wait(50);
+  d.querySelector('.aw-ask .action-btn.primary').click();
+  await wait(100);
+  check(
+    '  Remove sends pins-hog with remove',
+    posted.length === 1 && posted[0].action === 'pins-hog' && posted[0].remove === true && posted[0].pin === 7,
+    posted,
   );
   check('no page errors', errors.length === 0, errors);
   console.log(`failures: ${fails}`);

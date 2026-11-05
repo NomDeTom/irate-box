@@ -153,41 +153,18 @@ def _pi_cmdline(on, removed):
     return None
 
 
-def _boot_env(add=None, remove=None):
-    """Armbian's armbianEnv.txt: user_overlays with our overlay put in or taken out."""
-    path = BOOT / "armbianEnv.txt"
-    lines = _read(path).splitlines()
-    have, at = [], None
-    for i, line in enumerate(lines):
-        if line.startswith("user_overlays="):
-            have, at = line.split("=", 1)[1].split(), i
-    names = [n for n in have if n != remove] + ([add] if add and add not in have else [])
-    if names != have:
-        new = "user_overlays=" + " ".join(names)
-        if at is None:
-            lines.append(new)
-        elif names:
-            lines[at] = new
-        else:
-            del lines[at]
-        safeio.write(path, "\n".join(lines) + "\n", 0o644)
-
-
 def _lyra_overlay(on):
-    dtbo = BOOT / "overlay-user" / f"{OVERLAY}.dtbo"
+    from irate_box.root import hardware
+
     if not on:
-        dtbo.unlink(missing_ok=True)
-        if (BOOT / "armbianEnv.txt").is_file():
-            _boot_env(remove=OVERLAY)
+        hardware.remove_overlay(OVERLAY, boot=BOOT)
         return
-    dtbo.parent.mkdir(parents=True, exist_ok=True)
-    r = run("dtc", "-@", "-q", "-I", "dts", "-O", "dtb", "-o", str(dtbo), "-", inp=LYRA_DTS)
-    if r.returncode:
-        dtbo.unlink(missing_ok=True)
+    try:
+        hardware.add_overlay(OVERLAY, LYRA_DTS, run=lambda argv, inp: run(*argv, inp=inp), boot=BOOT)
+    except hardware.OverlayError as exc:
         raise Refused(
-            M("ownserial.dtc-failed", "The device tree compiler (dtc) failed: {detail}", detail=r.stderr.strip()[:160])
-        )
-    _boot_env(add=OVERLAY)
+            M("ownserial.dtc-failed", "The device tree compiler (dtc) failed: {detail}", detail=exc.detail)
+        ) from None
 
 
 def set_pins(on):
