@@ -299,9 +299,43 @@ def path(value, root, what="The path", must_exist=False, allow_symlink=False):
     return Path(full)
 
 
+NUMERIC_LABEL_RE = re.compile(r"0[xX][0-9a-fA-F]*|[0-9]+")
+
+
+def _ascii_host(host, what):
+    """The host as a resolver will read it: lower case, IDNA-encoded (full-width digits and the
+    ideographic full stop become ASCII), without one trailing dot."""
+    try:
+        ascii_host = host.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        raise Invalid(f"{what} has a host name that cannot be written.") from None
+    return ascii_host[:-1] if ascii_host.endswith(".") else ascii_host
+
+
+def is_ip_spelling(host):
+    """Whether `host` is an address in any spelling the C resolver reads: dotted, hexadecimal,
+    octal, a single number (2130706433, 0x7f.1, 127.1, 017700000001) or an IPv6 literal."""
+    import socket
+
+    host = host.strip("[]")
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    try:
+        socket.inet_aton(host)
+        return True
+    except (OSError, ValueError):
+        pass
+    return bool(host) and all(NUMERIC_LABEL_RE.fullmatch(label) for label in host.split("."))
+
+
 def url(value, schemes=("https",), hosts=None, what="The address", allow_ip=False):
     """A web address with an allowed scheme and, when `hosts` is given, an allowed host. No
-    credentials, no IP literal (so no link-local), no whitespace or control characters."""
+    credentials, no whitespace or control characters, and no address in place of a name unless
+    `allow_ip`: not 127.0.0.1, and not 2130706433, 0x7f.1, 127.1 or 017700000001 either, which the
+    resolver reads as the same address."""
     value = _need(value, what)
     if CONTROL_RE.search(value) or any(c.isspace() for c in value):
         raise Invalid(f"{what} cannot contain spaces or control characters.")
@@ -314,24 +348,33 @@ def url(value, schemes=("https",), hosts=None, what="The address", allow_ip=Fals
         raise Invalid(f"{what} has no host.")
     if parts.username is not None or parts.password is not None:
         raise Invalid(f"{what} cannot contain a user name or password.")
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        pass
-    else:
-        if not allow_ip:
-            raise Invalid(f"{what} must name a host, not an IP address.")
+    host = _ascii_host(host, what)
+    if not allow_ip and (is_ip_spelling(host) or is_ip_spelling(parts.hostname or "")):
+        raise Invalid(f"{what} must name a host, not an IP address.")
     if hosts is not None and not any(host == h.lower() or host.endswith("." + h.lower()) for h in hosts):
         raise Invalid(f"{what} is not on an allowed host.")
     return value
 
 
-def public_url(value, what="The address", resolve=None):
-    """An address from an answer or a redirect: https, a host name (never an IP literal), and one
-    whose addresses are all public, so a project's answer cannot send the box to its own network."""
+def public_address(address):
+    """Whether `address` (text) is a public one: routable, not loopback, private, link-local,
+    multicast or reserved, and, for an IPv4 address in IPv6 dress, judged as the IPv4 address."""
+    try:
+        parsed = ipaddress.ip_address(str(address).split("%", 1)[0])
+    except ValueError:
+        return False
+    parsed = getattr(parsed, "ipv4_mapped", None) or parsed
+    return parsed.is_global and not parsed.is_multicast
+
+
+def public_url(value, what="The address", resolve=None, schemes=("https",)):
+    """An address from an answer or a redirect: an allowed scheme (https by default), a host name
+    (never an address in any spelling), and one whose addresses are all public, so a project's
+    answer cannot send the box to its own network. This looks once; a fetch that follows it must
+    connect with `connect_public`, or the name could answer differently the second time."""
     import socket
 
-    value = url(value, schemes=("https",), what=what)
+    value = url(value, schemes=schemes, what=what)
     host = urlsplit(value).hostname or ""
     try:
         infos = (resolve or socket.getaddrinfo)(host, None)
@@ -339,12 +382,50 @@ def public_url(value, what="The address", resolve=None):
         raise Invalid(f"{what} does not resolve.") from None
     for info in infos:
         try:
-            address = ipaddress.ip_address(info[4][0])
-        except (IndexError, TypeError, ValueError):
+            address = info[4][0]
+        except (IndexError, TypeError):
             continue
-        if not address.is_global or address.is_multicast:
+        if not public_address(address):
             raise Invalid(f"{what} resolves to an address inside the box's own networks.")
     return value
+
+
+def connect_public(host, port, timeout=None, resolve=None, what="The address"):
+    """A connected socket to `host`, made only to an address that is public and to the very
+    address that was checked: the name is resolved here, once, every answer must be public, and the
+    connection goes to one of those answers. A name that answers a public address first and a
+    private one afterwards (DNS rebinding) is refused or reaches only the public one."""
+    import socket
+
+    try:
+        infos = (resolve or socket.getaddrinfo)(host, port)
+    except OSError:
+        raise Invalid(f"{what} does not resolve.") from None
+    chosen = []
+    for info in infos:
+        try:
+            family, kind, protocol, _, address = info[:5]
+        except (TypeError, ValueError):
+            continue
+        if kind not in (0, socket.SOCK_STREAM):
+            continue
+        if not public_address(address[0]):
+            raise Invalid(f"{what} resolves to an address inside the box's own networks.")
+        chosen.append((family, protocol, address))
+    if not chosen:
+        raise Invalid(f"{what} does not resolve.")
+    last = None
+    for family, protocol, address in chosen:
+        sock = socket.socket(family, socket.SOCK_STREAM, protocol)
+        try:
+            if isinstance(timeout, (int, float)):
+                sock.settimeout(timeout)
+            sock.connect(address)
+            return sock
+        except OSError as error:
+            sock.close()
+            last = error
+    raise last
 
 
 def hostapd_ssid(value):

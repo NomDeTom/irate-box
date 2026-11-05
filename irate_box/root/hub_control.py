@@ -211,7 +211,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from irate_box import setup_code, validate
+from irate_box import setup_code, validate, webfetch
 from irate_box.finding import action as finding_action
 from irate_box.finding import finding
 from irate_box.hub import access, gitrepos, manifests, netinv, transport, uplink
@@ -700,31 +700,54 @@ def set_login(pw, keep=True):
 SYNCTHING_GUI = "http://127.0.0.1:8384"
 
 
+RESOLVE = socket.getaddrinfo
+
+
 def _web_open(request, timeout, local_origin=None):
-    def validate(url):
-        parsed = urllib.parse.urlsplit(url)
-        if local_origin is None:
-            allowed = parsed.scheme == "https" and bool(parsed.hostname)
-        else:
-            origin = urllib.parse.urlsplit(local_origin)
-            allowed = (
-                origin.scheme == "http"
-                and origin.hostname in ("127.0.0.1", "::1")
-                and (parsed.scheme, parsed.hostname, parsed.port) == (origin.scheme, origin.hostname, origin.port)
-            )
-        if not allowed or parsed.username is not None or parsed.password is not None:
-            raise ValueError("URL must use HTTPS or the configured loopback API origin")
+    """Open a request. With `local_origin`, only that loopback origin (Syncthing's own API), and a
+    redirect cannot leave it. Without, an https address: every redirect must be https to a host name
+    whose addresses are all public, and when the first address is public too every connection goes
+    to the public address it was checked against (webfetch), so a name cannot answer differently
+    the second time. The first address may be the box's own (the HTTPS certificate check asks
+    about it); that one is opened as it is, and what it redirects to is still checked."""
+    if local_origin is not None:
+        origin = urllib.parse.urlsplit(local_origin)
+
+        def check_loopback(url):
+            parsed = urllib.parse.urlsplit(url)
+            if (
+                origin.scheme != "http"
+                or origin.hostname not in ("127.0.0.1", "::1")
+                or (parsed.scheme, parsed.hostname, parsed.port) != (origin.scheme, origin.hostname, origin.port)
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                raise ValueError("URL must use the configured loopback API origin")
+
+        class LoopbackRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                check_loopback(newurl)
+                return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+        check_loopback(request.full_url)
+        return urllib.request.build_opener(LoopbackRedirect(), urllib.request.ProxyHandler({})).open(
+            request, timeout=timeout
+        )
+
+    def resolve(*arguments):
+        return RESOLVE(*arguments)
 
     class WebRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
-            validate(newurl)
+            validate.public_url(newurl, "The redirect address", resolve=resolve)
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 
-    validate(request.full_url)
-    handlers = [WebRedirect()]
-    if local_origin is not None:
-        handlers.append(urllib.request.ProxyHandler({}))
-    return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
+    validate.url(request.full_url, schemes=("https",), what="The download address", allow_ip=True)
+    try:
+        validate.public_url(request.full_url, "The download address", resolve=resolve)
+    except validate.Invalid:
+        return urllib.request.build_opener(WebRedirect()).open(request, timeout=timeout)
+    return webfetch.opener(resolve=resolve, redirect=WebRedirect()).open(request, timeout=timeout)
 
 
 def _syncthing_api_key():

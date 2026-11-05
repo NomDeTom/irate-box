@@ -45,6 +45,7 @@ import xml.etree.ElementTree as ET  # DOCTYPE/ENTITY refused before parsing. # n
 from datetime import datetime
 from pathlib import Path
 
+from irate_box import validate, webfetch
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
@@ -478,7 +479,26 @@ def _free_mb(path):
         return 0
 
 
-def _download(url, path, cfg, log):
+def _episode_opener(url, feed_url):
+    """How an episode's address is opened. The address came out of the feed, so it is read as an
+    answer from the internet: a web address with a host name, and every connection (redirects
+    included) to a public address, checked as it connects. The one exception is the feed's own host,
+    which the owner chose and which may be on their own network."""
+    if feed_url and urllib.parse.urlparse(url).hostname == urllib.parse.urlparse(feed_url).hostname:
+        return urllib.request.build_opener()
+    try:
+        validate.url(url, schemes=("http", "https"), what="The episode address")
+    except ValueError:
+        raise LibrarianError(
+            M(
+                "podcast.episode.not-public",
+                "The episode is not downloaded. Its address is not a web address with a host name.",
+            )
+        ) from None
+    return webfetch.opener(resolve=lambda *arguments: librarian.RESOLVE(*arguments), schemes=("http", "https"))
+
+
+def _download(url, path, cfg, log, feed_url=None):
     if _free_mb(path.parent) < max(cfg["leave_free_mb"], cfg["max_episode_mb"]):
         raise LibrarianError(
             M(
@@ -492,7 +512,7 @@ def _download(url, path, cfg, log):
     limit = cfg["max_episode_mb"] * (1 << 20)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:  # http(s) checked before and after. # nosec B310
+        with _episode_opener(url, feed_url).open(request, timeout=60) as response:  # nosec B310 - http(s), public
             if urllib.parse.urlparse(response.geturl()).scheme not in ("http", "https"):
                 raise LibrarianError(M("podcast.episode.scheme", "The episode is not on http or https."))
             length = int(response.headers.get("Content-Length") or 0)
@@ -682,7 +702,7 @@ def _download_new(feed_id, cfg, log):
         path = feed_dir(feed_id) / (ep["id"] + _extension(ep["url"], ep.get("mime")))
         try:
             log(f"podcasts: downloading {ep['title'][:60]}")
-            size = _download(ep["url"], path, cfg, log)
+            size = _download(ep["url"], path, cfg, log, index.get("url"))
         except LibrarianError as exc:
             ep["error"] = str(exc)
             continue

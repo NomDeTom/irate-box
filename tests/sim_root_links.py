@@ -364,7 +364,10 @@ for unsafe in ("../escape.html", "/escape.html", "nested/../../escape.html"):
     )
     bad_bundle.unlink(missing_ok=True)
 
-with patch.object(hub_control.urllib.request, "build_opener") as opener:
+with (
+    patch.object(hub_control.urllib.request, "build_opener") as opener,
+    patch.object(hub_control, "RESOLVE", lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))]),
+):
     for unsafe_url in (
         "file:///etc/passwd",
         "ftp://example.org/file",
@@ -378,8 +381,14 @@ with patch.object(hub_control.urllib.request, "build_opener") as opener:
         check(f"unsafe download URL refused: {unsafe_url}", refused and not opener.called)
     request = Request("https://example.org/file")
     hub_control._web_open(request, timeout=1)
-    redirect = opener.call_args.args[0]
-    for unsafe_url in ("file:///etc/passwd", "http://example.org/file"):
+    redirect = next(handler for handler in opener.call_args.args if hasattr(handler, "redirect_request"))
+    for unsafe_url in (
+        "file:///etc/passwd",
+        "http://example.org/file",
+        "https://127.1/x",
+        "https://2130706433/x",
+        "https://[::1]/x",
+    ):
         try:
             redirect.redirect_request(request, None, 302, "Found", {}, unsafe_url)
             refused = False
@@ -389,7 +398,7 @@ with patch.object(hub_control.urllib.request, "build_opener") as opener:
     local_origin = "http://127.0.0.1:8384"
     local_request = Request(f"{local_origin}/rest/config/gui")
     hub_control._web_open(local_request, timeout=1, local_origin=local_origin)
-    redirect = opener.call_args.args[0]
+    redirect = next(handler for handler in opener.call_args.args if hasattr(handler, "redirect_request"))
     for unsafe_url in ("http://127.0.0.1:9999/", "https://example.org/"):
         try:
             redirect.redirect_request(local_request, None, 302, "Found", {}, unsafe_url)
