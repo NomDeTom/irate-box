@@ -24,6 +24,7 @@ CHOICES_RE = re.compile(
     r"|^health-timer:(on|off)$|^lost-writes:(on|off)$|^canary:(on|off)$|^bootkey:(on|off)$|^readonly:(on|off)$|^retain:(on|off)$|^retain-store:(on|off):[A-Za-z0-9%._~-]{1,300}$|^retain-keys:(leave-out|encrypt)$|^retain-data:(0|64|256|1024)$|^image-lookup:(on|off)$|^image-age:(3|6|12|24)$|^package-priorities:(required|important|standard)$|^board-hold-set:(on|off)$"
     r"|^(build-bounds-install|memguard-kill-builds)$"
     r"|^memguard-(limits:(small|default|large)|levels:(standard|sensitive|low)|action:(stop|record)|apt:(leave|slow|bound)|details:(blocked|all)|watchdog:(restart|reboot)|fallback:(off|earlyoom))$"
+    r"|^crashwatch-boot-journal:(off|15min|1h)$"
     r"|^autoupdate-set:(0|6|24|168)-[0-2]$"
     r"|^card-ram:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-off:[A-Za-z0-9@._-]{1,128}\.service:[0-7]$|^card-ram-apply$"
 )
