@@ -68,8 +68,14 @@ check("saved: the name is kept", saved["ssid"] == "Guests" and hotspot.load()["s
 # A WPA3 password is matched whole: a trailing newline is a different password in hostapd's file
 # than the one that was typed, so it is refused in the page's check and in what is already saved.
 check("a password that is fine: accepted", refused(settings(mode="sae", password="abcdefgh")) is None)
-for bad_password in ("abcdefgh\n", "abcdefgh\r\n", "abcdefg\n", "abcdefgh\x00", "abcdefg"):
-    check(f"a password {bad_password!r}: refused", refused(settings(mode="sae", password=bad_password)) is not None)
+for why, bad_password in (
+    ("with a trailing newline", "abcdefgh\n"),
+    ("with CR and LF", "abcdefgh\r\n"),
+    ("of seven characters and a newline", "abcdefg\n"),
+    ("with a NUL", "abcdefgh\x00"),
+    ("of seven characters", "abcdefg"),
+):
+    check(f"a password {why}: refused", refused(settings(mode="sae", password=bad_password)) is not None)
 check("the pattern: a trailing newline does not match", hotspot.PASSWORD_RE.fullmatch("abcdefgh\n") is None)
 
 # One network: the name reaches the hostapd lines and the keyfile.
