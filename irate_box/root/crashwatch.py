@@ -67,6 +67,9 @@ DIR = safeio.ROOT_STATE / "crashwatch"
 OLD_DIR = STATE / "crashwatch"  # before 2026-10; migrate() moves its files over
 SNAP = DIR / "snap.log"
 RUN = DIR / "run.json"  # this boot: its id, when it started, whether it stopped cleanly
+BOOTS = DIR / "boots"  # the last minutes of each of the last few boots, kept apart from the journal
+KEEP_BOOTS = 5
+KEEP_MINUTES = 10
 CRASHES = DIR / "crashes"
 INDEX = DIR / "crashes.json"
 INCIDENTS = DIR / "incidents.json"  # a radio's failures, filed as they happen (the box may never stop)
@@ -109,7 +112,9 @@ DEFAULT = {
     "undervoltage": True,
     "undervoltage_mv": UNDERVOLTAGE_MV,
     "power_action": "log",
+    "boot_journal": "off",
 }
+BOOT_JOURNAL = {"off": 0, "15min": 900, "1h": 3600}
 FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5  # driver errors within two looks that make a failure
 # A radio in trouble, as the kernel says it (the AIC8800's own words, and the USB core's).
@@ -148,6 +153,8 @@ def load_settings():
         out["undervoltage_mv"] = raw["undervoltage_mv"]
     if raw.get("power_action") in POWER_ACTIONS:
         out["power_action"] = raw["power_action"]
+    if raw.get("boot_journal") in BOOT_JOURNAL:
+        out["boot_journal"] = raw["boot_journal"]
     return out
 
 
@@ -415,6 +422,91 @@ def journal_tail(n=300):
     return "\n".join([f'({n} lines like "{k}" left out)' for k, n in flood.items()] + keep[-n:])
 
 
+def journal_since(since, boot=None, timeout=30):
+    """The journal from `since` (epoch), for this boot or a journal boot offset such as -1. Empty when
+    journalctl is missing, fails or is stopped at its deadline: a boot note is never worth a hang."""
+    cmd = ["journalctl", "--no-pager", "-o", "short-monotonic"]
+    if boot is not None:
+        cmd += ["-b", str(boot)]
+    cmd += [f"--since=@{int(since)}", "-n", "10000"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def last_journal_time(boot=-1, timeout=30):
+    """The epoch of a journal boot's last line, or None when that boot is not in the journal."""
+    try:
+        r = subprocess.run(  # noqa: TID251
+            ["journalctl", "-b", str(boot), "--no-pager", "-o", "short-unix", "-n", "1"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        line = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else ""
+        return float(line.split()[0]) if line else None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def keep_boot_journal(boot, journal_boot=None, now=None, why="", minutes=KEEP_MINUTES, overwrite=False):
+    """The last `minutes` of one boot, kept in BOOTS/<boot>.log before a flood can rotate it out of the
+    journal. At shutdown (journal_boot None) it reads this boot; at the next boot it reads the previous
+    one by its ID, never by offset: after a hard reset the previous boot is often missing from disk, and
+    -1 would then name an older boot. An existing file is left as it is unless overwrite, and a failure
+    is returned, never raised."""
+    now = now or time.time()
+    path = BOOTS / f"{boot}.log"
+    if path.exists() and not overwrite:
+        return None
+    since, text = (now - minutes * 60), ""
+    if journal_boot is None:
+        text = journal_since(since)
+    else:
+        last = last_journal_time(journal_boot)
+        if last is not None:
+            text = journal_since(last - minutes * 60, journal_boot)
+    if overwrite and path.exists() and not text:
+        return None  # a timed-out journalctl must not replace the copy already there
+    keep, flood = floods(text.splitlines(), limit=30)
+    head = [
+        f"# crash watch: the last {minutes} minutes of boot {boot}",
+        f"# kept {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))} ({why or 'no reason given'})",
+    ]
+    head += [f'# {n} lines like "{k}" left out' for k, n in flood.items()]
+    if not text:
+        head.append("# the journal had nothing for this boot")
+    try:
+        BOOTS.mkdir(parents=True, exist_ok=True)
+        safeio.write(path, "\n".join(head + keep) + "\n", mode=0o600)
+        old = sorted(BOOTS.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for stale in old[KEEP_BOOTS:]:
+            stale.unlink(missing_ok=True)
+    except OSError as exc:
+        return f"the boot's last minutes not kept: {exc}"
+    return None
+
+
+def roll_boot_journal(now, settings, last=0.0, boot=None):
+    """A rolling copy of this boot's last minutes while the administrator chose an interval. Returns
+    the time of the last copy (last itself when it is not due). Off by default: it writes the card."""
+    interval = BOOT_JOURNAL.get(settings.get("boot_journal", "off"), 0)
+    if not interval or now - last < interval:
+        return last
+    said = keep_boot_journal(
+        boot or boot_id(),
+        now=now,
+        why=f"a rolling copy every {interval // 60} minutes",
+        minutes=max(KEEP_MINUTES, interval // 60),
+        overwrite=True,
+    )
+    if said:
+        print(f"crashwatch: {said}", file=sys.stderr)
+    return now
+
+
 def snapshots_tail(nbytes=200_000, since=None):
     """The last snapshots: nbytes of them, or, if it reaches further back, from the snapshot taken
     at or just before `since` (epoch; a boot with a radio failure: a few minutes before it), at
@@ -522,11 +614,16 @@ def last_snapshot(text):
 
 
 def boot(now=None):
-    """At the service's start: a previous boot that never stopped cleanly is filed as a crash."""
+    """At the service's start: a previous boot that never stopped cleanly is filed as a crash, and its
+    last minutes are kept if the shutdown did not keep them."""
     now = now or time.time()
     safeio.root_dir("crashwatch")
     cur, prev = boot_id(), _json(RUN, None)
     filed = None
+    if prev and prev.get("boot") and prev["boot"] != cur:
+        said = keep_boot_journal(prev["boot"], journal_boot=prev["boot"], now=now, why="at the next boot")
+        if said:
+            print(f"crashwatch: {said}", file=sys.stderr)
     if prev and prev.get("boot") and prev["boot"] != cur and not prev.get("clean"):
         stamp = time.strftime("%Y-%m-%d-%H%M%S", time.localtime(now))
         d = CRASHES / stamp
@@ -563,8 +660,12 @@ def boot(now=None):
 
 def shutdown():
     rec = _json(RUN, {})
+    now = time.time()
+    said = keep_boot_journal(boot_id(), now=now, why="at shutdown", overwrite=True)
+    if said:
+        print(f"crashwatch: {said}", file=sys.stderr)
     if rec.get("boot") == boot_id():
-        _write(RUN, dict(rec, clean=True, stopped=time.time()))
+        _write(RUN, dict(rec, clean=True, stopped=now))
 
 
 # --- the radio ---------------------------------------------------------------------------------
@@ -1064,6 +1165,20 @@ def set_option(key, value):
             "The supply's low point is {mv} mV.",
             mv=int(value),
         )
+    elif key == "boot-journal" and value in BOOT_JOURNAL:
+        s["boot_journal"] = value
+        msg = (
+            M(
+                "crashwatch-set.boot-journal.off",
+                "The last minutes of each boot are kept at shutdown and at the next boot only.",
+            )
+            if value == "off"
+            else M(
+                "crashwatch-set.boot-journal.on",
+                "The last minutes of this boot are copied to the card every {every}, so a hard reset keeps them.",
+                every=duration(BOOT_JOURNAL[value]),
+            )
+        )
     elif key == "power-action" and value in POWER_ACTIONS:
         s["power_action"] = value
         if value == "shutdown":
@@ -1117,6 +1232,7 @@ def run(once=False):
     floods_hour = Counter()
     hour_start = time.time()
     status_at = 0.0
+    rolled_at = 0.0
     pending = {"snap": None, "lines": []}
 
     def log(now, iface, kind, text, snapshot=False):
@@ -1175,6 +1291,7 @@ def run(once=False):
             mtime, settings = m, load_settings()
         lines = kmsg.read()
         pending["lines"] = lines
+        rolled_at = roll_boot_journal(now, settings, rolled_at)
         keep, flood = floods(lines)
         floods_hour.update(flood)
         for i, r in radios().items():
