@@ -43,8 +43,8 @@ const options = {
       clk: [signal(27, 'GPIO1_B1', 24)],
       mosi: [signal(29, 'GPIO1_B2', 25)],
       miso: [signal(31, 'GPIO1_B3', 26)],
-      csn0: [signal(35, 'GPIO0_C0', 16, 0)],
-      csn1: [signal(37, 'GPIO1_C3', 28, 1)],
+      csn0: [signal(35, 'GPIO0_C0', 16, 0), signal(37, 'GPIO1_C3', 28, 0)],
+      csn1: [signal(37, 'GPIO1_C3', 28, 1), signal(35, 'GPIO0_C0', 16, 1)],
     } },
   ],
   gpios: [
@@ -109,7 +109,15 @@ const text = (id) => (d.getElementById(id) || {}).textContent || '';
 const option = (id, value) => [...d.getElementById(id).options].find((o) => o.value === String(value));
 (async () => {
   await wait(150);
-  check('the picker is filled from the saved SPI1 selection', d.getElementById('pins-mui-bus').value === '1' && d.getElementById('pins-mui-clk').value === '27' && text('pins-mui-state') === 'Off.', [d.getElementById('pins-mui-clk').value, text('pins-mui-state')]);
+  check(
+    'the picker is filled from the saved SPI1 selection and picks the free touch CS',
+    d.getElementById('pins-mui-bus').value === '1'
+      && d.getElementById('pins-mui-clk').value === '27'
+      && d.getElementById('pins-mui-touch-cs').value === '37'
+      && d.getElementById('pins-mui-touch-cs').selectedOptions[0].dataset.cs === '1'
+      && text('pins-mui-state') === 'Off.',
+    [d.getElementById('pins-mui-clk').value, d.getElementById('pins-mui-touch-cs').value, d.getElementById('pins-mui-touch-cs').selectedOptions[0].dataset.cs, text('pins-mui-state')],
+  );
   check('a fixed pin is offered unavailable with its reason', option('pins-mui-dc', 8).disabled && /fixed for UART0 TX/.test(option('pins-mui-dc', 8).textContent), option('pins-mui-dc', 8).textContent);
   const bus = d.getElementById('pins-mui-bus');
   bus.value = '0';

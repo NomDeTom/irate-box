@@ -112,6 +112,10 @@ check(
     opt["defaults"],
 )
 check(
+    "a pin that offers both CS numbers uses the one the display does not",
+    mui._cs_candidate(1, 37, avoid=0)["cs"] == 1 and mui._validate({})["_touch_cs"]["cs"] == 1,
+)
+check(
     "the overlay names the selected bus, CS and backlight",
     "target = <&spi1>" in mui.dts(sel)
     and "&rm_io24_spi1_clk" in mui.dts(sel)
@@ -235,6 +239,11 @@ check("  activation is pending until the selected spidev devices exist", mui.sta
 (T / "spi" / "spi1.0").write_text("")
 (T / "spi" / "spi1.1").write_text("")
 check("  the same selection becomes active when both devices appear", mui.status()["active"] is True)
+check(
+    "  status and device detection use the saved touch CS",
+    mui.status()["spidev"]["touch"] == "spidev1.1" and mui.status()["devices"]["touch"] is True,
+    mui.status(),
+)
 mui.activate(sel)
 check(
     "  a second activation keeps the earlier meshtasticd record",
