@@ -542,6 +542,120 @@ check(
 check("  no switched-off node: no watchdog to offer", cw.watchdog_device() is None)
 cw.shutil = shutil  # the stub above stood in for which() only
 
+# --- the WiFi chip gone, and the owner's choice to reset for it (the Lyra, 2026-11-04) ---
+cw.SETTINGS.write_text("{}")
+check("chip gone: off by default", cw.load_settings()["chip_gone"] == "off", cw.load_settings())
+cw.SETTINGS.write_text('{"chip_gone": "reset"}')
+check("  reset accepted", cw.load_settings()["chip_gone"] == "reset")
+cw.SETTINGS.write_text('{"chip_gone": "reboot"}')
+check("  any other word read as off", cw.load_settings()["chip_gone"] == "off")
+said = cw.set_option("chip-gone", "reset")
+check(
+    "  the setting saved, with what it now does",
+    cw.load_settings()["chip_gone"] == "reset" and said["id"] == "crashwatch-set.chip-gone.reset",
+    said,
+)
+try:
+    cw.set_option("chip-gone", "reboot")
+    check("  any other value refused", False)
+except ValueError as exc:
+    check("  any other value refused", exc.message["id"] == "crashwatch-set.unknown")
+cw.set_option("chip-gone", "off")
+g = {x["key"]: x for x in health.doctor_settings()["groups"]}
+check(
+    "the doctor's settings: the chip-gone choice, safest first, with a confirm on reset",
+    g["chip-gone"]["current"] == "off"
+    and [o["value"] for o in g["chip-gone"]["options"]] == ["off", "reset"]
+    and g["chip-gone"]["options"][1]["confirm"]["id"] == "hs.chip-gone.confirm",
+    g["chip-gone"],
+)
+# The detector, from the real -19 shape.
+shutil.rmtree(SYS / "module", ignore_errors=True)
+(SYS / "module/aic_load_fw").mkdir(parents=True)
+no_client = (0, "phy#0\n")
+client = (0, "phy#0\n\tInterface wlan0\n\t\ttype managed\n")
+cw._run = lambda *a, **k: no_client
+flood = [
+    "[1.0] AICWFDBG(LOGERROR)\tusb submit msg rx urb fail:-19",
+    "[1.1] AICWFDBG(LOGERROR)\tusb submit msg rx urb fail:-19",
+    "[1.2] AICWFDBG(LOGERROR)\tusb submit msg rx urb fail:-19",
+]
+gone, why = cw.wifi_chip_gone(flood)
+check(
+    "only aic_load_fw loaded, as on the stuck boot, no client, three -19 lines: gone",
+    gone and "3 lines repeat" in why and "aic_load_fw" in why,
+    why,
+)
+check("  two lines are not a repeat: not gone", cw.wifi_chip_gone(flood[:2])[0] is False)
+cw._run = lambda *a, **k: client
+check("  a WiFi client there: not gone", cw.wifi_chip_gone(flood)[0] is False)
+cw._run = lambda *a, **k: no_client
+(SYS / "module/aic_load_fw").rename(SYS / "module/aic8800_fdrv")
+check("  the full driver alone is enough too", cw.wifi_chip_gone(flood)[0] is True)
+(SYS / "module/aic8800_fdrv").rename(SYS / "module/aic8800_fdrv.off")
+check("  no AIC module loaded: not gone", cw.wifi_chip_gone(flood)[0] is False)
+(SYS / "module/aic8800_fdrv.off").rename(SYS / "module/aic8800_fdrv")
+seen, resets = [], []
+
+
+def chip_log(now, iface, kind, text, snapshot=False):
+    seen.append((iface, kind, text))
+    return {"iface": iface, "kind": kind, "text": text}
+
+
+watch = cw.ChipWatch(chip_log, reset=lambda: resets.append(1) or None)
+watch.act(100, flood, {"chip_gone": "off"})
+watch.act(130, flood, {"chip_gone": "off"})
+check(
+    "the chip gone noted once, and no reset while the setting is off",
+    [k for _, k, _ in seen] == ["chip-gone"] and resets == [],
+    seen,
+)
+watch.act(160, [], {"chip_gone": "off"})
+watch.act(190, flood, {"chip_gone": "reset"})
+check(
+    "  it comes back, then gone again with reset on: noted again and reset once",
+    [k for _, k, _ in seen] == ["chip-gone", "chip-gone"] and resets == [1],
+    (seen, resets),
+)
+(fake_sysrq := T / "sysrq").write_text("")
+os.environ["HUB_SYSRQ"] = str(fake_sysrq)
+calls = []
+said = cw.hard_reset(
+    lambda *a, **k: (0, ""),
+    sync=lambda path, run: calls.append(("sync", str(path))),
+)
+check(
+    "hard reset: the filesystems synced first, then SysRq B, never reboot(2)",
+    said is None
+    and fake_sysrq.read_text() == "b"
+    and [p for _, p in calls][:1] == ["/"]
+    and not any(a[:1] == ("systemctl",) for a in calls),
+    (calls, fake_sysrq.read_text()),
+)
+fake_sysrq.write_text("")
+calls.clear()
+
+
+def hanging_sync(path, run):
+    calls.append(("sync", str(path)))
+    return run("timeout", "10", "sync", "-f", str(path))
+
+
+cw.hard_reset(lambda *a, **k: (124, "timed out"), sync=hanging_sync)
+check("  a sync that does not finish: cut off, and SysRq B still goes", fake_sysrq.read_text() == "b")
+fake_sysrq.write_text("")
+cw.SETTINGS.write_text('{"watchdog": true}')
+os.environ["HUB_SYSRQ"] = str(T)
+said = cw.hard_reset(lambda *a, **k: (0, ""), sync=lambda path, run: None)
+check(
+    "  SysRq unavailable with the watchdog armed: said, left to the watchdog",
+    "hardware watchdog" in said,
+    said,
+)
+cw.SETTINGS.write_text("{}")
+os.environ["HUB_SYSRQ"] = str(fake_sysrq)
+
 # --- the AIC8800's own words as its firmware wedged (a recorded kernel log) ---
 FX = REPO / "tests/fixtures/aic8800-wedge-2026-10-09"
 wedge = FX.joinpath("kern.log").read_text().splitlines()

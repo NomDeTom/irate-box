@@ -56,7 +56,7 @@ from pathlib import Path
 
 from irate_box import notify
 from irate_box.msg import M, Refused, duration, render
-from irate_box.root import safeio
+from irate_box.root import safeio, wifichip
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -112,8 +112,10 @@ DEFAULT = {
     "undervoltage": True,
     "undervoltage_mv": UNDERVOLTAGE_MV,
     "power_action": "log",
+    "chip_gone": "off",
     "boot_journal": "off",
 }
+CHIP_GONE = ("off", "reset")
 BOOT_JOURNAL = {"off": 0, "15min": 900, "1h": 3600}
 FLOOD = 30  # kernel lines of one kind in one look (30 s, so one a second) that make a flood
 ERR_BURST = 5  # driver errors within two looks that make a failure
@@ -153,6 +155,8 @@ def load_settings():
         out["undervoltage_mv"] = raw["undervoltage_mv"]
     if raw.get("power_action") in POWER_ACTIONS:
         out["power_action"] = raw["power_action"]
+    if raw.get("chip_gone") in CHIP_GONE:
+        out["chip_gone"] = raw["chip_gone"]
     if raw.get("boot_journal") in BOOT_JOURNAL:
         out["boot_journal"] = raw["boot_journal"]
     return out
@@ -752,6 +756,69 @@ class RadioWatch:
         return events
 
 
+# --- the WiFi chip gone -------------------------------------------------------------------------
+
+
+def wifi_chip_gone(kernel):
+    """(gone, why) from the one shared check the Box doctor uses too. It accepts any AIC module:
+    only aic_load_fw had loaded on the stuck boot, before the full driver could bind."""
+    state = wifichip.chip_gone(kernel, sysfs=SYS, run=_run)
+    return state["gone"], state["why"]
+
+
+def _sync_filesystem(path, run, timeout=10):
+    """Sync one filesystem, bounded: a global sync can wait on storage behind the stuck bus."""
+    run("timeout", str(timeout), "sync", "-f", str(path), timeout=timeout + 5)
+
+
+def hard_reset(run=None, sync=None):
+    """An immediate reset with no orderly shutdown (F6): sync the filesystems that matter, each with
+    a deadline, then SysRq B, which runs emergency_restart and no device_shutdown. reboot(2) would
+    take the stuck device's lock and could never be killed. Evidence is written before this is called."""
+    run = run or _run
+    sync = sync or _sync_filesystem
+    paths = [Path("/")]
+    for candidate in (STATE, safeio.ROOT_STATE):
+        if candidate.exists() and candidate not in paths:
+            paths.append(candidate)
+    for path in paths:
+        sync(path, run)
+    sysrq = Path(os.environ.get("HUB_SYSRQ", "/proc/sysrq-trigger"))
+    try:
+        sysrq.write_text("b")
+    except OSError as exc:
+        if load_settings().get("watchdog"):
+            return (
+                f"the immediate reset could not be requested ({exc}); the hardware watchdog is armed and "
+                "restarts the box when it stops answering"
+            )
+        return f"the box was not reset: {exc}"
+    return None
+
+
+class ChipWatch:
+    """A WiFi chip that left the bus while its driver kept submitting, noted once. With the owner's
+    chip_gone: reset, the box is reset at once after the evidence is filed, never through a soft reboot."""
+
+    def __init__(self, log, reset=None):
+        self.log, self.reset, self.seen = log, reset or hard_reset, False
+
+    def act(self, now, kernel, settings):
+        gone, why = wifi_chip_gone(kernel)
+        if not gone:
+            self.seen = False
+            return None
+        if self.seen:
+            return None
+        self.seen = True
+        event = self.log(now, "wifi", "chip-gone", f"The WiFi chip is gone: {why}.", snapshot=True)
+        if settings.get("chip_gone") == "reset":
+            said = self.reset()
+            if said:
+                print(f"crashwatch: {said}", file=sys.stderr)
+        return event
+
+
 # --- the hang settings ---------------------------------------------------------------------------
 
 
@@ -1162,6 +1229,21 @@ def set_option(key, value):
             "The supply's low point is {mv} mV.",
             mv=int(value),
         )
+    elif key == "chip-gone" and value in CHIP_GONE:
+        s["chip_gone"] = value
+        msg = (
+            M(
+                "crashwatch-set.chip-gone.reset",
+                "When the WiFi chip is gone while its driver is still loaded, the box saves the evidence and resets "
+                "itself at once, without an orderly shutdown.",
+            )
+            if value == "reset"
+            else M(
+                "crashwatch-set.chip-gone.off",
+                "When the WiFi chip is gone while its driver is still loaded, the box records it and waits for its "
+                "administrator to reset it.",
+            )
+        )
     elif key == "boot-journal" and value in BOOT_JOURNAL:
         s["boot_journal"] = value
         msg = (
@@ -1237,6 +1319,7 @@ def run(once=False):
         if kind in (
             "failed",
             "driver-reset",
+            "chip-gone",
         ):  # filed with the kernel's lines: what failed, or what the driver timed out on
             try:
                 e["filed"] = file_radio(now, iface, text, pending["lines"], (known.get(iface) or {}).get("port"))["dir"]
@@ -1268,6 +1351,7 @@ def run(once=False):
     except (OSError, ValueError) as exc:
         print(f"crashwatch: the old radio setting not carried over: {exc}", file=sys.stderr)
     watch = RadioWatch(log)
+    chip_watch = ChipWatch(log)
     keeper = SnapshotKeeper()
     # Stopped (a shutdown, a restart): what the saver stop holds goes to the card first.
     import signal
@@ -1294,6 +1378,10 @@ def run(once=False):
         for i, r in radios().items():
             known[i] = r  # a radio that came back, or a new one, watched from now on
         watch.act(now, radio_state(known, lines), lines, radio.driver_reset())
+        try:
+            chip_watch.act(now, lines, settings)
+        except (OSError, ValueError) as exc:
+            print(f"crashwatch: the WiFi chip check failed: {exc}", file=sys.stderr)
         try:
             power_tick(now, settings)
         except (OSError, ValueError) as exc:
