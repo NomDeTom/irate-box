@@ -30,9 +30,9 @@ from pathlib import Path
 
 from irate_box import validate
 from irate_box.hub import rkusb
-from irate_box.root import safeio
 from irate_box.hub.rkusb import boards, loaders, status, tools  # noqa: F401 - the root helper's names for them
 from irate_box.msg import M, Refused
+from irate_box.root import safeio
 
 SERIAL_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 WAIT = 25  # seconds for a board to come back after a reboot into Loader mode, or after a loader is sent
