@@ -136,6 +136,21 @@ REVIEWED = {
         "CONSOLE_RE.fullmatch(console) and (SERIAL_BY_ID / console).exists()",
         "a name in /dev/serial/by-id that exists",
     ),
+    ("rk-backup-delete", "name"): (
+        ROOT + "rkboard.py",
+        "if not isinstance(name, str) or not BACKUP_NAME_RE.fullmatch(name):",
+        "a saved copy's name checked again in root: one file, no path",
+    ),
+    ("rk-backup-restore", "name"): (
+        ROOT + "rkboard.py",
+        "if not isinstance(name, str) or not BACKUP_NAME_RE.fullmatch(name):",
+        "a saved copy's name checked again in root: one file, no path",
+    ),
+    ("rk-bundle-stage", "name"): (
+        ROOT + "rkboard.py",
+        "if not BUNDLE_FILE_RE.fullmatch(temp) or not BUNDLE_FILE_RE.fullmatch(name):",
+        "a bundle file name, opened once with O_NOFOLLOW and copied from that descriptor",
+    ),
     ("rk-card-setup", "card"): (
         ROOT + "rkcard.py",
         "name = validate.card(name)",
