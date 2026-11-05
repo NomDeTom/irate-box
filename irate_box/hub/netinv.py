@@ -136,8 +136,17 @@ def run(*cmd, timeout=15):
 
 
 def read(path, default=None):
+    path = Path(path)
+    if str(path).startswith("/sys/"):
+        try:
+            from irate_box.root import sysread
+
+            text = sysread.read(path, default)
+            return text.strip() if isinstance(text, str) else default
+        except ImportError:  # a copy of netinv on its own, without irate-box's root package
+            pass
     try:
-        return Path(path).read_text().strip()
+        return path.read_text().strip()
     except OSError:
         return default
 

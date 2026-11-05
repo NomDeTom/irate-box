@@ -97,10 +97,10 @@ MDIR = os.environ.get("HUB_MDIR", "mdir")
 
 
 def read(path):
-    try:
-        return Path(path).read_text().strip()
-    except OSError:
-        return None
+    from irate_box.root import sysread
+
+    text = sysread.read(path, None)
+    return text.strip() if text is not None else None
 
 
 def write(path, text):

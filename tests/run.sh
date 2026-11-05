@@ -74,6 +74,7 @@ run sim_watchlog.py
 run sim_faulthandler.py
 run sim_pagehistory.py
 run sim_usb_filesystems.py
+run sim_sysfs_timeout.py
 run sim_firmware_integrity.py
 run sim_holder.py
 run sim_holdsurvey.py

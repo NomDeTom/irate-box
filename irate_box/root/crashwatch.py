@@ -56,7 +56,7 @@ from pathlib import Path
 
 from irate_box import notify
 from irate_box.msg import M, Refused, duration, render
-from irate_box.root import safeio, wifichip
+from irate_box.root import safeio, sysread, wifichip
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -194,8 +194,11 @@ def save_settings(s):
 
 
 def _read(p, default=""):
+    path = Path(p)
+    if str(path) == str(SYS) or str(path).startswith(str(SYS) + "/"):
+        return sysread.read(path, default)
     try:
-        return Path(p).read_text()
+        return path.read_text()
     except OSError:
         return default
 
