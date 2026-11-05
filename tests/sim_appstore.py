@@ -48,6 +48,10 @@ def check(name, cond, info=""):
     fails += not cond
 
 
+def head_of_file(version, file_name):
+    return request("GET", f"/appstore/files/demo/{version}/{file_name}")[1]
+
+
 def request(method, path, headers=None):
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     c.request(method, path, headers={"Host": f"127.0.0.1:{port}", **(headers or {})})
@@ -74,7 +78,7 @@ try:
     # digests in each sha256.json (what the keeper writes), and the settings naming it.
     APK = b"not a real apk, but a held file of some length" * 40
     OLD = APK[:-7]
-    tag, other = "v9.9.9", "v9.9.8"
+    tag, other = "v9.9.9+b1", "v9.9.8"  # a "+" in a tag stays a "+" in the stable link
     name = "androidApp-fdroid-universal-release.apk"
     folder = holds / "demo"
     for where, data in ((tag, APK), (other, OLD)):
@@ -217,6 +221,25 @@ try:
     check("never a directory listing", st == 404, st)
     st, _, _ = request("GET", f"/appstore/files/elsewhere/{tag}/{name}")
     check("  nor a holder the settings do not name", st == 404, st)
+    check(
+        "a download's header carries its name, quoted, and the UTF-8 form",
+        head_of_file(tag, name)
+        .get("content-disposition", "")
+        .startswith(f"attachment; filename=\"{name}\"; filename*=UTF-8''"),
+        head_of_file(tag, name).get("content-disposition"),
+    )
+    for why, hostile in (
+        ("a CR and LF with a header", "%0d%0aX-Evil:%201"),
+        ("a trailing newline", "%0a"),
+        ("a NUL", "%00"),
+        ("a quote", "%22"),
+    ):
+        st, head, _ = request("GET", f"/appstore/files/demo/{tag}/{name}{hostile}")
+        check(
+            f"a file name with {why} is not served and sets no header", st == 404 and "x-evil" not in head, (st, head)
+        )
+        st, head, _ = request("GET", f"/appstore/latest/demo/{name}{hostile}")
+        check("  nor does the stable link", st == 404 and "x-evil" not in head, (st, head))
 
     st, head, _ = request("GET", f"/appstore/latest/demo/{name}")
     check(
