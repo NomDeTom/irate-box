@@ -421,7 +421,7 @@ def journal_since(since, boot=None, timeout=30):
     cmd = ["journalctl", "--no-pager", "-o", "short-monotonic"]
     if boot is not None:
         cmd += ["-b", str(boot)]
-    cmd.append(f"--since=@{int(since)}")
+    cmd += [f"--since=@{int(since)}", "-n", "10000"]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)  # noqa: TID251
     except (OSError, subprocess.SubprocessError):
