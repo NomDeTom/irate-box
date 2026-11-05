@@ -99,11 +99,6 @@ def _run(*cmd, timeout=60):
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))
 
 
-def _dtc(argv, inp=None):
-    """The device tree compiler, through run(), so tests can stand it in."""
-    return _run(*argv)
-
-
 def _systemctl(*args):
     return _run("systemctl", *args)
 
@@ -229,7 +224,8 @@ def _claim(pin):
         for row in _snapshot().get("header") or []:
             if isinstance(row, dict) and row.get("pin") == pin:
                 return row
-    except Exception:  # noqa: BLE001 - no gpioinfo is not a reason to block a saved choice
+    except (OSError, ValueError, subprocess.SubprocessError):
+        # No gpioinfo (or unreadable output) is not a reason to block a saved choice.
         pass
     return {}
 
@@ -507,7 +503,7 @@ def _state():
     return data if isinstance(data, dict) else {}
 
 
-def _save_state(selection, note=""):
+def _save_state(selection, note="", meshtasticd_enabled=None):
     safeio.mkdir(ETC, mode=0o755)
     safeio.write(
         STATE,
@@ -520,6 +516,7 @@ def _save_state(selection, note=""):
                 "fsdir": str(FSDIR),
                 "unit": UNIT,
                 "binary": selection.get("binary", ""),
+                "meshtasticd_enabled": bool(meshtasticd_enabled),
                 "note": note,
             },
             indent=1,
@@ -558,6 +555,7 @@ def _status_for(sel):
         "unit_active": _systemctl("is-active", UNIT).returncode == 0,
         "binary": sel.get("binary", ""),
         "binary_present": bool(sel.get("binary") and Path(sel["binary"]).is_file()),
+        "meshtasticd_enabled": bool(_state().get("meshtasticd_enabled")),
     }
 
 
@@ -634,13 +632,14 @@ def _overlay_error(exc):
 def activate(selection):
     """Write the overlay, config, UI timeout and unit, then enable MUI; a restart applies the overlay."""
     sel = _validate(selection, check_binary=True)
-    # The old test-card/ads7846 layouts also define an SPI display; one owner at a time.
-    for old in ("luckfox-lyra-zero-w-spi1-lcd-touch", "luckfox-lyra-zero-w-spi0-lcd-touch"):
-        hardware.set_overlay_names(remove=old, boot=BOOT)
     try:
-        hardware.add_overlay(OVERLAY, dts(sel), run=_dtc, boot=BOOT)
+        hardware.write_dtbo(OVERLAY, dts(sel), boot=BOOT)
     except hardware.OverlayError as exc:
         _overlay_error(exc)
+    # Compilation succeeded: only now take the old display overlays out of the boot line.
+    for old in ("luckfox-lyra-zero-w-spi1-lcd-touch", "luckfox-lyra-zero-w-spi0-lcd-touch"):
+        hardware.set_overlay_names(remove=old, boot=BOOT)
+    hardware.set_overlay_names(add=OVERLAY, boot=BOOT)
     safeio.mkdir(ETC, mode=0o755)
     safeio.write(CONFIG, config(sel), 0o644)
     safeio.mkdir(FSDIR, mode=0o755)
@@ -651,10 +650,13 @@ def activate(selection):
     safeio.write(UNIT_PATH, unit(sel), 0o644)
     _systemctl("daemon-reload")
     _systemctl("enable", UNIT)
+    package_enabled = _systemctl("is-enabled", "meshtasticd.service").returncode == 0
+    if package_enabled:
+        _systemctl("disable", "--now", "meshtasticd.service")
     devices = _devices(sel)
     if devices["display"] and devices["touch"]:
         _systemctl("restart", UNIT)
-    _save_state(sel)
+    _save_state(sel, meshtasticd_enabled=package_enabled)
     if devices["display"] and devices["touch"]:
         return M("mui.active", "MUI is saved and running on {display}.", display=CONFIG)
     return M("mui.saved", "MUI is saved. Restart the box to apply the selected SPI pins.")
@@ -669,10 +671,17 @@ def deactivate():
         hardware.remove_overlay(OVERLAY, boot=BOOT)
     except hardware.OverlayError as exc:
         _overlay_error(exc)
-    saved = _state().get("selection")
-    if isinstance(saved, dict):
-        _save_state(_normalize(saved), note="deactivated")
-    return M("mui.off", "MUI is off after the next restart; the saved config is kept.")
+    saved = _state()
+    selection = saved.get("selection")
+    if isinstance(selection, dict):
+        _save_state(
+            _normalize(selection),
+            note="deactivated",
+            meshtasticd_enabled=saved.get("meshtasticd_enabled"),
+        )
+    if saved.get("meshtasticd_enabled"):
+        _systemctl("enable", "--now", "meshtasticd.service")
+    return M("mui.off", "MUI is stopped. The selected overlay is off after the next restart; the saved config is kept.")
 
 
 def _parse(argv):

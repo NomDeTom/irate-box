@@ -29,7 +29,7 @@ os.environ.update(
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
-from irate_box.root import mui
+from irate_box.root import hardware, mui
 
 fails = 0
 
@@ -48,7 +48,11 @@ def refused(fn, *a, **k):
     return None
 
 
+seen_dts = []
+
+
 def fake_dtc(argv, inp=None):
+    seen_dts.append(inp)
     out = Path(argv[argv.index("-o") + 1])
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("fake dtbo")
@@ -71,7 +75,7 @@ env = T / "boot" / "armbianEnv.txt"
 env.write_text("verbosity=1\nuser_overlays=irate-box-watchdog\n")
 
 mui._snapshot = lambda: {"header": []}
-mui._dtc = fake_dtc
+hardware._dtc = fake_dtc
 mui._systemctl = fake_systemctl
 sel = {}
 
@@ -150,7 +154,32 @@ mui._snapshot = lambda: {"header": [{"pin": 26, "used": True, "consumer": "ff120
 check("a pin owned by the radio is refused", refused(mui.dts, {}) == "mui.pin-busy")
 mui._snapshot = real_snapshot
 
+old_env = "verbosity=1\nuser_overlays=irate-box-watchdog luckfox-lyra-zero-w-spi1-lcd-touch\n"
+env.write_text(old_env)
+real_hardware_dtc = hardware._dtc
+
+
+def failing_dtc(argv, inp=None):
+    return subprocess.CompletedProcess(argv, 1, "", "dtc failed")
+
+
+hardware._dtc = failing_dtc
+check(
+    "a failed dtc leaves the old display overlay in the boot line",
+    refused(mui.activate, sel) == "mui.dtc-failed"
+    and env.read_text() == old_env
+    and "irate-box-mui" not in env.read_text(),
+    env.read_text(),
+)
+hardware._dtc = real_hardware_dtc
+env.write_text("verbosity=1\nuser_overlays=irate-box-watchdog\n")
+
 msg = mui.activate(sel)
+check(
+    "activate compiles the DTS it passes to the runner",
+    bool(seen_dts) and "/plugin/" in (seen_dts[-1] or "") and "rm_io24_spi1_clk" in (seen_dts[-1] or ""),
+    seen_dts[-1] if seen_dts else None,
+)
 check(
     "activate writes the overlay, config, UI timeout and unit, and leaves the old display overlay behind",
     mui.DTBO.is_file()
@@ -176,6 +205,11 @@ mui.DEFAULT_BINARY = "/nope"
 check("activate refuses a missing per-host binary", refused(mui.activate, {}) == "mui.no-binary")
 mui.DEFAULT_BINARY = real_binary
 mui.deactivate()
+check(
+    "activate disables, and deactivate re-enables, meshtasticd",
+    ("disable", "--now", "meshtasticd.service") in calls and ("enable", "--now", "meshtasticd.service") in calls,
+    calls,
+)
 check(
     "deactivate removes the unit and overlay but keeps the saved config",
     not mui.UNIT_PATH.exists()
