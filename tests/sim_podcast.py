@@ -214,6 +214,16 @@ for why, hostile in (
         check(f"a feed with {why} is refused", False, "accepted")
     except podcast.LibrarianError as exc:
         check(f"a feed with {why} is refused", "document type" in str(exc), str(exc))
+PLAIN = b'<?xml version="1.0" encoding="UTF-8"?><rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" version="2.0"><channel><title>T &amp; U \xc3\xa9</title><itunes:image href="https://e.example/x.jpg"/><item><title>One</title><enclosure url="https://e.example/a.mp3" length="5" type="audio/mpeg"/></item></channel></rss>'
+check(
+    "the tree built from expat's events is the one ElementTree builds",
+    podcast.ET.tostring(podcast._parse_xml(PLAIN, "x")) == podcast.ET.tostring(podcast.ET.fromstring(PLAIN)),
+)
+try:
+    podcast._parse_xml(b"<opml>", "x")
+    check("a document that is not well formed is a ParseError", False, "accepted")
+except podcast.ET.ParseError:
+    check("a document that is not well formed is a ParseError", True)
 check("a plain OPML file still reads", podcast.import_opml(b'<opml version="2.0"><body/></opml>') is not None)
 # A feed name that is not a name cannot name a folder.
 for hostile_id in ("..", "../x", "/etc", "", "a/b"):

@@ -41,10 +41,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET  # parsed only through _parse_xml, which refuses a DOCTYPE and any entity. # nosec B405
+import xml.etree.ElementTree as ET  # only its tree and its TreeBuilder: the parse is _parse_xml's, on expat. # nosec B405
 from datetime import datetime
 from pathlib import Path
-from xml.parsers import expat  # nosec B405 - only to probe for a document type
+from xml.parsers import expat  # nosec B405 - read with a document type and entities refused
 
 from irate_box import confine, validate, webfetch
 from irate_box.library import librarian
@@ -253,25 +253,37 @@ class _DocumentType(Exception):
 
 
 def _parse_xml(data, refused):
-    """The element tree of `data`, never reading a document type declaration or an entity: expat itself
-    is asked, so every spelling and every encoding (UTF-16 included) is caught, not only the bytes
-    `<!DOCTYPE` in ASCII. `refused` is the message said when one is found. (This box's Python links
-    expat 2.2 to 2.8 depending on the system; versions from 2.4.1 bound entity expansion themselves, and
-    this does not rely on that.)"""
+    """The element tree of `data`, built here from expat's events: a document type declaration or an
+    entity is refused the moment expat reads one, in any spelling and any encoding (UTF-16 included),
+    before anything is expanded, and no external entity or DTD is ever read. `refused` is the message
+    said when one is found. A malformed document raises ET.ParseError, as ET.fromstring does. (The
+    box's expat is whichever its Debian release links, 2.2 to 2.8; this does not rely on the versions
+    from 2.4.1 that bound entity expansion themselves.) The standard `ET.fromstring` is not used: no
+    parser in `xml.etree` can be told to refuse them."""
 
     def refuse(*arguments):
         raise _DocumentType
 
-    probe = expat.ParserCreate()
-    probe.StartDoctypeDeclHandler = refuse
-    probe.EntityDeclHandler = refuse
+    def name(text):  # expat's "uri local" is ElementTree's "{uri}local"
+        return "{" + text.replace(" ", "}", 1) if " " in text else text
+
+    builder = ET.TreeBuilder()
+    parser = expat.ParserCreate(namespace_separator=" ")
+    parser.buffer_text = True
+    parser.StartDoctypeDeclHandler = refuse
+    parser.EntityDeclHandler = refuse
+    parser.StartElementHandler = lambda tag, attributes: builder.start(
+        name(tag), {name(key): value for key, value in attributes.items()}
+    )
+    parser.EndElementHandler = lambda tag: builder.end(name(tag))
+    parser.CharacterDataHandler = builder.data
     try:
-        probe.Parse(data, True)
+        parser.Parse(data, True)
     except _DocumentType:
         raise LibrarianError(refused) from None
-    except expat.ExpatError:
-        pass  # not well formed: the parse below says so, in its own words
-    return ET.fromstring(data)  # nosec B314 - no document type and no entity, from the probe above
+    except expat.ExpatError as error:
+        raise ET.ParseError(str(error)) from None
+    return builder.close()
 
 
 def parse_feed(data, url):

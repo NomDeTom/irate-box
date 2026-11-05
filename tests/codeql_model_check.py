@@ -44,6 +44,9 @@ QUERIES = {
     # No model can clear a header flow (python-all reads no barrier kind for one); the shared writers
     # are written in the shape its query recognises, so none may be left open in the real code.
     "header-injection": "codeql/python-queries:Security/CWE-113/HeaderInjection.ql",
+    # No stdlib parser is safe to this query; podcast._parse_xml refuses a document type before it parses,
+    # in the shape the query reads as a guard, and nothing may be left open in the real code.
+    "xml-bomb": "codeql/python-queries:Security/CWE-776/XmlBomb.ql",
 }
 MEMORY = "1500"
 
@@ -106,7 +109,7 @@ def analyse(codeql, work, label, source, model_dir, judged):
     fixture_lines = (source / "fixture/flows.py").read_text().splitlines()
     failed = 0
     for kind, query in QUERIES.items():
-        if kind == "header-injection" and not judged:
+        if kind in ("header-injection", "xml-bomb") and not judged:
             continue
         output = work / f"{label}-{kind}.csv"
         run(
@@ -146,6 +149,8 @@ def analyse(codeql, work, label, source, model_dir, judged):
             problems.append(f"flagged inside irate_box/validate.py: {sorted(inside_validate)}")
         if kind == "header-injection" and elsewhere:
             problems.append(f"an HTTP header still built from a user value: {sorted(elsewhere)}")
+        if kind == "xml-bomb" and elsewhere:
+            problems.append(f"XML still parsed without a guard: {sorted(elsewhere)}")
         print(
             f"{'FAIL' if problems else 'PASS'} {label}, {kind}: {len(expected)} control(s) flagged, "
             f"{len(flagged_fixture - expected)} sanitised flow(s) still flagged"
