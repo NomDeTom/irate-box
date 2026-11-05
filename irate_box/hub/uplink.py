@@ -2475,9 +2475,9 @@ class Link:
         i, w = self.iface, self.w
         if not (SYS_NET / i).exists() and self.kind == "wifi":
             self.backend = "none"
-            self.can = {"radio", "reboot"}
+            self.can = {"radio"}
             if self.radio_seen:
-                self.can = repairs_for("none", i, self.radio_seen) | {"radio", "reboot"}
+                self.can = (repairs_for("none", i, self.radio_seen) | {"radio"}) - {"reboot"}
             if self.actor:
                 self.actor.backend = self.backend
             obs = {

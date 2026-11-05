@@ -1654,8 +1654,8 @@ try:
         obs.get("wedged"),
     )
     check(
-        "  a radio reset and a reboot are still possible",
-        {"radio", "reboot"} <= obs["can"],
+        "  a radio reset is possible, and a soft reboot is not: it hangs on the wedged bus",
+        "radio" in obs["can"] and "reboot" not in obs["can"],
         obs["can"],
     )
     (_net / "wlan0").mkdir()
