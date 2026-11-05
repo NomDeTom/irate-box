@@ -192,5 +192,36 @@ check(
     "the snapshot and the player's list carry the feeds and the files",
     podcast.snapshot()["feeds"] and all(e["url"].startswith("/podcasts/") for e in podcast.episodes()),
 )
+# A feed or an OPML file with a document type or an entity is refused before anything is expanded, in
+# any spelling and any encoding; a plain one still reads. (pyexpat's own version is printed for the record.)
+import pyexpat
+
+print(f"expat {pyexpat.EXPAT_VERSION}")
+BOMB = b'<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;">]><opml version="2.0"><body/></opml>'
+for why, hostile in (
+    ("an entity bomb", BOMB),
+    ("a bare document type", b"<!DOCTYPE opml><opml><body/></opml>"),
+    ("an external entity", b'<!DOCTYPE opml [<!ENTITY x SYSTEM "file:///etc/passwd">]><opml><body>&x;</body></opml>'),
+    ("a UTF-16 entity bomb", BOMB.decode().replace('encoding="UTF-8"', "").encode("utf-16")),
+):
+    try:
+        podcast.import_opml(hostile)
+        check(f"an OPML file with {why} is refused", False, "accepted")
+    except podcast.LibrarianError as exc:
+        check(f"an OPML file with {why} is refused", "document type" in str(exc), str(exc))
+    try:
+        podcast.parse_feed(hostile, "https://example.org/f.xml")
+        check(f"a feed with {why} is refused", False, "accepted")
+    except podcast.LibrarianError as exc:
+        check(f"a feed with {why} is refused", "document type" in str(exc), str(exc))
+check("a plain OPML file still reads", podcast.import_opml(b'<opml version="2.0"><body/></opml>') is not None)
+# A feed name that is not a name cannot name a folder.
+for hostile_id in ("..", "../x", "/etc", "", "a/b"):
+    try:
+        podcast.feed_dir(hostile_id)
+        check(f"the feed name {hostile_id!r} is refused", False, "accepted")
+    except podcast.LibrarianError:
+        check(f"the feed name {hostile_id!r} is refused", True)
+
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

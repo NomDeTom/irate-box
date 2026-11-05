@@ -41,11 +41,12 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET  # DOCTYPE/ENTITY refused before parsing. # nosec B405
+import xml.etree.ElementTree as ET  # parsed only through _parse_xml, which refuses a DOCTYPE and any entity. # nosec B405
 from datetime import datetime
 from pathlib import Path
+from xml.parsers import expat  # nosec B405 - only to probe for a document type
 
-from irate_box import validate, webfetch
+from irate_box import confine, validate, webfetch
 from irate_box.library import librarian
 from irate_box.library.librarian import LibrarianError
 from irate_box.msg import M
@@ -247,15 +248,38 @@ def _pubdate(text):
         return 0
 
 
+class _DocumentType(Exception):
+    pass
+
+
+def _parse_xml(data, refused):
+    """The element tree of `data`, never reading a document type declaration or an entity: expat itself
+    is asked, so every spelling and every encoding (UTF-16 included) is caught, not only the bytes
+    `<!DOCTYPE` in ASCII. `refused` is the message said when one is found. (This box's Python links
+    expat 2.2 to 2.8 depending on the system; versions from 2.4.1 bound entity expansion themselves, and
+    this does not rely on that.)"""
+
+    def refuse(*arguments):
+        raise _DocumentType
+
+    probe = expat.ParserCreate()
+    probe.StartDoctypeDeclHandler = refuse
+    probe.EntityDeclHandler = refuse
+    try:
+        probe.Parse(data, True)
+    except _DocumentType:
+        raise LibrarianError(refused) from None
+    except expat.ExpatError:
+        pass  # not well formed: the parse below says so, in its own words
+    return ET.fromstring(data)  # nosec B314 - no document type and no entity, from the probe above
+
+
 def parse_feed(data, url):
     """{title, cover, new_url, episodes}: RSS with iTunes tags or basic Atom. Text is text."""
     if isinstance(data, str):
         data = data.encode()
-    if b"<!DOCTYPE" in data[:1000] or b"<!ENTITY" in data:
-        # Expat's own refusal also stops an entity expansion; make the words plain.
-        raise LibrarianError(M("podcast.feed.doctype", "This feed uses a document type the box does not read."))
     try:
-        root = ET.fromstring(data)  # a DOCTYPE or ENTITY was refused just above. # nosec B314 B405
+        root = _parse_xml(data, M("podcast.feed.doctype", "This feed uses a document type the box does not read."))
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.feed.invalid-xml", "The feed is not valid XML: {error}.", error=str(exc)[:120])
@@ -416,7 +440,12 @@ def feed_dir(feed_id):
     base = root()
     if base is None:
         raise LibrarianError(librarydrive.said_drive_missing("podcasts"))
-    return base / feed_id
+    try:
+        return confine.under(base, validate.name(feed_id, "The feed name"))
+    except (ValueError, TypeError):
+        raise LibrarianError(
+            M("podcast.feed.id", "Invalid feed name. Use letters, digits, dots, hyphens and underscores.")
+        ) from None
 
 
 def _index_path(feed_id):
@@ -897,7 +926,10 @@ def _xml(text):
 
 def import_opml(text):
     try:
-        root = ET.fromstring(text.encode() if isinstance(text, str) else text)  # OPML, pasted by the admin. # nosec B314 B405
+        root = _parse_xml(
+            text.encode() if isinstance(text, str) else text,
+            M("podcast.opml.doctype", "This file uses a document type the box does not read."),
+        )
     except ET.ParseError as exc:
         raise LibrarianError(
             M("podcast.opml.invalid", "That is not an OPML file: {error}.", error=str(exc)[:120])
