@@ -25,10 +25,10 @@
     for (let i = 0; i < 1900; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const data = await getJSON('/admin/rkboard');
-      const p = data.progress;
-      if (at && p && p.total && p.action === 'backup') {
-        const pct = Math.min(100, Math.floor((100 * (p.done || 0)) / p.total));
-        say(`Saving a full copy… ${pct}% (${((p.done || 0) / 2 ** 20).toFixed(0)} of ${(p.total / 2 ** 20).toFixed(0)} MB)`, true, at);
+      const progress = data.progress;
+      if (at && progress && progress.total && progress.action === 'backup') {
+        const pct = Math.min(100, Math.floor((100 * (progress.done || 0)) / progress.total));
+        say(`Saving a full copy… ${pct}% (${((progress.done || 0) / 2 ** 20).toFixed(0)} of ${(progress.total / 2 ** 20).toFixed(0)} MB)`, true, at);
       }
       const done = (data.results || []).find((result) => result.id === id);
       if (done) return done;
@@ -87,9 +87,9 @@
         if (waiting !== installId) { clearInterval(timer); return; }
         try {
           const data = await getJSON('/admin/rkboard');
-          const p = data.progress;
-          if (p && p.action === 'install' && p.total) {
-            const pct = Math.min(100, Math.floor((100 * (p.done || 0)) / p.total));
+          const progress = data.progress;
+          if (progress && progress.action === 'install' && progress.total) {
+            const pct = Math.min(100, Math.floor((100 * (progress.done || 0)) / progress.total));
             say(`Writing the recovery image… ${pct}%`, true, at);
           }
         } catch (e) { /* the next poll tries again */ }

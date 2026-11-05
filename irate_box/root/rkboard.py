@@ -501,7 +501,7 @@ def backup(loader_id=None):
     try:
         backups.mkdir(mode=0o755, parents=True, exist_ok=True)
         try:
-            os.chmod(backups, 0o755)
+            os.chmod(backups, 0o755)  # nosec B103 - the hub reads a saved copy for the admin's download
         except OSError:
             pass
     except OSError as exc:
