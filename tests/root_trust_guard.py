@@ -55,19 +55,19 @@ REVIEWED = {
         'if dev["name"] == name:',
         "matched against the devices root lists itself, now",
     ),
-    ("usb-kit-import", "kit"): (ROOT + "hub_control.py", "if not kits.ID_RE.match(kit):", "a kit id"),
+    ("usb-kit-import", "kit"): (ROOT + "hub_control.py", "if not kits.ID_RE.fullmatch(kit):", "a kit id"),
     ("usb-kit-export", "device"): (
         ROOT + "usbstick.py",
         'if dev["name"] == name:',
         "matched against the devices root lists itself, now",
     ),
-    ("usb-kit-export", "kit"): (ROOT + "hub_control.py", "if not kits.ID_RE.match(kit):", "a kit id"),
+    ("usb-kit-export", "kit"): (ROOT + "hub_control.py", "if not kits.ID_RE.fullmatch(kit):", "a kit id"),
     ("usb-export-many", "device"): (
         ROOT + "usbstick.py",
         'if dev["name"] == name:',
         "matched against the devices root lists itself, now",
     ),
-    ("usb-export-many", "books"): (ROOT + "hub_control.py", "usbstick.NAME_RE.match(b)", "each a book name"),
+    ("usb-export-many", "books"): (ROOT + "hub_control.py", "usbstick.NAME_RE.fullmatch(b)", "each a book name"),
     ("backup-image", "device"): (
         ROOT + "usbstick.py",
         'if dev["name"] == name:',
@@ -120,10 +120,10 @@ REVIEWED = {
         'record = next((r for r in report.get("files") or [] if r.get("path") == path), None)',
         "only a path that root's own examination report lists, with its own plan for it",
     ),
-    ("housecall-pair", "name"): (ROOT + "housecall.py", "if not PEER_RE.match(name or", "a short name"),
+    ("housecall-pair", "name"): (ROOT + "housecall.py", "if not PEER_RE.fullmatch(name or", "a short name"),
     ("housecall-pair", "host"): (
         ROOT + "housecall.py",
-        'if not HOST_RE.match(host or "") or host.startswith("-")',
+        'if not HOST_RE.fullmatch(host or "") or host.startswith("-")',
         "a host name or address, no leading dash",
     ),
     ("housecall-unpair", "name"): (
@@ -133,7 +133,7 @@ REVIEWED = {
     ),
     ("rk-serial-setup", "console"): (
         ROOT + "hub_control.py",
-        "CONSOLE_RE.match(console) and (SERIAL_BY_ID / console).exists()",
+        "CONSOLE_RE.fullmatch(console) and (SERIAL_BY_ID / console).exists()",
         "a name in /dev/serial/by-id that exists",
     ),
     ("rk-card-setup", "card"): (
@@ -152,7 +152,7 @@ REVIEWED = {
         'if not re.fullmatch(r"[A-Za-z0-9_.@+-]{1,128}\\.yaml"',
         "the name of a netplan file",
     ),
-    ("kit-check", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.match(kit)", "a kit id"),
+    ("kit-check", "kit"): (ROOT + "hub_control.py", "kits.ID_RE.fullmatch(kit)", "a kit id"),
 }
 
 
