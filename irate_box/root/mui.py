@@ -137,7 +137,7 @@ def _spi_table():
     """{(bus, signal, rmio): pinctrl label} from the live symbols; the known RM_IO fallback otherwise."""
     table = {}
     for label in _symbols():
-        found = SPI_LABEL_RE.match(label)
+        found = SPI_LABEL_RE.fullmatch(label)
         if found:
             table[(int(found.group(2)), found.group(3), int(found.group(1)))] = label
     return table or dict(FALLBACK_LABELS)
@@ -269,12 +269,14 @@ def _pin_ok(pin, role, sel, check_claims=True):
     ok, why, code, detail = _pin_status(pin)
     if not ok:
         if code == "mui.unknown-pin":
-            raise Refused(M(code, "Pin {pin} is not in this board's header map.", pin=pin))
+            raise Refused(M("mui.unknown-pin", "Pin {pin} is not in this board's header map.", pin=pin))
         if code == "mui.not-gpio":
-            raise Refused(M(code, "Pin {pin} is power or ground, not a GPIO.", pin=pin))
+            raise Refused(M("mui.not-gpio", "Pin {pin} is power or ground, not a GPIO.", pin=pin))
         if code == "mui.fixed-pin":
-            raise Refused(M(code, "Pin {pin} is fixed for {fixed}; choose a free GPIO.", pin=pin, fixed=detail))
-        raise Refused(M("mui.pin-busy", "Pin {pin} is used by {owner}.", pin=pin, owner=detail))
+            raise Refused(
+                M("mui.fixed-pin", "Pin {pin} is fixed for {fixed}. Select a free GPIO.", pin=pin, fixed=detail)
+            )
+        raise Refused(M("mui.pin-busy", "Pin {pin} is used by {who}.", pin=pin, who=detail))
     return row
 
 
@@ -291,10 +293,10 @@ def _validate(selection, check_binary=False):
     for role in roles:
         pin = sel.get(role)
         if not isinstance(pin, int):
-            raise Refused(M("mui.missing-pin", "Choose a pin for {role}.", role=role))
+            raise Refused(M("mui.missing-pin", "Select a pin for {role}.", role=role))
         if pin in seen:
             raise Refused(
-                M("mui.duplicate-pin", "Pin {pin} is chosen for both {a} and {b}.", pin=pin, a=seen[pin], b=role)
+                M("mui.duplicate-pin", "Pin {pin} is selected for both {a} and {b}.", pin=pin, a=seen[pin], b=role)
             )
         seen[pin] = role
         _pin_ok(pin, role, sel)
@@ -304,7 +306,7 @@ def _validate(selection, check_binary=False):
             raise Refused(
                 M(
                     "mui.not-spi",
-                    "Pin {pin} is not SPI{bus} {signal}; valid pins: {valid}.",
+                    "Pin {pin} is not SPI{bus} {signal}. Valid pins: {valid}.",
                     pin=sel[role],
                     bus=sel["bus"],
                     signal=signal.upper(),
@@ -340,7 +342,7 @@ def _validate(selection, check_binary=False):
             raise Refused(
                 M(
                     "mui.radio-bus",
-                    "Display SPI{bus} is the radio's bus; choose the other SPI bus or a different radio spidev.",
+                    "Display SPI{bus} is the radio's bus. Select the other SPI bus or a different radio spidev.",
                     bus=sel["bus"],
                 )
             )
@@ -731,7 +733,7 @@ def activate(selection):
         raise Refused(
             M(
                 "mui.radio-configured",
-                "meshtasticd has a real radio configured. MUI uses SimRadio; pass replace_radio to replace it.",
+                "meshtasticd has a real radio configured. MUI uses SimRadio. Set replace_radio to replace it.",
             )
         )
     try:
@@ -797,7 +799,7 @@ def deactivate():
         )
     if saved.get("meshtasticd_enabled"):
         _systemctl("enable", "--now", "meshtasticd.service")
-    return M("mui.off", "MUI is stopped. The selected overlay is off after the next restart; the saved config is kept.")
+    return M("mui.off", "MUI is stopped. The selected overlay is off after the next restart. The saved config is kept.")
 
 
 def _parse(argv):
