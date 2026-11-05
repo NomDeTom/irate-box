@@ -62,14 +62,23 @@ lcdpanel.Panel = FakePanel
 hardware_service.SOCKET = T / "run" / "control.sock"
 hardware_service.SOCKET.parent.mkdir(parents=True, exist_ok=True)
 
+
+def wait_answer(timeout=5):
+    """Wait until the service is listening as well as bound: the socket file appears first."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        answer = hardware_service.request("status")
+        if answer and answer.get("ok"):
+            return answer
+        time.sleep(0.02)
+    return None
+
+
 stop = threading.Event()
 thread = threading.Thread(target=hardware_service.serve, kwargs={"stop": stop}, daemon=True)
 thread.start()
-for _ in range(50):
-    if hardware_service.SOCKET.exists():
-        break
-    time.sleep(0.02)
-check("the service makes its socket", hardware_service.SOCKET.exists())
+ready = wait_answer()
+check("the service makes its socket and answers", hardware_service.SOCKET.exists() and ready is not None, ready)
 
 answer = hardware_service.request("card")
 check("card: the panel initialised once and the card drawn", answer and answer["ok"] and answer["on"] is True)
@@ -102,10 +111,7 @@ check(
 done = threading.Event()
 thread2 = threading.Thread(target=hardware_service.serve, kwargs={"stop": done}, daemon=True)
 thread2.start()
-for _ in range(50):
-    if hardware_service.SOCKET.exists():
-        break
-    time.sleep(0.02)
+wait_answer()
 answer = hardware_service.request("status")
 check("start again: the socket is back and answers", answer and answer["ok"], answer)
 answer = hardware_service.request("card")
@@ -123,10 +129,7 @@ FakePanel.fail_open = True
 stop_bad = threading.Event()
 thread_bad = threading.Thread(target=hardware_service.serve, kwargs={"stop": stop_bad}, daemon=True)
 thread_bad.start()
-for _ in range(50):
-    if hardware_service.SOCKET.exists():
-        break
-    time.sleep(0.02)
+wait_answer()
 answer = hardware_service.request("card")
 check(
     "a panel that cannot open: refused, and the service still answers status",
@@ -143,10 +146,7 @@ thread_bad.join(timeout=5)
 stop3 = threading.Event()
 thread3 = threading.Thread(target=hardware_service.serve, kwargs={"stop": stop3}, daemon=True)
 thread3.start()
-for _ in range(50):
-    if hardware_service.SOCKET.exists():
-        break
-    time.sleep(0.02)
+wait_answer()
 import socket
 
 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
