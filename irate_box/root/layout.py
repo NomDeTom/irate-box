@@ -270,7 +270,7 @@ def write(path, board="lyra", filesystem="ext4", ab="off", source=None, own_devi
         read_back = run("blkid", *[_part(device, i) for i in range(1, len(parts) + 1)], timeout=120)
         rows = {}
         for line in table.stdout.splitlines():
-            found = re.match(r"^\s*(\d+)\s+(\d+)\s+\d+\s+[\d.]+ [A-Za-z]+\s+\S+\s+(.+?)\s*$", line)
+            found = re.fullmatch(r"^\s*(\d+)\s+(\d+)\s+\d+\s+[\d.]+ [A-Za-z]+\s+\S+\s+(.+?)\s*$", line)
             if found:
                 rows[int(found.group(1))] = (int(found.group(2)), found.group(3))
         matches = (

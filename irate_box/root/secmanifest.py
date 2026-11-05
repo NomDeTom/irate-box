@@ -91,7 +91,27 @@ _PRIVILEGED = [
     "config/irate-box.service",
 ]
 _PATH_ACTIONS = {
+    "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
+    "hw-set": {
+        "reads": [],
+        "writes": [
+            "control/hardware.json",
+            "etc/hub/crashwatch.json",
+            "boot/overlay-user/irate-box-watchdog.dtbo",
+            "boot/armbianEnv.txt",
+        ],
+    },
     "pins": {"reads": [], "writes": ["control/pins.json", "control/lcdtouch.json"]},
+    "pins-gpio": {"reads": [], "writes": ["control/hardware.json"]},
+    "pins-hog": {
+        "reads": [],
+        "writes": [
+            "control/hardware.json",
+            "etc/hub/pin-hogs.json",
+            "boot/overlay-user/irate-box-pin-hogs.dtbo",
+            "boot/armbianEnv.txt",
+        ],
+    },
     "pins-overlay": {"reads": [], "writes": ["control/lcdtouch.json"]},
     "pins-display": {"reads": [], "writes": ["control/lcdtouch.json"]},
     "pins-test": {"reads": [], "writes": ["control/lcdtouch.json"]},
@@ -260,7 +280,7 @@ def secrets(tree):
             if path in declared:
                 declared[path]["owner"] = owner
                 declared[path]["group"] = group
-        match = _INSTALL_RE.match(line)
+        match = _INSTALL_RE.fullmatch(line)
         if match and line.rstrip().endswith(tuple('"' + p + '"' for p in declared)):
             mode = match.group(1)
             for path in declared:

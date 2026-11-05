@@ -76,7 +76,7 @@ def users_allowed(i):
     local add-ons anyway)."""
     if i in ROUTED:
         return not ROUTED[i][1] and i not in NOT_FOR_USERS
-    return isinstance(i, str) and bool(LOCAL_ID_RE.match(i))
+    return isinstance(i, str) and bool(LOCAL_ID_RE.fullmatch(i))
 
 
 def defaults():
@@ -92,7 +92,7 @@ def clean(data):
         for i, mode in data.items():
             if (
                 mode in MODES
-                and (i in ROUTED or (isinstance(i, str) and LOCAL_ID_RE.match(i)))
+                and (i in ROUTED or (isinstance(i, str) and LOCAL_ID_RE.fullmatch(i)))
                 and (mode != "users" or users_allowed(i))
             ):
                 out[i] = mode

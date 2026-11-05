@@ -121,7 +121,7 @@ def render(md):
             )
             i = j + 1
             continue
-        h = re.match(r"^(#{1,3}) (.*)$", ln)
+        h = re.fullmatch(r"^(#{1,3}) (.*)$", ln)
         if h:
             if len(h.group(1)) == 1 and not title:
                 title = h.group(2).strip()

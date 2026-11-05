@@ -52,6 +52,9 @@ for bad, why in (
     ((" Home", "wpa-psk", "password1", False), "a space first"),
     (("Home", "wep", "password1", False), "WEP"),
     (("Home", "wpa-psk", "short", False), "a short password"),
+    (("Home", "wpa-psk", "password1\n", False), "a password with a trailing newline"),
+    (("Home", "wpa-psk", "pass\nword12", False), "a password with a newline inside"),
+    (("Home", "wpa-psk", "a" * 64 + "\n", False), "a 64-digit key with a trailing newline"),
     (("Home", "open", "password1", False), "a password on an open network"),
     (("Home", "sae", "password1", "yes"), "hidden not a bool"),
 ):

@@ -61,6 +61,14 @@ check(
     sorted(policy - {"admin-gate", "share-allow"} - transport.HTTPS_ONLY),
 )
 
+check(
+    "hw-set: a boot-file choice needs HTTPS, while USB and display choices do not",
+    transport.allowed_choice("hw-set", "crashwatch-watchdog:on", "http") is False
+    and transport.allowed_choice("hw-set", "crashwatch-watchdog:off", "http") is False
+    and transport.allowed_choice("hw-set", "crashwatch-watchdog:on", "https") is True
+    and transport.allowed_choice("hw-set", "usb-gadget:on", "http") is True,
+)
+
 hub = subprocess.Popen(
     [str(REPO / "irate-box"), "server"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
 )
@@ -129,6 +137,29 @@ try:
         status == 202 and len(q) == 1 and q[0].get("over") == "http" and q[0].get("action") == "health-scan",
         (status, q),
     )
+    status, said = go("POST", "/admin/hardware", "http", {"action": "set", "choice": "crashwatch-watchdog:on"})
+    check(
+        "hw-set of a boot-file choice over plain HTTP: refused, nothing queued",
+        status == 403 and (said or {}).get("message", {}).get("id") == "hub.https-only" and not queued(),
+        (status, said),
+    )
+    status, said = go("POST", "/admin/health", "http", {"action": "fix", "choice": "crashwatch-watchdog:on"})
+    check(
+        "health-fix of the watchdog choice over plain HTTP: refused, nothing queued",
+        status == 403 and (said or {}).get("message", {}).get("id") == "hub.https-only" and not queued(),
+        (status, said),
+    )
+    status, _ = go("POST", "/admin/hardware", "http", {"action": "set", "choice": "usb-gadget:on"})
+    q = queued()
+    check(
+        "hw-set of a USB choice over plain HTTP: queued",
+        status == 202 and len(q) == 1 and q[0].get("action") == "hw-set" and q[0].get("choice") == "usb-gadget:on",
+        (status, q),
+    )
+    status, _ = go("POST", "/admin/pins", "http", {"action": "pins-gpio", "pin": 18, "mode": "out", "bias": "none"})
+    check("a one-shot output with no level: a hub 400", status == 400, status)
+    status, _ = go("POST", "/admin/pins", "http", {"action": "pins-hog", "pin": 18, "mode": "out", "bias": "none"})
+    check("  and the same for a pin hog", status == 400, status)
     status, _ = go("GET", "/admin/update", "http")
     check("reading over plain HTTP still answered", status == 200, status)
     for via, which in (("", "without the front's second secret"), ("0" * 64, "with a wrong one")):
