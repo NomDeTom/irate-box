@@ -64,6 +64,30 @@ jobs:
           open(p, "w").write(s.replace(old, new, 1))
           PY
 
+              python3 - <<"PY"
+          p = "src/graphics/tftSetup.cpp"
+          s = open(p).read()
+          anchor = '#include "configuration.h"'
+          if s.count(anchor) != 1:
+              raise SystemExit("SPI include anchor is not unique")
+          if "#include <SPI.h>" not in s:
+              s = s.replace(anchor, anchor + "\n#include <SPI.h>", 1)
+          open(p, "w").write(s)
+          PY
+
+              python3 - <<"PY"
+          p = "src/graphics/tftSetup.cpp"
+          s = open(p).read()
+          anchor = """    if (portduino_config.displayPanel != no_screen) {
+        DisplayDriverConfig displayConfig;"""
+          if s.count(anchor) != 1:
+              raise SystemExit("SPI.begin anchor is not unique or missing")
+          insert = """    if (portduino_config.displayPanel != no_screen) {
+        SPI.begin(portduino_config.display_spi_dev.c_str(), portduino_config.displayBusFrequency);
+        DisplayDriverConfig displayConfig;"""
+          open(p, "w").write(s.replace(anchor, insert, 1))
+          PY
+
               pio run -e native-tft -j 1
             '
 
