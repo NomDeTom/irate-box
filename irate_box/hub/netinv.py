@@ -135,26 +135,16 @@ def run(*cmd, timeout=15):
         return 1, ""
 
 
-def _bounded_read(path, default=None, timeout=5):
-    """A read under /sys with a deadline: a wedged USB bus can hold a plain read for ever (the Lyra,
-    2026-11-04). Other files are read as before."""
-    try:
-        done = subprocess.run(  # noqa: TID251 - the one bounded sysfs read here
-            ["timeout", "-k", "1", str(timeout), "cat", "--", str(path)],
-            capture_output=True,
-            text=True,
-            timeout=timeout + 2,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return default
-    return done.stdout if done.returncode == 0 and done.stdout is not None else default
-
-
 def read(path, default=None):
     path = Path(path)
     if str(path).startswith("/sys/"):
-        text = _bounded_read(path, default)
-        return text.strip() if isinstance(text, str) else default
+        try:
+            from irate_box.root import sysread
+
+            text = sysread.read(path, default)
+            return text.strip() if isinstance(text, str) else default
+        except ImportError:  # a copy of netinv on its own, without irate-box's root package
+            pass
     try:
         return path.read_text().strip()
     except OSError:
