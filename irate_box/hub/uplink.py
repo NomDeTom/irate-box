@@ -2470,8 +2470,33 @@ class Link:
 
     def look(self, now, chosen, watcher):
         """One look at the link: up, the gateway, its drops and roams; closer when in trouble (the backend afresh, a
-        wedged driver, the cause). Fills self.obs for tick()."""
+        wedged driver, the cause). Fills self.obs for tick(). A WiFi link whose interface has gone with its radio
+        is not asked of its backend or the network tools: on a wedged USB bus, each of those can wait for ever."""
         i, w = self.iface, self.w
+        if not (SYS_NET / i).exists() and self.kind == "wifi":
+            self.backend = "none"
+            self.can = {"radio"}
+            if self.radio_seen:
+                self.can = (repairs_for("none", i, self.radio_seen) | {"radio"}) - {"reboot"}
+            if self.actor:
+                self.actor.backend = self.backend
+            obs = {
+                "link": False,
+                "gateway": None,
+                "drops": [],
+                "guests": 0,
+                "busy": None,
+                "uptime": uptime(),
+                "can": self.can,
+                "hold_until": chosen.get("hold_until", 0),
+                "owner_off": False,
+                "shared_radio": False,
+                "wedged": f"{i} has gone: its radio's driver did not bring it back",
+                "driver_reset": None,
+                "cause": "radio",
+            }
+            self.obs, self.up, self.gw, self.answers = obs, False, None, None
+            return obs
         self.refresh(now)
         wifi_here = (SYS_NET / i / "phy80211").exists()
         if wifi_here:
