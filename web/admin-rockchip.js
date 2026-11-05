@@ -21,7 +21,8 @@
   const resultSaid = (result) => (result.msg ? AW.say(result.msg) : result.message);
   // The root helper answers a step by writing a result; wait for that one, not the next poll's.
   async function awaitResult(id) {
-    for (let i = 0; i < 60; i++) {
+    // A full NAND backup or a bootloader + UBI install can take minutes: wait up to five.
+    for (let i = 0; i < 600; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const data = await getJSON('/admin/rkboard');
       const done = (data.results || []).find((result) => result.id === id);
