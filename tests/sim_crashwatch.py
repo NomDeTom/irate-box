@@ -256,6 +256,12 @@ check(
     "  due again: the file replaced with the newer minutes",
     roll == 20901.0 and "second copy" in (cw.BOOTS / "roll.log").read_text(),
 )
+cw.journal_since = lambda *a, **k: ""
+cw.roll_boot_journal(22000.0, cw.load_settings(), 0, boot="roll")
+check(
+    "  a journal that answers nothing does not replace a copy already there",
+    "second copy" in (cw.BOOTS / "roll.log").read_text(),
+)
 cw.journal_since = lambda since, boot=None, timeout=30: HANG_FIXTURE
 cw.SETTINGS.write_text("{}")
 

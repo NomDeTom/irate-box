@@ -465,6 +465,8 @@ def keep_boot_journal(boot, journal_boot=None, now=None, why="", minutes=KEEP_MI
         last = last_journal_time(journal_boot)
         if last is not None:
             text = journal_since(last - minutes * 60, journal_boot)
+    if overwrite and path.exists() and not text:
+        return None  # a timed-out journalctl must not replace the copy already there
     keep, flood = floods(text.splitlines(), limit=30)
     head = [
         f"# crash watch: the last {minutes} minutes of boot {boot}",
