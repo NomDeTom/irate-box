@@ -52,7 +52,9 @@ SRC = Path(os.environ.get("HUB_GADGET_SRC", "/usr/src/usb-gadget-1.1.0"))
 SETTINGS = ETC / "usb-gadget.json"
 STATUS = RUN / "status.json"
 ACTIVE = RUN / "active.json"
+FAILED = RUN / "failed.json"
 IMPORT_STATUS = RUN / "drive-import.json"
+BOOT_ID = Path(os.environ.get("HUB_BOOT_ID", "/proc/sys/kernel/random/boot_id"))
 GADGET = CONFIGFS / "usb_gadget" / "irate"
 FUNCTIONS = GADGET / "functions"
 CONFIGS = GADGET / "configs"
@@ -148,6 +150,8 @@ def save_settings(**changes):
     current.update(changes)
     ETC.mkdir(parents=True, exist_ok=True)
     safeio.write(SETTINGS, json.dumps(current))
+    # A new save is a new attempt, even if it names the same settings.
+    clear_failure()
 
 
 def peripherals():
@@ -207,6 +211,35 @@ def read_status():
     return data if isinstance(data, dict) else {}
 
 
+def boot_id():
+    try:
+        return BOOT_ID.read_text().strip()
+    except OSError:
+        return ""
+
+
+def failed_attempt():
+    """The settings a change failed on in this boot, or None."""
+    try:
+        data = json.loads(FAILED.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("boot_id") != boot_id():
+        return None
+    return data if isinstance(data.get("settings"), dict) else None
+
+
+def remember_failure(settings, why):
+    RUN.mkdir(parents=True, exist_ok=True)
+    FAILED.write_text(
+        json.dumps({"settings": settings, "boot_id": boot_id(), "why": why or "unknown", "at": time.time()})
+    )
+
+
+def clear_failure():
+    FAILED.unlink(missing_ok=True)
+
+
 def write_status(up, why, pending=False):
     RUN.mkdir(parents=True, exist_ok=True)
     STATUS.write_text(json.dumps({"up": bool(up), "why": why, "pending": bool(pending), "at": time.time()}))
@@ -217,7 +250,13 @@ def status():
     state = gadget_state()
     saved = read_status()
     settings = load_settings()
-    pending = bool(udcs and (settings["on"] or settings["drive"]) and not state["up"])
+    failed = failed_attempt()
+    if failed and failed.get("settings") == settings:
+        pending = False
+        why = failed.get("why")
+    else:
+        pending = bool(udcs and (settings["on"] or settings["drive"]) and not state["up"])
+        why = saved.get("why")
     return {
         "model": model(),
         "peripheral": bool(udcs),
@@ -230,7 +269,8 @@ def status():
         "drive": drive_state(),
         "up": state["up"],
         "pending": pending,
-        "why": saved.get("why"),
+        "failed": bool(failed and failed.get("settings") == settings),
+        "why": why,
     }
 
 
@@ -761,6 +801,7 @@ def apply(settings=None, log=print, sleep=time.sleep):
     old = active_settings() or load_settings()
     new = load_settings() if settings is None else dict(settings)
     RUN.mkdir(parents=True, exist_ok=True)
+    clear_failure()
     with _applying():
         # The service may have made this change already between the save and this call.
         if active_settings() == new and gadget_state()["up"]:
@@ -775,6 +816,7 @@ def apply(settings=None, log=print, sleep=time.sleep):
             return True, None
         udcs, why = _prepare(new, log)
         if not udcs:
+            remember_failure(new, why)
             write_status(False, why)
             return False, why
         ACTIVE.write_text(json.dumps(new))
@@ -784,8 +826,10 @@ def apply(settings=None, log=print, sleep=time.sleep):
             # Put the tree the box had back, so a failed change is not a lost gadget.
             ACTIVE.write_text(json.dumps(old))
             _compose(old, udcs, log, sleep, children=False)
+            remember_failure(new, why)
             write_status(False, why)
             return False, why
+    clear_failure()
     write_status(True, None)
     return True, None
 
@@ -793,14 +837,20 @@ def apply(settings=None, log=print, sleep=time.sleep):
 def _tick(children, log=print, sleep=time.sleep):
     """One look by the service: apply a changed setting, or repair a gadget that fell over."""
     settings = load_settings()
-    if not settings["on"] and not settings["drive"]:
+    if not settings["on"]:
         stop_children(children)
+        children = []
+    if not settings["on"] and not settings["drive"]:
         if active_settings() != settings:
             ok, why = apply(settings, log=log, sleep=sleep)
             write_status(ok, why)
         else:
             write_status(False, "off")
         return [], False
+    failed = failed_attempt()
+    if failed and failed.get("settings") == settings:
+        write_status(False, failed.get("why"))
+        return children, False
     if active_settings() != settings:
         ok, why = apply(settings, log=log, sleep=sleep)
         write_status(ok, why, pending=not ok)

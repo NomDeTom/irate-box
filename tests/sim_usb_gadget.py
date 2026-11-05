@@ -257,6 +257,73 @@ check(
 )
 usbgadget._compose = real_compose
 
+# A failed change is remembered for this boot: the service does not retry it every look.
+usbgadget.BOOT_ID = T / "boot_id"
+usbgadget.BOOT_ID.write_text("boot-usb\n")
+usbgadget.clear_failure()
+usbgadget.save_settings(on=True, drive=True)
+real_prepare = usbgadget._prepare
+usbgadget._prepare = lambda settings, log=print: (["ff740000.usb"], None)
+composes = {"n": 0}
+
+
+def failing_compose(settings, udcs, *args, **kwargs):
+    if settings.get("drive"):
+        composes["n"] += 1
+        return False, "configfs: stood in failure", []
+    return real_compose(settings, udcs, *args, **kwargs)
+
+
+usbgadget._compose = failing_compose
+for _ in range(3):
+    usbgadget._tick([], sleep=lambda _: None)
+st = usbgadget.status()
+check(
+    "a failed compose is tried once in a boot, and status says it failed",
+    composes["n"] == 1 and st["failed"] is True and st["pending"] is False and "stood in failure" in st["why"],
+    (composes["n"], st),
+)
+
+usbgadget.clear_failure()
+prepares = {"n": 0}
+
+
+def failing_prepare(settings, log=print):
+    prepares["n"] += 1
+    return None, "the drive image could not be built"
+
+
+usbgadget._prepare = failing_prepare
+usbgadget.save_settings(on=True, drive_write=True)
+for _ in range(3):
+    usbgadget._tick([], sleep=lambda _: None)
+check(
+    "a failed prepare is tried once in a boot, not on every look",
+    prepares["n"] == 1,
+    prepares["n"],
+)
+usbgadget._prepare = real_prepare
+usbgadget._compose = real_compose
+usbgadget.clear_failure()
+usbgadget.save_settings(on=True, drive=False, drive_write=False)
+usbgadget._tick([], sleep=lambda _: None)
+
+# Networking off while the drive stays on stops dnsmasq and the console.
+real_stop_children = usbgadget.stop_children
+real_gadget_state = usbgadget.gadget_state
+stopped = []
+usbgadget.stop_children = lambda children: stopped.extend(children)
+usbgadget.gadget_state = lambda: {"up": True}
+usbgadget.save_settings(on=False, drive=True)
+usbgadget.ACTIVE.write_text(json.dumps(usbgadget.load_settings()))
+usbgadget._tick([object()], sleep=lambda _: None)
+check("networking off with the drive on stops the network's helpers", len(stopped) == 1, stopped)
+usbgadget.stop_children = real_stop_children
+usbgadget.gadget_state = real_gadget_state
+usbgadget.save_settings(on=True, drive=False)
+usbgadget._tick([], sleep=lambda _: None)
+usbgadget.clear_failure()
+
 # While usb0 is not back, the status says pending rather than up.
 usb0 = T / "sys/class/net/usb0"
 usb0.rename(T / "sys/class/net/usb0.away")
