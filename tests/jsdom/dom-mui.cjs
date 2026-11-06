@@ -142,8 +142,14 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
   const mapFolder = d.getElementById('pins-mui-map-folder');
   mapFolder.value = '/home/lyra/maps';
   mapFolder.dispatchEvent(new w.Event('input'));
+  const replaceBox = d.getElementById('pins-mui-replace-radio');
+  replaceBox.checked = true;
+  replaceBox.dispatchEvent(new w.Event('change'));
   await wait(20);
-  check('a filled tiles folder enables Activate', !d.getElementById('pins-mui-activate').disabled);
+  check('a filled tiles folder removes its guard on Activate', !d.getElementById('pins-mui-activate').disabled);
+  replaceBox.checked = false;
+  replaceBox.dispatchEvent(new w.Event('change'));
+  await wait(20);
   // Return the visual controls to the remaining pin tests.
   logLevel.value = 'warn';
   logLevel.dispatchEvent(new w.Event('change'));

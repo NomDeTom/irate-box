@@ -30,7 +30,7 @@ os.environ.update(
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
-from irate_box.root import hardware, mui
+from irate_box.root import hardware, health, mui
 
 fails = 0
 
@@ -261,6 +261,29 @@ check(
     and msg.get("id") == "mui.saved",
     (msg, env.read_text(), mui.UNIT_PATH.read_text() if mui.UNIT_PATH.is_file() else ""),
 )
+health.MUI_UNIT = mui.UNIT_PATH
+health.MUI_JOURNAL = mui.JOURNALD_NAMESPACE
+health._mui_log_rate = lambda: 0
+check("the bounded MUI log has no doctor finding", health.check_mui_log() == [])
+mui.JOURNALD_NAMESPACE.write_text("[Journal]\nStorage=persistent\n")
+check(
+    "a card log without SystemMaxUse is a doctor warning",
+    health.check_mui_log()[0]["id"] == "mui-log",
+)
+mui.JOURNALD_NAMESPACE.write_text(mui.journald(sel))
+health._mui_log_rate = lambda: 6600
+check(
+    "a fast MUI log is a doctor warning with the measured rate",
+    any("6600" in str(f.get("summary")) for f in health.check_mui_log()),
+)
+health._mui_log_rate = lambda: 0
+tiles = T / "tiles"
+(tiles / "3" / "0").mkdir(parents=True)
+mui.activate({**sel, "map_tiles": "folder", "map_tiles_folder": str(tiles)})
+style = mui.FSDIR / "maps" / "dummy"
+check("the tiles-folder choice links the style folder", style.is_symlink() and style.resolve() == tiles.resolve())
+mui.activate(sel)
+check("the dummy choice restores the generated style", style.is_dir() and not style.is_symlink())
 check("  activation is pending until the selected spidev devices exist", mui.status()["pending"] is True)
 (T / "spi" / "spi1.0").write_text("")
 (T / "spi" / "spi1.1").write_text("")
