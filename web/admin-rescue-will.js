@@ -10,7 +10,7 @@
   const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' };
   const $ = (id) => document.getElementById(id);
   const el = AW.h;
-  const WORDS = { match: 'matches the box', stale: 'older than the box', absent: 'not written' };
+  const WORDS = { match: 'matches the box', stale: 'older than the box', missing: 'not written', absent: 'not written' };
   let snapshot = null;
   let sec = null;
   let newPassword = '';
@@ -34,6 +34,17 @@
     at.classList.toggle('bad', !ok);
     at.hidden = !text;
   }
+  const resultSaid = (result) => (result.msg ? AW.say(result.msg) : result.message || 'The root helper did not answer.');
+  async function waitResult(id) {
+    for (let i = 0; i < 60; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      let box;
+      try { box = await getJSON('/admin/box'); } catch (_) { continue; }
+      const found = (box.results || []).find((result) => result.id === id);
+      if (found) return found;
+    }
+    throw new Error('The rescue instructions were not saved in time.');
+  }
   function state(text, bad) {
     const at = $('rescue-will-state');
     if (!at) return;
@@ -45,12 +56,12 @@
     const w = snapshot.will || {};
     if (w.valid) {
       const copies = w.copies || {};
-      const said = [copies.nand && `Onboard flash: ${WORDS[copies.nand] || copies.nand}.`, copies.usb && `USB stick: ${WORDS[copies.usb] || copies.usb}.`]
+      const said = [copies.nand && `Onboard flash: ${WORDS[copies.nand] || copies.nand}.`, copies.usb && `USB drive: ${WORDS[copies.usb] || copies.usb}.`]
         .filter(Boolean).join(' ');
       at.textContent = `Saved on ${w.written ? new Date(w.written * 1000).toLocaleDateString() : 'an unknown date'}. ${said}`;
       at.classList.remove('bad');
     } else {
-      const problems = (w.problems || []).join(' ');
+      const problems = Array.isArray(w.problems) ? w.problems.join(' ') : (w.problem || '');
       at.textContent = problems || 'There is no saved living will on this box. The safe defaults are shown; Save creates one.';
       at.classList.add('bad');
     }
@@ -125,13 +136,13 @@
   const METHOD = [
     { value: 'none', title: 'Do not restore', desc: 'The rescue reports and asks; it does not restore the card by itself.' },
     { value: 'other-slot', title: 'The other A/B slot', desc: 'Use the inactive slot on a card that has two.' },
-    { value: 'image', title: 'A full image', desc: 'Write the named image from this box, the USB stick or a URL.' },
+    { value: 'image', title: 'A full image', desc: 'Write the named image from this box, the USB drive or a URL.' },
     { value: 'salvage', title: 'A salvage copy', desc: 'Restore a copy taken before the trouble.' },
   ];
   const WHERE = {
-    findings: [['usb', 'USB stick'], ['nand', 'Onboard flash'], ['both', 'Both']],
-    backups: [['usb', 'USB stick'], ['nand', 'Onboard flash']],
-    salvage: [['usb', 'USB stick'], ['nand', 'Onboard flash']],
+    findings: [['usb', 'USB drive'], ['nand', 'Onboard flash'], ['both', 'Both']],
+    backups: [['usb', 'USB drive'], ['nand', 'Onboard flash']],
+    salvage: [['usb', 'USB drive'], ['nand', 'Onboard flash']],
   };
   const CONSENT = [
     { value: 'page', title: 'The rescue page', desc: 'The owner confirms on the page, with the typed words.' },
@@ -200,7 +211,7 @@
 
     const sourceBox = el('div');
     AW.choices(sourceBox, 'rescue-will-image-source', [
-      { value: 'usb', title: 'USB stick', desc: 'An image on the rescue USB stick.' },
+      { value: 'usb', title: 'USB drive', desc: 'An image on the rescue USB drive.' },
       { value: 'box', title: 'This box', desc: 'An image the box holds.' },
       { value: 'url', title: 'A URL', desc: 'An HTTPS address.' },
     ], { value: image.source || 'usb', compact: true, onChange: (value) => { setImage('source', value); sync(); } });
@@ -230,7 +241,7 @@
 
     const salvageSourceBox = el('div');
     AW.choices(salvageSourceBox, 'rescue-will-salvage-source', [
-      { value: 'usb', title: 'USB stick', desc: 'A copy on the rescue USB stick.' },
+      { value: 'usb', title: 'USB drive', desc: 'A copy on the rescue USB drive.' },
       { value: 'nand', title: 'Onboard flash', desc: 'A copy in the flash state.' },
     ], { value: salvage.source || 'usb', compact: true, onChange: (value) => { setSalvage('source', value); sync(); } });
     const salvageName = textInput(salvage.name, (value) => setSalvage('name', value), { placeholder: '2026-11-06T101500' });
@@ -272,7 +283,7 @@
     form.push(group('How the rescue is reached', 'The hotspot is the page’s own network. Joining a saved network and SSH are second routes.',
       chipRow('Hotspot', () => reach.hotspot !== false, (on) => setReach('hotspot', on), 'Start the rescue hotspot.', def(!d.reach || d.reach.hotspot !== false)),
       field('Hotspot name', textInput(reach.ssid, (value) => setReach('ssid', value), { maxlength: '32' }), '1 to 32 characters.', (d.reach && d.reach.ssid) || 'irate-rescue'),
-      field('New hotspot password', newPass, 'At least 8 characters. The saved password is never shown and is kept when this is blank.', ''),
+      field('New hotspot password', newPass, 'At least 8 characters. Leave it blank and the box makes a new one, shown once after Save.', ''),
       passwordState,
       chipRow('Join a saved network', () => reach.join_saved !== false, (on) => setReach('join_saved', on), 'Try the box’s saved WiFi profiles.', def(!d.reach || d.reach.join_saved !== false)),
       chipRow('SSH', () => reach.ssh === true, (on) => setReach('ssh', on), 'Run sshd in the rescue.', def(d.reach && d.reach.ssh)),
@@ -359,8 +370,8 @@
       passState.textContent = newPassword
         ? 'A new password will be saved with the instructions.'
         : saved
-          ? 'A hotspot password is set. It is not shown here.'
-          : 'The rescue uses the build’s default hotspot password until you set one.';
+          ? 'A hotspot password is set. It is not shown here; leave the field blank to make a new one when you Save.'
+          : 'The box makes a hotspot password when you first Save. It is shown once.';
     }
 
     const rolesOn = Object.values(roles).some((on) => on !== false);
@@ -384,7 +395,7 @@
     const w = (snapshot && snapshot.will) || {};
     const copies = w.copies || {};
     const at = $('rescue-will-copies');
-    if (at) at.textContent = `Onboard flash: ${copySaid(copies.nand)}. USB stick: ${copySaid(copies.usb)}.`;
+    if (at) at.textContent = `Onboard flash: ${copySaid(copies.nand)}. USB drive: ${copySaid(copies.usb)}.`;
     const confirm = ($('rescue-will-confirm') || {}).value || '';
     const ready = Boolean(w.valid) && !sec.dirty() && !sec.saving() && confirm === 'WRITE WILL' && !pushBusy;
     const button = $('rescue-will-push');
@@ -399,19 +410,20 @@
     sec = AW.section({
       id: 'rescue-will',
       label: 'Rescue instructions',
+      fresh: true,
       saved: JSON.parse(JSON.stringify(saved || {})),
       save: async () => {
         const payload = sec.values();
         if (newPassword) payload.reach.password = newPassword;
         else delete payload.reach.password;
         const answer = await postJSON('/admin/rescue-will', { action: 'save', will: payload });
-        snapshot.will = { ...(snapshot.will || {}), valid: true, instructions: payload, written: answer.written || (snapshot.will && snapshot.will.written) };
+        const done = await waitResult(answer.id);
+        if (!done.ok) throw new Error(resultSaid(done));
         newPassword = '';
         const at = $('rescue-will-new-password');
         if (at) at.value = '';
-        say(answer.message || 'The living will is saved.', true, $('rescue-will-note'));
-        state();
-        updatePush();
+        say(resultSaid(done), true, $('rescue-will-note'));
+        await load();
         return true;
       },
       onChange: () => { sync(); updatePush(); },
@@ -427,14 +439,12 @@
     if (($('rescue-will-confirm') || {}).value !== 'WRITE WILL') return;
     pushBusy = true;
     updatePush();
-    say('Writing the living will to the onboard flash and the USB stick…', true, $('rescue-will-push-note'));
+    say('Writing the living will to the onboard flash and the USB drive…', true, $('rescue-will-push-note'));
     try {
       const answer = await postJSON('/admin/rescue-will', { action: 'push', confirm: 'WRITE WILL' });
-      const said = [
-        answer.nand ? `Onboard flash: ${answer.nand}.` : '',
-        answer.usb ? `USB stick: ${answer.usb}.` : '',
-      ].filter(Boolean).join(' ');
-      say(`The living will was written. ${said}`, true, $('rescue-will-push-note'));
+      const done = await waitResult(answer.id);
+      if (!done.ok) throw new Error(resultSaid(done));
+      say(resultSaid(done), true, $('rescue-will-push-note'));
       await load();
     } catch (err) {
       say(err.message || 'The living will could not be written.', false, $('rescue-will-push-note'));

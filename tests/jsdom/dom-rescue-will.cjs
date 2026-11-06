@@ -33,16 +33,25 @@ const snapshot = {
   },
 };
 const posted = [];
+let results = [];
 function boot(respond) {
   const dom = new JSDOM(html, { url: 'http://box/admin/#rescue-will', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
   const w = dom.window;
   w.fetch = async (u, opts = {}) => {
+    if (u === '/admin/box') return new Response(JSON.stringify({ results }), { status: 200 });
     if (u !== '/admin/rescue-will') return new Response('{}', { status: 404 });
     if (opts.method === 'POST') {
       const body = JSON.parse(opts.body);
       posted.push(body);
-      if (body.action === 'save') return new Response(JSON.stringify({ ok: true, valid: true, written: 1762501000, message: 'The living will is saved.' }), { status: 200 });
-      if (body.action === 'push') return new Response(JSON.stringify({ ok: true, nand: 'written', usb: 'written', written: 1762501000 }), { status: 200 });
+      if (body.action === 'save') {
+        snapshot.will.instructions = body.will;
+        results = [{ id: 'save-1', ok: true, message: 'The living will is saved. The rescue hotspot password is newpass456. Write it down now. It is not shown again.' }];
+        return new Response(JSON.stringify({ id: 'save-1' }), { status: 202 });
+      }
+      if (body.action === 'push') {
+        results = [{ id: 'push-1', ok: true, message: 'The onboard flash copy: written. The USB drive copy: written.' }];
+        return new Response(JSON.stringify({ id: 'push-1' }), { status: 202 });
+      }
       return new Response(JSON.stringify({ ok: false, error: 'Unknown action.' }), { status: 400 });
     }
     return respond === 'missing'
@@ -72,7 +81,7 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
     /Safe default: Off\./.test(t(field('Filesystem repair'))) && /Safe default: Do not restore\./.test(t(field('Method'))),
     t(field('Filesystem repair')));
   check('the hotspot password is never shown, only that one is set',
-    /A hotspot password is set\. It is not shown here\./.test(t(d.getElementById('rescue-will-password-state')))
+    /A hotspot password is set\. It is not shown here;/.test(t(d.getElementById('rescue-will-password-state')))
       && !t(d.body).includes('secret-password')
       && d.getElementById('rescue-will-new-password').type === 'password'
       && d.getElementById('rescue-will-new-password').value === '',
@@ -88,13 +97,14 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
   const save = button(d.getElementById('rescue-will-form'), 'Save');
   check('a change offers Save', save && !save.disabled);
   save.click();
-  await wait(80);
+  await wait(700);
   const saved = posted.find((x) => x.action === 'save');
   check('Save sends the instructions, with no password when none was typed',
     saved && saved.will.auto.repair_fs === false && saved.will.restore.method === 'image'
       && saved.will.reach && !('password' in saved.will.reach),
     JSON.stringify(saved));
-  check('  the save is said', /living will is saved/.test(t(d.getElementById('rescue-will-note'))), t(d.getElementById('rescue-will-note')));
+  check('  the save is said, and the one-time password with it', /living will is saved/.test(t(d.getElementById('rescue-will-note')))
+    && /newpass456/.test(t(d.getElementById('rescue-will-note'))) && /not shown again/.test(t(d.getElementById('rescue-will-note'))), t(d.getElementById('rescue-will-note')));
   // Write to both copies, only after the typed words.
   const push = d.getElementById('rescue-will-push');
   check('Write is off until WRITE WILL is typed', push.disabled);
@@ -102,9 +112,9 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
   d.getElementById('rescue-will-confirm').dispatchEvent(new d0.Event('input', { bubbles: true }));
   check('  typed: Write on', !push.disabled);
   push.click();
-  await wait(120);
+  await wait(700);
   check('Write sends push with WRITE WILL', posted.some((x) => x.action === 'push' && x.confirm === 'WRITE WILL'), posted);
-  check('  the copies are said', /Onboard flash: written\. USB stick: written\./.test(t(d.getElementById('rescue-will-push-note'))), t(d.getElementById('rescue-will-push-note')));
+  check('  the copies are said', /onboard flash copy: written\. The USB drive copy: written/.test(t(d.getElementById('rescue-will-push-note'))), t(d.getElementById('rescue-will-push-note')));
   // The actions the page waits for when the snapshot is not on the box yet.
   const d1 = boot('missing');
   await wait(120);
