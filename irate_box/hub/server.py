@@ -6495,6 +6495,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/admin/rockchip.html":
             # Rockchip boards (apps.d/57-rockchip.json): behind /admin's login, as the Factory's page.
             path = "/admin-rockchip.html"
+        elif path == "/admin/rk-cards.html":
+            # Cards in a reader: a board tool that is not Rockchip-only, on its own page behind /admin's login.
+            path = "/admin-rk-cards.html"
+        elif path == "/admin/rk-setup.html":
+            # New boards: a board tool that is not Rockchip-only, on its own page behind /admin's login.
+            path = "/admin-rk-setup.html"
         elif path == "/admin/pins.html":
             # The GPIO pin map (root/pinmap.py): a page in /admin, with its sidebar, for old links.
             self.send_response(302)

@@ -31,6 +31,8 @@ HUB_ROUTES = {
     "/admin/git.html",
     "/admin/mesh.html",
     "/admin/rockchip.html",
+    "/admin/rk-cards.html",
+    "/admin/rk-setup.html",
     "/admin/pins.html",
     "/admin/notes/download",
     "/admin/setup",

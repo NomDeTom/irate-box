@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="admin-rk-cards.head.title">Cards in a reader · Hub administration</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔌</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/admin/rockchip.html" title="Rockchip boards" data-i18n-title="admin-rk-cards.header.back-tip" data-i18n="admin-rk-cards.header.back"><span class="head-emoji" aria-hidden="true">🔌</span> Rockchip boards</a><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-rk-cards.header.tip-quick-help" data-i18n="admin-rk-cards.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/hub" title="Back to the hub" data-i18n-title="admin-rk-cards.header.tip-back-hub" data-i18n="admin-rk-cards.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-rk-cards.heading">Cards in a reader</h1>
+    <p class="subtitle" data-i18n="admin-rk-cards.header.subtitle">A board's SD card in a USB card reader on this box. Administrators only.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-rk-cards.header.aria-theme"></div>
+  </header>
+
+  <main class="admin-main">
+    <!-- Cards in a reader (hub/rkusb.cards, root/rkcard.py): a board's SD card in a USB reader on the box, one card
+         each; its drawer checks it (reads only), tests it as genuine (erasing it), or writes an image to it. -->
+    <section class="admin-pane" id="rk-cards-pane" aria-labelledby="rk-cards-title">
+      <h2 id="rk-cards-title" data-i18n="admin-rk-cards.title">Cards in a reader</h2>
+      <p class="setting-desc" data-i18n="admin-rk-cards.intro">
+        A board's SD card in a USB card reader on this box: checked without writing to it, tested to show whether it
+        holds as much as it says, or written with a board's image. Close any window the desktop opens for it: a
+        mounted card is not touched.
+      </p>
+      <p class="setting-desc" id="rk-card-result" role="status" hidden></p>
+      <div id="rk-cards"></div>
+    </section>
+  </main>
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/el.js"></script>
+  <script src="/admin-widgets.js"></script>
+  <script src="/names.js"></script>
+  <script src="/admin-rockchip.js"></script>
+</body>
+</html>
