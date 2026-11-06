@@ -163,7 +163,18 @@ check(
     and manifest["source"]["repo"] == "NomDeTom/svgedit"
     and manifest["source"]["workflow"] == "irate-box-bundle.yml"
     and manifest["source"]["pattern"] == "irate-box-svgedit-*"
-    and manifest["status"]["root_env"] == "HUB_SVG_ROOT",
+    and manifest["status"]["root_env"] == "HUB_SVG_ROOT"
+    and manifest["tile"]
+    == {
+        "icon": "🖋️",
+        "name": "SVG-Edit",
+        "desc": "Edit SVG drawings",
+        "href": "/app.html#/svg/",
+        "new_tab": True,
+    }
+    and manifest["entries"][0]["menus"] == {"drawing": 15}
+    and manifest["entries"][0]["name"] == "SVG-Edit"
+    and "admin" not in manifest,
     manifest,
 )
 
@@ -188,6 +199,17 @@ check(
     and "ext-storage" not in hub_js,
     hub_js,
 )
+check(
+    "the gallery extension and the lock helper ship, and the wrapper loads both",
+    (REPO / "apps" / "svgedit" / "ext-hub-store.js").is_file()
+    and (REPO / "apps" / "svgedit" / "lock.js").is_file()
+    and "userExtensions: [{ pathName: './ext-hub-store.js' }]" in hub_js
+    and '<script src="./lock.js"></script>' in wrapper,
+)
+check(
+    "  the app's lock helper is the hub's own, byte for byte",
+    (REPO / "apps" / "svgedit" / "lock.js").read_bytes() == (REPO / "web" / "lock.js").read_bytes(),
+)
 
 install = (REPO / "install.sh").read_text()
 check(
@@ -210,6 +232,11 @@ if built:
     )
     bundle_names = tree_names(bundle)
     check("  it has index.html", "index.html" in bundle_names)
+    check(
+        "  and the hub's gallery extension and lock helper",
+        "ext-hub-store.js" in bundle_names and "lock.js" in bundle_names,
+        sorted(name for name in bundle_names if name.endswith(".js") and "/" not in name),
+    )
     check(
         "  no source maps, tests, IIFE or xdomain pages",
         not [n for n in bundle_names if n.endswith(".map") or n.startswith(("tests/", "iife-", "xdomain-"))],

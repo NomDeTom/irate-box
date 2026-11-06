@@ -64,6 +64,7 @@ HUB_TCP = (
     8096,
     8097,
     8098,
+    8099,
     8490,
     8491,
     8492,
@@ -73,13 +74,14 @@ HUB_TCP = (
     8496,
     8497,
     8498,
+    8499,
 )
 HUB_UDP = (53, 67)
 # cgit's origin and its TLS twin: closed with the Git add-on removed (gitrepos.served), nothing serves them then.
 GIT_TCP = (8093, 8493)
 # The firewall at "hub": the front, DNS and DHCP only, and the origins of what was a path on the front's port
-# (the administration pages, Excalidraw, Mermaid, Syncthing's GUI): they are as reachable as they were.
-HUB_ONLY_TCP = (53, 80, 443, 8095, 8096, 8097, 8098, 8495, 8496, 8497, 8498)
+# (the administration pages, Excalidraw, Mermaid, SVG-Edit, Syncthing's GUI): they are as reachable as they were.
+HUB_ONLY_TCP = (53, 80, 443, 8095, 8096, 8097, 8098, 8099, 8495, 8496, 8497, 8498, 8499)
 FIREWALL_LEVELS = ("hub", "apps")
 # Never forwarded to while contained (share.py's lan): this host, private and CGNAT (the tailnet's)
 # ranges, link-local, the special-purpose blocks, multicast and above.

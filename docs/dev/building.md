@@ -115,7 +115,8 @@ git clone --depth 1 --branch master https://github.com/NomDeTom/svgedit ~/svgedi
 cd ~/svgedit && git checkout c44f061d
 npm ci --ignore-scripts && npm run build
 python3 ~/irate-box/apps/svgedit/trim.py dist/editor
-cp ~/irate-box/apps/svgedit/index.html ~/irate-box/apps/svgedit/hub.js dist/editor/
+cp ~/irate-box/apps/svgedit/index.html ~/irate-box/apps/svgedit/hub.js \
+  ~/irate-box/apps/svgedit/lock.js ~/irate-box/apps/svgedit/ext-hub-store.js dist/editor/
 ```
 
 `--apps DIR/svg` (or `--apps-from-actions`) installs that folder as `/usr/share/hub/apps/svg`.

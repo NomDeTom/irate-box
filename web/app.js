@@ -54,8 +54,8 @@ document.addEventListener('hub-theme', () => {
 // read the hub's storage: it is told the theme's base in its address instead, hub-theme=light,
 // dark or auto, beside whatever query it has. Every other app reads its own setting (above).
 // An app that runs on an origin of its own, which the hub's port sends the frame to: the theme goes in its
-// address, since it cannot read the hub's storage (Excalidraw and Mermaid read it from hub-return.js).
-const ownOrigin = (path) => /^\/(addons|draw|mermaid)\//.test(path);
+// address, since it cannot read the hub's storage (Excalidraw, Mermaid and SVG-Edit read it from hub-return.js).
+const ownOrigin = (path) => /^\/(addons|draw|mermaid|svg)\//.test(path);
 function frameSrc(path) {
   if (!ownOrigin(path)) return path;
   const hash = path.indexOf('#');

@@ -1050,6 +1050,9 @@
         "/serial",
         "/serial/*",
         "/socket.io/*",
+        "/svg",
+        "/svg/*",
+        "/svg/hub-return.js",
         "/sync",
         "/sync/*",
         "/term",
@@ -1136,6 +1139,9 @@
         "/serial/assets/",
         "/serial/serial-terminal.html",
         "/socket.io/",
+        "/svg",
+        "/svg/",
+        "/svg/hub-return.js",
         "/sync",
         "/sync/",
         "/term",
@@ -1176,9 +1182,11 @@
         "@APPS@/freeocd/",
         "@APPS@/mermaid/",
         "@APPS@/serial/",
+        "@APPS@/svg/",
         "@APPS@/tools/",
         "@FIRMWARE@/",
-        "@STATIC@"
+        "@STATIC@",
+        "@STATIC@/hub-return.js"
       ]
     }
   },

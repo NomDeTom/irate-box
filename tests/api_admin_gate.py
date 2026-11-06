@@ -168,6 +168,26 @@ try:
         "POST /messages from a sibling port (same-site): 403",
         go("POST", "/messages", {**msg, "Sec-Fetch-Site": "same-site"}, b"{}") == 403,
     )
+    # An app's own origin (SVG-Edit's 8099): a different origin but the same site, so the
+    # SameSite cookie still goes to the hub's port. A change is refused; the app's own store
+    # (its gallery) is not a hub change.
+    app = {"Host": "127.0.0.1:8099", "Origin": "http://127.0.0.1:8099", "Sec-Fetch-Site": "same-origin"}
+    check(
+        "POST /messages from SVG-Edit's own origin: 403",
+        go("POST", "/messages", {**msg, **app}, b"{}") == 403,
+    )
+    check(
+        "POST /admin from SVG-Edit's own origin, even with the front's secret: 403",
+        go("POST", "/admin/settings", {**page, **app}, b"{}") == 403,
+    )
+    check(
+        "POST /api/account from SVG-Edit's own origin: 403",
+        go("POST", "/api/account", {**msg, **app, "X-Irate-Account": "1"}, b'{"action":"logout"}') == 403,
+    )
+    check(
+        "POST /api/saves from SVG-Edit's own origin is its gallery, not a hub change",
+        go("POST", "/api/saves", {**msg, **app}, b"{}") != 403,
+    )
     check(
         "POST /messages with another Origin: 403",
         go("POST", "/messages", {**msg, "Origin": "http://evil.example"}, b"{}") == 403,

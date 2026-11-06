@@ -102,82 +102,52 @@ try:
     def folder():
         return {f["id"]: f for f in json.loads(go("GET", "/admin/folders")[1])["folders"]}["drawing"]
 
-    # Two drawing tools: Excalidraw and Mermaid. The folder is hidden by default; both tools show.
+    # Three drawing tools are part of the hub now: Excalidraw, SVG-Edit and Mermaid. With the
+    # default (When it holds them, and keeping them on) three are enough, so the folder is on the
+    # hub and the three tools are inside it.
     page = home()
-    check("two tools, the default: the Drawing tile is hidden", tile(page, "Drawing") is None)
-    check("  Excalidraw and Mermaid show on the hub", tile(page, "Excalidraw") and tile(page, "Mermaid"))
+    check("three tools, the default: the Drawing tile is on the hub", tile(page, "Drawing") is not None)
+    check(
+        "  Excalidraw, SVG-Edit and Mermaid are inside it",
+        tile(page, "Excalidraw") is None and tile(page, "SVG-Edit") is None and tile(page, "Mermaid") is None,
+    )
     fol = folder()
     check(
         "  the folder says what it may do, and how many are installed",
-        fol["keep_members"] == {"min": 3, "word": "drawing tools", "shown": "auto", "keep": True, "installed": 2},
+        fol["keep_members"] == {"min": 3, "word": "drawing tools", "shown": "auto", "keep": True, "installed": 3},
         fol.get("keep_members"),
     )
-    check("  and its page lists both", names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "Mermaid"])
+    check(
+        "  and its page lists all three, SVG-Edit beside Excalidraw",
+        names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "SVG-Edit", "Mermaid"],
+    )
 
     st, _ = arrange("always")
     page = home()
     check(
-        "Shown at two: the folder's tile appears, its tools still there",
-        st == 200 and tile(page, "Drawing") and tile(page, "Excalidraw") and tile(page, "Mermaid"),
-    )
-    check("  the folder page still lists both", names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "Mermaid"])
-
-    # A third only lists the folder: its manifest is there, its files are not. It does not count, so
-    # the two installed tools stay where they are (and the folder's page still lists it).
-    add_local("drawio", install=False)
-    page = home()
-    check(
-        "three list the folder but two are installed: still two, the tools stay on the hub",
-        folder()["keep_members"]["installed"] == 2
-        and tile(page, "Drawing")
-        and tile(page, "Excalidraw")
-        and tile(page, "draw.io")
-        and tile(page, "Mermaid"),
-    )
-    check(
-        "  the folder page lists the three",
-        names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "draw.io", "Mermaid"],
-    )
-
-    # Its files arrive. 'Shown' is still the choice, and now the folder may keep them.
-    (state / "addons" / "drawio").mkdir(parents=True, exist_ok=True)
-    time.sleep(0.05)
-    page = home()
-    check(
-        "three installed, Shown: the folder keeps them, its own tile stays",
-        tile(page, "Drawing")
-        and tile(page, "Excalidraw") is None
-        and tile(page, "Mermaid") is None
-        and tile(page, "draw.io") is None,
-    )
-    check("  /admin/folders says three", folder()["keep_members"]["installed"] == 3)
-
-    st, _ = arrange("auto")
-    page = home()
-    check(
-        "three tools, When it holds them: the folder shows, its tools stay inside",
-        st == 200 and tile(page, "Drawing") and tile(page, "Excalidraw") is None,
+        "Shown at three: the folder's tile stays, its tools inside",
+        st == 200 and tile(page, "Drawing") and tile(page, "Excalidraw") is None and tile(page, "SVG-Edit") is None,
     )
 
     st, _ = arrange("auto", False)
     page = home()
     check(
-        "  the tickbox off: the folder goes, its tools return to the hub",
+        "  the tickbox off: the folder goes, the three tools return to the hub",
         st == 200
         and tile(page, "Drawing") is None
         and tile(page, "Excalidraw")
-        and tile(page, "draw.io")
+        and tile(page, "SVG-Edit")
         and tile(page, "Mermaid"),
     )
 
     st, _ = arrange("hidden", True)
     page = home()
     check(
-        "Hidden with the tickbox on and three: the tools stay on the hub, the folder never shows",
+        "Hidden with the tickbox on: the tools stay on the hub, the folder never shows",
         st == 200
         and tile(page, "Drawing") is None
         and tile(page, "Excalidraw")
-        and tile(page, "draw.io")
+        and tile(page, "SVG-Edit")
         and tile(page, "Mermaid"),
     )
     check("  /drawing.html still works", go("GET", "/drawing.html")[0] == 200)
@@ -185,15 +155,39 @@ try:
     st, _ = arrange("always", True)
     page = home()
     check(
-        "Shown with the tickbox on: the folder shows, its tools stay inside",
-        st == 200 and tile(page, "Drawing") and tile(page, "Excalidraw") is None,
+        "Shown with the tickbox on: the folder shows, the three tools inside",
+        st == 200 and tile(page, "Drawing") and tile(page, "Excalidraw") is None and tile(page, "SVG-Edit") is None,
     )
 
-    # A fourth: JS Paint. The folder lists all four, and now says four installed.
-    add_local("jspaint")
+    # A fourth only lists the folder: draw.io's manifest is there, its files are not. It does not
+    # count, so the three installed tools stay inside and draw.io stays on the hub.
+    add_local("drawio", install=False)
+    page = home()
     check(
-        "four tools: the folder lists all four",
-        names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "draw.io", "JS Paint", "Mermaid"],
+        "four list the folder but three are installed: credit stays at three, draw.io on the hub",
+        folder()["keep_members"]["installed"] == 3
+        and tile(page, "Drawing")
+        and tile(page, "Excalidraw") is None
+        and tile(page, "SVG-Edit") is None
+        and tile(page, "draw.io")
+        and tile(page, "Mermaid") is None,
+    )
+    check(
+        "  the folder page lists the four in its order",
+        names(go("GET", "/drawing.html")[1]) == ["Excalidraw", "SVG-Edit", "draw.io", "Mermaid"],
+    )
+
+    # Its files arrive: the folder keeps all four.
+    (state / "addons" / "drawio").mkdir(parents=True, exist_ok=True)
+    time.sleep(0.05)
+    page = home()
+    check(
+        "four installed, Shown: the folder keeps them, its own tile stays",
+        tile(page, "Drawing")
+        and tile(page, "Excalidraw") is None
+        and tile(page, "SVG-Edit") is None
+        and tile(page, "Mermaid") is None
+        and tile(page, "draw.io") is None,
     )
     check("  /admin/folders says four", folder()["keep_members"]["installed"] == 4)
     _, body = arrange("nowhere")

@@ -69,6 +69,9 @@ try:
         i = page.find(f'<span class="name">{name}</span>')
         return None if i < 0 else page[page.rfind("<a ", 0, i) : page.find("</a>", i)]
 
+    # The Drawing folder now holds three built-in tools by default; these tests are about a
+    # tile's own visibility, so keep them on the hub.
+    go("POST", "/admin/folders", {"state": {"drawing": {"shown": "always", "keep": False}}})
     _, home = go("GET", "/")
     check("auto: a users-only app has no tile for a guest", tile(home, "Shared notes") is None)
     check("auto: a private one neither", tile(home, "Git") is None)

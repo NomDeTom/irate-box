@@ -64,6 +64,7 @@ map $scheme $irate_box_notebook_port { https @NOTEBOOK_TLS_PORT@; default @NOTEB
 map $scheme $irate_box_admin_port { https @ADMIN_TLS_PORT@; default @ADMIN_PORT@; }
 map $scheme $irate_box_draw_port { https @DRAW_TLS_PORT@; default @DRAW_PORT@; }
 map $scheme $irate_box_mermaid_port { https @MERMAID_TLS_PORT@; default @MERMAID_PORT@; }
+map $scheme $irate_box_svg_port { https @SVG_TLS_PORT@; default @SVG_PORT@; }
 map $scheme $irate_box_sync_port { https @SYNC_TLS_PORT@; default @SYNC_PORT@; }
 # The hub's session cookie is the hub's: an app on a sibling port (notes, books, cgit, Syncthing)
 # gets the rest of the Cookie header without it, so a page there cannot act as the owner.
@@ -367,6 +368,11 @@ server {
 	location /mermaid/ {
 		if ($irate_box_off_mermaid) { return 404; }
 		return 302 $scheme://$host:$irate_box_mermaid_port$request_uri;
+	}
+	location = /svg { return 302 $scheme://$host:$irate_box_svg_port/svg/; }
+	location /svg/ {
+		if ($irate_box_off_svg) { return 404; }
+		return 302 $scheme://$host:$irate_box_svg_port$request_uri;
 	}
 
 	# --- /tools -> the calculators, single-file pages --------------------------------
@@ -1018,6 +1024,120 @@ server {
 		proxy_set_header X-Irate-Front "";
 		proxy_set_header X-Irate-App "mermaid";
 		proxy_set_header Cookie $irate_box_app_cookie;
+		proxy_pass http://irate_box_hub;
+	}
+	location / { return 404; }
+}
+
+# --- the SVG-Edit origin: /svg/ -------------------------------------------------------------------
+# Its own port, so an SVG opened from the gallery (or a hostile one) is on an origin with no /admin and
+# none of the hub's pages. Static files, the gallery's store, and the link back to the hub. The policy
+# limits scripts to this app's own path: a same-origin /api/saves answer is not a script here.
+server {
+	include @TLS@/nginx-http-svg.inc;
+	include @TLS@/nginx-policy-svg.inc;
+	# Its TLS twin, once the box has a certificate (root/tls.py): listen ... ssl and the certificate.
+	include @TLS@/nginx-svg.conf*;
+	server_name _;
+	access_log off;
+	gzip off;
+	server_tokens off;
+	client_max_body_size 1m;
+	absolute_redirect off;
+	include @ACCESS@;
+	# The session checks the app's gate asks (users mode, private): see the draw origin's.
+	location = /_irate_user {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Irate-Via $irate_box_via;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_pass http://irate_box_hub/_irate/user;
+	}
+	location = /_irate_admin {
+		internal;
+		proxy_method GET;
+		proxy_pass_request_body off;
+		proxy_set_header Content-Length "";
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Irate-Via $irate_box_via;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header Connection "";
+		proxy_set_header X-Original-URI $request_uri;
+		proxy_pass http://irate_box_hub/_irate/admin;
+	}
+	# Not signed in: the sign-in is the hub's page, which sends the browser back here.
+	location @irate_box_login { return 302 $scheme://$host:$irate_box_hub_port/account.html?next=$uri; }
+	proxy_http_version 1.1;
+	proxy_set_header Host $http_host;
+	proxy_set_header X-Forwarded-For $remote_addr;
+	proxy_set_header X-Irate-Via $irate_box_via;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Forwarded-Host $http_host;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection $irate_box_connection;
+	proxy_set_header X-Irate-Front "";
+	root @STATIC@;
+	# `script-src` names this app's own path and port, never 'self': a same-origin URL outside /svg/,
+	# including the proxied /api/saves/<id>, cannot be loaded as a script. No 'unsafe-inline' either:
+	# an SVG's <script> and on*= handlers do not run here; the origin is the defence, not the sanitizer.
+	set $irate_box_svg_csp "default-src 'self'; script-src $scheme://$host:$irate_box_svg_port/svg/; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' $scheme://$host:$irate_box_hub_port $scheme://$host";
+	add_header Content-Security-Policy $irate_box_svg_csp always;
+	add_header X-Content-Type-Options nosniff always;
+	add_header Referrer-Policy no-referrer always;
+	# The hub, from the app's own link back to it.
+	location = / { return 302 $scheme://$host:$irate_box_hub_port/; }
+	location ~* \.html$ { return 302 $scheme://$host:$irate_box_hub_port$request_uri; }
+	# The one script of the hub the app loads (the "Hub" link back), under the app's own path so the
+	# path-limited script-src admits it.
+	location = /svg/hub-return.js {
+		alias @STATIC@/hub-return.js;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_svg_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
+	# The trimmed build: no hashed names, so everything revalidates.
+	location = /svg { return 301 /svg/; }
+	location ^~ /svg/ {
+		access_log @PAGELOG@ irate_box_pages if=$irate_box_page_load;
+		if ($irate_box_off_svg) { return 404; }
+		auth_basic $irate_box_auth_svg;
+		include @ACCESS@.d/gate-svg.conf*;
+		auth_basic_user_file $irate_box_logins;
+		alias @APPS@/svg/;
+		try_files $uri /svg/index.html;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_svg_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
+	# The gallery, and nothing else of the hub's storage. The hub's session cookie is not sent on (the
+	# store keeps no accounts), and the fixed app header scopes it to kind "svgedit".
+	location ^~ /api/saves {
+		client_max_body_size 50m;
+		# Setting a header here drops the server's, so all again.
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Irate-Via $irate_box_via;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $irate_box_connection;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header X-Irate-App "svg";
+		proxy_set_header Cookie $irate_box_app_cookie;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
 		proxy_pass http://irate_box_hub;
 	}
 	location / { return 404; }

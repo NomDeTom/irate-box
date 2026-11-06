@@ -22,5 +22,6 @@ svgEditor.setConfig({
     'ext-opensave',
     'ext-layer_view',
   ],
+  userExtensions: [{ pathName: './ext-hub-store.js' }],
 })
 svgEditor.init()
