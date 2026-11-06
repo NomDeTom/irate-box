@@ -463,6 +463,16 @@ summary + .view-switch {
 .rk-dice {
   margin-left: 0.4rem;
 }
+/* The MaskROM drawing is a dark board in every theme. Its ink that follows the theme (currentColor,
+   and the two labels that take var(--bg) and var(--muted)) is the dark theme's light ink, so it
+   reads on the board in both; the drawing's own fixed colours stay as drawn. */
+.rk-pins svg {
+  color: #f4f5f9;
+}
+.rk-pins svg text[fill="var(--bg)"],
+.rk-pins svg text[fill="var(--muted)"] {
+  fill: #b8bcd0;
+}
 
 /* --- Services (collapsible) --- */
 .services {
