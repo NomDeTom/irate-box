@@ -30,6 +30,11 @@ KEY = re.compile(
 # (action, request key) -> (file, text of the check that must still be there, how the value is held)
 REVIEWED = {
     ("service", "unit"): (ROOT + "hub_control.py", "if unit not in UNITS:", "one of a fixed list of units"),
+    ("rk-boot-confirm", "card_confirms"): (
+        ROOT + "hub_control.py",
+        "if card is not None and type(card) is not bool:",
+        "a boolean, or absent",
+    ),
     ("usb-import", "device"): (
         ROOT + "usbstick.py",
         'if dev["name"] == name:',

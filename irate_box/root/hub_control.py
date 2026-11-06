@@ -135,6 +135,9 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       Set bootcount past bootlimit and restart, so the box reaches C. Refused unless the
       environment has bootcount, bootlimit and an altbootcmd holding nand_boot_rescue; the
       old count is put back if the write or the restart fails.
+  {"id": ..., "action": "rk-boot-confirm", "confirm": "CONFIRM", "card_confirms": true|false|null}
+      Reset bootcount to 0, and card_confirms when it is given. control/rescue-confirm.json
+      says what was done, or why it was not.
   {"id": ..., "action": "rk-bundle-stage", "bundle": "nand-uboot", "name": "u-boot.itb", "temp": "<upload>.part"}
   {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null, "confirm": "<token>"|null}
   {"id": ..., "action": "rk-install", "bootloader": "nand-uboot", "loader": null, "confirm": "<token>"|null,
@@ -9459,6 +9462,97 @@ def restart_rescue(req):
     return said
 
 
+def _confirm_record(over, confirmed, reason, data):
+    safeio.write(
+        CONTROL / "rescue-confirm.json",
+        json.dumps(
+            {
+                "at": time.time(),
+                "over": over,
+                "confirmed": confirmed,
+                "reason": reason,
+                "bootcount": (data or {}).get("bootcount"),
+                "card_confirms": (data or {}).get("card_confirms"),
+            },
+            indent=1,
+        ),
+    )
+
+
+def _hub_answers(port):
+    wait = float(os.environ.get("HUB_BOOT_CONFIRM_WAIT", "300"))
+    interval = float(os.environ.get("HUB_BOOT_CONFIRM_INTERVAL", "10"))
+    deadline = time.time() + wait
+    while True:
+        try:
+            with urllib.request.urlopen(  # nosec B310 - a fixed loopback http address, never a file or a custom scheme
+                f"http://127.0.0.1:{port}/status", timeout=2
+            ) as response:
+                if response.status == 200:
+                    return True
+        except (OSError, ValueError):
+            pass
+        if time.time() >= deadline:
+            return False
+        time.sleep(interval)
+
+
+def boot_confirm_cli():
+    """The card's boot-confirm unit: only after card_confirms is on and the hub answers."""
+    data = rescueenv.snapshot()
+    if not data.get("available"):
+        _confirm_record("unit", False, "env-unreadable", data)
+        return 0
+    if data.get("card_confirms") is not True:
+        _confirm_record("unit", False, "card-confirms-off", data)
+        return 0
+    port = int(os.environ.get("HUB_PORT", os.environ.get("PORT", "8000")))
+    if not _hub_answers(port):
+        _confirm_record("unit", False, "hub-unreachable", rescueenv.snapshot())
+        return 0
+    try:
+        rescueenv.confirm_boot()
+    except Refused:
+        _confirm_record("unit", False, "env-write-failed", rescueenv.snapshot())
+        return 0
+    _confirm_record("unit", True, "", rescueenv.snapshot())
+    return 0
+
+
+def rk_boot_confirm(req):
+    """The manual Confirm this boot: reset the count, and card_confirms when it is given."""
+    if str(req.get("confirm") or "") != "CONFIRM":
+        raise Refused(M("rescue.confirm.confirm", "Type CONFIRM to confirm this boot."))
+    card = req.get("card_confirms")
+    if card is not None and type(card) is not bool:
+        raise Refused(M("rescue.confirm.bad-card", "Say whether the card confirms its own boot."))
+    try:
+        rescueenv.confirm_boot(card)
+    except Refused as exc:
+        if exc.message["id"] in (
+            "rescue.env.unreadable",
+            "rescue.env.no-config",
+            "rescue.env.no-tool",
+            "rescue.env.config-bad",
+        ):
+            exc = Refused(
+                M(
+                    "rescue.confirm.no-env",
+                    "This box has no readable U-Boot environment, so the boot count cannot be confirmed.",
+                )
+            )
+        _confirm_record("manual", False, str(exc), rescueenv.snapshot())
+        raise exc from None
+    _confirm_record("manual", True, "", rescueenv.snapshot())
+    if card is True:
+        return M("rescue.confirm.card-on", "The boot count is now 0, and the card confirms its own boot.")
+    if card is False:
+        return M(
+            "rescue.confirm.card-off", "The boot count is now 0, and the card will no longer confirm its own boot."
+        )
+    return M("rescue.confirm.done", "The boot count is now 0. This boot is confirmed.")
+
+
 def rk_env_show(_req):
     """The card's view of the NAND U-Boot environment: read only, and the reading kept for the page."""
     try:
@@ -9605,6 +9699,7 @@ ACTIONS = {
     "will-save": will_save,
     "will-push": will_push,
     "restart-rescue": restart_rescue,
+    "rk-boot-confirm": rk_boot_confirm,
     "rk-write": rk_write,
     "rk-serial-setup": _rk_serial_setup,
     "rk-own-serial": _rk_own_serial,
@@ -9842,6 +9937,10 @@ if __name__ == "__main__":
             sys.exit(str(_ap_failed(exc)))
         sys.exit(0)
     # The dead-man timer: the owner didn't confirm a hotspot that took the box's own link.
+    if sys.argv[1:] == ["boot-confirm"]:
+        if os.geteuid() != 0:
+            sys.exit("run as root: sudo /opt/irate-box/irate-box boot-confirm")
+        sys.exit(boot_confirm_cli())
     if sys.argv[1:] == ["ap-revert"]:
         if os.geteuid() != 0:
             sys.exit("run as root")

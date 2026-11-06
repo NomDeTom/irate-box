@@ -2990,6 +2990,26 @@ Unit=irate-box-control.service
 [Install]
 WantedBy=multi-user.target
 EOF
+cat >/etc/systemd/system/irate-boot-confirm.service <<EOF
+[Unit]
+Description=Irate-Box: confirm this boot to U-Boot
+After=local-fs.target nand-state.service irate-box.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/fw_env.config
+
+[Service]
+Type=oneshot
+EnvironmentFile=-$ETC/hub.env
+Environment=HUB_STATE_DIR=$STATE HUB_ETC_DIR=$ETC HUB_CODE_DIR=$CODE
+ExecStart=$CODE/irate-box boot-confirm
+TimeoutStartSec=5min
+$ROOT_SANDBOX
+ReadWritePaths=$STATE
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable --quiet irate-boot-confirm.service || problem "irate-boot-confirm.service could not be enabled"
 
 # --- this box's own source (the AGPL's offer) -----------------------------------------------
 # The hub is AGPL-3.0-or-later: everyone who uses it over the network may have its source. An

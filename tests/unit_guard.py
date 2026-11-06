@@ -41,6 +41,7 @@ BASELINE = [
 ROOT = {
     "irate-box-nginx-recover.service": "restores root-owned nginx configuration, keys and ownership before nginx starts",
     "irate-box-control.service": "the root helper: installs updates and packages, writes the front's config, starts units",
+    "irate-boot-confirm.service": "resets the boot count in the NAND U-Boot environment (fw_setenv writes the raw MTD)",
     "irate-box-uplink.service": "the network watchdog: reconnects, restarts the network, resets the radio",
     "irate-box-led.service": "the status light: writes an LED's trigger and brightness under /sys/class/leds, which are root's",
     "irate-box-rfkill.service": "the radios at every start: writes the rfkill switches under /sys/class/rfkill, which are root's",

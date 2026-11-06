@@ -16,6 +16,10 @@ here=$(dirname "$(readlink -f "$0")")
 name=${1:-}
 [ -n "$name" ] || { echo "Usage: irate-box MODULE [ARGS...]" >&2; echo "MODULE is a file name without .py under irate_box/hub, irate_box/library or irate_box/root. Example: irate-box health summary" >&2; exit 2; }
 shift
+if [ "$name" = "boot-confirm" ]; then
+	name=hub_control
+	set -- boot-confirm "$@"
+fi
 for part in hub library root; do
 	if [ -f "$here/irate_box/$part/$name.py" ]; then
 		exec python3 -c 'import faulthandler, runpy, signal, sys, threading, traceback
