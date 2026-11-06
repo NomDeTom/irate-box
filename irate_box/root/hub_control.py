@@ -127,6 +127,10 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "rk-backup-delete", "name": "<backup>.bin"}
   {"id": ..., "action": "rk-backup-restore", "name": "<backup>.bin", "loader": "rk3506b"|null, "confirm": "<token>"|null}
   {"id": ..., "action": "rk-backup-keep", "keep": 1-20}
+  {"id": ..., "action": "rk-env-show"}
+      The card's view of the NAND U-Boot environment (rescueenv.py): read only. The config,
+      the boot MTD, both copies, bootcount, bootlimit, card_confirms and the rescue path.
+      control/rescue.json holds the reading (or why it could not be made) for the page.
   {"id": ..., "action": "rk-bundle-stage", "bundle": "nand-uboot", "name": "u-boot.itb", "temp": "<upload>.part"}
   {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null, "confirm": "<token>"|null}
   {"id": ..., "action": "rk-install", "bootloader": "nand-uboot", "loader": null, "confirm": "<token>"|null,
@@ -250,6 +254,7 @@ from irate_box.root import (
     osupdates,
     partswatch,
     pkgorigins,
+    rescueenv,
     safeio,
     secchanges,
     secdoctor,
@@ -9437,6 +9442,20 @@ def kit_status(req):
     return (_kits_status(), KITS_STATUS)[1]
 
 
+def rk_env_show(_req):
+    """The card's view of the NAND U-Boot environment: read only, and the reading kept for the page."""
+    try:
+        data = rescueenv.show()
+    except Refused as exc:
+        safeio.write(
+            CONTROL / "rescue.json",
+            json.dumps({"at": time.time(), "env": {"available": False, "error": str(exc)}}, indent=1),
+        )
+        raise
+    safeio.write(CONTROL / "rescue.json", json.dumps({"at": time.time(), "env": data}, indent=1))
+    return M("rescue.env.read", "The boot environment was read.")
+
+
 def will_show(_req):
     """The living will as the settings page reads it, published to control/living-will.json."""
     livingwill.show()
@@ -9564,6 +9583,7 @@ ACTIONS = {
     "rk-backup-delete": rk_backup_delete,
     "rk-backup-restore": rk_backup_restore,
     "rk-backup-keep": rk_backup_keep,
+    "rk-env-show": rk_env_show,
     "will-show": will_show,
     "will-save": will_save,
     "will-push": will_push,

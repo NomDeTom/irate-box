@@ -3104,11 +3104,9 @@ CONTROL_DIR = STATE_DIR / "control"
 CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
 ACCESS_STATE = CONTROL_DIR / "access.json"
-KITS_DIR = STATE_DIR / "kits"
+KITS_DIR = STATE_DIR / "kits"  # the offline kit the root helper made (/admin, Backup)
 USB_STICK = Path(os.environ.get("HUB_RESCUE_USB", "/media/usb"))
-NAND_STATE = Path(
-    os.environ.get("HUB_NAND_STATE", "/run/irate-box-nand-state")
-)  # the offline kit the root helper made (/admin, Backup)
+NAND_STATE = Path(os.environ.get("HUB_NAND_STATE", "/run/irate-box-nand-state"))
 KIT_PROGRESS = CONTROL_DIR / "kit-progress.json"  # the root helper's copy of who may open each app
 VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
@@ -3580,6 +3578,12 @@ def pins_snapshot():
     }
 
 
+def rescue_env_snapshot():
+    """/admin/rkboard's env: the last rk-env-show reading, or that it has not been made."""
+    data = _read_json(CONTROL_DIR / "rescue.json", {}) or {}
+    return data.get("env", {"available": False})
+
+
 def rkboard_snapshot():
     """/admin/rkboard: the Rockchip boards on the box's USB as sysfs shows them now (the hub reads it itself), the
     tools the Rockchip boards toolkit brings, the loaders, the root helper's work on them (waiting, and done), and the
@@ -3600,6 +3604,7 @@ def rkboard_snapshot():
         "setup": rksetup.snapshot(),
         "install_log": _install_log(),
         "rk_images": {"settings": rkimages.settings(), "status": rkimages.status()},
+        "env": rescue_env_snapshot(),
     }
 
 
@@ -8038,7 +8043,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/rkboard":
             act, loader = payload.get("action"), payload.get("loader")
-            if act == "loader":
+            if act == "env-show":
+                self.send_json(202, {"id": control_request({"action": "rk-env-show"})})
+            elif act == "loader":
                 self.send_json(202, {"id": control_request({"action": "rk-loader"})})
             elif act == "own-serial" and isinstance(payload.get("on"), bool):
                 self.send_json(202, {"id": control_request({"action": "rk-own-serial", "on": payload["on"]})})

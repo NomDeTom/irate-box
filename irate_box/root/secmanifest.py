@@ -110,6 +110,7 @@ _PATH_ACTIONS = {
         "reads": ["rk-upload"],
         "writes": ["control/rkboard.json", "rk-upload", "rk-bootloaders"],
     },
+    "rk-env-show": {"reads": ["etc/fw_env.config"], "writes": ["control/rescue.json"]},
     "will-show": {"reads": ["root-state/living-will.json"], "writes": ["control/living-will.json"]},
     "will-save": {
         "reads": [],
