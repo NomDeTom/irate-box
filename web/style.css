@@ -6995,7 +6995,7 @@ label > .aw-onoff-box ~ .chip-group,
   grid-template-columns: minmax(0, 1fr) minmax(17rem, 23rem);
   gap: 0.9rem;
   align-items: start;
-  margin: 0.7rem 0 0.9rem;
+  margin: 0.7rem 0 0.8rem;
 }
 .pin-layout .pinheader,
 .pin-layout .pin-gpio-card {
