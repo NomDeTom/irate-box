@@ -9454,6 +9454,8 @@ def rk_env_show(_req):
         raise
     safeio.write(CONTROL / "rescue.json", json.dumps({"at": time.time(), "env": data}, indent=1))
     return M("rescue.env.read", "The boot environment was read.")
+
+
 def will_show(_req):
     """The living will as the settings page reads it, published to control/living-will.json."""
     livingwill.show()
