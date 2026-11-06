@@ -18,6 +18,8 @@ const STANDALONE = [
   ['Git builds', '/admin/git.html'],
   ['Mesh', '/admin/mesh.html'],
   ['Rockchip boards', '/admin/rockchip.html'],
+  ['Cards in a reader', '/admin/rk-cards.html'],
+  ['New boards', '/admin/rk-setup.html'],
 ];
 
 const all = [];
