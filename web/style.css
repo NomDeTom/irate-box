@@ -6889,6 +6889,17 @@ label > .aw-onoff-box ~ .chip-group,
   cursor: not-allowed;
 }
 
+/* The living will page's preview of C's rescue page: a sandboxed frame, the width of its card. */
+.rescue-preview {
+  display: block;
+  width: 100%;
+  min-height: 36rem;
+  margin-top: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
 /* --- Pin map --- */
 .pinmap {
   display: grid;

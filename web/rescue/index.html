@@ -1,0 +1,858 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en" translate="no">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Irate-Box rescue</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛟</text></svg>">
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e2e4ef;
+            --muted: #8a8fa8;
+            --accent: #9d8ff9;
+            --ink: #0f1117;
+            --ok: #4ade80;
+            --warn: #fbbf24;
+            --bad: #f87171;
+            --r: 10px
+        }
+
+        @media (prefers-color-scheme:light) {
+            :root:not([data-theme=dark]) {
+                color-scheme: light;
+                --bg: #f4f5f9;
+                --surface: #fff;
+                --border: #d9dbe6;
+                --text: #0b0c12;
+                --muted: #43475c;
+                --accent: #5b4bd6;
+                --ink: #fff;
+                --ok: #15803d;
+                --warn: #8a4b00;
+                --bad: #b91c1c
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font: 16px/1.45 system-ui, sans-serif;
+            max-width: 44rem;
+            margin: 0 auto;
+            padding: 1.25rem 1rem 3rem
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            line-height: 1.2
+        }
+
+        .sub,
+        h2 {
+            color: var(--muted)
+        }
+
+        h2 {
+            font-size: .75rem;
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            margin-bottom: .6rem
+        }
+
+        p {
+            margin-top: .3rem
+        }
+
+        .sub {
+            font-size: .8rem
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 1rem;
+            margin-top: 1rem
+        }
+
+        .card>*+* {
+            margin-top: .7rem
+        }
+
+        .note {
+            padding: .65rem .9rem;
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            font-size: .85rem;
+            margin-top: 1rem
+        }
+
+        .note.bad {
+            border-color: var(--bad);
+            color: var(--bad)
+        }
+
+        .note.warn {
+            border-color: var(--warn);
+            color: var(--warn)
+        }
+
+        .tiles {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+            gap: .6rem
+        }
+
+        .tile {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: .6rem .75rem;
+            min-width: 0
+        }
+
+        .tile b {
+            display: block;
+            overflow-wrap: anywhere
+        }
+
+        .btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .4rem;
+            margin-top: .6rem
+        }
+
+        .btn {
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            padding: .4rem .7rem;
+            font: inherit;
+            font-size: .88rem;
+            border-radius: 4px;
+            cursor: pointer
+        }
+
+        .btn:hover:not(:disabled) {
+            border-color: var(--accent);
+            color: var(--accent)
+        }
+
+        .btn:disabled {
+            opacity: .55;
+            cursor: not-allowed
+        }
+
+        .bar i,
+        .btn.p {
+            background: var(--accent)
+        }
+
+        .btn.p {
+            border-color: var(--accent);
+            color: var(--ink)
+        }
+
+        .btn.d {
+            border-color: var(--bad);
+            color: var(--bad)
+        }
+
+        .bar,
+        label {
+            margin-top: .6rem
+        }
+
+        .bar {
+            height: .7rem;
+            background: var(--border);
+            border-radius: 99px;
+            overflow: hidden
+        }
+
+        .bar i {
+            display: block;
+            height: 100%;
+            width: 0
+        }
+
+        label {
+            display: block;
+            font-size: .85rem
+        }
+
+        input,
+        select {
+            width: 100%;
+            font: inherit;
+            padding: .5rem .6rem;
+            color: var(--text);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-top: .25rem
+        }
+
+        pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            max-height: 22rem;
+            overflow: auto;
+            font-size: .75rem;
+            line-height: 1.5;
+            margin-top: .5rem
+        }
+
+        [hidden] {
+            display: none !important
+        }
+
+        #preview {
+            border-color: var(--warn);
+            background: var(--surface)
+        }
+
+        [data-a] {
+            margin: 0
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Irate-Box rescue</h1>
+        <p class="sub">This page is local to the rescue hotspot. It does not use the internet.</p>
+    </header>
+    <div id="preview" class="note warn" hidden><b>Preview: nothing here acts on a card.</b></div>
+    <div id="will" class="card"></div>
+    <main>
+        <section class="card">
+            <h2>Card</h2>
+            <div id="card" class="tiles"></div>
+            <p id="cardstate" class="sub"></p>
+        </section>
+        <section class="card">
+            <h2>Networks</h2>
+            <div id="net" class="tiles"></div>
+            <p class="sub">No password is shown on this page.</p>
+        </section>
+        <section class="card">
+            <h2>What was found</h2>
+            <div id="find"></div>
+        </section>
+        <section class="card">
+            <h2>What the rescue can do</h2>
+            <div id="acts"></div>
+        </section>
+        <section class="card" id="ask" hidden>
+            <h2 id="asktitle"></h2>
+            <div id="askbody"></div><label for="confirm">Confirmation</label><input id="confirm" autocomplete="off" spellcheck="false">
+            <p id="askhint" class="sub"></p>
+            <div class="btns"><button id="cancel" class="btn" type="button">Cancel</button><button id="go" class="btn p" type="button" disabled></button></div>
+        </section>
+        <section class="card" id="jobbox" hidden>
+            <h2>Progress</h2>
+            <p id="jobtext"></p>
+            <div class="bar"><i id="bar"></i></div>
+            <p id="jobsub" class="sub"></p>
+            <div class="btns"><button id="canceljob" class="btn" type="button">Cancel</button></div>
+        </section>
+        <section class="card" id="done" hidden>
+            <h2>Done</h2>
+            <p id="donetext"></p>
+            <p id="donesub" class="sub"></p>
+            <div class="btns"><button id="showlog" class="btn" type="button">Show log</button><button id="closedone" class="btn" type="button">Close</button></div>
+        </section>
+        <section class="card">
+            <h2>Return to the card</h2>
+            <p id="nand" class="sub"></p>
+            <div class="btns"><button id="ret" class="btn" type="button">Return to the card</button></div>
+        </section>
+        <details class="card">
+            <summary>Log</summary>
+            <pre id="log"></pre>
+        </details>
+    </main>
+    <script>
+        const TOKEN = "__TOKEN__";
+        const PREVIEW = location.search.indexOf("preview") >= 0;
+        const $ = (id) => document.getElementById(id);
+        const el = (tag, cls, text) => {
+            const node = document.createElement(tag);
+            if (cls) node.className = cls;
+            if (text !== undefined && text !== null) node.textContent = text;
+            return node;
+        };
+        const tile = (label, value, detail) => {
+            const box = el("div", "tile");
+            box.append(el("span", "sub", label), el("b", null, value));
+            if (detail) box.append(el("span", "sub", detail));
+            return box;
+        };
+        let state = {};
+        let will = {};
+        let job = {};
+        let images = null;
+        let targets = null;
+        let pending = null;
+
+        const VERB = {
+            "check-fs": "Checking the filesystems",
+            "repair-fs": "Repairing the filesystems",
+            "diagnose-boot": "Diagnosing the boot files",
+            "check-health": "Reading the whole card",
+            "test-card": "Testing the card",
+            salvage: "Copying the salvage",
+            "restore-salvage": "Restoring the salvage copy",
+            flash: "Writing the image",
+            "check-reachability": "Checking reachability",
+            "return-to-card": "Returning to the card",
+        };
+        const ACT = {
+            check: {
+                label: "Check again"
+            },
+            diag: {
+                label: "Diagnose boot",
+                path: "/api/diagnose",
+                role: "boot"
+            },
+            fscheck: {
+                label: "Check filesystem",
+                path: "/api/check",
+                role: "fsck"
+            },
+            health: {
+                label: "Check card health",
+                path: "/api/health",
+                role: "health"
+            },
+            reach: {
+                label: "Check reachability",
+                path: "/api/network",
+                role: "reachability"
+            },
+            gpt: {
+                label: "Repair partition table",
+                path: "/api/repair-gpt",
+                sync: true
+            },
+            fs: {
+                label: "Repair filesystem",
+                path: "/api/repair-fs",
+                card: true,
+                danger: true,
+                word: (d) => `REPAIR ${d}`
+            },
+            genu: {
+                label: "Test if the card is genuine",
+                path: "/api/genuine",
+                card: true,
+                danger: true,
+                word: (d) => `TEST ${d}`
+            },
+            flash: {
+                label: "Flash an image",
+                path: "/api/flash",
+                card: true,
+                danger: true,
+                word: (d) => `ERASE ${d}`
+            },
+            salv: {
+                label: "Salvage the card",
+                path: "/api/salvage",
+                card: true,
+                danger: true,
+                word: (t) => `SALVAGE ${t}`
+            },
+            restore: {
+                label: "Restore the salvage copy",
+                path: "/api/restore-salvage",
+                card: true,
+                danger: true,
+                word: (d) => `RESTORE ${d}`
+            },
+            lend: {
+                label: "Lend the card",
+                path: "/api/lend",
+                card: true
+            },
+            ret: {
+                label: "Take the card back",
+                path: "/api/return"
+            },
+            return: {
+                label: "Return to the card",
+                path: "/api/return-to-card",
+                word: () => "RESTART"
+            },
+        };
+
+        function note(text, bad = true) {
+            let node = $("note");
+            if (!node) {
+                node = el("p", "note");
+                node.id = "note";
+                document.querySelector("main").prepend(node);
+            }
+            node.textContent = text || "";
+            node.className = "note" + (bad ? " bad" : "");
+            node.hidden = !text;
+        }
+
+        function size(bytes) {
+            if (!bytes) return "0 B";
+            const units = ["B", "KiB", "MiB", "GiB"];
+            let n = bytes;
+            let i = 0;
+            while (n >= 1024 && i < 3) {
+                n /= 1024;
+                i += 1;
+            }
+            return `${n >= 10 ? Math.round(n) : n.toFixed(1)} ${units[i]}`;
+        }
+
+        function date(epoch) {
+            return epoch ? new Date(epoch * 1000).toLocaleString() : "an unknown date";
+        }
+
+        function kind(value) {
+            return String(value || "").split("_").join(" ");
+        }
+        async function api(path, options = {}) {
+            if (PREVIEW) {
+                if (path === "/api/status") return state;
+                if (path === "/api/job") return job;
+                if (path === "/api/log") return {
+                    ok: true,
+                    log: ""
+                };
+                if (path === "/api/images") return {
+                    ok: true,
+                    images: []
+                };
+                if (path === "/api/targets") return {
+                    ok: true,
+                    targets: []
+                };
+                return {
+                    ok: true
+                };
+            }
+            const response = await fetch(path, {
+                ...options,
+                headers: {
+                    "X-Rescue-Token": TOKEN,
+                    "Content-Type": "application/json",
+                    ...(options.headers || {})
+                },
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.ok === false) throw new Error(data.error || "The rescue did not answer.");
+            return data;
+        }
+
+        function renderWill() {
+            const box = $("will");
+            box.replaceChildren(el("h2", null, "Living will"));
+            if (will.valid) {
+                const line = el("p");
+                line.append(el("b", null, `Following the owner's instructions from ${date(will.written)}.`));
+                box.append(line);
+                const instructions = will.instructions || {};
+                const auto = instructions.auto || {};
+                const consent = instructions.consent || "page";
+                const allowed = [
+                    auto.triage && "the read-only check",
+                    auto.repair_gpt && "the validated partition-table repair",
+                    auto.repair_fs && "the filesystem repair",
+                    auto.reflash && "writing an image",
+                ].filter(Boolean);
+                let said = allowed.length ? `Without asking: ${allowed.join(", ")}.` : "It asks before every action that writes.";
+                if (consent !== "page") said += ` Destructive steps are confirmed on ${consent}.`;
+                box.append(el("p", "sub", said));
+            } else {
+                box.append(el("p", "bad", will.problem || "There is no living will on this box. The rescue is using the safe defaults."));
+            }
+        }
+
+        function renderCard() {
+            const partitions = state.partitions || [];
+            const box = $("card");
+            box.replaceChildren(
+                tile("Device", state.present ? state.device || "Card" : "No card", state.present ? size(state.size) : ""),
+                tile("State", state.lent ? "Lent" : state.present ? (state.gpt_broken ? "Needs repair" : "Loaded") : "No card",
+                    state.lent ? "Take it back first." : state.present ? "The card is evidence until you repair it." : "Insert the card."),
+                tile("Partitions", String(partitions.length), partitions.map((part) => `${part.name} ${size(part.size)}`).join(", ")),
+            );
+            $("cardstate").textContent = state.lent ?
+                "The card is lent to the computer. Take it back before checking or repairing it." :
+                state.present ?
+                (state.gpt_broken ? "The primary partition table is damaged. The backup is valid." : "The card reads normally.") :
+                "No card found. Insert it and select Check again.";
+        }
+
+        function renderNet() {
+            const net = state.network || {};
+            const box = $("net");
+            box.replaceChildren();
+            for (const address of net.addresses || []) {
+                box.append(tile(kind(address.kind) || "Address", address.address || "", address.iface || ""));
+            }
+            if (net.hotspot) {
+                const hotspot = net.hotspot;
+                const clients = hotspot.clients || 0;
+                box.append(tile("Hotspot", hotspot.on ? hotspot.ssid || "On" : "Off",
+                    hotspot.on ? `${clients} client${clients === 1 ? "" : "s"} connected.` : ""));
+            }
+            if ("joined" in net) {
+                const joined = net.joined;
+                box.append(tile("Joined WiFi", joined ? joined.ssid || "Joined" : "Not joined",
+                    joined && joined.signal != null ? `Signal ${joined.signal} dBm.` : ""));
+            }
+            box.append(tile("SSH", net.ssh ? "On" : "Off", net.ssh ? "sshd is running." : "Not running."));
+            if (!box.children.length) box.append(tile("Network", "Not read yet", ""));
+        }
+
+        function renderFind() {
+            const box = $("find");
+            const finding = state.finding || {};
+            box.replaceChildren();
+            if (finding.title) {
+                const tone = finding.severity === "problem" ? "bad" : finding.severity === "warning" ? "warn" : "ok";
+                box.append(el("span", `pill ${tone}`, finding.severity || "note"));
+                const title = el("p");
+                title.append(el("b", null, finding.title));
+                box.append(title, el("p", "sub", `${finding.detail || ""} ${finding.action || ""}`.trim()));
+            } else if (state.gpt_broken) {
+                const title = el("p");
+                title.append(el("b", null, "The primary partition table is damaged."));
+                box.append(title, el("p", "sub", "The backup is valid. The rescue can rebuild it without changing the files."));
+            } else {
+                box.append(el("p", "sub", "Nothing has been found yet. Select Check again."));
+            }
+        }
+
+        function hasSalvage() {
+            const restore = (will.instructions && will.instructions.restore) || {};
+            return restore.method === "salvage" && restore.salvage && restore.salvage.name;
+        }
+
+        function renderActs() {
+            const instructions = will.instructions || {};
+            const auto = instructions.auto || {};
+            const roles = instructions.roles || {};
+            const consent = instructions.consent || "page";
+            const usable = state.present && !state.lent;
+            const box = $("acts");
+            const buttons = el("div", "btns");
+            for (const [id, action] of Object.entries(ACT)) {
+                if (id === "return") continue;
+                if (action.role && roles[action.role] === false) continue;
+                const automatic = (id === "gpt" && auto.repair_gpt) || (id === "fs" && auto.repair_fs) || (id === "flash" && auto.reflash);
+                const off = automatic || (action.card && !usable) || (action.danger && consent !== "page") ||
+                    (id === "lend" && state.lent) || (id === "ret" && !state.lent) || (id === "restore" && !hasSalvage());
+                const button = el("button", `btn${action.danger ? " d" : ""}`);
+                button.type = "button";
+                button.dataset.a = id;
+                button.textContent = `${automatic ? "Automatic: " : ""}${action.label}`;
+                button.disabled = off;
+                buttons.append(button);
+            }
+            box.replaceChildren(buttons);
+            if (consent !== "page") box.append(el("p", "sub", `The living will leaves destructive steps to ${consent}. They are unavailable here.`));
+        }
+
+        function renderNand() {
+            const nand = state.nand || {};
+            const env = nand.env || {};
+            $("nand").textContent = env.available ?
+                `Boot count ${env.bootcount == null ? "unknown" : env.bootcount} of ${env.bootlimit == null ? "unknown" : env.bootlimit}. The card stays in.` :
+                "The U-Boot environment is not readable, so the boot count cannot be reset.";
+            $("ret").disabled = !state.present || !env.available;
+        }
+
+        function showJob() {
+            const active = job && (job.state === "queued" || job.state === "running");
+            $("jobbox").hidden = !active;
+            if (active) {
+                const title = el("b", null, `${VERB[job.verb] || "Working"}…`);
+                $("jobtext").replaceChildren(title);
+                const percent = job.percent || (job.total ? Math.round((100 * job.written) / job.total) : 0);
+                $("bar").style.width = `${percent}%`;
+                $("jobsub").textContent = [job.message, job.stage ? `${job.stage}.` : "", job.total ? `${size(job.written)} of ${size(job.total)} (${percent}%).` : ""].filter(Boolean).join(" ");
+                $("canceljob").disabled = ["writing", "repairing", "copying", "rebooting"].includes(job.stage);
+                $("done").hidden = true;
+                return;
+            }
+            $("done").hidden = !(job && job.id);
+            if (!job || !job.id) return;
+            $("donetext").textContent = job.state === "done" ? "The rescue finished." : job.state === "cancelled" ? "The job was cancelled." : "The rescue could not finish.";
+            $("donesub").textContent = job.message || job.error || "";
+        }
+
+        function render() {
+            renderWill();
+            renderCard();
+            renderNet();
+            renderFind();
+            renderActs();
+            renderNand();
+            showJob();
+        }
+        async function refresh() {
+            try {
+                state = await api("/api/status");
+                will = state.will || {};
+                render();
+            } catch (error) {
+                note(error.message, true);
+            }
+        }
+        async function start(path, body) {
+            note("Working…", false);
+            try {
+                const data = await api(path, {
+                    method: "POST",
+                    body: JSON.stringify(body || {})
+                });
+                if (data.job) {
+                    job = data.job;
+                    showJob();
+                    poll();
+                } else {
+                    note(data.message || (data.finding && data.finding.detail) || "Done.", false);
+                    await refresh();
+                }
+            } catch (error) {
+                note(error.message, true);
+            }
+        }
+        async function poll() {
+            try {
+                job = await api("/api/job");
+                showJob();
+                if (job.state === "queued" || job.state === "running") setTimeout(poll, 1000);
+                else {
+                    loadLog();
+                    await refresh();
+                }
+            } catch (error) {
+                note(error.message, true);
+            }
+        }
+        async function loadLog() {
+            try {
+                const data = await api("/api/log");
+                $("log").textContent = data.log || "No log yet.";
+            } catch (_) {
+                $("log").textContent = "The log could not be read.";
+            }
+        }
+
+        function ask(id) {
+            const action = ACT[id];
+            if (!action) return;
+            const device = state.device || "the card";
+            let word = action.word ? action.word(device) : "";
+            pending = {
+                id,
+                word
+            };
+            $("asktitle").textContent = action.label;
+            const body = $("askbody");
+            body.replaceChildren(el("p", "sub", askText(id, device)));
+            if (id === "flash") {
+                const label = el("label", null, "Image on the USB drive");
+                const select = el("select");
+                select.id = "image";
+                (images || []).forEach((image) => {
+                    const option = el("option", null, `${image.name} — ${size(image.size)}`);
+                    option.value = image.name;
+                    select.append(option);
+                });
+                if (!(images || []).length) select.append(el("option", null, "No image"));
+                label.append(select);
+                body.append(label);
+            }
+            if (id === "salv") {
+                const targetLabel = el("label", null, "Where to put the copy");
+                const target = el("select");
+                target.id = "target";
+                (targets || []).forEach((item) => {
+                    const option = el("option", null, `${item.label} (${size(item.free)} free)`);
+                    option.value = item.id;
+                    target.append(option);
+                });
+                if (!(targets || []).length) target.append(el("option", null, "USB drive")).value = "usb";
+                targetLabel.append(target);
+                body.append(targetLabel);
+                word = `SALVAGE ${target.value}`;
+                pending.word = word;
+                target.addEventListener("change", () => {
+                    pending.word = `SALVAGE ${target.value}`;
+                    $("askhint").textContent = `Type ${pending.word} to confirm.`;
+                    $("confirm").value = "";
+                    $("go").disabled = true;
+                });
+                for (const [key, text] of [
+                        ["state", "The box's state"],
+                        ["keys", "SSH and machine keys"],
+                        ["wifi", "Saved WiFi profiles"]
+                    ]) {
+                    const label = el("label", null, text);
+                    const input = el("input");
+                    input.type = "checkbox";
+                    input.id = `i-${key}`;
+                    input.checked = true;
+                    label.append(input);
+                    body.append(label);
+                }
+            }
+            $("askhint").textContent = `Type ${word} to confirm.`;
+            $("confirm").value = "";
+            $("confirm").placeholder = word;
+            $("go").textContent = action.label;
+            $("go").disabled = true;
+            $("ask").hidden = false;
+            $("confirm").focus();
+        }
+
+        function askText(id, device) {
+            switch (id) {
+                case "fs":
+                    return `Repair the filesystem on ${device}? The read-only check found errors. Repairing can change the filesystem.`;
+                case "genu":
+                    return `Test ${device} as a genuine card? This writes to the card and erases its contents.`;
+                case "flash":
+                    return `Flash an image to ${device}? This erases the card.`;
+                case "salv":
+                    return "Copy the card's state, keys and saved WiFi profiles to the USB drive. The card is not changed.";
+                case "restore":
+                    return `Restore the salvage copy named in the living will to ${device}? This changes the card.`;
+                case "return":
+                    return "Reset the boot count and restart the box? The card boots normally. This page will disconnect.";
+                default:
+                    return "This changes the card.";
+            }
+        }
+
+        function cancel() {
+            pending = null;
+            $("ask").hidden = true;
+        }
+
+        async function loadLists() {
+            if (!PREVIEW) {
+                if (!images) images = await api("/api/images").then((data) => data.images || []).catch(() => []);
+                if (!targets) targets = await api("/api/targets").then((data) => data.targets || []).catch(() => []);
+            }
+        }
+
+        document.addEventListener("click", (event) => {
+            const button = event.target.closest("[data-a]");
+            if (!button) return;
+            const id = button.dataset.a;
+            const action = ACT[id];
+            if (!action) return;
+            if (PREVIEW) {
+                note("Preview: nothing here acts on a card.", false);
+                return;
+            }
+            if (id === "check") return refresh();
+            if (id === "flash" || id === "salv") return loadLists().then(() => ask(id));
+            if (action.danger || id === "return") return ask(id);
+            return start(action.path);
+        });
+        $("cancel").addEventListener("click", cancel);
+        $("confirm").addEventListener("input", () => {
+            $("go").disabled = !pending || $("confirm").value !== pending.word;
+        });
+        $("go").addEventListener("click", () => {
+            if (!pending || $("confirm").value !== pending.word) return;
+            const id = pending.id;
+            const action = ACT[id];
+            const body = {
+                confirm: pending.word
+            };
+            if (id === "flash") {
+                const select = $("image");
+                const image = select && images && images.find((item) => item.name === select.value);
+                if (!image) return note("Select an image first.", true);
+                body.image = image.name;
+                body.sha256 = image.sha256;
+            }
+            if (id === "salv") {
+                const target = $("target");
+                const items = ["state", "keys", "wifi"].filter((key) => $(`i-${key}`) && $(`i-${key}`).checked);
+                if (!items.length) return note("Select at least one thing to copy.", true);
+                body.target = target ? target.value : "usb";
+                body.items = items;
+            }
+            if (id === "restore") {
+                const restore = (will.instructions && will.instructions.restore && will.instructions.restore.salvage) || {};
+                body.source = `${restore.source || "usb"}:${restore.name || ""}`;
+            }
+            const path = action.path;
+            cancel();
+            return start(path, body);
+        });
+        $("canceljob").addEventListener("click", async () => {
+            try {
+                await api("/api/cancel", {
+                    method: "POST",
+                    body: "{}"
+                });
+            } catch (error) {
+                note(error.message, true);
+            }
+        });
+        $("showlog").addEventListener("click", () => {
+            $("log").parentElement.open = true;
+            loadLog();
+        });
+        $("closedone").addEventListener("click", () => {
+            $("done").hidden = true;
+        });
+        $("ret").addEventListener("click", () => {
+            if (PREVIEW) return note("Preview: nothing here acts on a card.", false);
+            return ask("return");
+        });
+
+        if (PREVIEW) {
+            $("preview").hidden = false;
+            addEventListener("message", (event) => {
+                if (event.source !== parent || event.origin !== location.origin) return;
+                const data = event.data || {};
+                if (data.type !== "rescue-preview") return;
+                state = data.status || {};
+                will = data.will || state.will || {};
+                job = state.job || {};
+                render();
+            });
+            parent.postMessage({
+                type: "rescue-preview-ready"
+            }, location.origin);
+        } else {
+            refresh();
+            setInterval(() => {
+                if (!job || !(job.state === "queued" || job.state === "running")) refresh();
+            }, 5000);
+        }
+    </script>
+</body>
+
+</html>

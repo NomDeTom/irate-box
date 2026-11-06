@@ -91,6 +91,32 @@ const button = (root, label) => [...root.querySelectorAll('button')].find((b) =>
       && /image needs its name/.test(t(d.getElementById('rescue-will-restore-warn')))
       && /SHA-256/.test(t(d.getElementById('rescue-will-restore-warn'))),
     [t(d.getElementById('rescue-will-auto-warn')), t(d.getElementById('rescue-will-restore-warn'))]);
+  // The rescue preview: the iframe gets the form's current values, before Save, and the state selector
+  // switches the card fine, failed and restore in progress.
+  const frame = d.getElementById('rescue-will-preview');
+  const msgs = [];
+  Object.defineProperty(frame, 'contentWindow', { configurable: true, value: { postMessage: (m) => msgs.push(m) } });
+  const previewState = d.getElementById('rescue-will-preview-state');
+  previewState.value = 'fine';
+  previewState.dispatchEvent(new d0.Event('change', { bubbles: true }));
+  check('preview: the iframe gets the form\'s current instructions',
+    msgs.length && msgs.at(-1).type === 'rescue-preview' && msgs.at(-1).status.will.instructions.auto.repair_fs === true,
+    JSON.stringify(msgs.at(-1) && msgs.at(-1).status.will.instructions.auto));
+  chip('Filesystem repair', 'Off').click();
+  check('  changing an instruction changes the preview at once', msgs.at(-1).status.will.instructions.auto.repair_fs === false,
+    JSON.stringify(msgs.at(-1) && msgs.at(-1).status.will.instructions.auto));
+  chip('Filesystem repair', 'On').click();
+  previewState.value = 'failed';
+  previewState.dispatchEvent(new d0.Event('change', { bubbles: true }));
+  check('  a failed card: the preview carries its finding', msgs.at(-1).status.gpt_broken === true && /primary partition table is damaged/.test(msgs.at(-1).status.finding.title),
+    msgs.at(-1).status.finding);
+  previewState.value = 'restore';
+  previewState.dispatchEvent(new d0.Event('change', { bubbles: true }));
+  check('  restore in progress: the preview carries the job', msgs.at(-1).status.job.state === 'running' && msgs.at(-1).status.job.verb === 'restore-salvage',
+    msgs.at(-1).status.job);
+  previewState.value = 'fine';
+  previewState.dispatchEvent(new d0.Event('change', { bubbles: true }));
+
   // Turn the filesystem repair off, then save.
   chip('Filesystem repair', 'Off').click();
   await wait(20);

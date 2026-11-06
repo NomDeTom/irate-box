@@ -725,6 +725,20 @@
             </div>
             <p class="setting-desc action-note" id="rescue-will-push-note" role="status" hidden></p>
           </div>
+          <div class="net-card setting" id="rescue-will-preview-card">
+            <h3 data-i18n="admin.rescue-will.preview.title">Preview of the rescue page</h3>
+            <p class="setting-desc" data-i18n="admin.rescue-will.preview.desc">
+              What the rescue will show with the instructions above, before you save them. Nothing in the preview
+              acts on a card.
+            </p>
+            <label for="rescue-will-preview-state" data-i18n="admin.rescue-will.preview.state-label">Card state in the preview</label>
+            <select id="rescue-will-preview-state">
+              <option value="fine" data-i18n="admin.rescue-will.preview.fine">Card fine</option>
+              <option value="failed" data-i18n="admin.rescue-will.preview.failed">Card failed</option>
+              <option value="restore" data-i18n="admin.rescue-will.preview.restore">Restore in progress</option>
+            </select>
+            <iframe id="rescue-will-preview" class="rescue-preview" src="/rescue/index.html?preview=1" sandbox="allow-scripts allow-same-origin" title="Preview of the rescue page" data-i18n-title="admin.rescue-will.preview.title"></iframe>
+          </div>
         </section>
 
         <section class="admin-pane" id="clock" aria-labelledby="clock-title">
