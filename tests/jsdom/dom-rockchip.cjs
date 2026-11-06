@@ -68,6 +68,34 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('  MaskROM recovery: its own tab, with the underside drawing', !pane('recovery').hidden && !!pane('recovery').querySelector('svg'));
   tab('board').click();
   check('no board: said how to connect one, no buttons', /No Rockchip board is connected/.test(text('rk-board')) && buttons().length === 0, text('rk-board'));
+
+  // The card's U-Boot environment: not read, a reading, a refusal, and the Read that queues rk-env-show.
+  check('boot environment: not read yet, with a Read button',
+    /has not been read on this box yet\. Select Read the boot environment\./.test(text('rk-env')) && !!d.getElementById('rk-env-read'), text('rk-env'));
+  await show({ env: { available: true, config: { path: '/etc/fw_env.config', present: true, valid: true },
+    device: { mtd: 0, name: 'boot', size: 33554432, erasesize: 131072 }, bootcount: 2, bootlimit: 3,
+    card_confirms: false, altbootcmd: 'run nand_boot_rescue', altbootcmd_rescue: true,
+    copies: { primary: true, redundant: true, agree: true } } });
+  check('  a reading: the count, limit, card confirms, rescue path, config and copies',
+    /Boot count\s*2/.test(text('rk-env')) && /Limit\s*3/.test(text('rk-env')) && /Card confirms its boot\s*No/.test(text('rk-env'))
+      && /Rescue fallback\s*nand_boot_rescue/.test(text('rk-env')) && /Config\s*Present and valid/.test(text('rk-env'))
+      && /Copies\s*Both readable, and they agree/.test(text('rk-env')),
+    text('rk-env'));
+  await show({ env: { available: false, error: "This card has no /etc/fw_env.config, so the box cannot read U-Boot's environment." } });
+  check('  no config: said plainly', /This card has no \/etc\/fw_env\.config/.test(text('rk-env')), text('rk-env'));
+  const envReading = { available: true, config: { path: '/etc/fw_env.config', present: true, valid: true },
+    device: { mtd: 0, name: 'boot', size: 33554432, erasesize: 131072 }, bootcount: 0, bootlimit: 3,
+    card_confirms: true, altbootcmd: 'run nand_boot_rescue', altbootcmd_rescue: true,
+    copies: { primary: true, redundant: true, agree: true } };
+  state.env = envReading;
+  state.results = [{ id: 'rk1', ok: true, msg: { id: 'rkboard.env-read', en: 'The boot environment was read.' } }];
+  posted.length = 0;
+  d.getElementById('rk-env-read').click();
+  await wait(700);
+  check('  Read queues env-show, then shows the new reading',
+    posted.some((x) => x.action === 'env-show') && /Boot count\s*0/.test(text('rk-env')) && /Card confirms its boot\s*Yes/.test(text('rk-env')), text('rk-env'));
+  state.results = [];
+  await show({ env: envReading });
   await show({ boards: [board('system')] });
   check('its own system: said, Switch to Loader mode offered', /running its own system/.test(text('rk-board')) && buttons().map((b) => b.textContent).join() === 'Switch to Loader mode', text('rk-board'));
   buttons()[0].click();
