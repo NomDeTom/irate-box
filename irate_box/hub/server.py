@@ -3104,11 +3104,9 @@ CONTROL_DIR = STATE_DIR / "control"
 CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
 ACCESS_STATE = CONTROL_DIR / "access.json"
-KITS_DIR = STATE_DIR / "kits"
+KITS_DIR = STATE_DIR / "kits"  # the offline kit the root helper made (/admin, Backup)
 USB_STICK = Path(os.environ.get("HUB_RESCUE_USB", "/media/usb"))
-NAND_STATE = Path(
-    os.environ.get("HUB_NAND_STATE", "/run/irate-box-nand-state")
-)  # the offline kit the root helper made (/admin, Backup)
+NAND_STATE = Path(os.environ.get("HUB_NAND_STATE", "/run/irate-box-nand-state"))
 KIT_PROGRESS = CONTROL_DIR / "kit-progress.json"  # the root helper's copy of who may open each app
 VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
