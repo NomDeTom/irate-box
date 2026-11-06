@@ -6,7 +6,7 @@ const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
 const html = fs.readFileSync(`${WEB}/rescue/index.html`, 'utf8');
-const script = /<script>([\s\S]*)<\/script>/.exec(html)[1];
+const script = /<script[^>]*>([\s\S]*?)<\/script>/i.exec(html)[1];
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo|Not implemented/.test(e.message)) errors.push(e.message); });
@@ -26,7 +26,7 @@ const status = { ok: true, device: '/dev/mmcblk0', present: true, lent: false, s
   network: { addresses: [{ iface: 'wlan0', address: '192.168.4.1', kind: 'hotspot' }, { iface: 'usb0', address: '192.168.7.1', kind: 'usb' }], hotspot: { on: true, ssid: 'irate-rescue', clients: 1 }, joined: { ssid: 'SKYTB1H1', signal: -61 }, ssh: false } };
 (async () => {
   await wait();
-  w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rescue-preview', status, will } }));
+  w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rescue-preview', status, will }, source: w.parent, origin: w.location.origin }));
   await wait();
   check('preview: the banner is shown', !w.document.getElementById('preview').hidden && /Preview: nothing here acts on a card/.test(t('#preview')));
   check('  the living will is followed', /Following the owner's instructions/.test(t('#will')) && /Without asking:.*filesystem repair/.test(t('#will')), t('#will'));
@@ -37,11 +37,11 @@ const status = { ok: true, device: '/dev/mmcblk0', present: true, lent: false, s
   await wait();
   check('  an action sends nothing, and says so', sent.length === before && /Preview: nothing here acts on a card/.test(t('#note')), t('#note'));
   const failed = { ...status, gpt_broken: true, finding: { severity: 'warning', title: 'The primary partition table is damaged.', detail: 'The backup is valid.', action: 'Repair it.' } };
-  w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rescue-preview', status: failed, will } }));
+  w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rescue-preview', status: failed, will }, source: w.parent, origin: w.location.origin }));
   await wait();
   check('  a failed card shows its finding', /primary partition table is damaged/.test(t('#find')), t('#find'));
   const restore = { ...status, job: { id: 'p', verb: 'restore-salvage', state: 'running', stage: 'copying', percent: 40, message: 'Restoring the salvage copy.' } };
-  w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rescue-preview', status: restore, will } }));
+  w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'rescue-preview', status: restore, will }, source: w.parent, origin: w.location.origin }));
   await wait();
   check('  restore in progress shows the bar', !w.document.getElementById('jobbox').hidden && /Restoring the salvage copy/.test(t('#jobbox')));
   check('no page errors', !errors.length, errors.join(' | '));

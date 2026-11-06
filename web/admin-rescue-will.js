@@ -453,7 +453,7 @@
   function sendPreview() {
     if (!previewFrame || !previewFrame.contentWindow) return;
     const status = previewStatus();
-    previewFrame.contentWindow.postMessage({ type: 'rescue-preview', status, will: status.will }, '*');
+    previewFrame.contentWindow.postMessage({ type: 'rescue-preview', status, will: status.will }, location.origin);
   }
 
   function build() {
@@ -528,7 +528,7 @@
   if (previewFrame) {
     previewFrame.addEventListener('load', sendPreview);
     window.addEventListener('message', (event) => {
-      if (event.source === previewFrame.contentWindow && event.data && event.data.type === 'rescue-preview-ready') sendPreview();
+      if (event.source === previewFrame.contentWindow && event.origin === location.origin && event.data && event.data.type === 'rescue-preview-ready') sendPreview();
     });
   }
 
