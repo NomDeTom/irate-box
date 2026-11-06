@@ -193,6 +193,12 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check("  Use the pins asks the hub, after saying a restart is needed", posted.some((x) => x.action === 'own-serial' && x.on === true) && /Restart the box/.test(text('rk-setup-result')), posted);
   const host = drawer.querySelector('input[name="rk-hostname"]');
   check('  the name on the network: two made-up words, not one the box already sees, and why to change it', /^[a-z]+(-[a-z]+)+$/.test(host.value) && host.value === 'grumpy-doubloon' && host.value !== 'salty-parrot' && /Every new Lyra starts as luckfox-lyra-zero-w/.test(host.closest('label').textContent), host.value);
+  const hostDice = host.closest('label').querySelector('.rk-dice');
+  check('  a die beside the name on the network, as the shoutbox has', hostDice && hostDice.textContent === '🎲');
+  hostDice.click();
+  check('  the die rerolls it to a name Linux takes', /^[a-z0-9]+(-[a-z0-9]+)+$/.test(host.value), host.value);
+  host.value = 'grumpy-doubloon';
+  host.dispatchEvent(new w.Event('input', { bubbles: true }));
   const go = [...drawer.querySelectorAll('button')].find((b) => b.textContent === 'Set up the board');
   check("  Set up off while the box's half is not built, saying so", go && go.disabled && /Setting up is not built yet/.test(drawer.textContent));
   check('  the steps listed for the hotspot route, none done', drawer.querySelectorAll('.rk-steps li.step-todo').length === 7 && /Join the board's setup hotspot/.test(drawer.querySelector('.rk-steps').textContent));

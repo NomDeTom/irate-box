@@ -3391,6 +3391,7 @@ def admin_box(proxied):
     now = CLOCK.ticks()
     return {
         "system": system_status(admin=True),
+        "identity": network_identity(),
         "uptime": now,
         "online": online_count(now),
         "memory_history": memhistory.snapshot(),
@@ -4915,6 +4916,41 @@ def card_written():
         return int((Path("/sys/class/block") / dev / "stat").read_text().split()[6]) * 512
     except (OSError, ValueError, IndexError, StopIteration):
         return None
+
+
+_identity = {"at": 0.0, "value": None}
+
+
+def network_identity():
+    """The box's name and its IPv4 addresses, for Overview's first tiles. Read at most once a
+    minute: the page polls /admin/box, and spawning `ip` on every poll is wasteful on a small board."""
+    now = time.monotonic()
+    if _identity["value"] is not None and now - _identity["at"] < 60:
+        return _identity["value"]
+    try:
+        host = Path("/etc/hostname").read_text().strip()
+    except OSError:
+        host = ""
+    addresses = []
+    try:
+        out = subprocess.run(  # noqa: TID251
+            ["ip", "-4", "-o", "addr", "show", "scope", "global"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        out = ""
+    for line in out.splitlines():
+        parts = line.split()
+        if "inet" in parts:
+            try:
+                addresses.append({"iface": parts[1], "address": parts[parts.index("inet") + 1].split("/")[0]})
+            except (IndexError, ValueError):
+                pass
+    value = {"host": host or socket.gethostname(), "addresses": addresses}
+    _identity.update(at=now, value=value)
+    return value
 
 
 def system_status(admin=False):

@@ -100,6 +100,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     { pin: 2, type: '5v', name: 'VSYS', gpio: null, rmio: null, role: '', consumer: '', used: false },
     { pin: 3, type: 'gpio', name: 'GPIO0_A0', gpio: 0, rmio: 0, role: 'TP+RTC', consumer: 'ff060000.i2c', used: true },
     { pin: 4, type: '5v', name: 'VSYS', gpio: null, rmio: null, role: '', consumer: '', used: false },
+    { pin: 5, type: 'gpio', name: 'GPIO0_A1', gpio: 5, rmio: 5, role: '', consumer: '', used: false },
+    { pin: 6, type: 'gpio', name: 'GPIO0_B6', gpio: 6, rmio: 6, role: '', consumer: '', used: false },
   ];
   state = { pins: lyra, pending: 0, results: [] };
   w.rkRenderPins(state);
@@ -107,7 +109,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const squares = [...d.querySelectorAll('#pins-map .pin-square')];
   check(
     'a known header: two pins a row, a narrow strip of squares down the middle',
-    rows.length === 2 && squares.length === 4 && /GPIO0_A0/.test(text('pins-map')) && /ff060000\.i2c · RM_IO0/.test(text('pins-map')),
+    rows.length === 3 && squares.length === 6 && /GPIO0_A0/.test(text('pins-map')) && /ff060000\.i2c · RM_IO0/.test(text('pins-map')),
     text('pins-map'),
   );
   check(
@@ -118,10 +120,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       && squares[3].classList.contains('pin-5v'),
     squares.map((square) => [square.className, square.textContent]),
   );
+  // A pin selected on the header fills the card beside it.
+  squares[4].click();
+  check('a free pin on the map: its card and the form name it', /Pin 5.*GPIO0_A1.*free\. Read it once/.test(text('pins-gpio-selected'))
+    && d.getElementById('pins-gpio-pin').value === '5' && squares[4].classList.contains('is-selected'), [text('pins-gpio-selected'), d.getElementById('pins-gpio-pin').value]);
+  squares[2].click();
+  check('a taken pin: its card says so, and the free pin stays the one to act on', /Pin 3.*taken by ff060000\.i2c/.test(text('pins-gpio-selected'))
+    && d.getElementById('pins-gpio-pin').value === '5' && squares[2].classList.contains('is-selected') && !squares[4].classList.contains('is-selected'), text('pins-gpio-selected'));
   const sides = [...d.querySelectorAll('#pins-map .pin-side')];
   check(
     '  the words outward: the left side right-aligned, the right side left-aligned',
-    sides.length === 4 && sides[0].classList.contains('left') && sides[1].classList.contains('right')
+    sides.length === 6 && sides[0].classList.contains('left') && sides[1].classList.contains('right')
       && sides[2].classList.contains('left') && sides[3].classList.contains('right'),
     sides.map((side) => side.className),
   );

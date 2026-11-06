@@ -880,7 +880,17 @@
         lockChips(), h('span', { class: 'setting-desc', text: 'Root then signs in with a key only: this box\'s, and yours below.' })),
       field('Your SSH key', 'key', 'text', { rows: 2, placeholder: 'ssh-ed25519 AAAA… you@laptop', help: "Added for root and the user, beside this box's own key, which the box puts on the board itself." }),
       h('h3', { text: 'Name and place' }),
-      field('Name on the network', 'hostname', 'hostname', { help: `Every new Lyra starts as ${item.host || 'luckfox-lyra-zero-w'}: give each its own.` }),
+      (() => {
+        const wrap = field('Name on the network', 'hostname', 'hostname', { help: `Every new Lyra starts as ${item.host || 'luckfox-lyra-zero-w'}: give each its own.` });
+        const input = wrap.querySelector('input');
+        const dice = h('button', { type: 'button', class: 'action-btn rk-dice', title: 'Make up a name', 'aria-label': 'Make up a name', text: '🎲' });
+        dice.addEventListener('click', () => {
+          input.value = window.HubNames ? window.HubNames.username() : '';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        input.after(dice);
+        return wrap;
+      })(),
       h('div', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Locale, time zone and WiFi country' }),
         chips('Locale, time zone and WiFi country', 'place', [
           { value: 'box', title: 'As this box', says: `${boxValues.locale || 'en_GB.UTF-8'}, ${boxValues.timezone || 'Etc/UTC'}, ${boxValues.country || 'GB'}.` },
