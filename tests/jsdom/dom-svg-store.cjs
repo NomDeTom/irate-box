@@ -10,7 +10,7 @@ const { JSDOM } = require(process.env.JSDOM || 'jsdom');
 
 const repo = path.join(__dirname, '..', '..');
 const extensionPath = path.join(repo, 'apps', 'svgedit', 'ext-hub-store.js');
-const lockPath = path.join(repo, 'apps', 'svgedit', 'lock.js');
+const lockPath = path.join(repo, 'web', 'lock.js');
 
 let fails = 0;
 const check = (name, ok, info = '') => {
