@@ -765,7 +765,13 @@ class RadioWatch:
 def wifi_chip_gone(kernel):
     """(gone, why) from the one shared check the Box doctor uses too. It accepts any AIC module:
     only aic_load_fw had loaded on the stuck boot, before the full driver could bind."""
-    state = wifichip.chip_gone(kernel, sysfs=SYS, run=_run)
+
+    def pair(*cmd, timeout=30):
+        # wifichip's checks take (code, output); this module's _run gives a CompletedProcess, as the Box doctor's does.
+        said = _run(*cmd, timeout=timeout)
+        return said.returncode, said.stdout
+
+    state = wifichip.chip_gone(kernel, sysfs=SYS, run=pair)
     return state["gone"], state["why"]
 
 
