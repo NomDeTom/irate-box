@@ -22,7 +22,7 @@ def check(name, cond, info=""):
 
 
 inst = (REPO / "install.sh").read_text()
-loop = re.search(r"(?ms)^\tfor app in draw mermaid serial tools room flasher; do\n.*?^\tdone\n", inst).group(0)
+loop = re.search(r"(?ms)^\tfor app in draw mermaid svg serial tools room flasher; do\n.*?^\tdone\n", inst).group(0)
 T = Path(tempfile.mkdtemp(prefix="bundle-apps-"))
 (T / "here").mkdir()
 # The librarian, failing as it does when GitHub's API limit is reached.
@@ -44,13 +44,15 @@ def run(apps, room):
     return subprocess.run(["bash", "-c", script], capture_output=True, text=True).stdout
 
 
-out = run(["draw", "mermaid", "serial", "tools", "flasher"], room=True)
+out = run(["draw", "mermaid", "svg", "serial", "tools", "flasher"], room=True)
 check(
     "a box making a kit of itself: every app its installed copy, nothing downloaded, nothing missing",
     "MISSING=0" in out
-    and out.count("this box's installed copy") == 6
+    and out.count("this box's installed copy") == 7
     and "Missing" not in out
-    and all((T / "kit" / "apps" / a).exists() for a in ("draw", "mermaid", "serial", "tools", "flasher", "room")),
+    and all(
+        (T / "kit" / "apps" / a).exists() for a in ("draw", "mermaid", "svg", "serial", "tools", "flasher", "room")
+    ),
     out,
 )
 import shutil
@@ -60,7 +62,7 @@ shutil.rmtree(T / "kit", ignore_errors=True)
 out = run(["draw"], room=True)
 check(
     "  an app it lacks: downloaded, and missing only when that fails (once each)",
-    "MISSING=4" in out and out.count("Missing offline component") == 4 and out.count("this box's installed copy") == 2,
+    "MISSING=5" in out and out.count("Missing offline component") == 5 and out.count("this box's installed copy") == 2,
     out,
 )
 shutil.rmtree(T, ignore_errors=True)

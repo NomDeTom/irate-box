@@ -7,7 +7,7 @@
 # What it sets up:
 #   /opt/irate-box            the hub (irate_box/, web/, config/), copied from a checkout or cloned
 #   /var/lib/hub              state: messages, board, store, clock; notes/ for the add-ons
-#   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, tools/, serial/
+#   /usr/share/hub/apps/      prebuilt static apps: mermaid/, draw/, svg/, tools/, serial/
 #   /var/lib/hub/addons/      the local add-ons (from /admin, Add-ons), on their own port: 8090
 #   /var/lib/hub/zim/         --zim: ZIM files and the Kiwix library.xml
 #   /etc/hub/                 hub.env, admin-password
@@ -67,11 +67,11 @@ The installer keeps user data and the administrator password.
                         this script. If the script is not in a checkout, clone --repo instead)
   --repo URL            repository to clone (default: https://github.com/NomDeTom/irate-box)
   --branch NAME         branch to clone (default: main)
-  --apps DIR            copy prebuilt static apps from DIR/mermaid, DIR/draw, DIR/tools,
-                        DIR/serial and DIR/flasher (the web flasher, from the fork's
+  --apps DIR            copy prebuilt static apps from DIR/mermaid, DIR/draw, DIR/svg,
+                        DIR/tools, DIR/serial and DIR/flasher (the web flasher, from the fork's
                         .github/irate-box/package.sh)
-  --apps-from-actions   download the newest prebuilt draw, mermaid and serial apps (and room,
-                        with --with-collab) from the forks' Actions builds through nightly.link.
+  --apps-from-actions   download the newest prebuilt draw, mermaid, svg and serial apps (and
+                        room, with --with-collab) from the forks' Actions builds through nightly.link.
                         This needs no desktop build and no token. The administration pages
                         keep these apps current afterwards.
   --tools               install the calculators from nomdetom.github.io, adapted for the hub.
@@ -860,7 +860,7 @@ make_bundle() {
 	echo "==> The apps (downloaded and checked as the librarian does)"
 	tmp="$(mktemp -d)"
 	install -d "$tmp/library"
-	for app in draw mermaid serial tools room flasher; do
+	for app in draw mermaid svg serial tools room flasher; do
 		# A box making a kit of itself (--apps): its installed copy, with no download and no GitHub request; the room
 		# relay lives apart ($ROOM). Only an app the box does not have is downloaded.
 		src=""
@@ -1549,7 +1549,7 @@ fi
 
 # --- static apps -----------------------------------------------------------------
 if [ -n "$APPS_SRC" ]; then
-	for app in mermaid draw tools serial flasher; do
+	for app in mermaid draw svg tools serial flasher; do
 		[ -d "$APPS_SRC/$app" ] || continue
 		say "Installing $app from $APPS_SRC/$app"
 		rm -rf "${APPS:?}/$app"
@@ -1629,7 +1629,7 @@ fi
 # calculators a git repository, cloned and adapted.
 fetch_apps=()
 if [ "$APPS_FROM_ACTIONS" = 1 ]; then
-	fetch_apps+=(draw mermaid serial)
+	fetch_apps+=(draw mermaid svg serial)
 	[ "$WITH_COLLAB" = 1 ] && fetch_apps+=(room)
 fi
 [ "$WITH_TOOLS" = 1 ] && fetch_apps+=(tools)
@@ -1650,7 +1650,7 @@ fi
 if [ -d "$APPS/tools" ] && [ ! -f "$APPS/tools/irate-box-bundle.json" ]; then
 	"$CODE/irate-box" adapt_tools "$APPS/tools" "$CODE/web"
 fi
-for app in mermaid draw tools serial; do
+for app in mermaid draw svg tools serial; do
 	[ -d "$APPS/$app" ] || echo "    (no $app build installed: its card will lead to an empty page)"
 done
 
@@ -1729,6 +1729,7 @@ HUB_UNCLAIMED_FILE=$UNCLAIMED_MARK
 # installed from one that is.
 HUB_DRAW_ROOT=$APPS/draw
 HUB_MERMAID_ROOT=$APPS/mermaid
+HUB_SVG_ROOT=$APPS/svg
 HUB_TOOLS_ROOT=$APPS/tools
 HUB_SERIAL_ROOT=$APPS/serial
 # The git repositories (/admin's Git page): public/ and private/, bare, owned by the hub.
@@ -2066,6 +2067,7 @@ if [ "$WEB" = caddy ]; then
 		Environment=HUB_STATIC=$CODE/web
 		Environment=HUB_MERMAID_ROOT=$APPS/mermaid
 		Environment=HUB_DRAW_ROOT=$APPS/draw
+		Environment=HUB_SVG_ROOT=$APPS/svg
 		Environment=HUB_TOOLS_ROOT=$APPS/tools
 		Environment=HUB_SERIAL_ROOT=$APPS/serial
 		Environment=HUB_GIT_ROOT=$STATE/git
