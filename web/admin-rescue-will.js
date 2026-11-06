@@ -66,9 +66,6 @@
       at.classList.add('bad');
     }
   }
-  function warn(text) {
-    return el('p', { class: 'setting-desc bad', hidden: !text }, text || '');
-  }
   function setWarn(id, text) {
     const at = $(id);
     if (!at) return;
@@ -185,7 +182,7 @@
   }
 
   function buildFields() {
-    const d = snapshot.defaults || {};
+    const safe = snapshot.defaults || {};
     const restore = restoreValue();
     const image = restore.image || {};
     const salvage = restore.salvage || {};
@@ -193,7 +190,7 @@
     const form = [];
 
     form.push(group('What the rescue may do without asking', 'The rescue follows these before it asks. The safe defaults are the read-only check and the validated partition-table repair.', ...AUTO.map(([key, label, help]) =>
-      chipRow(label, () => autoValue(key), (on) => setAuto(key, on), help, def(d.auto && d.auto[key])))),
+      chipRow(label, () => autoValue(key), (on) => setAuto(key, on), help, def(safe.auto && safe.auto[key])))),
       el('p', { class: 'setting-desc bad', id: 'rescue-will-auto-warn', hidden: true }));
 
     const methodBox = el('div');
@@ -274,23 +271,23 @@
       ['findings', 'Findings and the report'],
       ['backups', 'Partition-table copies'],
       ['salvage', 'Salvage copies'],
-    ].map(([key, label]) => choiceRow(label, `rescue-will-where-${key}`, WHERE[key].map(([value, title]) => ({ value, title, desc: '' })), () => whereValue()[key], (value) => setWhere(key, value), (d.where && d.where[key]) || ''));
+    ].map(([key, label]) => choiceRow(label, `rescue-will-where-${key}`, WHERE[key].map(([value, title]) => ({ value, title, desc: '' })), () => whereValue()[key], (value) => setWhere(key, value), (safe.where && safe.where[key]) || ''));
     form.push(group('Where to keep what the rescue finds', 'These are places, not findings.', ...whereFields));
 
     const passwordState = el('p', { class: 'setting-desc', id: 'rescue-will-password-state' });
     const newPass = el('input', { type: 'password', autocomplete: 'new-password', id: 'rescue-will-new-password', placeholder: 'Leave blank to keep the saved password' });
     newPass.addEventListener('input', () => { newPassword = newPass.value; sync(); });
     form.push(group('How the rescue is reached', 'The hotspot is the page’s own network. Joining a saved network and SSH are second routes.',
-      chipRow('Hotspot', () => reach.hotspot !== false, (on) => setReach('hotspot', on), 'Start the rescue hotspot.', def(!d.reach || d.reach.hotspot !== false)),
-      field('Hotspot name', textInput(reach.ssid, (value) => setReach('ssid', value), { maxlength: '32' }), '1 to 32 characters.', (d.reach && d.reach.ssid) || 'irate-rescue'),
+      chipRow('Hotspot', () => reach.hotspot !== false, (on) => setReach('hotspot', on), 'Start the rescue hotspot.', def(!safe.reach || safe.reach.hotspot !== false)),
+      field('Hotspot name', textInput(reach.ssid, (value) => setReach('ssid', value), { maxlength: '32' }), '1 to 32 characters.', (safe.reach && safe.reach.ssid) || 'irate-rescue'),
       field('New hotspot password', newPass, 'At least 8 characters. Leave it blank and the box makes a new one, shown once after Save.', ''),
       passwordState,
-      chipRow('Join a saved network', () => reach.join_saved !== false, (on) => setReach('join_saved', on), 'Try the box’s saved WiFi profiles.', def(!d.reach || d.reach.join_saved !== false)),
-      chipRow('SSH', () => reach.ssh === true, (on) => setReach('ssh', on), 'Run sshd in the rescue.', def(d.reach && d.reach.ssh)),
+      chipRow('Join a saved network', () => reach.join_saved !== false, (on) => setReach('join_saved', on), 'Try the box’s saved WiFi profiles.', def(!safe.reach || safe.reach.join_saved !== false)),
+      chipRow('SSH', () => reach.ssh === true, (on) => setReach('ssh', on), 'Run sshd in the rescue.', def(safe.reach && safe.reach.ssh)),
       el('p', { class: 'setting-desc bad', id: 'rescue-will-reach-warn', hidden: true })));
 
     form.push(group('Which roles are on', 'A role is a section of the rescue page and its helper verb.', ...ROLES.map(([key, label]) =>
-      chipRow(label, () => rolesValue()[key] !== false, (on) => setRole(key, on), '', def(!d.roles || d.roles[key] !== false)))),
+      chipRow(label, () => rolesValue()[key] !== false, (on) => setRole(key, on), '', def(!safe.roles || safe.roles[key] !== false)))),
       el('p', { class: 'setting-desc bad', id: 'rescue-will-roles-warn', hidden: true }));
 
     form.push(group('Who confirms a destructive step', 'The page uses the typed words. SSH and the console use their own.',
@@ -311,7 +308,7 @@
         AW.choices(box, 'rescue-will-after', AFTER, {
           value: (sec.get('after') || {}).reboot_to_card || 'ask',
           compact: true,
-          onChange: (value) => { sec.set('after', { ...(sec.get('after') || {}), reboot_to_card: value }); sync(); },
+          onChange: (value) => { const after = sec.get('after') || {}; sec.set('after', { ...after, reboot_to_card: value }); sync(); },
         });
         return box;
       })(), '', 'Ask'),
@@ -323,7 +320,6 @@
   function sync() {
     if (!sec) return;
     const v = sec.values();
-    const d = snapshot.defaults || {};
     const restore = v.restore || {};
     const image = restore.image || {};
     const salvage = restore.salvage || {};
@@ -337,7 +333,6 @@
     if (imageBox) imageBox.hidden = restore.method !== 'image';
     const salvageBox = $('rescue-will-salvage');
     if (salvageBox) salvageBox.hidden = restore.method !== 'salvage';
-    const urlField = $('rescue-will-image-url');
     // The URL field is inside the image box; hide it by its label when the source is not a URL.
     const imageUrlLabel = imageBox && [...imageBox.querySelectorAll('label')].find((label) => label.textContent.includes('Image URL'));
     if (imageUrlLabel) imageUrlLabel.hidden = image.source !== 'url';
@@ -352,7 +347,7 @@
       if (!image.name) restoreWarn.push('An image needs its name.');
       if (!image.sha256) restoreWarn.push('Give the image’s SHA-256, so the rescue can verify it.');
       else if (!/^[0-9a-f]{64}$/.test(image.sha256.toLowerCase())) restoreWarn.push('The SHA-256 must be 64 hexadecimal digits.');
-      if (image.source === 'url' && !/^https:\/\//.test(image.url || '')) restoreWarn.push('A URL image needs an HTTPS address.');
+      if (image.source === 'url' && !(image.url || '').startsWith('https://')) restoreWarn.push('A URL image needs an HTTPS address.');
     }
     if (restore.method === 'salvage' && !salvage.name) restoreWarn.push('A salvage copy needs its name.');
     setWarn('rescue-will-restore-warn', restoreWarn.join(' '));
@@ -383,7 +378,6 @@
     const after = (v.after || {}).reboot_to_card || 'ask';
     setWarn('rescue-will-after-warn', after === 'always' ? 'The rescue will restart to the card after a repair without asking.' : '');
 
-    void d;
     updatePush();
   }
 
