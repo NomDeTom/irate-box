@@ -204,10 +204,17 @@
         waiting = null;
         running = false;
         if (done.msg && /^(?:rkserial|rkssh|rkspot|rkpresets|rkfinish)\./.test(done.msg.id || '')) setupResult(done);
-        else if (waitingCard) { waitingCard = false; say(resultSaid(done), done.ok, document.getElementById('rk-card-result')); cardsShown = ''; }
-        else say(resultSaid(done), done.ok, note);
+        else if (waitingCard) {
+          waitingCard = false;
+          const at = document.getElementById('rk-card-result');
+          if (at) say(resultSaid(done), done.ok, at);
+          cardsShown = '';
+        }
+        else if (note) say(resultSaid(done), done.ok, note);
       }
     }
+    // The cards and the new boards have pages of their own; this page is the board and its flash.
+    if (!document.getElementById('rk-board')) return;
     const tools = data.tools || {};
     const missing = ['rkdeveloptool', 'adb'].filter((t) => !tools[t]);
     const toolsEl = document.getElementById('rk-tools');

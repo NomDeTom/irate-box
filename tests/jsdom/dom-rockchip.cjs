@@ -10,35 +10,41 @@
 const { JSDOM, VirtualConsole } = require(process.env.JSDOM || 'jsdom');
 const WEB = require('path').resolve(__dirname, '../../web');
 const fs = require('fs');
-const html = fs.readFileSync(`${WEB}/admin-rockchip.html`, 'utf8');
 const js = ['el.js', 'admin-widgets.js', 'names.js', 'admin-rockchip.js'].map((f) => fs.readFileSync(`${WEB}/${f}`, 'utf8')).join(';\n');
 const errors = [];
 const vc = new VirtualConsole();
 vc.on('jsdomError', (e) => { if (!/scrollTo/.test(e.message)) errors.push('jsdom: ' + e.message); });
-const dom = new JSDOM(html, { url: 'http://box/admin/rockchip.html', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
-const w = dom.window;
+let w, d;
 const loaders = [{ id: 'rk3506b', chip: 'RK3506B', boards: ['Luckfox Lyra Zero W'] }, { id: 'rk3506', chip: 'RK3506', boards: ['Luckfox Lyra Plus'] }];
 const board = (mode) => ({ path: '1-1.2', id: mode === 'system' ? '2207:0013' : '2207:350f', product: mode === 'loader' ? 'USB download gadget' : 'rk3xxx', serial: 'b5', mode });
 let state = { boards: [], tools: { rkdeveloptool: true, adb: true }, loaders, pending: 0, results: [] };
 const posted = [];
-w.fetch = async (u, opts = {}) => {
-  if (u === '/admin/rkboard' && opts.method === 'POST') {
-    const body = JSON.parse(opts.body);
-    posted.push(body);
-    if (body.action === 'secret') return new Response(JSON.stringify({ secret: body.id === 'rk1' ? { root: 'Root16charsAbcd1', user: 'salty-parrot', user_password: 'User16charsAbcd2' } : null }), { status: 200 });
-    if (body.action === 'backup') return new Response('{"id":"rk-backup"}', { status: 202 });
-    return new Response('{"id":"rk1"}', { status: 202 });
-  }
-  if (u === '/admin/rkboard') return new Response(JSON.stringify(state), { status: 200 });
-  return new Response('{}', { status: 404 });
-};
-w.eval(js);
 // names.js picks with Math.random: two words for a board's name, the first already taken.
 let randomValues = [0, 0, 0.1, 0.1];
-w.Math.random = () => (randomValues.length ? randomValues.shift() : 0.1);
+// The tools have pages of their own now: boot the page each part is about.
+function boot(page) {
+  if (w) { try { w.close(); } catch (_) {} }
+  const html = fs.readFileSync(`${WEB}/${page}`, 'utf8');
+  const dom = new JSDOM(html, { url: `http://box/admin/${page}`, runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
+  w = dom.window;
+  d = w.document;
+  w.fetch = async (u, opts = {}) => {
+    if (u === '/admin/rkboard' && opts.method === 'POST') {
+      const body = JSON.parse(opts.body);
+      posted.push(body);
+      if (body.action === 'secret') return new Response(JSON.stringify({ secret: body.id === 'rk1' ? { root: 'Root16charsAbcd1', user: 'salty-parrot', user_password: 'User16charsAbcd2' } : null }), { status: 200 });
+      if (body.action === 'backup') return new Response('{"id":"rk-backup"}', { status: 202 });
+      return new Response('{"id":"rk1"}', { status: 202 });
+    }
+    if (u === '/admin/rkboard') return new Response(JSON.stringify(state), { status: 200 });
+    return new Response('{}', { status: 404 });
+  };
+  w.Math.random = () => (randomValues.length ? randomValues.shift() : 0.1);
+  w.eval(js);
+}
+boot('admin-rockchip.html');
 let fails = 0;
 const check = (name, cond, info = '') => { console.log(`${cond ? 'PASS' : 'FAIL'} ${name}${cond ? '' : `  ${info}`}`); fails += !cond; };
-const d = w.document;
 const text = (id) => (d.getElementById(id) || {}).textContent || '';
 const buttons = () => [...d.querySelectorAll('#rk-actions button')];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -140,6 +146,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   await show({ results: [], bootloaders: [], rescues: [], cards: [] });
 
   // Cards in a reader.
+  boot('admin-rk-cards.html');
   w.rkRenderCards({ cards: [], images: [], pending: 0 });
   check('cards in a reader: none, said', /No card is in a reader on this box/.test(text('rk-cards')));
   const sdcard = { name: 'sda', path: '/dev/sda', size: 15634268160, model: 'STORAGE DEVICE', serial: '000000001206', mounted: false };
@@ -168,6 +175,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   mc.querySelector('.aw-card-head').click();
 
   // Boards to set up.
+  boot('admin-rk-setup.html');
   const setup = (spots, extra = {}) => ({ hotspots: spots, defaults: { ssid: 'SKYTB1H1', country: 'GB', timezone: 'Europe/London', locale: 'en_GB.UTF-8' }, taken: ['salty-parrot'], own_serial: { supported: true, on: false, pending: false, device: '', warning: "UART1 comes out on header pins 8 (TX) and 10 (RX); UART2 stays the box's own console." }, ready: false, ...extra });
   const spot = { ssid: 'armbiansetup-luckfox-lyra-zero-w', host: 'luckfox-lyra-zero-w', signal: 70, boards: 1 };
   w.rkRenderSetup(setup([]));

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- SPDX-FileCopyrightText: 2026 NomDeTom -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="admin-rk-setup.head.title">New boards · Hub administration</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔌</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/themes.js"></script>
+  <link rel="stylesheet" href="/layout.css">
+</head>
+<body class="admin">
+  <header>
+    <nav class="head-nav"><a class="head-btn labelled" href="/admin/rockchip.html" title="Rockchip boards" data-i18n-title="admin-rockchip.header.heading" data-i18n="admin-rockchip.header.heading"><span class="head-emoji" aria-hidden="true">🔌</span> Rockchip boards</a><a class="head-btn labelled" href="/help.html" title="Quick help" data-i18n-title="admin-rockchip.header.tip-quick-help" data-i18n="admin-rockchip.header.help"><span class="head-emoji" aria-hidden="true">🛟</span> Help</a><a class="head-btn labelled" href="/hub" title="Back to the hub" data-i18n-title="admin-rockchip.header.tip-back-hub" data-i18n="admin-rockchip.header.hub"><span class="head-emoji" aria-hidden="true">🏠</span> Hub</a></nav>
+    <h1 data-i18n="admin-rockchip.setup.title">New boards</h1>
+    <p class="subtitle" data-i18n="admin-rk-setup.header.subtitle">Set up a new Armbian board over its setup hotspot, serial console, SD card or default password. Administrators only.</p>
+    <div class="theme-picker" role="group" aria-label="Theme" data-i18n-aria-label="admin-rockchip.header.aria-theme"></div>
+  </header>
+
+  <main class="admin-main">
+    <!-- New boards (hub/rksetup.py): any new Armbian board the box can see or reach, whatever the board family; its
+         drawer holds the choices sent as Armbian's first-boot presets, and the steps. -->
+    <section class="admin-pane" id="rk-setup-pane" aria-labelledby="rk-setup-title">
+      <h2 id="rk-setup-title" data-i18n="admin-rockchip.setup.title">New boards</h2>
+      <p class="setting-desc" data-i18n="admin-rockchip.setup.intro">
+        A new board joins your network with the choices set here: its network, its accounts, its name. A Lyra, a
+        Banana Pi or another Armbian board can be set up, over its setup hotspot, its serial console, its SD card or
+        its default password on a cable. Power one new board at a time, near this box: until it is set up, anyone in
+        range can set it up instead.
+      </p>
+      <div id="rk-setup-result" role="status" hidden></div>
+      <pre id="rk-install-log" class="setting-desc" hidden></pre>
+      <div id="rk-setup"></div>
+      <div id="rk-finish"></div>
+    </section>
+  </main>
+  <script src="/i18n.js"></script>
+  <script src="/hub.js"></script>
+  <script src="/el.js"></script>
+  <script src="/admin-widgets.js"></script>
+  <script src="/names.js"></script>
+  <script src="/admin-rockchip.js"></script>
+</body>
+</html>
