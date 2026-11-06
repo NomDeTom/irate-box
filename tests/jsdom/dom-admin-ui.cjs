@@ -159,11 +159,11 @@ setTimeout(() => {
     && side.indexOf('Appearance') > side.indexOf('Hub layout') && side.indexOf('Appearance') < side.indexOf('Content'));
   check('sidebar: Pin map under System, a page of its own', side.indexOf('Pin map') > side.indexOf('System') && side.indexOf('Pin map') < hi
     && d.querySelector('.admin-side-list a[href="#pins"]'));
-  check('sidebar: the board tools under System, each a page of its own',
-    ['Rockchip boards', 'Cards in a reader', 'New boards'].every((x) => side.indexOf(x) > side.indexOf('System') && side.indexOf(x) < hi)
-    && !!d.querySelector('.admin-side-list a[href="/admin/rockchip.html"]')
-    && !!d.querySelector('.admin-side-list a[href="/admin/rk-cards.html"]')
-    && !!d.querySelector('.admin-side-list a[href="/admin/rk-setup.html"]'));
+  check('sidebar: the board tools are not in the admin menu (they are on the flashing page)',
+    ['Rockchip boards', 'Cards in a reader', 'New boards'].every((x) => !side.includes(x))
+    && !d.querySelector('.admin-side-list a[href="/admin/rockchip.html"]')
+    && !d.querySelector('.admin-side-list a[href="/admin/rk-cards.html"]')
+    && !d.querySelector('.admin-side-list a[href="/admin/rk-setup.html"]'));
   const content = side.slice(side.indexOf('Content') + 1, side.indexOf('System'));
   check('sidebar: Content holds Librarian, then Toolkits, then Moderation and User data',
     content.join('|') === 'Librarian|Toolkits|Moderation|User data', content.join('|'));

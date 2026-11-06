@@ -40,11 +40,7 @@ const AL = (() => {
       { title: 'Recovery and monitoring', sections: ['recovery', 'rescue-will'] },
       { title: 'Updates', sections: ['updates'] },
       { title: 'Backup and transfer', sections: ['backup'] },
-      { title: 'Pin map', sections: ['pins'] }],
-      links: [
-        { href: '/admin/rockchip.html', title: 'Rockchip boards' },
-        { href: '/admin/rk-cards.html', title: 'Cards in a reader' },
-        { href: '/admin/rk-setup.html', title: 'New boards' }] },
+      { title: 'Pin map', sections: ['pins'] }] },
     { name: 'Doctors', art: 'doctor', pages: [
       { title: 'Box doctor', sections: ['health'] },
       { title: 'Security doctor', sections: ['secdoctor'] },
