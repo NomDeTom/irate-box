@@ -96,6 +96,35 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
     posted.some((x) => x.action === 'env-show') && /Boot count\s*0/.test(text('rk-env')) && /Card confirms its boot\s*Yes/.test(text('rk-env')), text('rk-env'));
   state.results = [];
   await show({ env: envReading });
+
+  // This box's rescue: not ready, ready, the typed RESTART, the answer, and no retry.
+  await show({ rescue: undefined });
+  check('this box\'s rescue: not read yet, so not ready, with the restart off',
+    /boot environment has not been read yet/.test(text('rk-rescue')) && d.getElementById('rk-rescue-restart').disabled, text('rk-rescue'));
+  await show({ rescue: { ready: false, reasons: ["U-Boot's environment has no bootlimit, so this box cannot restart into the rescue.",
+    "U-Boot's altbootcmd does not run the NAND rescue, so restarting into it would not work."] } });
+  check('  each reason is said, and the restart stays off',
+    /no bootlimit/.test(text('rk-rescue')) && /altbootcmd does not run the NAND rescue/.test(text('rk-rescue')) && d.getElementById('rk-rescue-restart').disabled,
+    text('rk-rescue'));
+  await show({ rescue: { ready: true, bootcount: 2, bootlimit: 3, altbootcmd_rescue: true, reasons: [] } });
+  check('  ready: said, with the count, and the restart on',
+    /ready to restart into the rescue/.test(text('rk-rescue')) && /Boot count 2 of 3/.test(text('rk-rescue')) && !d.getElementById('rk-rescue-restart').disabled,
+    text('rk-rescue'));
+  d.getElementById('rk-rescue-restart').click();
+  check('  the typed words are asked first', !d.getElementById('rk-rescue-ask').hidden && d.getElementById('rk-rescue-go').disabled);
+  d.getElementById('rk-rescue-confirm').value = 'RESTART';
+  d.getElementById('rk-rescue-confirm').dispatchEvent(new w.Event('input', { bubbles: true }));
+  check('  typed RESTART: the restart is offered', !d.getElementById('rk-rescue-go').disabled);
+  state.rescue = { ready: true, bootcount: 2, bootlimit: 3, altbootcmd_rescue: true, reasons: [] };
+  state.results = [{ id: 'rk1', ok: true, msg: { id: 'rescue.restart.started', en: 'The box is restarting into the rescue. The connection will drop, then the rescue hotspot starts. Leave the card in.' } }];
+  posted.length = 0;
+  d.getElementById('rk-rescue-go').click();
+  await wait(700);
+  check('  the restart is sent with RESTART', posted.filter((x) => x.action === 'restart-rescue' && x.confirm === 'RESTART').length === 1, posted);
+  check('  the answer says the connection is about to drop', /restarting into the rescue/.test(text('rk-rescue-note')) && /connection will drop|connection is about to drop/.test(text('rk-rescue-note')), text('rk-rescue-note'));
+  check('  and it does not retry', d.getElementById('rk-rescue-restart').disabled && !d.getElementById('rk-rescue-ask').hidden === false, [d.getElementById('rk-rescue-restart').disabled, d.getElementById('rk-rescue-ask').hidden]);
+  state.results = [];
+  await show({ rescue: state.rescue });
   await show({ boards: [board('system')] });
   check('its own system: said, Switch to Loader mode offered', /running its own system/.test(text('rk-board')) && buttons().map((b) => b.textContent).join() === 'Switch to Loader mode', text('rk-board'));
   buttons()[0].click();

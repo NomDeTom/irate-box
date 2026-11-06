@@ -61,6 +61,29 @@
         </div>
         <p class="setting-desc action-note" id="rk-env-note" role="status" hidden></p>
       </div>
+      <div class="net-card setting" id="rk-box-rescue">
+        <h3 data-i18n="admin-rockchip.rescue.title">This box's rescue</h3>
+        <p class="setting-desc" data-i18n="admin-rockchip.rescue.intro">
+          Restart this box into the NAND rescue (C). The session ends, the rescue hotspot starts, and the card stays
+          in. This is the box's own rescue: it is separate from the board on the USB port.
+        </p>
+        <div id="rk-rescue"><p class="setting-desc" data-i18n="admin-rockchip.rescue.reading">Reading whether this box can restart into the rescue…</p></div>
+        <div class="library-buttons">
+          <button class="action-btn" type="button" id="rk-rescue-restart" data-i18n="admin-rockchip.rescue.restart">Restart into the rescue</button>
+        </div>
+        <div id="rk-rescue-ask" hidden>
+          <p class="setting-desc" data-i18n="admin-rockchip.rescue.ask">
+            Type RESTART to confirm. The session ends, the rescue hotspot starts, and the card stays in.
+          </p>
+          <label class="setting-name" for="rk-rescue-confirm" data-i18n="admin-rockchip.rescue.label-confirm">Type RESTART</label>
+          <input id="rk-rescue-confirm" type="text" autocomplete="off" spellcheck="false" placeholder="RESTART" data-i18n-placeholder="admin-rockchip.rescue.placeholder-confirm">
+          <div class="library-buttons">
+            <button class="action-btn" type="button" id="rk-rescue-cancel" data-i18n="admin-rockchip.rescue.cancel">Cancel</button>
+            <button class="action-btn danger" type="button" id="rk-rescue-go" disabled data-i18n="admin-rockchip.rescue.go">Restart into the rescue</button>
+          </div>
+        </div>
+        <p class="setting-desc action-note" id="rk-rescue-note" role="status" hidden></p>
+      </div>
     </section>
 
     <section class="admin-pane" id="rk-copies-pane" data-rk-pane="copies" aria-labelledby="rk-copies-title">
