@@ -572,8 +572,9 @@ check(
 # The detector, from the real -19 shape.
 shutil.rmtree(SYS / "module", ignore_errors=True)
 (SYS / "module/aic_load_fw").mkdir(parents=True)
-no_client = (0, "phy#0\n")
-client = (0, "phy#0\n\tInterface wlan0\n\t\ttype managed\n")
+# The stubs return what the real _run returns, a CompletedProcess: a tuple here hid a crash loop on the boards.
+no_client = subprocess.CompletedProcess(["iw", "dev"], 0, "phy#0\n", "")
+client = subprocess.CompletedProcess(["iw", "dev"], 0, "phy#0\n\tInterface wlan0\n\t\ttype managed\n", "")
 cw._run = lambda *a, **k: no_client
 flood = [
     "[1.0] AICWFDBG(LOGERROR)\tusb submit msg rx urb fail:-19",
