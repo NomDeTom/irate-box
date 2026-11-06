@@ -40,9 +40,34 @@
     <p class="setting-desc" data-i18n="esp-flasher.body.built-flasher-uses-esp">The built-in flasher uses ESP Web Tools (ESPHome, Apache-2.0).
       <a href="/flasher/esp-web-tools/THIRD-PARTY-NOTICES.txt">Its notices</a>.</p>
   </section>
+
+  <!-- The board tools are for a signed-in administrator: flasher-admin.js asks /_irate/admin and shows
+       this section only for an admin session. The pages keep their own /admin sign-in. -->
+  <section id="flasher-board-tools" hidden aria-labelledby="flasher-board-tools-title">
+    <h2 id="flasher-board-tools-title" data-i18n="esp-flasher.tools.title">Board tools</h2>
+    <p class="setting-desc" data-i18n="esp-flasher.tools.intro">
+      For administrators: prepare a Rockchip board, set up a new board, or work with a card in a reader. Each
+      opens its own page and asks for the administrator sign-in there.
+    </p>
+    <div class="card-grid source-grid">
+      <a class="git-card" href="/admin/rockchip.html">
+        <h4 data-i18n="esp-flasher.tools.rockchip">Rockchip boards</h4>
+        <p class="setting-desc" data-i18n="esp-flasher.tools.rockchip-desc">Install a bootloader, recover a board in MaskROM, and read this box's rescue.</p>
+      </a>
+      <a class="git-card" href="/admin/rk-setup.html">
+        <h4 data-i18n="esp-flasher.tools.setup">New boards</h4>
+        <p class="setting-desc" data-i18n="esp-flasher.tools.setup-desc">Set up a new Armbian board over its setup hotspot, console, card or default password.</p>
+      </a>
+      <a class="git-card" href="/admin/rk-cards.html">
+        <h4 data-i18n="esp-flasher.tools.cards">Cards in a reader</h4>
+        <p class="setting-desc" data-i18n="esp-flasher.tools.cards-desc">Check a card, test whether it is genuine, or write a board image to it.</p>
+      </a>
+    </div>
+  </section>
   <script src="/i18n.js"></script>
   <script src="/hub.js"></script>
   <script src="/https-address.js"></script>
   <script src="/esp-flasher.js"></script>
+  <script src="/flasher-admin.js"></script>
 </body>
 </html>
