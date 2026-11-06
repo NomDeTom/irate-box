@@ -528,6 +528,16 @@
       "reads": [],
       "writes": []
     },
+    "rk-env-show": {
+      "https_only": false,
+      "policy": false,
+      "reads": [
+        "etc/fw_env.config"
+      ],
+      "writes": [
+        "control/rescue.json"
+      ]
+    },
     "rk-erase": {
       "https_only": false,
       "policy": false,

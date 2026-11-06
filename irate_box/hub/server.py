@@ -3596,6 +3596,7 @@ def rkboard_snapshot():
         "setup": rksetup.snapshot(),
         "install_log": _install_log(),
         "rk_images": {"settings": rkimages.settings(), "status": rkimages.status()},
+        "env": rescue_env_snapshot(),
     }
 
 
@@ -7995,7 +7996,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/admin/rkboard":
             act, loader = payload.get("action"), payload.get("loader")
-            if act == "loader":
+            if act == "env-show":
+                self.send_json(202, {"id": control_request({"action": "rk-env-show"})})
+            elif act == "loader":
                 self.send_json(202, {"id": control_request({"action": "rk-loader"})})
             elif act == "own-serial" and isinstance(payload.get("on"), bool):
                 self.send_json(202, {"id": control_request({"action": "rk-own-serial", "on": payload["on"]})})
