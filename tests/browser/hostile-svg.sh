@@ -14,7 +14,6 @@
 # whose system Chromium libraries are not installed. Without any of these it says so and stops.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
-repo="$(cd "$here/../.." && pwd)"
 node=${NODE:-node}
 command -v "$node" >/dev/null 2>&1 || { echo "skipped: no node"; exit 0; }
 
