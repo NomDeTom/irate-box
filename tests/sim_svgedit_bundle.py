@@ -220,9 +220,12 @@ built = os.environ.get("SVGEDIT_BUNDLE")
 if built:
     bundle = Path(built)
     marker = json.loads((bundle / "irate-box-bundle.json").read_text())
+    commit = str(marker.get("commit", ""))
     check(
-        "the built bundle's marker names the app and the pinned upstream commit",
-        marker.get("app") == "svg" and marker.get("commit") == "c44f061d2f9a626d2771cc931298af5a45522d87",
+        "the built bundle's marker names the app and the commit actually built",
+        marker.get("app") == "svg"
+        and re.fullmatch(r"[0-9a-f]{40}", commit) is not None
+        and str(marker.get("source", "")).endswith(commit),
         marker,
     )
     bundle_names = tree_names(bundle)

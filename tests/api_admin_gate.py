@@ -188,6 +188,21 @@ try:
         "POST /api/saves from SVG-Edit's own origin is its gallery, not a hub change",
         go("POST", "/api/saves", {**msg, **app}, b"{}") != 403,
     )
+    # A script on 8099 calls the hub's own port: the Origin is the app's, the Host is the hub's.
+    # A different origin on the same site is refused for every state-changing route.
+    cross = {"Host": f"127.0.0.1:{port}", "Origin": "http://127.0.0.1:8099", "Sec-Fetch-Site": "same-site"}
+    check(
+        "POST /messages from a script on 8099 to the hub's port: 403",
+        go("POST", "/messages", {**msg, **cross}, b"{}") == 403,
+    )
+    check(
+        "POST /admin/settings from a script on 8099 to the hub's port: 403",
+        go("POST", "/admin/settings", {**page, **cross}, b"{}") == 403,
+    )
+    check(
+        "POST /api/account from a script on 8099 to the hub's port: 403",
+        go("POST", "/api/account", {**msg, **cross, "X-Irate-Account": "1"}, b'{"action":"logout"}') == 403,
+    )
     check(
         "POST /messages with another Origin: 403",
         go("POST", "/messages", {**msg, "Origin": "http://evil.example"}, b"{}") == 403,
