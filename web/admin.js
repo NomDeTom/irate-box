@@ -2440,7 +2440,11 @@ function renderBox(data) {
     sys.boot_uptime == null
       ? "Not available"
       : `${Math.floor(bootMinutes / 1440)} d ${Math.floor(bootMinutes / 60) % 24} h ${bootMinutes % 60} min`;
+  const identity = data.identity || {};
+  const addresses = (identity.addresses || []).map((entry) => `${entry.address} (${entry.iface})`);
   const boxTiles = [
+    tile("Name", identity.host || "Not known"),
+    tile("Addresses", addresses.length ? addresses[0] : "—", addresses.slice(1)),
     tile(
       "Memory",
       sys.mem_total
@@ -2488,17 +2492,25 @@ function renderBox(data) {
   document.getElementById("hub-version").textContent = data.version;
 
   const rows = data.services.map((service) => {
-    const ops = service.ops.filter((op) =>
-      op === "start"
-        ? !service.active
-        : op === "stop"
-          ? service.active
-          : op === "enable"
-            ? !service.enabled
-            : op === "disable"
-              ? service.enabled
-              : true,
-    );
+    // What the buttons offer follows the state shown, not the unit's own enabled flag: a service that
+    // answers is Running, so it is stopped and restarted, never started, and only a running one is
+    // restarted. Enable and Disable are the separate "at boot" choice.
+    const running = service.state === "running";
+    const key = service.unit || service.path || service.name;
+    const ops =
+      service.state === "missing"
+        ? []
+        : service.ops.filter((op) =>
+            op === "start"
+              ? !running
+              : op === "stop" || op === "restart"
+                ? running
+                : op === "enable"
+                  ? !service.enabled
+                  : op === "disable"
+                    ? service.enabled
+                    : true,
+          );
     return el(
       "tr",
       {},
@@ -2533,15 +2545,18 @@ function renderBox(data) {
         el(
           "span",
           { className: "library-buttons" },
-          ...(service.state === "missing"
-            ? []
-            : ops.map((op) =>
-                actionButton(
-                  OP_LABEL[op],
-                  (event) => control(service, op, event.currentTarget),
-                  OP_TITLE[op] ? { title: OP_TITLE[op], dataset: { wait: `svc:${service.unit}:${op}` } } : { dataset: { wait: `svc:${service.unit}:${op}` } },
-                ),
-              )),
+          ...ops.map((op) =>
+            actionButton(
+              OP_LABEL[op],
+              (event) => control(service, op, event.currentTarget.closest("tr")?.querySelector(".btn-wait")),
+              {
+                ...(OP_TITLE[op] ? { title: OP_TITLE[op] } : {}),
+                className: "no-wait",
+                dataset: { wait: `svc:${key}:${op}` },
+              },
+            ),
+          ),
+          el("span", { className: "btn-wait", dataset: { wait: `svc:${key}` }, "aria-hidden": "true" }),
         ),
       ),
     );
@@ -2582,20 +2597,20 @@ async function loadBox() {
   }
 }
 
-async function control(service, op, button) {
-  const waitKey = waitKeyOf(button);
-  if (button) AW.setBusy(button, true);
+async function control(service, op, slot) {
+  const waitKey = waitKeyOf(slot);
+  if (slot) AW.setBusy(slot, true);
   try {
     waitingFor = {
       id: (await postJSON("/admin/control", { unit: service.unit, op })).id,
       at: controlNote,
-      button,
+      button: slot,
       waitKey,
     };
     say(`${OP_LABEL[op]}: ${service.name}…`, true, controlNote);
     loadBox();
   } catch (err) {
-    clearWait({ button, waitKey });
+    clearWait({ button: slot, waitKey });
     say(err.message, false, controlNote);
   }
 }
@@ -12070,11 +12085,13 @@ function fillHeadBlocks() {
         }),
       );
     if (svc && svc.unit && svc.state !== "missing") {
+      const running = svc.state === "running";
+      const slot = el("span", { className: "btn-wait", dataset: { wait: `svc:${svc.unit}` }, "aria-hidden": "true" });
       const ops = (svc.ops || []).filter((op) =>
         op === "start"
-          ? !svc.active
-          : op === "stop"
-            ? svc.active
+          ? !running
+          : op === "stop" || op === "restart"
+            ? running
             : op === "enable"
               ? !svc.enabled
               : op === "disable"
@@ -12085,11 +12102,16 @@ function fillHeadBlocks() {
         ...ops.map((op) =>
           actionButton(
             OP_LABEL[op],
-            (event) => control(svc, op, event.currentTarget),
-            OP_TITLE[op] ? { title: OP_TITLE[op], dataset: { wait: `svc:${svc.unit}:${op}` } } : { dataset: { wait: `svc:${svc.unit}:${op}` } },
+            () => control(svc, op, slot),
+            {
+              ...(OP_TITLE[op] ? { title: OP_TITLE[op] } : {}),
+              className: "no-wait",
+              dataset: { wait: `svc:${svc.unit}:${op}` },
+            },
           ),
         ),
       );
+      if (ops.length) buttons.push(slot);
     }
     const facts = row ? [INV_KIND[row.kind] || row.kind, ...row.facts] : ["Loading."];
     if (svc && svc.unit)
@@ -15347,50 +15369,38 @@ function renderKits(data) {
       ),
     ),
   );
-  // A row per kit, its details in a drawer under the row; an open row opens again after a redraw.
-  const open = kitsEl.grid.querySelector(".source-row-detail:not([hidden])");
+  // A card per kit, and the "+ Custom toolkit" card the same shape; its details in a drawer inside
+  // the card. An open card opens again after a redraw, and only one is open at a time.
+  const open = kitsEl.grid.querySelector(".aw-card.open");
   if (!(open && open._dirty && open._dirty())) {
-    const openId = open && open.closest(".source-row")?.dataset.awId;
+    const openId = open && open.dataset.awId;
     // Its cards hold a budget form and each drawer's fields: drawn again only when what they show changes,
     // so a poll that brings nothing new leaves a selection, a field or an open drawer alone.
     const gridKey = JSON.stringify([kits, st.kits, st.installed, cfg.kits, data.flag_details || {}]);
     const drew = AW.redrawIfChanged(kitsEl.grid, gridKey, () => {
       kitsHome.append(...kitsFormNodes);
-      const items = kits.map((k) => {
-        const info = kitItem(k, st);
-        const c = ((st.kits || {})[k.id] || {}).cached;
-        return {
-          id: info.id,
-          title: k.title,
-          summary: info.tagline || k.summary || "",
-          pill: c ? AW.pill("cached", "ok") : AW.pill("not cached", "info"),
-          badges: info.badges,
-          body: [
-            el("p", { className: "setting-desc", textContent: k.summary || "" }),
-            ...(k.notes || []).map((note) => el("p", { className: "setting-desc", textContent: note })),
-            kitBody(k, st, cfg, () => {}),
-          ],
-        };
-      });
-      const add = AW.sourceCard({
-        id: "kit-custom",
-        add: true,
-        title: "+ Custom toolkit",
-        source: "your own packages",
-        state: "Managed by the librarian",
-        facts: [],
-        body: [customBody()],
-        actions: [AW.enterButton()],
-      });
-      kitsEl.grid.className = "";
-      return el("div", { className: "kits-list-view" },
-        AW.sourceList(items, { id: "kits-source-list" }),
-        el("div", { className: "card-grid source-grid" }, add));
+      return AW.cards(
+        [
+          ...kits.map((k) => kitItem(k, st)),
+          {
+            id: "kit-custom",
+            title: "+ Custom toolkit",
+            summary: "Your own packages, managed by the librarian",
+            badges: [],
+          },
+        ],
+        {
+          id: "kits-cards",
+          body: (it, setDirty) =>
+            it.id === "kit-custom" ? customBody() : kitBody(it.kit, st, cfg, setDirty),
+          save: (it) => kitSave(it),
+        },
+      );
     });
     const again =
       drew && openId &&
       kitsEl.grid.querySelector(
-        `.source-row[data-aw-id="${openId}"] .source-row-head`,
+        `.aw-card[data-aw-id="${openId}"] .aw-card-head`,
       );
     if (again) again.click();
   }
@@ -15652,29 +15662,9 @@ function kitBody(k, st, cfg, setDirty) {
         : null,
     ),
   );
-  // Save and Discard are the section's: compared with what is saved, and one question at Save.
-  const sec = AW.section({
-    id: `kit-${k.id}`,
-    label: k.title,
-    saved: { ...draft },
-    save: async (changes) => {
-      const ch = {};
-      if ("keep_current" in changes) ch.keep_current = changes.keep_current;
-      if ("remove_after" in changes) ch.remove_after = changes.remove_after;
-      const extraList = String(sec.get("extra") || "").trim().split(/[\s,]+/).filter(Boolean);
-      const saveButton = sec.foot.querySelector(".aw-save");
-      if (Object.keys(ch).length && !(await kitAct({ action: "settings", kits: { [k.id]: ch } }, false, saveButton))) return false;
-      if (!k.owner && extraList.join(" ") !== (k.extra || []).join(" ") &&
-        !(await kitAct({ action: "extra", kit: k.id, packages: extraList }, false, saveButton))) return false;
-      return true;
-    },
-  });
-  const changed = () => {
-    sec.set("keep_current", draft.keep_current, true);
-    sec.set("remove_after", draft.remove_after, true);
-    sec.set("extra", draft.extra, true);
-    setDirty(sec.dirty());
-  };
+  // Save is on only while the drawer differs from what is saved: changing a setting back turns it off again.
+  const saved = JSON.stringify(draft);
+  const changed = () => setDirty(JSON.stringify(draft) !== saved);
   // Automatic cache refresh: On and Off.
   let keepChips;
   const drawKeep = () => {
@@ -15711,15 +15701,6 @@ function kitBody(k, st, cfg, setDirty) {
       el("span", { className: "aw-label", textContent: label }),
       ...kids,
     );
-  sec.opts.onChange = () => {
-    draft.keep_current = sec.get("keep_current");
-    draft.remove_after = sec.get("remove_after");
-    draft.extra = sec.get("extra");
-    drawKeep();
-    def.value = draft.remove_after == null ? "never" : String(draft.remove_after);
-    if (extra) extra.value = draft.extra;
-    setDirty(sec.dirty());
-  };
   changed();
   return [
     el("p", { className: "setting-desc kit-facts", textContent: kitFacts(k, st) }),
@@ -15793,8 +15774,25 @@ function kitBody(k, st, cfg, setDirty) {
           textContent: `From git: ${k.git.map((g) => `${g.name} (${g.upstream.replace(/^https:\/\//, "")}, a mirror)`).join(", ")}.`,
         })
       : null,
-    sec.foot,
   ];
+}
+// The settings the card's section saves: keep current, the removal period and any extra tools.
+async function kitSave(it) {
+  const k = it.kit,
+    draft = kitDrafts.get(k.id),
+    mine = kitsData.settings.kits[k.id];
+  const ch = {};
+  if (draft.keep_current !== mine.keep_current) ch.keep_current = draft.keep_current;
+  if (draft.remove_after !== mine.remove_after) ch.remove_after = draft.remove_after;
+  const extra = draft.extra
+    .trim()
+    .split(/[\s,]+/)
+    .filter(Boolean);
+  if (Object.keys(ch).length && !(await kitAct({ action: "settings", kits: { [k.id]: ch } })))
+    return false;
+  if (!k.owner && extra.join(" ") !== (k.extra || []).join(" ") && !(await kitAct({ action: "extra", kit: k.id, packages: extra })))
+    return false;
+  return true;
 }
 // The "+ Custom toolkit" card: the form, moved into its drawer while it is open.
 function customBody() {
@@ -15814,9 +15812,9 @@ function editKit(k, mine) {
   kitsEl.addCancel.hidden = false;
   kitsEl.add.querySelector("button[type=submit]").textContent = "Update toolkit";
   // In the custom card's drawer: open it if it isn't.
-  const card = kitsEl.grid.querySelector("#kit-custom");
-  if (card && card.querySelector(".source-panel")?.hidden)
-    card.querySelector(".source-head").click();
+  const card = kitsEl.grid.querySelector('.aw-card[data-aw-id="kit-custom"]');
+  if (card && !card.classList.contains("open"))
+    card.querySelector(".aw-card-head").click();
   kitsEl.add.scrollIntoView?.({ block: "center" });
 }
 function resetKitForm() {

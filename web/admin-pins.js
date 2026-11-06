@@ -10,6 +10,7 @@
   let lastPins = null;
   let lastOverlay = null;
   let lastAssignments = new Map();
+  let selectedPin = null;
   const gpioSay = (text, ok) => { const n = $('pins-gpio-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const say = (text, ok) => { const n = $('pins-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const ovSay = (text, ok) => { const n = $('pins-overlay-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
@@ -379,11 +380,14 @@
     return bits.join(', ');
   }
   function pinSquare(pin) {
-    const square = document.createElement('div');
+    const square = document.createElement('button');
+    square.type = 'button';
     square.className = `pin-square ${pin ? pinTypeClass(pin) : 'pin-empty'}`;
     if (!pin) return square;
     square.title = pinTitle(pin);
     square.setAttribute('aria-label', pinTitle(pin));
+    square.dataset.pin = String(pin.pin);
+    square.addEventListener('click', () => showPin(pin));
     const number = document.createElement('b');
     number.textContent = String(pin.pin);
     const mark = document.createElement('small');
@@ -405,9 +409,12 @@
   function pinCard(pin) {
     const state = pinState(pin);
     const cls = pin.type === 'gpio' ? (state === 'taken' ? 'used' : state) : 'power';
-    const card = document.createElement('div');
+    const card = document.createElement('button');
+    card.type = 'button';
     card.className = `pin ${cls} ${pinTypeClass(pin)}`;
     card.title = pinTitle(pin);
+    card.dataset.pin = String(pin.pin);
+    card.addEventListener('click', () => showPin(pin));
     const number = document.createElement('b');
     number.textContent = String(pin.pin);
     const name = document.createElement('span');
@@ -416,6 +423,42 @@
     detail.textContent = pinDetails(pin);
     card.append(number, name, detail);
     return card;
+  }
+  function pinByNumber(number) {
+    return ((lastPins && lastPins.header) || []).find((pin) => pin && pin.pin === number) || null;
+  }
+  function markSelected() {
+    const map = $('pins-map');
+    if (!map) return;
+    map.querySelectorAll('.is-selected').forEach((node) => node.classList.remove('is-selected'));
+    if (selectedPin) map.querySelectorAll(`[data-pin="${selectedPin.pin}"]`).forEach((node) => node.classList.add('is-selected'));
+  }
+  // A pin selected on the header fills the card beside it: its state and what claims it, and, for a
+  // free pin, the choices below it.
+  function showPin(pin) {
+    selectedPin = pin || null;
+    markSelected();
+    const note = $('pins-gpio-selected');
+    if (!note) return;
+    if (!pin) {
+      note.textContent = 'Select a pin on the map, or in the list below.';
+      note.classList.remove('bad');
+      return;
+    }
+    const state = pinState(pin);
+    const assigned = assignmentFor(pin);
+    const hog = assigned && assigned.source === 'pinhog' && !assigned.removed;
+    const free = pin.type === 'gpio' && (state === 'free' || Boolean(hog));
+    note.textContent = free
+      ? `${pinTitle(pin)}. Read it once, or keep it set from boot, below.`
+      : `${pinTitle(pin)}. Select a free pin on the map, or in the list below, to read or keep one.`;
+    note.classList.toggle('bad', !free);
+    if (!free) return;
+    const select = $('pins-gpio-pin');
+    if (select && [...select.options].some((option) => option.value === String(pin.pin))) {
+      select.value = String(pin.pin);
+      syncPinChoice();
+    }
   }
   function drawHeader(header) {
     const map = $('pins-map');
@@ -550,6 +593,7 @@
     drawClaims(pins.lines || []);
     drawRoles(pins.header || []);
     fillPinChoices(pins.header || []);
+    showPin(selectedPin ? pinByNumber(selectedPin.pin) : null);
     renderHogs((data && data.assignments) || []);
     $('pins-copy').disabled = false;
   }
@@ -750,7 +794,10 @@
     renderOverlay(lastOverlay);
     dispSay('The display change was not confirmed in time.', false);
   }
-  $('pins-gpio-pin').addEventListener('change', syncPinChoice);
+  $('pins-gpio-pin').addEventListener('change', () => {
+    syncPinChoice();
+    showPin(pinByNumber(Number($('pins-gpio-pin').value)));
+  });
   $('pins-gpio-mode').addEventListener('change', () => {
     $('pins-gpio-value-box').hidden = $('pins-gpio-mode').value !== 'out';
   });

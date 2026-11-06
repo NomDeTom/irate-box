@@ -51,15 +51,18 @@ const box = { meshtasticd: { active: 'failed', sub: 'failed', result: 'start-lim
     { at: now - 300, total: 1024, available: 600, swap_total: 256, swap_free: 200 },
     { at: now, total: 1024, available: 512, swap_total: 256, swap_free: 128 }],
     processes_at: now, processes: [{ pid: 42, name: '<hub>', resident: 300 }] },
+  identity: { host: 'lyra', addresses: [{ iface: 'wlan0', address: '192.168.1.5' }, { iface: 'usb0', address: '192.168.7.1' }] },
   uptime: 11 * 86400 + 5 * 3600, online: 0, joined: 0, version: 'test', results: [], pending: 0, service_uptime: svcWithMesh, net_uptime: netUp,
   services: [{ name: 'Library (Kiwix)', unit: 'kiwix.service', state: 'running', active: true, enabled: true, ops: [] },
-    { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: [] },
-    { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: [] },
-    { name: 'Remote access (Tailscale)', unit: 'tailscaled.service', state: 'stopped', active: false, enabled: false, ops: [] }] };
+    { name: 'MQTT broker', unit: 'mosquitto.service', state: 'running', active: true, enabled: true, ops: ['start', 'stop', 'restart', 'enable', 'disable'] },
+    { name: 'Notes', unit: 'notes.service', state: 'missing', active: false, enabled: false, ops: ['start', 'stop', 'restart', 'enable', 'disable'] },
+    { name: 'Remote access (Tailscale)', unit: 'tailscaled.service', state: 'stopped', active: false, enabled: false, ops: ['start', 'stop', 'restart', 'enable', 'disable'] }] };
 // Tailscale ran most of the week and is switched off now: its record says up, and the page must say off.
 box.service_uptime.units['tailscaled.service'] = JSON.parse(JSON.stringify(box.service_uptime.units['mosquitto.service']));
-w.fetch = async (u) => (u === '/admin/network' ? new Response(JSON.stringify(data), { status: 200 })
-  : u === '/admin/box' ? new Response(JSON.stringify(box), { status: 200 }) : new Response('{}', { status: 404 }));
+w.fetch = async (u, opts = {}) => (u === '/admin/network' ? new Response(JSON.stringify(data), { status: 200 })
+  : u === '/admin/box' ? new Response(JSON.stringify(box), { status: 200 })
+    : u === '/admin/control' && opts.method === 'POST' ? new Response(JSON.stringify({ id: 'c1' }), { status: 202 })
+      : new Response('{}', { status: 404 }));
 // A page's scripts share their top-level consts; separate evals do not, so heatmap.js comes in as a var.
 w.eval(fs.readFileSync(`${WEB}/heatmap.js`, 'utf8').replace(/^const Heatmap =/m, 'var Heatmap ='));
 w.eval(fs.readFileSync(`${WEB}/admin-widgets.js`, 'utf8'));
@@ -114,7 +117,7 @@ setTimeout(() => {
   // The services' strips, each in its own row of Overview's table.
   w.location.hash = '#overview'; w.dispatchEvent(new w.HashChangeEvent('hashchange'));
   w.eval('loadBox()');
-  setTimeout(() => {
+  setTimeout(async () => {
     check('services: the strips not folded, in the table', !d.getElementById('svc-uptime').closest('details') && !d.getElementById('service-table').closest('details')
       && d.querySelectorAll('#service-table .svc-strips').length >= 2);
     const rowOf = (name) => [...d.querySelectorAll('#service-table tbody tr')].find((r) => t(r.querySelector('.svc-name .setting-name')) === name);
@@ -129,6 +132,26 @@ setTimeout(() => {
       && /Library \(Kiwix\), Mon 05 03:00–04:00: up 83 %, 1 restart$/.test(marked[0].dataset.words), marked.map((c) => c.dataset.words).join(' | '));
     check('  72 days by day too, with the hub\'s dates', smonth && /Library \(Kiwix\), Wed 07: up 100 %$/.test([...smonth.querySelectorAll('.hm-cell')].pop().dataset.words));
     check('  a service never recorded: a dash, no strip', [...d.querySelectorAll('#service-table tbody tr')].some((r) => !r.querySelector('.heatmap')));
+    const buttonsOf = (row) => [...row.querySelectorAll('.library-buttons .action-btn')].map(t);
+    const mqtt = rowOf('MQTT broker');
+    check('a running service: Stop and Restart, never Start; its spinner is one slot at the end',
+      JSON.stringify(buttonsOf(mqtt)) === JSON.stringify(['Stop', 'Restart', 'Disable'])
+      && [...mqtt.querySelectorAll('.action-btn')].every((b) => b.classList.contains('no-wait'))
+      && mqtt.querySelectorAll('.library-buttons .btn-wait').length === 1, buttonsOf(mqtt));
+    const tail = rowOf('Remote access (Tailscale)');
+    check('a stopped service: Start and Enable, never Restart',
+      JSON.stringify(buttonsOf(tail)) === JSON.stringify(['Start', 'Enable']), buttonsOf(tail));
+    check('a missing service: no actions', buttonsOf(rowOf('Notes')).length === 0, buttonsOf(rowOf('Notes')));
+    check('Overview names the box and its addresses first',
+      /Name.*lyra.*Addresses.*192\.168\.1\.5 \(wlan0\).*192\.168\.7\.1 \(usb0\)/.test(t(d.getElementById('box-tiles'))), t(d.getElementById('box-tiles')));
+    const stop = [...mqtt.querySelectorAll('.action-btn')].find((b) => t(b) === 'Stop');
+    stop.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    check('  Stop asks the hub, and the row\'s slot waits, not the button',
+      /^Stop: MQTT broker/.test(t(d.getElementById('control-note')))
+      && rowOf('MQTT broker').querySelector('.btn-wait').classList.contains('is-busy')
+      && ![...rowOf('MQTT broker').querySelectorAll('.action-btn')].some((b) => b.classList.contains('is-busy')),
+      [t(d.getElementById('control-note')), rowOf('MQTT broker').querySelector('.btn-wait').className]);
     const body = d.getElementById('svc-uptime-body');
     const line = t(d.querySelector('#svc-uptime-body > p'));
     check('  one line: all up (Kiwix at 99.x % is up all the time, as the key says), no restart counts (the strips\' dots)',
