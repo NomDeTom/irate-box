@@ -78,9 +78,9 @@ os.environ.update(
     HUB_REBOOT=str(reboot_stub),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.hub import transport  # noqa: E402
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import rescueenv  # noqa: E402
+from irate_box.hub import transport
+from irate_box.msg import Refused
+from irate_box.root import rescueenv
 
 fails = 0
 
@@ -169,7 +169,7 @@ Path(str(environment) + ".fail-print").write_text("1")
 code, text = refused(lambda: rescueenv.restart_rescue("RESTART"))
 check("no readable environment is refused", code == "rescue.restart.no-env" and "no readable" in text, (code, text))
 
-from irate_box.hub import server  # noqa: E402
+from irate_box.hub import server
 
 (T / "control").mkdir(exist_ok=True)
 (T / "control" / "rescue.json").write_text(
