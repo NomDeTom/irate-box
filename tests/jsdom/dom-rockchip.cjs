@@ -45,6 +45,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await wait(50); };
 (async () => {
   await wait(300);
+  const drawing = d.querySelector('#rk-recovery-pane svg');
+  check('the MaskROM drawing: inline, cropped to it, labelled, no editor ids or title',
+    drawing && drawing.getAttribute('viewBox') === '0 0 996 476'
+    && drawing.getAttribute('role') === 'img' && drawing.getAttribute('translate') === 'no'
+    && /two MaskROM pads in a red box/.test(drawing.getAttribute('aria-label'))
+    && !drawing.querySelector('title') && !drawing.querySelector('[id]')
+    && !/<script|href=/.test(drawing.innerHTML), drawing && drawing.getAttribute('viewBox'));
   check('no board: said how to connect one, no buttons', /No Rockchip board is connected/.test(text('rk-board')) && buttons().length === 0, text('rk-board'));
   await show({ boards: [board('system')] });
   check('its own system: said, Switch to Loader mode offered', /running its own system/.test(text('rk-board')) && buttons().map((b) => b.textContent).join() === 'Switch to Loader mode', text('rk-board'));
