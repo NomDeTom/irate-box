@@ -9454,7 +9454,7 @@ def will_save(req):
             M("living-will.saved", "The living will is saved."),
             M(
                 "living-will.password",
-                "The rescue hotspot password is {password}. The settings page shows it while the box is healthy.",
+                "The rescue hotspot password is {password}. Write it down now. It is not shown again.",
                 password=generated,
             ),
         )

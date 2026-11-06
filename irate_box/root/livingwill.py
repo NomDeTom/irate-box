@@ -63,7 +63,7 @@ DEFAULTS = {
     "reach": {
         "hotspot": True,
         "ssid": "irate-rescue",
-        "password": "",
+        "password": "",  # nosec B105 - an empty default, not a secret
         "join_saved": True,
         "ssh": False,
     },
@@ -224,7 +224,7 @@ def _public_key():
         tool = _ssh_keygen()
         result = subprocess.run([tool, "-y", "-f", str(KEY)], capture_output=True, text=True, timeout=60)  # noqa: TID251
         if result.returncode:
-            raise Refused(M("living-will.key-read", "The box's signing key cannot be read."))
+            raise Refused(M("living-will.key-read", "The box's signing key cannot be read.")) from None
         return f"{result.stdout.strip()} {_principal()}"
 
 
@@ -316,6 +316,7 @@ def _copies():
 def public(instructions, data=None, valid=True, source="master"):
     shown = copy.deepcopy(instructions)
     password = shown.get("reach", {}).get("password", "")
+    shown.setdefault("reach", {})["password"] = ""
     return {
         "valid": valid,
         "version": data.get("version") if data else VERSION,
@@ -387,9 +388,9 @@ def save(value):
 
 
 def _write_copy(folder, data):
-    folder.mkdir(parents=True, exist_ok=True)
-    safeio.write(folder / "living-will.json", data, mode=0o644)
-    safeio.write(folder / "living-will-signers", SIGNERS.read_text(), mode=0o644)
+    safeio.mkdir(folder, mode=0o700)
+    safeio.write(folder / "living-will.json", data, mode=0o600)
+    safeio.write(folder / "living-will-signers", SIGNERS.read_text(), mode=0o600)
 
 
 def push(confirm):
@@ -406,7 +407,7 @@ def push(confirm):
     except (OSError, ValueError, Refused) as exc:
         raise Refused(
             M("living-will.master-invalid", "The living will on the box cannot be read: {why}.", why=str(exc))
-        )
+        ) from exc
     result = {}
     for name, folder in (("nand", NAND_COPY), ("usb", USB_COPY)):
         if not folder.parent.is_dir():

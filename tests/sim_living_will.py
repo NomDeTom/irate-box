@@ -7,7 +7,6 @@ python3 tests/sim_living_will.py"""
 
 import json
 import os
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -25,9 +24,9 @@ os.environ.update(
     HUB_RESCUE_USB=str(usb),
 )
 sys.path.insert(0, str(REPO))
-from irate_box.finding import message_args, message_ids  # noqa: E402
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import health, livingwill  # noqa: E402
+from irate_box.finding import message_ids
+from irate_box.msg import Refused
+from irate_box.root import health, livingwill
 
 fails = 0
 
@@ -57,12 +56,26 @@ check(
 master = json.loads(livingwill.MASTER.read_text())
 check("  the master keeps the password", master["instructions"]["reach"]["password"] == generated)
 check("  the master is signed in the rescue's format", master["signature"]["namespace"] == "irate-living-will")
+check(
+    "  the public projection does not contain the password",
+    generated not in livingwill.PUBLIC.read_text(),
+    livingwill.PUBLIC.read_text(),
+)
+check(
+    "  the view hides it and says there is one",
+    view["instructions"]["reach"]["password"] == "" and view["password_set"] is True,
+    view,
+)
+check("  the master still has it, because C needs it", generated in livingwill.MASTER.read_text())
 
 view, generated = livingwill.save({"reach": {"password": "a-known-password"}})
 check("a password the owner sets is kept", generated == "" and view["password_set"] is True, view)
 check(
     "  and the master's value is the owner's",
     json.loads(livingwill.MASTER.read_text())["instructions"]["reach"]["password"] == "a-known-password",
+)
+check(
+    "  an owner-set password is not in the public projection", "a-known-password" not in livingwill.PUBLIC.read_text()
 )
 
 view, _ = livingwill.save({"restore": {"method": "other-slot"}})
@@ -106,6 +119,16 @@ livingwill.save({"restore": {"method": "none"}})
 result = livingwill.push("WRITE WILL")
 check("push writes both copies that are present", result == {"nand": "written", "usb": "written"}, result)
 check("  and they match the master", livingwill._copies() == {"nand": "match", "usb": "match"}, livingwill._copies())
+for label, path in (
+    ("NAND", livingwill.NAND_COPY / "living-will.json"),
+    ("USB", livingwill.USB_COPY / "living-will.json"),
+):
+    check(f"  the {label} copy is 0600", oct(path.stat().st_mode)[-3:] == "600", oct(path.stat().st_mode)[-3:])
+check(
+    "  the copies carry the password C needs",
+    json.loads(livingwill.MASTER.read_text())["instructions"]["reach"]["password"]
+    in (livingwill.NAND_COPY / "living-will.json").read_text(),
+)
 findings = {f["id"]: f for f in health.check_living_will()}
 check("matching copies are ok", findings["living-will-copies"]["status"] == "ok", findings["living-will-copies"])
 
