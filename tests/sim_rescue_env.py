@@ -40,8 +40,8 @@ os.environ.update(
     HUB_FW_ENV_CONFIG=str(fw_env), HUB_PROC_MTD=str(proc_mtd), HUB_MTD_SYS=str(mtd_sys), HUB_FW_PRINTENV=str(stub)
 )
 sys.path.insert(0, str(REPO))
-from irate_box.msg import Refused  # noqa: E402
-from irate_box.root import rescueenv  # noqa: E402
+from irate_box.msg import Refused
+from irate_box.root import rescueenv
 
 fails = 0
 
@@ -113,6 +113,17 @@ check(
     data["copies"] == {"primary": True, "redundant": False, "agree": False},
     data,
 )
+
+from irate_box.hub import server
+
+(T / "control").mkdir(exist_ok=True)
+(T / "control" / "rescue.json").write_text(
+    json.dumps({"env": {"available": True, "bootcount": 2}, "rescue": {"ready": True}})
+)
+server.CONTROL_DIR = T / "control"
+snapshot = server.rkboard_snapshot()
+check("the Rockchip snapshot builds with env", snapshot["env"]["bootcount"] == 2, snapshot.get("env"))
+check("the snapshot's env reader is defined", callable(server.rescue_env_snapshot))
 
 print("FAILURES:", fails)
 sys.exit(1 if fails else 0)

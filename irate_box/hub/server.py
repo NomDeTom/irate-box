@@ -3576,6 +3576,12 @@ def pins_snapshot():
     }
 
 
+def rescue_env_snapshot():
+    """/admin/rkboard's env: the last rk-env-show reading, or that it has not been made."""
+    data = _read_json(CONTROL_DIR / "rescue.json", {}) or {}
+    return data.get("env", {"available": False})
+
+
 def rkboard_snapshot():
     """/admin/rkboard: the Rockchip boards on the box's USB as sysfs shows them now (the hub reads it itself), the
     tools the Rockchip boards toolkit brings, the loaders, the root helper's work on them (waiting, and done), and the
