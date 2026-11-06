@@ -1154,7 +1154,7 @@
     const other = { id: OTHER, title: 'A board not listed here', summary: 'Set up over its serial console, its SD card or its address: ways in the box does not find by itself.', badges: [] };
     at.replaceChildren(
       spots.length ? '' : h('p', { class: 'setting-desc', text: 'No setup hotspot is in range. A board with mPWRD-OS raises one within a few minutes of its first start, and shows here then.' }),
-      AW.cards([...found, other], { id: 'rk-setup-cards', body: (item) => setupBody(item, setup) }));
+      AW.cards([...found, other], { id: 'rk-setup-cards', keepOpen: true, body: (item) => setupBody(item, setup) }));
   }
 
   // The Rockchip page's own tabs: one function at a time. An old link to the cards or the setup section

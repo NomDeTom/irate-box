@@ -293,6 +293,11 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check('  Default: armbian again, pressed', user.value === 'armbian' && dflt.getAttribute('aria-pressed') === 'true');
   check('  the page polling again does not redraw an open drawer', (w.rkRenderSetup(setup([spot, { ...spot, ssid: 'armbiansetup-x', host: 'x' }])), d.querySelectorAll('#rk-setup .aw-card').length === 2 && card.querySelector('.aw-drawer')));
   card.querySelector('.aw-card-head').click();
+  check('  clicking the open card head keeps it open', card.classList.contains('open') && !!card.querySelector('.aw-drawer'));
+  const inside = card.querySelector('.aw-drawer input');
+  if (inside) inside.click();
+  check('  a control inside keeps it open too', card.classList.contains('open') && !!card.querySelector('.aw-drawer'));
+  card.querySelector('.aw-close').click();
   // A board not listed: the ways in that need no finding first, the serial console chosen; the hotspot folded, saying why.
   const otherCard = [...d.querySelectorAll('#rk-setup .aw-card')].find((c) => /A board not listed here/.test(c.textContent));
   otherCard.querySelector('.aw-card-head').click();
@@ -303,7 +308,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   check("  the serial route's steps and its wiring line", /Find the board's console/.test(od.querySelector('.rk-steps').textContent) && /Read them back/.test(od.textContent) && !od.querySelector('[data-rk-only="route:serial"]').hidden && /TX to the board's RX/.test(od.textContent));
   check("  Armbian's default password at an address: folded while no board is seen, saying why; its address field kept for it", otile('ssh').disabled && /Not available here: no board is seen on this box's own network/.test(od.textContent) && od.querySelector('input[name="rk-boardAddress"]').closest('[data-rk-only]').hidden);
   check('  no serial adapter on the box: Set up off, saying to connect one; the tile saying why', /Connect a USB serial adapter to this box/.test(od.textContent) && /Not available here: no USB serial adapter is connected and this box's own pins are off/.test(od.textContent));
-  otherCard.querySelector('.aw-card-head').click();
+  otherCard.querySelector('.aw-close').click();
   // A serial adapter on the box: the route offered, the adapter named, Set up sends the serial request.
   w.rkRenderSetup(setup([], { consoles: ['usb-1a86_USB2.0-Serial-if00-port0'], routes: ['serial'] }));
   const sCard = [...d.querySelectorAll('#rk-setup .aw-card')].find((c) => /A board not listed here/.test(c.textContent));
@@ -323,7 +328,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   await wait(50);
   const res = d.getElementById('rk-setup-result');
   check('  set up: said above the boards, its passwords shown once, the secret asked for once', !res.hidden && /set up as lyra-1, at 192.168.1.77/.test(res.textContent) && /Root16charsAbcd1/.test(res.textContent) && /salty-parrot's password/.test(res.textContent) && /Shown once/.test(res.textContent) && posted.filter((x) => x.action === 'secret').length === 1, res.textContent);
-  sCard.querySelector('.aw-card-head').click();
+  sCard.querySelector('.aw-close').click();
   // Every route the box can do now: the card, the default password on a cable, and the setup hotspot.
   w.rkRenderSetup(setup([spot], {
     consoles: ['usb-1a86_USB2.0-Serial-if00-port0'],
@@ -365,7 +370,7 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   [...d.querySelectorAll('.aw-ask button')].find((x) => x.textContent === 'Set up the board').click();
   await wait(40);
   check('  Set up: the hotspot route with the hotspot\'s name', posted.some((x) => x.action === 'setup' && x.route === 'hotspot' && x.hotspot === spot.ssid), posted);
-  allCard.querySelector('.aw-card-head').click();
+  allCard.querySelector('.aw-close').click();
   w.rkRenderSetup(setup([{ ...spot, boards: 2 }]));
   // A board on the box's own network: finishing it, and installing irate-box, as steps of their own.
   await show({ boards: [], setup: setup([spot], { routes: ['hotspot'], boards: [{ address: '192.168.1.60', host: 'bpi', vendor: 'Allwinner', board: true }] }) });
