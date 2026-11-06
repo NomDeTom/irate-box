@@ -150,6 +150,13 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       A board's SD card in a reader (rkcard.py): read and checked,
       tested as genuine (f3probe, erasing it), or an image written to it and read back.
       control/rkboard.json after.
+  {"id": ..., "action": "will-show"}
+  {"id": ..., "action": "will-save", "will": {<the instructions, section 3.3 of rescue-interfaces>}}
+  {"id": ..., "action": "will-push", "confirm": "WRITE WILL"}
+      The living will (livingwill.py): read it and publish control/living-will.json; validate, sign and
+      keep the owner's instructions, making a per-box hotspot password when none is set; or write the
+      signed copy to the NAND state volume and the rescue USB stick. The master, its signers file and the
+      box's key are root's, under /var/lib/irate-box-root/.
   {"id": ..., "action": "nm-handover", "name": "<netplan file>.yaml", "undo": false|true}
       A netplan file's connections handed over to NetworkManager (root/nmhandover.py), checked first
       and put back at once if NetworkManager's view of them changes; undo puts the file back.
@@ -239,6 +246,7 @@ from irate_box.root import (
     health,
     kits,
     librarydrive,
+    livingwill,
     osupdates,
     partswatch,
     pkgorigins,
@@ -9429,6 +9437,39 @@ def kit_status(req):
     return (_kits_status(), KITS_STATUS)[1]
 
 
+def will_show(_req):
+    """The living will as the settings page reads it, published to control/living-will.json."""
+    livingwill.show()
+    return M("living-will.shown", "The living will was read.")
+
+
+def will_save(req):
+    """Validate, sign and keep the owner's instructions; make a per-box hotspot password when none is set."""
+    value = req.get("will")
+    if not isinstance(value, dict):
+        raise Refused(M("living-will.request", "The living will's values are missing."))
+    _view, generated = livingwill.save(value)
+    if generated:
+        return sentences(
+            M("living-will.saved", "The living will is saved."),
+            M(
+                "living-will.password",
+                "The rescue hotspot password is {password}. Write it down now. It is not shown again.",
+                password=generated,
+            ),
+        )
+    return M("living-will.saved", "The living will is saved.")
+
+
+def will_push(req):
+    """Write the signed master to the NAND state volume and the rescue USB stick."""
+    result = livingwill.push(str(req.get("confirm") or ""))
+    return sentences(
+        M("living-will.push.nand", "The onboard flash copy: {state}.", state=result.get("nand", "absent")),
+        M("living-will.push.usb", "The USB drive copy: {state}.", state=result.get("usb", "absent")),
+    )
+
+
 ACTIONS = {
     "service": service,
     "password": password,
@@ -9523,6 +9564,9 @@ ACTIONS = {
     "rk-backup-delete": rk_backup_delete,
     "rk-backup-restore": rk_backup_restore,
     "rk-backup-keep": rk_backup_keep,
+    "will-show": will_show,
+    "will-save": will_save,
+    "will-push": will_push,
     "rk-write": rk_write,
     "rk-serial-setup": _rk_serial_setup,
     "rk-own-serial": _rk_own_serial,

@@ -62,6 +62,8 @@ HTTPS_ONLY = frozenset(
         "rk-hotspot-setup",
         "rk-ssh-setup",
         "rk-finish",
+        "will-save",
+        "will-push",
         "board-install",
         "library-drive",
         "library-drive-eject",

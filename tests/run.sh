@@ -38,6 +38,7 @@ run sim_nmrepair.py
 run sim_presets.py
 run sim_hardening.py
 run sim_alpine_rescue.py
+run sim_living_will.py
 run sim_uboot_build.py
 run sim_layout.py
 run sim_abslot.py
