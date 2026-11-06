@@ -6165,7 +6165,33 @@
               <select id="pins-mui-rst"></select>
               <label class="setting-name" for="pins-mui-bl" data-i18n="admin.pins.mui-bl">Backlight</label>
               <select id="pins-mui-bl"></select>
+              <label class="setting-name" for="pins-mui-log-level" data-i18n="admin.pins.mui-log-level">Log level</label>
+              <select id="pins-mui-log-level">
+                <option value="warn" data-i18n="admin.pins.mui-log-warn">Warnings</option>
+                <option value="info" data-i18n="admin.pins.mui-log-info">Info</option>
+                <option value="debug" data-i18n="admin.pins.mui-log-debug">Debug</option>
+              </select>
+              <label class="setting-name" for="pins-mui-log-destination" data-i18n="admin.pins.mui-log-destination">Log goes to</label>
+              <select id="pins-mui-log-destination">
+                <option value="ram" data-i18n="admin.pins.mui-log-ram">RAM (default)</option>
+                <option value="card" data-i18n="admin.pins.mui-log-card">The card</option>
+              </select>
+              <label class="setting-name" for="pins-mui-map-tiles" data-i18n="admin.pins.mui-map-tiles">Map tiles</label>
+              <select id="pins-mui-map-tiles">
+                <option value="dummy" data-i18n="admin.pins.mui-map-dummy">Dummy tile (default)</option>
+                <option value="folder" data-i18n="admin.pins.mui-map-folder">Tiles folder</option>
+              </select>
+              <span id="pins-mui-map-folder-box" hidden>
+                <label class="setting-name" for="pins-mui-map-folder" data-i18n="admin.pins.mui-map-folder-path">Tiles folder</label>
+                <select id="pins-mui-map-folder"></select>
+              </span>
             </div>
+            <p class="setting-desc" id="pins-mui-map-note" data-i18n="admin.pins.mui-map-note">
+              Tile folders are the folders root found under /var/lib/hub/maps. Put an offline z/x/y tile set in one.
+            </p>
+            <p class="setting-desc action-note bad" id="pins-mui-log-warning" data-i18n="admin.pins.mui-log-warning" hidden>
+              Debug logging writes about 100 lines a minute. On the card this wears it and fills the journal.
+            </p>
             <p class="setting-desc" id="pins-mui-radio-setting">
               <label for="pins-mui-replace-radio">
                 <input type="checkbox" id="pins-mui-replace-radio" />

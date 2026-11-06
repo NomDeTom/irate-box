@@ -14,6 +14,7 @@ T = Path(tempfile.mkdtemp(prefix="mui-"))
 for sub in ("boot/overlay-user", "state/control", "dt/__symbols__", "spi", "units", "bin"):
     (T / sub).mkdir(parents=True)
 (T / "boot_id").write_text("boot-one\n")
+(T / "tiles-root").mkdir()
 (T / "dt" / "model").write_bytes(b"Luckfox Lyra Zero W\0")
 for bus in (0, 1):
     for signal, rmio in (("clk", 24), ("mosi", 25), ("miso", 26), ("csn0", 16), ("csn1", 28)):
@@ -26,10 +27,12 @@ os.environ.update(
     HUB_DEVICE_TREE=str(T / "dt"),
     HUB_SPI_SYS=str(T / "spi"),
     HUB_UNIT_DIR=str(T / "units"),
+    HUB_MUI_JOURNALD=str(T / "journald@mui.conf"),
+    HUB_MUI_TILES=str(T / "tiles-root"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
-from irate_box.root import hardware, mui
+from irate_box.root import hardware, health, mui
 
 fails = 0
 
@@ -134,8 +137,29 @@ check(
     and "pin: 26" in cfg
     and "line: 9" in cfg
     and "Module: sim" in cfg
-    and "spidev: spidev0.0" in cfg,
+    and "spidev: spidev0.0" in cfg
+    and "Logging:\n  LogLevel: warn" in cfg,
     cfg,
+)
+check(
+    "the unit namespaces MUI's log and no longer forces -v",
+    "LogNamespace=mui" in mui.unit(sel) and " -v" not in mui.unit(sel),
+    mui.unit(sel),
+)
+check(
+    "the journal namespace defaults to bounded RAM",
+    mui.journald(sel) == "[Journal]\nStorage=volatile\nRuntimeMaxUse=4M\n",
+    mui.journald(sel),
+)
+check(
+    "the card choice is bounded",
+    mui.journald({**sel, "log_destination": "card"}) == "[Journal]\nStorage=persistent\nSystemMaxUse=4M\n",
+    mui.journald({**sel, "log_destination": "card"}),
+)
+check(
+    "unknown log levels and destinations are refused",
+    refused(mui.activate, {"log_level": "trace"}) == "mui.log-level"
+    and refused(mui.activate, {"log_destination": "disk"}) == "mui.log-destination",
 )
 check(
     "a display pin cannot be the radio bus",
@@ -232,9 +256,52 @@ check(
     and (mui.FSDIR / "prefs" / "uiconfig.proto").read_bytes() == bytes.fromhex("0801109901180040014801")
     and mui.UNIT_PATH.is_file()
     and "Conflicts=meshtasticd.service" in mui.UNIT_PATH.read_text()
+    and mui.JOURNALD_NAMESPACE.is_file()
+    and "Storage=volatile" in mui.JOURNALD_NAMESPACE.read_text()
+    and (mui.FSDIR / "maps" / "dummy" / "3" / "0" / "0.png").is_file()
+    and (mui.FSDIR / "maps" / "dummy" / "tile.png").is_file()
     and msg.get("id") == "mui.saved",
     (msg, env.read_text(), mui.UNIT_PATH.read_text() if mui.UNIT_PATH.is_file() else ""),
 )
+health.MUI_UNIT = mui.UNIT_PATH
+health.MUI_JOURNAL = mui.JOURNALD_NAMESPACE
+health.MUI_CONFIG = mui.CONFIG
+health._mui_log_rate = lambda: 0
+check("the bounded MUI log has no doctor finding", health.check_mui_log() == [])
+mui.JOURNALD_NAMESPACE.write_text("[Journal]\nStorage=persistent\n")
+check(
+    "a card log without SystemMaxUse is a doctor warning",
+    health.check_mui_log()[0]["id"] == "mui-log",
+)
+mui.JOURNALD_NAMESPACE.write_text(mui.journald(sel))
+health._mui_log_rate = lambda: 6600
+check(
+    "a fast MUI log is a doctor warning with the measured rate",
+    any("6600" in str(f.get("summary")) for f in health.check_mui_log()),
+)
+mui.CONFIG.write_text(mui.config({**sel, "log_level": "debug"}))
+check(
+    "debug logging is reported by itself",
+    any("debug" in str(f.get("summary")).lower() for f in health.check_mui_log()),
+)
+mui.CONFIG.write_text(mui.config(sel))
+health._mui_log_rate = lambda: 0
+tiles = T / "tiles-root" / "tiles"
+(tiles / "3" / "0").mkdir(parents=True)
+(T / "tiles-root" / "link").symlink_to(tiles, target_is_directory=True)
+check(
+    "tile folders are names root found, and paths, .. and symlinks are refused",
+    mui.options()["map_folders"] == ["tiles"]
+    and refused(mui.activate, {**sel, "map_tiles": "folder", "map_tiles_folder": str(tiles)}) == "mui.map-folder"
+    and refused(mui.activate, {**sel, "map_tiles": "folder", "map_tiles_folder": ".."}) == "mui.map-folder"
+    and refused(mui.activate, {**sel, "map_tiles": "folder", "map_tiles_folder": "link"}) == "mui.map-folder",
+    (mui.options()["map_folders"], mui.FSDIR),
+)
+mui.activate({**sel, "map_tiles": "folder", "map_tiles_folder": "tiles"})
+style = mui.FSDIR / "maps" / "dummy"
+check("the tiles-folder choice links the style folder", style.is_symlink() and style.resolve() == tiles.resolve())
+mui.activate(sel)
+check("the dummy choice restores the generated style", style.is_dir() and not style.is_symlink())
 check("  activation is pending until the selected spidev devices exist", mui.status()["pending"] is True)
 (T / "spi" / "spi1.0").write_text("")
 (T / "spi" / "spi1.1").write_text("")

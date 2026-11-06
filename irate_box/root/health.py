@@ -4124,6 +4124,10 @@ APT_RAM = Path("/run/irate-box-apt")
 APT_CACHE_DIR = Path(os.environ.get("HUB_APT_CACHE_DIR", "/var/cache/apt"))
 APT_RAM_UNIT = "run-irate\\x2dbox\\x2dapt.mount"  # systemd-escape -p --suffix=mount /run/irate-box-apt
 JOURNAL_CONF = SYSTEMD_ETC / "journald.conf.d" / "50-irate-box.conf"
+MUI_UNIT = Path(os.environ.get("HUB_MUI_UNIT", "/etc/systemd/system/irate-box-mui.service"))
+MUI_JOURNAL = Path(os.environ.get("HUB_MUI_JOURNALD", "/etc/systemd/journald@mui.conf"))
+MUI_CONFIG = Path(os.environ.get("HUB_MUI_CONFIG", "/etc/hub/mui.yaml"))
+MUI_LOG_RATE_WARN = {"warn": 120, "info": 1200}  # lines an hour; debug is reported by itself
 SYSCTL_D = Path(os.environ.get("HUB_SYSCTL_D", "/etc/sysctl.d"))
 WRITEBACK_CONF = SYSCTL_D / "50-irate-box-writeback.conf"
 COMMIT_UNIT = "irate-box-commit.service"
@@ -4161,6 +4165,79 @@ def _journal_sync_seconds():
     if not m:
         return None
     return int(m[1]) * {"": 1, "s": 1, "m": 60, "h": 3600}[m[2]]
+
+
+def _mui_log_level():
+    """The log level chosen in MUI's own YAML; warnings when it is absent or unreadable."""
+    try:
+        text = MUI_CONFIG.read_text(errors="replace")
+    except OSError:
+        return "warn"
+    found = re.search(r"^\s+LogLevel:\s*(warn|info|debug)\s*$", text, re.M)
+    return found[1] if found else "warn"
+
+
+def _mui_log_rate():
+    """MUI's namespace journal over the last 30 minutes, as lines an hour; None when it cannot be measured."""
+    said = run("journalctl", "--namespace=mui", "--since=-30min", "--no-pager", "-o", "cat", timeout=20)
+    if said.returncode:
+        return None
+    return said.stdout.count("\n") * 2
+
+
+def check_mui_log():
+    """MUI's logging is bounded, and its rate is low enough not to wear the card or fill RAM."""
+    if not MUI_UNIT.exists():
+        return []
+    try:
+        unit = MUI_UNIT.read_text(errors="replace")
+    except OSError:
+        unit = ""
+    try:
+        conf = MUI_JOURNAL.read_text(errors="replace")
+    except OSError:
+        conf = ""
+    namespaced = bool(re.search(r"^LogNamespace=mui\s*$", unit, re.M))
+    storage = (re.search(r"^Storage=(\w+)", conf, re.M) or [None, ""])[1]
+    capped = bool(re.search(r"^(RuntimeMaxUse|SystemMaxUse)=\S+", conf, re.M))
+    rate = _mui_log_rate()
+    problems = []
+    if not namespaced or not conf:
+        problems.append(M("mui-log.unbounded", "MUI's log has no separate, size-limited journal."))
+    elif storage == "persistent" and not re.search(r"^SystemMaxUse=\S+", conf, re.M):
+        problems.append(M("mui-log.card-unbounded", "MUI's log is kept on the card without a size cap."))
+    elif not capped:
+        problems.append(M("mui-log.no-cap", "MUI's journal has no size cap."))
+    level = _mui_log_level()
+    if level == "debug":
+        problems.append(M("mui-log.debug", "MUI is logging at debug level."))
+    elif rate is not None and rate > MUI_LOG_RATE_WARN[level]:
+        problems.append(M("mui-log.rate", "MUI wrote about {rate} lines an hour over the last 30 minutes.", rate=rate))
+    if not problems:
+        return []
+    evidence = [str(MUI_UNIT), str(MUI_JOURNAL)]
+    if rate is not None:
+        evidence.append(f"measured: {rate} lines/hour")
+    return [
+        finding(
+            "mui-log",
+            M("mui-log.title", "MUI logging"),
+            "warn",
+            sentences(*problems),
+            M(
+                "mui-log.why",
+                "On this board /tmp and /run are RAM, and the card wears with every write. A log that grows without "
+                "a cap can fill memory or the card, and a debug log writes far more than MUI needs.",
+            ),
+            M(
+                "mui-log.fix",
+                "On Pins → Activate MUI, set Log level to warnings (or info), Where the log goes to RAM, and "
+                "Map tiles to the dummy tile unless a real tile set is installed.",
+            ),
+            commands=["journalctl --namespace=mui -n 20 --no-pager"],
+            evidence=evidence,
+        )
+    ]
 
 
 def card_groups():
@@ -9133,6 +9210,7 @@ def scan(quick=False):
         check_wifi_gone,
         check_space,
         check_card_writes,
+        check_mui_log,
         check_card_health,
         check_lost_writes,
         check_writes_kept,
