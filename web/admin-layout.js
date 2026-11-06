@@ -37,7 +37,7 @@ const AL = (() => {
       { title: 'USB', sections: ['usb'] },
       { title: 'Security', sections: ['security', 'signin-identity'] },
       { title: 'Clock', sections: ['clock'] },
-      { title: 'Recovery and monitoring', sections: ['recovery'] },
+      { title: 'Recovery and monitoring', sections: ['recovery', 'rescue-will'] },
       { title: 'Updates', sections: ['updates'] },
       { title: 'Backup and transfer', sections: ['backup'] },
       { title: 'Pin map', sections: ['pins'] }] },
