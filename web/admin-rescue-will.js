@@ -9,6 +9,8 @@
   if (!root) return;
   const ADMIN_HEADERS = { 'Content-Type': 'application/json', 'X-Irate-Admin': '1' };
   const $ = (id) => document.getElementById(id);
+  const previewFrame = $('rescue-will-preview');
+  const previewState = $('rescue-will-preview-state');
   const el = AW.h;
   const WORDS = { match: 'matches the box', stale: 'older than the box', missing: 'not written', absent: 'not written' };
   let snapshot = null;
@@ -379,6 +381,7 @@
     setWarn('rescue-will-after-warn', after === 'always' ? 'The rescue will restart to the card after a repair without asking.' : '');
 
     updatePush();
+    sendPreview();
   }
 
   function copySaid(value) {
@@ -397,6 +400,60 @@
       button.disabled = !ready;
       button.title = w.valid ? (sec.dirty() ? 'Save the instructions first.' : '') : 'Save the living will first.';
     }
+  }
+
+  // The rescue page in preview mode: the form's current values (before Save), with a few card states. The
+  // frame is sandboxed and the page sends nothing; it renders the same status the real page reads.
+  function previewStatus() {
+    const values = sec ? sec.values() : snapshot.will && snapshot.will.valid ? snapshot.will.instructions : snapshot.defaults || {};
+    const state = (previewState && previewState.value) || 'fine';
+    const failed = state === 'failed';
+    const will = {
+      valid: true,
+      version: 1,
+      written: (snapshot.will && snapshot.will.written) || Math.floor(Date.now() / 1000),
+      source: 'preview',
+      password_set: true,
+      copies: { nand: 'match', usb: 'match' },
+      instructions: values,
+    };
+    const reach = values.reach || {};
+    return {
+      ok: true,
+      device: '/dev/mmcblk0',
+      present: true,
+      lent: false,
+      size: 15634268160,
+      partitions: [{ name: '/dev/mmcblk0p1', size: 268435456 }, { name: '/dev/mmcblk0p2', size: 15365832704 }],
+      filesystems: [],
+      gpt_broken: failed,
+      finding: failed ? {
+        severity: 'warning',
+        title: 'The primary partition table is damaged.',
+        detail: 'The backup is valid. The rescue can rebuild the primary table without changing the files.',
+        action: 'Repair the partition table.',
+      } : {},
+      job: state === 'restore' ? { id: 'preview', verb: 'restore-salvage', state: 'running', stage: 'copying', percent: 40,
+        message: 'Restoring the salvage copy.', written: 400, total: 1000 } : {},
+      gadget: { configured: true },
+      will,
+      nand: { present: true, env: { available: true, bootcount: 2, bootlimit: 3 }, ubi: [{ name: 'rescue' }, { name: 'state' }] },
+      network: {
+        addresses: [
+          { iface: 'wlan0', address: '192.168.4.1', kind: 'hotspot' },
+          { iface: 'usb0', address: '192.168.7.1', kind: 'usb' },
+          { iface: 'wlan0', address: '192.168.1.57', kind: 'joined' },
+        ],
+        hotspot: { on: reach.hotspot !== false, ssid: reach.ssid || 'irate-rescue', clients: 1 },
+        joined: reach.join_saved === false ? null : { ssid: 'SKYTB1H1', signal: -61 },
+        ssh: reach.ssh === true,
+      },
+    };
+  }
+  function sendPreview() {
+    if (!previewFrame || !previewFrame.contentWindow) return;
+    const status = previewStatus();
+    previewFrame.contentWindow.postMessage({ type: 'rescue-preview', status, will: status.will }, '*');
   }
 
   function build() {
@@ -467,6 +524,13 @@
 
   $('rescue-will-confirm').addEventListener('input', updatePush);
   $('rescue-will-push').addEventListener('click', push);
+  if (previewState) previewState.addEventListener('change', sendPreview);
+  if (previewFrame) {
+    previewFrame.addEventListener('load', sendPreview);
+    window.addEventListener('message', (event) => {
+      if (event.source === previewFrame.contentWindow && event.data && event.data.type === 'rescue-preview-ready') sendPreview();
+    });
+  }
 
   load();
 }());
