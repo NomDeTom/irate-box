@@ -374,11 +374,11 @@ def _validate(selection, check_binary=False):
     if not (1000000 <= sel["bus_frequency"] <= 40000000):
         raise Refused(M("mui.bus-frequency", "The display bus frequency must be 1-40 MHz."))
     if sel["log_level"] not in LOG_LEVELS:
-        raise Refused(M("mui.log-level", "Choose warnings, info or debug logging."))
+        raise Refused(M("mui.log-level", "Select warnings, info or debug logging."))
     if sel["log_destination"] not in LOG_DESTINATIONS:
-        raise Refused(M("mui.log-destination", "Choose RAM or the card for the MUI log."))
+        raise Refused(M("mui.log-destination", "Select RAM or the card for the MUI log."))
     if sel["map_tiles"] not in MAP_TILES:
-        raise Refused(M("mui.map-tiles", "Choose the dummy tile or a tiles folder."))
+        raise Refused(M("mui.map-tiles", "Select the dummy tile or a tiles folder."))
     if sel["map_tiles"] == "folder":
         folder = Path(sel["map_tiles_folder"])
         if not sel["map_tiles_folder"] or not folder.is_dir():
