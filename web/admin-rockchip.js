@@ -20,9 +20,9 @@
   // A result of the root helper in the reader's language: its message (msg.py), else its English.
   const resultSaid = (result) => (result.msg ? AW.say(result.msg) : result.message);
   // The root helper answers a step by writing a result; wait for that one, not the next poll's.
-  async function awaitResult(id, at) {
+  async function awaitResult(id, at, tries = 1900) {
     // A full NAND backup can take up to the root helper's 15 minutes: wait as long.
-    for (let i = 0; i < 1900; i++) {
+    for (let i = 0; i < tries; i++) {
       await new Promise((resolve) => setTimeout(resolve, 500));
       const data = await getJSON('/admin/rkboard');
       const progress = data.progress;
@@ -168,6 +168,7 @@
   let cardConfirmsDirty = false;
   let confirmBusy = false;
   let bootConfirmData = null;
+  let rescueRestarting = false;
   let chipChosen = 'rk3506b';
   let poll = null;
   let shown = '';
@@ -197,6 +198,7 @@
     renderFinish(data.setup);
     renderEnv(data.env);
     renderBootConfirm(data.boot_confirm);
+    renderRescue(data.rescue);
     const rec = document.getElementById('rk-recovery-status');
     if (rec) {
       const mask = (data.boards || []).find((b) => b.mode === 'maskrom');
@@ -591,6 +593,47 @@
       confirmBusy = false;
       renderBootConfirm(bootConfirmData);
     }
+  }
+
+  // ---- This box's rescue: whether the box can restart into C, and the one confirmed restart. The card is the
+  // box's own, not the board on the USB port: ready, or each reason it is not.
+  function renderRescue(rescue) {
+    const at = document.getElementById('rk-rescue');
+    if (!at) return;
+    rescue = rescue || { ready: false, reasons: ['The boot environment has not been read yet.'] };
+    if (rescue.ready) {
+      const count = rescue.bootcount == null ? '' : ` Boot count ${rescue.bootcount} of ${rescue.bootlimit}.`;
+      at.replaceChildren(el('p', { className: 'setting-desc', textContent: `This box is ready to restart into the rescue.${count}` }));
+    } else {
+      const reasons = (rescue.reasons || []).filter(Boolean);
+      at.replaceChildren(reasons.length
+        ? el('ul', { className: 'admin-checks' }, ...reasons.map((reason) => el('li', { textContent: reason })))
+        : el('p', { className: 'setting-desc', textContent: 'This box cannot restart into the rescue yet.' }));
+    }
+    const button = document.getElementById('rk-rescue-restart');
+    if (button) button.disabled = !rescue.ready || rescueRestarting || !!waiting;
+  }
+  async function restartRescue(event) {
+    if (rescueRestarting) return;
+    const button = event.currentTarget;
+    const note = document.getElementById('rk-rescue-note');
+    const ask = document.getElementById('rk-rescue-ask');
+    button.disabled = true;
+    if (ask) ask.hidden = true;
+    rescueRestarting = true;
+    say('Restarting into the rescue… The session ends and the connection will drop.', true, note);
+    try {
+      const id = (await postJSON('/admin/rkboard', { action: 'restart-rescue', confirm: 'RESTART' })).id;
+      const done = await awaitResult(id, note, 20);
+      if (done && done.ok) say(`${resultSaid(done)} The connection is about to drop.`, true, note);
+      else if (done) say(resultSaid(done), false, note);
+      else say('The box did not answer before the connection dropped. It may be restarting into the rescue. The rescue hotspot starts when it does. Leave the card in.', true, note);
+    } catch (err) {
+      // The click may have rebooted the box before the answer arrived: say so, and do not retry.
+      say('The connection dropped before the box answered. It may be restarting into the rescue. The rescue hotspot starts when it does. Leave the card in.', true, note);
+    }
+    const main = document.getElementById('rk-rescue-restart');
+    if (main) main.disabled = true;
   }
 
   // ---- Cards in a reader (hub/rkusb.cards, root/rkcard.py): one card each, its drawer the three actions. Each is
@@ -1272,6 +1315,29 @@
   });
   const confirmGo = document.getElementById('rk-confirm-go');
   if (confirmGo) confirmGo.addEventListener('click', confirmBoot);
+  const rescueRestart = document.getElementById('rk-rescue-restart');
+  if (rescueRestart) rescueRestart.addEventListener('click', () => {
+    const ask = document.getElementById('rk-rescue-ask');
+    if (ask) ask.hidden = false;
+    const input = document.getElementById('rk-rescue-confirm');
+    if (input) input.focus();
+  });
+  const rescueCancel = document.getElementById('rk-rescue-cancel');
+  if (rescueCancel) rescueCancel.addEventListener('click', () => {
+    const ask = document.getElementById('rk-rescue-ask');
+    if (ask) ask.hidden = true;
+    const input = document.getElementById('rk-rescue-confirm');
+    if (input) input.value = '';
+    const go = document.getElementById('rk-rescue-go');
+    if (go) go.disabled = true;
+  });
+  const rescueConfirm = document.getElementById('rk-rescue-confirm');
+  if (rescueConfirm) rescueConfirm.addEventListener('input', () => {
+    const go = document.getElementById('rk-rescue-go');
+    if (go) go.disabled = rescueConfirm.value !== 'RESTART';
+  });
+  const rescueGo = document.getElementById('rk-rescue-go');
+  if (rescueGo) rescueGo.addEventListener('click', restartRescue);
 
   load();
   // For the page tests: the drawing, called with data of their own.
