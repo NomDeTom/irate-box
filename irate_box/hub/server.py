@@ -3104,7 +3104,11 @@ CONTROL_DIR = STATE_DIR / "control"
 CONTROL_REQUESTS = CONTROL_DIR / "requests"
 CONTROL_RESULTS = CONTROL_DIR / "results"
 ACCESS_STATE = CONTROL_DIR / "access.json"
-KITS_DIR = STATE_DIR / "kits"  # the offline kit the root helper made (/admin, Backup)
+KITS_DIR = STATE_DIR / "kits"
+USB_STICK = Path(os.environ.get("HUB_RESCUE_USB", "/media/usb"))
+NAND_STATE = Path(
+    os.environ.get("HUB_NAND_STATE", "/run/irate-box-nand-state")
+)  # the offline kit the root helper made (/admin, Backup)
 KIT_PROGRESS = CONTROL_DIR / "kit-progress.json"  # the root helper's copy of who may open each app
 VERSION_FILE = CHECKOUT / "VERSION"
 _ALL_OPS = ["start", "stop", "restart", "enable", "disable"]
@@ -3603,6 +3607,25 @@ def rkboard_snapshot():
         "install_log": _install_log(),
         "rk_images": {"settings": rkimages.settings(), "status": rkimages.status()},
         "env": rescue_env_snapshot(),
+    }
+
+
+def rescue_will_snapshot():
+    """/admin/rescue-will: the living will as root published it, its defaults, and what a restore can use."""
+    from irate_box.hub import rkusb
+
+    view = _read_json(CONTROL_DIR / "living-will.json", {}) or {}
+    salvage = []
+    for target, folder in (("usb", USB_STICK), ("nand", NAND_STATE)):
+        base = folder / "irate-salvage"
+        if base.is_dir():
+            for path in sorted(base.iterdir()):
+                if path.is_dir():
+                    salvage.append({"id": f"{target}:{path.name}", "label": f"{path.name} ({target})"})
+    return {
+        "will": view,
+        "defaults": view.get("defaults", {}),
+        "restore_candidates": {"images": rkusb.images(), "salvage": salvage},
     }
 
 
@@ -6197,6 +6220,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, rkboard_snapshot())
             return
 
+        if path == "/admin/rescue-will":
+            self.send_json(200, rescue_will_snapshot())
+            return
+
         if path == "/admin/rkboard/backup":
             # The same HTTPS-only rule as the backup that made it: this is the whole flash, keys included.
             if "rk-backup" in transport.HTTPS_ONLY and not self._https():
@@ -7996,6 +8023,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(202, {"id": control_request({"action": "mui", "do": "deactivate"})})
             elif act == "mui-restart":
                 self.send_json(202, {"id": control_request({"action": "mui-restart"})})
+            else:
+                self.send_json(400, refused.say(UNKNOWN_ACTION))
+            return
+
+        if path == "/admin/rescue-will":
+            act = payload.get("action")
+            if act == "save" and isinstance(payload.get("will"), dict) and len(json.dumps(payload["will"])) < 65536:
+                self.send_json(202, {"id": control_request({"action": "will-save", "will": payload["will"]})})
+            elif act == "push" and payload.get("confirm") == "WRITE WILL":
+                self.send_json(202, {"id": control_request({"action": "will-push", "confirm": "WRITE WILL"})})
             else:
                 self.send_json(400, refused.say(UNKNOWN_ACTION))
             return
