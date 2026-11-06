@@ -191,6 +191,7 @@
 
   function render(data) {
     renderFinish(data.setup);
+    renderEnv(data.env);
     const rec = document.getElementById('rk-recovery-status');
     if (rec) {
       const mask = (data.boards || []).find((b) => b.mode === 'maskrom');
@@ -433,6 +434,63 @@
     });
     box.append(tiles, el('label', { className: 'aw-field' }, el('span', { className: 'aw-label', textContent: 'sha256' }), sha), el('div', { className: 'library-buttons' }, go));
     return box;
+  }
+
+  // ---- The card's U-Boot environment (root/rescueenv.py): the boot count and limit, card_confirms, the rescue
+  // fallback, and the state of the two copies. Read-only, with a Read that queues rk-env-show.
+  function envTile(label, value, detail) {
+    return el('div', { className: 'admin-tile' },
+      el('span', { className: 'setting-desc', textContent: label }),
+      el('span', { className: 'setting-name', textContent: value }),
+      detail ? el('span', { className: 'setting-desc', textContent: detail }) : null);
+  }
+  function renderEnv(env) {
+    const at = document.getElementById('rk-env');
+    if (!at) return;
+    env = env || {};
+    if (!env.available) {
+      const why = env.error || 'The boot environment has not been read on this box yet. Select Read the boot environment.';
+      at.replaceChildren(el('p', { className: `setting-desc${env.error ? ' bad' : ''}`, textContent: why }));
+      return;
+    }
+    const config = env.config || {};
+    const device = env.device || {};
+    const copies = env.copies || {};
+    const configSaid = config.present === false ? 'Not present' : config.valid === false ? 'Present, but not valid' : 'Present and valid';
+    const copySaid = copies.primary && copies.redundant
+      ? (copies.agree ? 'Both readable, and they agree' : 'Both readable, but they differ')
+      : copies.primary ? 'Only the primary copy is readable'
+        : copies.redundant ? 'Only the redundant copy is readable' : 'Neither copy is readable';
+    at.replaceChildren(el('div', { className: 'admin-tiles' },
+      envTile('Boot count', env.bootcount == null ? 'Unknown' : String(env.bootcount), 'The count U-Boot has recorded.'),
+      envTile('Limit', env.bootlimit == null ? 'Not set' : String(env.bootlimit), 'After this many failed boots, the rescue route runs.'),
+      envTile('Card confirms its boot', env.card_confirms == null ? 'Not set' : env.card_confirms ? 'Yes' : 'No',
+        env.card_confirms ? 'The card resets the count when it boots.' : 'The count resets when the card\'s boot script loads.'),
+      envTile('Rescue fallback', env.altbootcmd_rescue ? 'nand_boot_rescue' : 'Not the rescue path', env.altbootcmd || 'No altbootcmd is set.'),
+      envTile('Config', configSaid, config.path || '/etc/fw_env.config'),
+      envTile('Copies', copySaid, device.name ? `The ${device.name} MTD, ${Math.round((device.size || 0) / 2 ** 20)} MB.` : 'The environment\'s two copies.'),
+    ));
+  }
+  async function readEnv(event) {
+    const button = event.currentTarget;
+    const note = document.getElementById('rk-env-note');
+    button.disabled = true;
+    say('Reading the boot environment…', true, note);
+    try {
+      const id = (await postJSON('/admin/rkboard', { action: 'env-show' })).id;
+      const done = await awaitResult(id);
+      if (!done) say('The boot environment was not read in time.', false, note);
+      else if (!done.ok) say(resultSaid(done), false, note);
+      else {
+        say(resultSaid(done), true, note);
+        shown = '';
+        load();
+      }
+    } catch (err) {
+      say(err.message, false, note);
+    } finally {
+      button.disabled = false;
+    }
   }
 
   // ---- Cards in a reader (hub/rkusb.cards, root/rkcard.py): one card each, its drawer the three actions. Each is
@@ -1088,6 +1146,9 @@
     const hash = location.hash.slice(1);
     show(tabs.some((tab) => tab.dataset.rkTab === hash) ? hash : tabs[0].dataset.rkTab);
   })();
+
+  const envRead = document.getElementById('rk-env-read');
+  if (envRead) envRead.addEventListener('click', readEnv);
 
   load();
   // For the page tests: the drawing, called with data of their own.

@@ -48,6 +48,19 @@
         <div class="library-buttons" id="rk-actions"></div>
         <p class="setting-desc action-note" id="rk-note" role="status" hidden></p>
       </div>
+      <div class="net-card setting" id="rk-env-card">
+        <h3 data-i18n="admin-rockchip.env.title">Boot environment</h3>
+        <p class="setting-desc" data-i18n="admin-rockchip.env.intro">
+          The card's U-Boot environment on the onboard flash: the boot count and its limit, whether the card confirms
+          its own boot, the fallback that runs the rescue, and whether both copies of the environment can be read.
+          Read-only: this reads the environment and keeps the answer for this page.
+        </p>
+        <div id="rk-env"><p class="setting-desc" data-i18n="admin-rockchip.env.not-read">Not read yet. Select Read the boot environment.</p></div>
+        <div class="library-buttons">
+          <button class="action-btn" type="button" id="rk-env-read" data-i18n="admin-rockchip.env.read">Read the boot environment</button>
+        </div>
+        <p class="setting-desc action-note" id="rk-env-note" role="status" hidden></p>
+      </div>
     </section>
 
     <section class="admin-pane" id="rk-copies-pane" data-rk-pane="copies" aria-labelledby="rk-copies-title">
