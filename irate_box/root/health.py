@@ -39,9 +39,9 @@ Writing a check (irate_box/finding.py says what each part of a finding is for):
     record). What is so: asked of the system itself (ss, systemctl, a request, a file). The finding
     compares them. Never take the second from the first: check_port_80 once said "fine" whenever
     the recorded port was 80, without asking whether anything listened there.
-  - A deliberate choice is not a fault. If the owner turned a thing off, that is ok, said plainly.
+  - A deliberate choice is not a fault. If the administrator turned a thing off, that is ok, said plainly.
   - Status: ok when what is matches what should be; warn when the box works with less because of
-    the owner's choice or another program; problem when something the box needs is broken.
+    the administrator's choice or another program; problem when something the box needs is broken.
   - One check_* function per thing checked, returning a list of findings, added to scan() below.
     Its finding id is stable kebab-case ("port-80"); its message ids are "<id>.<case>", with
     ".why" and ".fix" after the case they belong to.
@@ -77,7 +77,7 @@ from irate_box.finding import action, english, finding
 from irate_box.hub import jsonlog
 from irate_box.library import zimcheck
 from irate_box.msg import M, Refused, duration, named, render, sentences, when
-from irate_box.root import kernelinfo, memguard, rtc, sysread
+from irate_box.root import kernelinfo, livingwill, memguard, rtc, sysread
 
 ETC = Path(os.environ.get("HUB_ETC_DIR", "/etc/hub"))
 STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
@@ -593,7 +593,7 @@ def check_units():
     failed = [
         ln.split()[0] for ln in run("systemctl", "--failed", "--no-legend", "--plain").stdout.splitlines() if ln.split()
     ]
-    # Each failed unit that isn't irate-box's (the image's, or the owner's own), with its options, from the least
+    # Each failed unit that isn't irate-box's (the image's, or the administrator's own), with its options, from the least
     # done: see why; accept it; start it again, asked first, as it isn't ours.
     # A package the box watches (Updates → Packages from their makers): known, so said as itself.
     watched = watched_units()
@@ -702,8 +702,8 @@ def check_units():
 
 # --- what adds nothing here ----------------------------------------------------------------------
 # Services of the image's that do nothing on this box and could cause trouble (a unit failing at every boot,
-# a radio stack nobody uses): each said, with switching it off as the owner's choice and switching it back
-# on as its undo; never done for the owner. What was switched off here is kept in IDLE_OFF.
+# a radio stack nobody uses): each said, with switching it off as the administrator's choice and switching it back
+# on as its undo; never done for the administrator. What was switched off here is kept in IDLE_OFF.
 IDLE_OFF = ETC / "idle-off.json"
 NO_LORA = re.compile(r"No (?:sx\d+|lr\d+|rf95|llcc68|[a-z0-9]+) radio\b|No radio instance", re.I)
 
@@ -1337,7 +1337,7 @@ def check_uplink():
 
 def link_findings(st):
     """The links nobody watches: none at all; one that carries the box, or would (a connection set to start by itself on
-    it), and isn't watched, louder when it is down too, with a reconnect; one the owner set not to be watched is theirs.
+    it), and isn't watched, louder when it is down too, with a reconnect; one the administrator set not to be watched is theirs.
     And each watched link but the first that has stalled, and one of a kind the box knows no repair for."""
     inv = st.get("inventory")
     if not isinstance(inv, dict):
@@ -1683,7 +1683,7 @@ def _json_or(path, default=None):
 
 def roaming_findings(st, inv):
     """Roaming often while the hotspot shares the radio: each roam moves the guests'
-    channel too, and is a re-association on the radio. Refused with the choices, never done for the owner."""
+    channel too, and is a re-association on the radio. Refused with the choices, never done for the administrator."""
     radio = next(
         (r for r in (inv or {}).get("radios", []) if r.get("iface") == st.get("iface") and r.get("roaming")), None
     )
@@ -2284,7 +2284,7 @@ def check_hotspot():
 
 def check_hotspot_per_account():
     """While the hotspot is on: whether it could give each account a WiFi password of its own (ap.per_account).
-    Information for the owner's choice, never a problem."""
+    Information for the administrator's choice, never a problem."""
     from irate_box.hub import hotspot
     from irate_box.root import ap
 
@@ -2643,7 +2643,7 @@ def check_addon_declared():
                     actions=[repair] if repair else [],
                 )
             )
-    # The owner's own checks for this doctor, from /etc/irate-box/checks.d.
+    # The administrator's own checks for this doctor, from /etc/irate-box/checks.d.
     title = M("ownchecks.title", "Your own checks")
     for i in secdoctor.own_checks(doctor="box"):
         out.append(
@@ -2994,6 +2994,7 @@ def check_space():
 # can say which service writes; a journal drop-in that syncs more often than journald's default; an architecture
 # apt indexes with nothing installed for it (every package list and apt cache rebuild for it, for nothing).
 GO_CARD_WRITES = _go("card-writes", M("go.card-writes", "Recovery → SD card writes"))
+GO_RESCUE_WILL = _go("rescue-will", M("go.rescue-will", "Recovery → Rescue instructions"))
 SYSTEMD_ETC = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd"))
 IO_ACCOUNTING = SYSTEMD_ETC / "system.conf.d" / "50-irate-box-io.conf"
 IO_ACCOUNTING_STATE = ETC / "io-accounting.json"
@@ -3167,7 +3168,7 @@ def _service_writes_findings(summary, card_name):
                     "Its add-on's manifest says nothing about where it writes (no writes block).",
                 )
             )
-        # Each of its card paths can be kept in RAM, the owner judging what is throwaway (asked first).
+        # Each of its card paths can be kept in RAM, the administrator judging what is throwaway (asked first).
         acts = [
             action(
                 f"card-ram:{unit}:{i}",
@@ -3216,7 +3217,7 @@ def _manifests():
 
 
 def _service_ram_findings():
-    """A path declared to be in RAM (an add-on's manifest, or the owner's choice) that is not, for its service."""
+    """A path declared to be in RAM (an add-on's manifest, or the administrator's choice) that is not, for its service."""
     from irate_box.root import servicewrites
 
     out = []
@@ -3470,7 +3471,7 @@ def _canary_intact(path):
 
 
 def canary_tick():
-    """The test file's turn: 4 KB with a sequence number and a checksum, fsynced. Only where the owner turned it on."""
+    """The test file's turn: 4 KB with a sequence number and a checksum, fsynced. Only where the administrator turned it on."""
     if not canary_on():
         return False
     path = _canary_path()
@@ -3919,8 +3920,8 @@ def set_canary(on):
 
 
 def install_units():
-    """install.sh: the doctor's timer and its boot check (the recommended set, and switched off only by the owner's
-    choice), and the test file where the owner turned it on. A unit the owner turned off is removed, so an update
+    """install.sh: the doctor's timer and its boot check (the recommended set, and switched off only by the administrator's
+    choice), and the test file where the administrator turned it on. A unit the administrator turned off is removed, so an update
     does not bring it back."""
     from irate_box.root import safeio
 
@@ -4920,7 +4921,7 @@ def _nand_tool(*verb):
 
 
 def _io_accounting_configured():
-    """Whether a systemd configuration file other than irate-box's asks for per-service I/O accounting: the owner's
+    """Whether a systemd configuration file other than irate-box's asks for per-service I/O accounting: the administrator's
     own drop-in, or the image's. The last DefaultIOAccounting= wins, as systemd reads them."""
     files = [SYSTEMD_ETC / "system.conf", *sorted((SYSTEMD_ETC / "system.conf.d").glob("*.conf"))]
     on = False
@@ -4940,7 +4941,7 @@ def _io_accounting_configured():
 
 def card_accounting_on():
     """Per-service I/O accounting: systemd's default, in a file of irate-box's, applied to running services too.
-    The setting before irate-box's file is recorded, so off can leave the owner's own choice alone."""
+    The setting before irate-box's file is recorded, so off can leave the administrator's own choice alone."""
     IO_ACCOUNTING.parent.mkdir(parents=True, exist_ok=True)
     if not IO_ACCOUNTING_STATE.exists():
         IO_ACCOUNTING_STATE.write_text(json.dumps({"before": "on" if _io_accounting_configured() else "off"}) + "\n")
@@ -4999,7 +5000,7 @@ def arch_remove(arch):
 # command CMD56), so the check reads what every card and Linux keep: the card's identity and age, what has been
 # written to its filesystems over their life (ext4's lifetime_write_kbytes), the kernel's I/O errors for it,
 # ext4's error count, a root filesystem fallen back to read-only, and on eMMC the device's own wear estimate. Two
-# tests the owner starts, both read-only: a quick read-speed test (kept, so a card that slows down shows), and a
+# tests the administrator starts, both read-only: a quick read-speed test (kept, so a card that slows down shows), and a
 # whole-card read in a unit of its own, which finds the places that can no longer be read.
 SD_MAKERS = {
     0x01: "Panasonic",
@@ -5506,7 +5507,7 @@ def check_builds(now=None, quick=False):
             )
         )
     # The proving runs (hub/proving.py): what a new release needs that the tooling lacks, and each
-    # family's last offline proof. Nothing here when the owner has not turned proving runs on.
+    # family's last offline proof. Nothing here when the administrator has not turned proving runs on.
     try:
         from irate_box.hub import proving
 
@@ -5523,7 +5524,7 @@ def check_builds(now=None, quick=False):
 # online. The hub's own expiry
 # (hubclock.py) never reads the wall clock; logs, git commit dates, file times and certificate
 # checks do. So: what keeps the time, what happened at this boot, is the time certainly wrong,
-# and, offline, set it from the owner's browser.
+# and, offline, set it from the administrator's browser.
 
 NTP_DAEMONS = (
     ("chrony.service", "chrony"),
@@ -6098,7 +6099,7 @@ def check_module():
 
 
 def set_clock(epoch):
-    """Set the system clock from the owner's browser. Only while nothing better has set it,
+    """Set the system clock from the administrator's browser. Only while nothing better has set it,
     and only to a plausible time; then saved, so the next boot starts from here."""
     now = time.time()
     c = clock_facts()
@@ -6148,7 +6149,7 @@ def set_clock(epoch):
         raise Refused(M("repair.clock.date-failed", "The command date failed: {detail}", detail=r.stderr.strip()))
     saved = []
     rtc.RUN.mkdir(parents=True, exist_ok=True)
-    rtc.TRUSTED.write_text(str(int(epoch)))  # the owner set it: worth writing to a clock module from now on
+    rtc.TRUSTED.write_text(str(int(epoch)))  # the administrator set it: worth writing to a clock module from now on
     if rtc.load_config():
         try:
             rtc.save(force=True)
@@ -6182,7 +6183,7 @@ def set_clock(epoch):
 
 
 def check_usb_filesystems():
-    """Which filesystems a USB stick may have for this box to read it (books, toolkits, imports)."""
+    """Which filesystems a USB drive may have for this box to read it (books, toolkits, imports)."""
     from irate_box.root import usbstick
 
     can = usbstick.readable()
@@ -6980,7 +6981,7 @@ def led_status():
 
 
 def check_led(ls=None, active=None):
-    """The status light: which LED, what it shows and how; a light the owner asked for that isn't driven."""
+    """The status light: which LED, what it shows and how; a light the administrator asked for that isn't driven."""
     ls = led_status() if ls is None else ls
     if not ls:
         return []
@@ -7479,7 +7480,7 @@ def check_usb_gadget(st=None):
 def check_watchers(now=None):
     """What the watchers saw and did in the last day, in one time line (watchlog): the uplink
     watchdog's outages, causes and steps, crash watch's radio failures, the driver's own resets, and
-    why each boot happened. Refused so the owner can follow one incident from start to end."""
+    why each boot happened. Refused so the administrator can follow one incident from start to end."""
     from irate_box.hub import watchlog
 
     now = now or time.time()
@@ -8740,6 +8741,331 @@ def check_kernel_features():
     return out
 
 
+def _card_bytes():
+    try:
+        sectors = int((Path("/sys/class/block") / "mmcblk0" / "size").read_text().strip())
+        return sectors * 512
+    except (OSError, ValueError):
+        return None
+
+
+def _gb(size):
+    return f"{size / (1 << 30):.1f} GB"
+
+
+def check_living_will():
+    """The administrator's instructions to the rescue: readable, fitting this card, and present in both copies."""
+    from irate_box.root import hardening
+
+    out = []
+    view = livingwill.show()
+    instructions = view.get("instructions") or livingwill.defaults()
+    title = M("living-will.title", "Living will")
+    if view.get("valid"):
+        out.append(
+            finding(
+                "living-will",
+                title,
+                "ok",
+                M(
+                    "living-will.ok",
+                    "The living will is saved and can be read: format version 1, written on {when}.",
+                    when=when(view.get("written") or 0),
+                ),
+            )
+        )
+    elif view.get("written") is None and not view.get("problem"):
+        out.append(
+            finding(
+                "living-will",
+                title,
+                "warn",
+                M("living-will.missing", "There is no living will, so the rescue will use its safe defaults."),
+                M(
+                    "living-will.missing.why",
+                    "The rescue will not know how the administrator wants the card restored, where to keep its findings, "
+                    "or whether to start its hotspot.",
+                ),
+                M(
+                    "living-will.missing.fix",
+                    "Open Recovery → Rescue instructions and save the administrator's instructions.",
+                ),
+                go=GO_RESCUE_WILL,
+                actions=[action("will-save-defaults", M("living-will.defaults.action", "Save the safe defaults"))],
+            )
+        )
+    elif view.get("problem_id") == "living-will.file-version":
+        out.append(
+            finding(
+                "living-will",
+                title,
+                "problem",
+                M(
+                    "living-will.version",
+                    "The living will is format version {version}, and the installed rescue reads version 1.",
+                    version=view.get("version"),
+                ),
+                M("living-will.version.why", "The rescue cannot follow instructions it does not understand."),
+                M(
+                    "living-will.version.fix",
+                    "Update irate-box and the rescue together, then save the living will again.",
+                ),
+                go=GO_RESCUE_WILL,
+                evidence=[str(livingwill.MASTER)],
+            )
+        )
+    else:
+        why = view.get("problem") or "the file cannot be read"
+        out.append(
+            finding(
+                "living-will",
+                title,
+                "problem",
+                M("living-will.invalid", "The living will cannot be read: {why}.", why=why),
+                M("living-will.invalid.why", "The rescue will ignore it and use its safe defaults."),
+                M(
+                    "living-will.invalid.fix",
+                    "Open Recovery → Rescue instructions and save the administrator's instructions again.",
+                ),
+                go=GO_RESCUE_WILL,
+                evidence=[str(livingwill.MASTER)],
+            )
+        )
+
+    restore_title = M("living-will-restore.title", "Living will: restoring the card")
+    method = instructions.get("restore", {}).get("method", "none")
+    if method == "none":
+        out.append(
+            finding(
+                "living-will-restore",
+                restore_title,
+                "ok",
+                M("living-will-restore.none", "The living will leaves the card's restore to the administrator."),
+            )
+        )
+    elif method == "other-slot":
+        ab = hardening.state().get("ab", "off")
+        if ab == "off":
+            out.append(
+                finding(
+                    "living-will-restore",
+                    restore_title,
+                    "problem",
+                    M(
+                        "living-will-restore.other-slot",
+                        "The living will says to restore from the other A/B slot, but this card has one system image and no second slot.",
+                    ),
+                    M(
+                        "living-will-restore.other-slot.why",
+                        "The rescue would have nothing to switch to, and the card would stay unbootable.",
+                    ),
+                    M(
+                        "living-will-restore.other-slot.fix",
+                        "Set the restore method to a full image or a salvage copy, or lay the card out with A/B slots.",
+                    ),
+                    go=GO_RESCUE_WILL,
+                    evidence=[
+                        f"{hardening.STATE}: ab=off",
+                        f"{hardening.CMDLINE}: {hardening.CMDLINE.read_text().strip() if hardening.CMDLINE.exists() else ''}",
+                    ],
+                )
+            )
+        else:
+            out.append(
+                finding(
+                    "living-will-restore",
+                    restore_title,
+                    "ok",
+                    M("living-will-restore.ab", "The living will restores the card from the other A/B slot."),
+                )
+            )
+    elif method in ("image", "salvage"):
+        problem = (
+            livingwill.image_problem(instructions) if method == "image" else livingwill.salvage_problem(instructions)
+        )
+        if problem:
+            out.append(
+                finding(
+                    "living-will-restore",
+                    restore_title,
+                    "problem",
+                    problem["summary"],
+                    problem.get("why"),
+                    problem.get("fix"),
+                    go=GO_RESCUE_WILL,
+                    evidence=problem.get("evidence", []),
+                )
+            )
+        else:
+            note = ""
+            if method == "image" and instructions.get("restore", {}).get("image", {}).get("source") == "url":
+                note = M(
+                    "living-will-restore.image.url",
+                    "The image is at an HTTPS address. The rescue checks its checksum when it downloads it.",
+                )
+            if method == "image":
+                summary = M(
+                    "living-will-restore.image.ok",
+                    "The living will's restore image is on the box, and its checksum matches.",
+                )
+            else:
+                summary = M("living-will-restore.salvage.ok", "The living will's salvage copy is present.")
+            out.append(
+                finding(
+                    "living-will-restore",
+                    restore_title,
+                    "ok",
+                    summary,
+                    notes=[note] if note else [],
+                )
+            )
+
+    copies_title = M("living-will-copies.title", "Living will copies")
+    copies = view.get("copies") or {}
+    problems, notes = [], []
+    if not livingwill.NAND_STATE.is_dir():
+        problems.append(
+            M(
+                "living-will-copies.nand.no-volume",
+                "The onboard flash has no state volume that the living will can be written to.",
+            )
+        )
+    elif copies.get("nand") == "missing":
+        problems.append(M("living-will-copies.nand.missing", "The onboard flash has no copy of the living will."))
+    elif copies.get("nand") == "stale":
+        problems.append(
+            M("living-will-copies.nand.stale", "The copy on the onboard flash does not match the box's living will.")
+        )
+    if copies.get("usb") == "missing":
+        problems.append(M("living-will-copies.usb.missing", "The rescue USB drive has no copy of the living will."))
+    elif copies.get("usb") == "stale":
+        problems.append(
+            M("living-will-copies.usb.stale", "The copy on the rescue USB drive does not match the box's living will.")
+        )
+    if problems:
+        out.append(
+            finding(
+                "living-will-copies",
+                copies_title,
+                "warn",
+                sentences(*problems),
+                M("living-will-copies.why", "The rescue would follow older instructions, or none."),
+                M(
+                    "living-will-copies.fix",
+                    "Open Recovery → Rescue instructions and select Write to the onboard flash and the USB drive.",
+                ),
+                go=GO_RESCUE_WILL,
+                actions=[
+                    action(
+                        "will-push",
+                        M("living-will-copies.action", "Write the living will to its copies"),
+                        M(
+                            "living-will-copies.confirm",
+                            "Write the living will to the onboard flash and the rescue USB drive?",
+                        ),
+                    )
+                ],
+                notes=notes,
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "living-will-copies",
+                copies_title,
+                "ok",
+                M(
+                    "living-will-copies.ok",
+                    "The copies on the onboard flash and the rescue USB drive match the box's living will.",
+                ),
+            )
+        )
+
+    room_title = M("living-will-room.title", "Living will: salvage space")
+    target = instructions.get("where", {}).get("salvage", "usb")
+    folder = livingwill.USB_STICK if target == "usb" else livingwill.NAND_STATE
+    need = _card_bytes()
+    if not folder.is_dir() or need is None:
+        out.append(
+            finding(
+                "living-will-room",
+                room_title,
+                "warn",
+                M("living-will-room.unknown", "The box could not read how much room the salvage target has."),
+                M("living-will-room.unknown.why", "A salvage copy cannot fit."),
+                M("living-will-room.unknown.fix", "Check the target by hand."),
+            )
+        )
+    else:
+        free = shutil.disk_usage(folder).free
+        if free < need:
+            out.append(
+                finding(
+                    "living-will-room",
+                    room_title,
+                    "warn",
+                    M(
+                        "living-will-room.tight",
+                        "The salvage target has {free} free, and the living will's salvage copy needs {need}.",
+                        free=_gb(free),
+                        need=_gb(need),
+                    ),
+                    M("living-will-room.tight.why", "A salvage copy cannot fit."),
+                    M(
+                        "living-will-room.tight.fix",
+                        "Free space on the target, or set the salvage target to the other place.",
+                    ),
+                    go=GO_RESCUE_WILL,
+                )
+            )
+        else:
+            out.append(
+                finding(
+                    "living-will-room",
+                    room_title,
+                    "ok",
+                    M(
+                        "living-will-room.ok",
+                        "The salvage target has {free} free, and the living will's salvage copy needs {need}.",
+                        free=_gb(free),
+                        need=_gb(need),
+                    ),
+                )
+            )
+
+    if view.get("password_set"):
+        out.append(
+            finding(
+                "living-will-reach",
+                M("living-will.reach.title", "Living will: hotspot password"),
+                "ok",
+                M("living-will.reach.ok", "The living will has its own hotspot password."),
+            )
+        )
+    else:
+        out.append(
+            finding(
+                "living-will-reach",
+                M("living-will.reach.title", "Living will: hotspot password"),
+                "warn",
+                M(
+                    "living-will.reach.fixed",
+                    "The living will has no hotspot password of its own, so the rescue uses the build's fixed password.",
+                ),
+                M(
+                    "living-will.reach.fixed.why",
+                    "Anyone who knows the fixed password can join the rescue hotspot and use its page.",
+                ),
+                M(
+                    "living-will.reach.fixed.fix",
+                    "Open Recovery → Rescue instructions and save the living will, or set a hotspot password.",
+                ),
+                go=GO_RESCUE_WILL,
+            )
+        )
+    return out
+
+
 def scan(quick=False):
     """Every check. quick is the usual run: the builds' size kept from the last full run rather than walked (the
     Lyra's slow step: 132.6 of a 143.5 s run), and the books' headers without opening each in Kiwix. Each check's
@@ -8783,6 +9109,7 @@ def scan(quick=False):
         check_usb_filesystems,
         check_package_files,
         check_hardening,
+        check_living_will,
         check_boards,
         check_image,
         check_apt_recommends,
@@ -9018,6 +9345,16 @@ def fix(choice):
 
         recommended.record(kind, arg)  # the administrator's own choice: never offered back
         return M("repair.package-priorities.saved", "The setting is saved.")
+    if kind == "will-save-defaults":
+        from irate_box.root import livingwill
+
+        livingwill.save(livingwill.defaults())
+        return M("repair.will-defaults", "The safe living will is saved.")
+    if kind == "will-push":
+        from irate_box.root import livingwill
+
+        livingwill.push("WRITE WILL")
+        return M("repair.will-pushed", "The living will was written to the copies that are present.")
     if kind == "board-hold-set":
         from irate_box.root import osupdates
 
@@ -9027,7 +9364,7 @@ def fix(choice):
 
         on = arg == "on"
         said = {"health-timer": set_timer, "lost-writes": set_lostwrites, "canary": set_canary}[kind](on)
-        recommended.record(kind, arg)  # the owner's own choice: never offered back
+        recommended.record(kind, arg)  # the administrator's own choice: never offered back
         return said
     if kind == "build-bounds-install":
         memguard.install_bounds()
@@ -9236,7 +9573,7 @@ def fix(choice):
 
         key, _, value = arg.partition(":")
         said = card_set(key, value)
-        recommended.record(f"card-set:{key}", value)  # the owner's own choice: never offered back
+        recommended.record(f"card-set:{key}", value)  # the administrator's own choice: never offered back
         return said
     if kind in ("card-ram", "card-ram-off"):
         from irate_box.hub import cardhistory
@@ -9363,7 +9700,7 @@ def main(argv):
         print(f"lost writes: {len(found)} finding(s)")
     elif argv == ["canary"]:  # the test file's turn (irate-box-canary.timer)
         canary_tick()
-    elif argv == ["install-units"]:  # install.sh: the units, as the owner's choices leave them
+    elif argv == ["install-units"]:  # install.sh: the units, as the administrator's choices leave them
         try:
             install_units()
         except ValueError as exc:

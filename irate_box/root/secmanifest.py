@@ -110,6 +110,26 @@ _PATH_ACTIONS = {
         "reads": ["rk-upload"],
         "writes": ["control/rkboard.json", "rk-upload", "rk-bootloaders"],
     },
+    "will-show": {"reads": ["root-state/living-will.json"], "writes": ["control/living-will.json"]},
+    "will-save": {
+        "reads": [],
+        "writes": [
+            "root-state/living-will.json",
+            "root-state/living-will-signers",
+            "root-state/living-will-key",
+            "control/living-will.json",
+        ],
+    },
+    "will-push": {
+        "reads": ["root-state/living-will.json", "root-state/living-will-signers"],
+        "writes": [
+            "nand/state/irate/living-will.json",
+            "nand/state/irate/living-will-signers",
+            "usb/irate/living-will.json",
+            "usb/irate/living-will-signers",
+            "control/rescue.json",
+        ],
+    },
     "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
     "hw-set": {
         "reads": [],
