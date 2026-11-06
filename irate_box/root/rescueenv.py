@@ -275,6 +275,26 @@ def restart_rescue(confirm):
     )
 
 
+def confirm_boot(card_confirms=None):
+    """Reset bootcount to 0, and card_confirms when it is given. Returns what was written."""
+    data = show()
+    if data.get("bootcount") is None:
+        raise Refused(
+            M(
+                "rescue.confirm.no-bootcount",
+                "U-Boot's environment has no bootcount, so there is no count to reset.",
+            )
+        )
+    if not set_key("bootcount", 0):
+        raise Refused(M("rescue.confirm.set-failed", "The boot count could not be reset."))
+    if card_confirms is not None:
+        if type(card_confirms) is not bool:
+            raise Refused(M("rescue.confirm.bad-card", "Say whether the card confirms its own boot."))
+        if not set_key("card_confirms", 1 if card_confirms else 0):
+            raise Refused(M("rescue.confirm.card-failed", "The card_confirms setting could not be saved."))
+    return {"bootcount": 0, "card_confirms": card_confirms}
+
+
 def snapshot():
     """The control JSON's env: the reading, or why it could not be made. Never raises."""
     try:

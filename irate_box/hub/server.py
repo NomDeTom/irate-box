@@ -3584,6 +3584,22 @@ def rescue_env_snapshot():
     return data.get("env", {"available": False})
 
 
+def rescue_confirm_snapshot():
+    """/admin/rkboard's boot_confirm: the last confirmation, or why it did not happen."""
+    data = _read_json(CONTROL_DIR / "rescue-confirm.json", {}) or {}
+    env = rescue_env_snapshot()
+    return {
+        "available": bool(env.get("available")),
+        "bootcount": env.get("bootcount"),
+        "bootlimit": env.get("bootlimit"),
+        "card_confirms": env.get("card_confirms"),
+        "last_confirm": data.get("at"),
+        "last_confirm_over": data.get("over"),
+        "confirmed": data.get("confirmed", False),
+        "reason": data.get("reason", ""),
+    }
+
+
 def rescue_control_snapshot():
     """/admin/rkboard's rescue: whether This box's rescue is ready, and why not."""
     data = _read_json(CONTROL_DIR / "rescue.json", {}) or {}
@@ -3612,6 +3628,7 @@ def rkboard_snapshot():
         "rk_images": {"settings": rkimages.settings(), "status": rkimages.status()},
         "env": rescue_env_snapshot(),
         "rescue": rescue_control_snapshot(),
+        "boot_confirm": rescue_confirm_snapshot(),
     }
 
 
@@ -8052,6 +8069,15 @@ class Handler(BaseHTTPRequestHandler):
             act, loader = payload.get("action"), payload.get("loader")
             if act == "env-show":
                 self.send_json(202, {"id": control_request({"action": "rk-env-show"})})
+            elif (
+                act == "boot-confirm"
+                and payload.get("confirm") == "CONFIRM"
+                and (payload.get("card_confirms") is None or type(payload.get("card_confirms")) is bool)
+            ):
+                req = {"action": "rk-boot-confirm", "confirm": "CONFIRM"}
+                if "card_confirms" in payload:
+                    req["card_confirms"] = payload["card_confirms"]
+                self.send_json(202, {"id": control_request(req)})
             elif act == "restart-rescue" and isinstance(payload.get("confirm"), str) and len(payload["confirm"]) <= 16:
                 self.send_json(
                     202,

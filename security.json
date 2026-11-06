@@ -503,6 +503,18 @@
         "rk-backups"
       ]
     },
+    "rk-boot-confirm": {
+      "https_only": true,
+      "policy": false,
+      "reads": [
+        "etc/fw_env.config"
+      ],
+      "writes": [
+        "control/rescue.json",
+        "control/rescue-confirm.json",
+        "boot/uboot-env"
+      ]
+    },
     "rk-bundle-stage": {
       "https_only": true,
       "policy": false,
@@ -1199,6 +1211,18 @@
       "ProtectHome": "yes",
       "ProtectProc": "invisible",
       "ProtectSystem": "strict",
+      "User": "root",
+      "source": "install.sh"
+    },
+    "irate-boot-confirm.service": {
+      "NoNewPrivileges": "yes",
+      "PrivateTmp": "yes",
+      "ProtectHome": "yes",
+      "ProtectProc": "invisible",
+      "ProtectSystem": "strict",
+      "ReadWritePaths": [
+        "$STATE"
+      ],
       "User": "root",
       "source": "install.sh"
     },

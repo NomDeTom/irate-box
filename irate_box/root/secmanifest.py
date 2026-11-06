@@ -135,6 +135,10 @@ _PATH_ACTIONS = {
         "reads": ["etc/fw_env.config"],
         "writes": ["control/rescue.json", "boot/uboot-env"],
     },
+    "rk-boot-confirm": {
+        "reads": ["etc/fw_env.config"],
+        "writes": ["control/rescue.json", "control/rescue-confirm.json", "boot/uboot-env"],
+    },
     "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
     "hw-set": {
         "reads": [],

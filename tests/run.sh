@@ -35,6 +35,7 @@ run sim_servicewrites.py
 run sim_nand_state.py
 run sim_rescue_env.py
 run sim_restart_rescue.py
+run sim_boot_confirm.py
 run sim_recommended.py
 run sim_nmrepair.py
 run sim_presets.py

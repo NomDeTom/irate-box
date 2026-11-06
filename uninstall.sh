@@ -100,7 +100,7 @@ for u in irate-box kiwix silverbullet "syncthing@$HUB_USER" ttyd excalidraw-room
 	irate-box-tailscale-off.timer irate-box-librarian.timer irate-box-librarian.service irate-box-secdoctor.timer irate-box-secdoctor.service irate-box-firewall.service \
 	irate-box-boxdoctor.timer irate-box-boxdoctor.service irate-box-lostwrites.service irate-box-canary.timer irate-box-canary.service \
 	irate-box-protected.timer irate-box-protected.service irate-box-protected-sweep.service irate-box-bootkey.service \
-	irate-box-control.path irate-box-control.service irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service irate-box-usb-gadget.service irate-box-hardware.service \
+	irate-box-control.path irate-box-control.service irate-boot-confirm.service irate-box-uplink.service irate-box-crashwatch.service irate-box-memory-guard.service irate-box-led.service irate-box-rfkill.service irate-box-usb-gadget.service irate-box-hardware.service \
 	irate-box-visitors-switch.path irate-box-visitors-switch.service irate-box-visitors.service \
 	irate-box-notebooks.path irate-box-notebooks.service \
 	irate-box-nm-check.service irate-box-nm-check-timer.timer irate-box-nm-check-timer.service; do
@@ -248,7 +248,7 @@ rmdir "$UNITDIR/nginx.service.d" 2>/dev/null || true
 rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch,irate-box-memory-guard,irate-box-led,irate-box-rfkill,irate-box-usb-gadget,irate-box-hardware}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
 	"$UNITDIR"/irate-box-tailscale.{path,service} "$UNITDIR"/irate-box-tailscale-boot.service \
-	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} \
+	"$UNITDIR"/irate-box-librarian.{service,timer} "$UNITDIR"/irate-box-secdoctor.{service,timer} "$UNITDIR"/irate-box-firewall.service "$UNITDIR"/irate-box-control.{path,service} "$UNITDIR"/irate-boot-confirm.service \
 	"$UNITDIR"/irate-box-boxdoctor.{service,timer} "$UNITDIR"/irate-box-lostwrites.service "$UNITDIR"/irate-box-canary.{service,timer} \
 	"$UNITDIR"/irate-box-protected.{service,timer} "$UNITDIR"/irate-box-protected-sweep.service "$UNITDIR"/irate-box-bootkey.service \
 	"$UNITDIR"/irate-box-visitors.service "$UNITDIR"/irate-box-visitors-switch.{path,service} \
