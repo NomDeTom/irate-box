@@ -316,7 +316,7 @@ def _copies():
 def public(instructions, data=None, valid=True, source="master"):
     shown = copy.deepcopy(instructions)
     password = shown.get("reach", {}).get("password", "")
-    shown.setdefault("reach", {})["password"] = ""
+    shown.setdefault("reach", {})["password"] = ""  # nosec B105 - blanking the password for the hub's copy, not a secret
     return {
         "valid": valid,
         "version": data.get("version") if data else VERSION,
