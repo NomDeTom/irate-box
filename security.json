@@ -450,6 +450,17 @@
       "reads": [],
       "writes": []
     },
+    "restart-rescue": {
+      "https_only": true,
+      "policy": false,
+      "reads": [
+        "etc/fw_env.config"
+      ],
+      "writes": [
+        "control/rescue.json",
+        "boot/uboot-env"
+      ]
+    },
     "rk-backup": {
       "https_only": true,
       "policy": false,

@@ -3584,6 +3584,12 @@ def rescue_env_snapshot():
     return data.get("env", {"available": False})
 
 
+def rescue_control_snapshot():
+    """/admin/rkboard's rescue: whether This box's rescue is ready, and why not."""
+    data = _read_json(CONTROL_DIR / "rescue.json", {}) or {}
+    return data.get("rescue", {"ready": False, "reasons": ["The boot environment has not been read yet."]})
+
+
 def rkboard_snapshot():
     """/admin/rkboard: the Rockchip boards on the box's USB as sysfs shows them now (the hub reads it itself), the
     tools the Rockchip boards toolkit brings, the loaders, the root helper's work on them (waiting, and done), and the
@@ -3605,6 +3611,7 @@ def rkboard_snapshot():
         "install_log": _install_log(),
         "rk_images": {"settings": rkimages.settings(), "status": rkimages.status()},
         "env": rescue_env_snapshot(),
+        "rescue": rescue_control_snapshot(),
     }
 
 
@@ -8045,6 +8052,11 @@ class Handler(BaseHTTPRequestHandler):
             act, loader = payload.get("action"), payload.get("loader")
             if act == "env-show":
                 self.send_json(202, {"id": control_request({"action": "rk-env-show"})})
+            elif act == "restart-rescue" and isinstance(payload.get("confirm"), str) and len(payload["confirm"]) <= 16:
+                self.send_json(
+                    202,
+                    {"id": control_request({"action": "restart-rescue", "confirm": payload["confirm"]})},
+                )
             elif act == "loader":
                 self.send_json(202, {"id": control_request({"action": "rk-loader"})})
             elif act == "own-serial" and isinstance(payload.get("on"), bool):

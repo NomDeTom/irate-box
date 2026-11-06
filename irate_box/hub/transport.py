@@ -64,6 +64,7 @@ HTTPS_ONLY = frozenset(
         "rk-finish",
         "will-save",
         "will-push",
+        "restart-rescue",
         "board-install",
         "library-drive",
         "library-drive-eject",
