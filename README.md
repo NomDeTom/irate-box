@@ -51,7 +51,7 @@ Open <http://localhost:8000>. That gives you the landing page, the **shoutbox** 
 caddy run --config config/Caddyfile        # needs :80 — sudo, setcap, or edit the port
 ```
 
-Then it is <http://localhost/>. `/mermaid/`, `/draw/` and `/serial/` go live once their builds exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the routes name. **[docs/dev/building.md](docs/dev/building.md)** walks through all of it, clone to running.
+Then it is <http://localhost/>. `/mermaid/`, `/draw/`, `/svg/` and `/serial/` go live once their builds exist, and `/wiki/`, `/notes/` and `/term/` once their backends listen on the ports the routes name. **[docs/dev/building.md](docs/dev/building.md)** walks through all of it, clone to running.
 
 **Adding a service of your own** (a chat, a map server, a broker): **[docs/dev/services.md](docs/dev/services.md)** says where it should sit, who should reach it, what its manifest and installer section need, and what the firewall and the doctors then do by themselves.
 

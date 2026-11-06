@@ -3135,6 +3135,21 @@ FRONT_HEADER = "X-Irate-Front"
 # they are believed as they always were.
 VIA_SECRET = os.environ.get("HUB_VIA_SECRET", "")
 VIA_HEADER = "X-Irate-Via"
+# The apps' own origins (ports). A different port is a different origin but the same site: the
+# hub's SameSite=Strict cookies still go from these to the hub's port, so a script that ever ran
+# there could make a change with an owner's session. Changes are refused from them; the app's own
+# store paths are the exception, since that is what the origin is there for.
+APP_ORIGIN_PORTS = tuple(
+    int(os.environ.get(name, str(default)))
+    for name, default in (("HUB_DRAW_PORT", 8096), ("HUB_MERMAID_PORT", 8097), ("HUB_SVG_PORT", 8099))
+)
+STORE_PATHS = ("/api/saves", "/api/v2")
+
+
+def _store_path(path):
+    return any(path == base or path.startswith(base + "/") for base in STORE_PATHS)
+
+
 FORWARDED_HEADERS = (
     "X-Forwarded-For",
     "X-Forwarded-Proto",
@@ -3430,6 +3445,10 @@ NOT_SHOWN = M("hub.not-shown", "Not found. The administrator does not show this 
 NO_THREAD = M("board.thread.not-found", "Thread not found. It was deleted, or you cannot see it.")
 CONSENT_FIRST = M("addons.consent.first", "Read the consent text of the add-on and agree to it first.")
 CROSS_SITE = M("hub.cross-site", "Refused. A change must come from a page of this box.")
+APP_ORIGIN_CHANGE = M(
+    "hub.app-origin.change",
+    "Refused. An app on its own address cannot change the hub's pages.",
+)
 SETUP_FIRST = M(
     "setup.first",
     "The box is in its first use. Select Set up this box and make the first administrator account.",
@@ -5599,6 +5618,7 @@ class Handler(BaseHTTPRequestHandler):
             self.headers.get("X-Irate-Account") != "1"
             or (site and site not in ("same-origin", "none"))
             or (origin and urlparse(origin).netloc != self.headers.get("Host", ""))
+            or self._app_origin()
         ):
             self.send_json(
                 403,
@@ -5711,6 +5731,8 @@ class Handler(BaseHTTPRequestHandler):
             ok = False
         origin = self.headers.get("Origin")
         if origin and urlparse(origin).netloc != self.headers.get("Host", ""):
+            ok = False
+        if self._app_origin():
             ok = False
         if not ok:
             self._discard_body()
@@ -6992,7 +7014,7 @@ class Handler(BaseHTTPRequestHandler):
         self._note_account()
         refresh_manifests()
         path = self.path.split("?")[0]
-        if not path.startswith("/_irate/") and self._cross_site():
+        if not path.startswith("/_irate/") and self._cross_site(path):
             return
 
         # Delegated before the body is read: the store takes raw bytes, and the
@@ -8907,32 +8929,47 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_empty(404)
 
-    def _cross_site(self):
+    def _app_origin(self):
+        """Whether this request's Host names one of the apps' own origins (a sibling port)."""
+        try:
+            return urlparse("//" + (self.headers.get("Host") or "")).port in APP_ORIGIN_PORTS
+        except ValueError:
+            return False
+
+    def _cross_site(self, path=""):
         """A change a page on another site made (for /admin,
         see _forged): when the browser says where the request came from (Sec-Fetch-Site, or
         Origin), it must be this host; a sibling port (same-site) does not count. A client that
         sends neither (curl, the box's own scripts) carries no cached login of a browser's.
+        A change from an app's own origin is refused too, except its store's paths: a script
+        that ever ran there could use the owner's SameSite cookie on the hub's port.
         """
         site = self.headers.get("Sec-Fetch-Site")
         origin = self.headers.get("Origin")
-        if (site and site not in ("same-origin", "none")) or (
-            origin and urlparse(origin).netloc != self.headers.get("Host", "")
+        from_app = bool(path) and not _store_path(path) and self._app_origin()
+        if (
+            (site and site not in ("same-origin", "none"))
+            or (origin and urlparse(origin).netloc != self.headers.get("Host", ""))
+            or from_app
         ):
             self._discard_body()
-            self.send_json(403, refused.say(CROSS_SITE))
+            self.send_json(403, refused.say(APP_ORIGIN_CHANGE if from_app else CROSS_SITE))
             return True
         return False
 
     def do_PUT(self):
-        if not self._cross_site() and not store.handle(self, "PUT", self.path.split("?")[0], STORE, DROP):
+        path = self.path.split("?")[0]
+        if not self._cross_site(path) and not store.handle(self, "PUT", path, STORE, DROP):
             self.send_empty(404)
 
     def do_DELETE(self):
-        if not self._cross_site() and not store.handle(self, "DELETE", self.path.split("?")[0], STORE, DROP):
+        path = self.path.split("?")[0]
+        if not self._cross_site(path) and not store.handle(self, "DELETE", path, STORE, DROP):
             self.send_empty(404)
 
     def do_PATCH(self):
-        if not self._cross_site() and not store.handle(self, "PATCH", self.path.split("?")[0], STORE, DROP):
+        path = self.path.split("?")[0]
+        if not self._cross_site(path) and not store.handle(self, "PATCH", path, STORE, DROP):
             self.send_empty(404)
 
     def do_OPTIONS(self):

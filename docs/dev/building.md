@@ -11,6 +11,7 @@ There are three repositories. The hub itself is tiny and needs nothing built; th
 ~/mermaid-live-editor/                fork, branch `hub`      → builds to docs/
 ~/excalidraw-stack/excalidraw/        fork, branch `main`     → builds to excalidraw-app/build/
 ```
+SVG-Edit is built by its fork's Actions (`NomDeTom/svgedit`, `irate-box-bundle.yml`) from upstream at a pinned commit; the hub's wrapper and trim are in `apps/svgedit/` (§3b). It is not built on the board.
 
 The apps are separate repos on purpose: each tracks its upstream and takes rebases, and the hub-specific parts are a handful of gated lines plus one env file per repo. Nothing about the hub is patched into the build output after the fact.
 
@@ -98,6 +99,30 @@ cd ~/hub-apps/room && npm init -y >/dev/null &&
 
 That is the relay plus its four runtime dependencies (~8 MB, all plain JS, so it runs on any architecture). `install.sh --with-collab --apps ~/hub-apps` copies it to `/usr/share/hub/room` and runs it with Debian's `nodejs` as `excalidraw-room.service`, bound to `127.0.0.1:3002` (`HOST`, in the fork). The web server routes `/socket.io/*` to it. Measured on a Luckfox Lyra: ~8 MB anon idle, ~19 MB and about one core with twelve busy clients, and Kiwix search latency barely moved.
 
+## 3b. SVG-Edit
+
+The hub serves the trimmed upstream editor, not a fork with source changes. `NomDeTom/svgedit`'s
+`irate-box-bundle.yml` checks out upstream at `c44f061d`, runs `npm ci --ignore-scripts` and
+`npm run build`, then the hub's `apps/svgedit/trim.py` removes source maps, tests, the IIFE
+bundle, the extensions the wrapper does not load, their non-English locales and the shape
+libraries the Shapes panel does not offer. It copies `apps/svgedit/index.html` and `hub.js` over
+the built page and records `irate-box-bundle.json` and `SHA256SUMS`.
+
+To try it by hand, with Node 22 or newer:
+
+```sh
+git clone --depth 1 --branch master https://github.com/NomDeTom/svgedit ~/svgedit
+cd ~/svgedit && git checkout c44f061d
+npm ci --ignore-scripts && npm run build
+python3 ~/irate-box/apps/svgedit/trim.py dist/editor
+cp ~/irate-box/apps/svgedit/index.html ~/irate-box/apps/svgedit/hub.js \
+  ~/irate-box/apps/svgedit/ext-hub-store.js dist/editor/
+```
+
+`--apps DIR/svg` (or `--apps-from-actions`) installs that folder as `/usr/share/hub/apps/svg`.
+No dependency needs an install script: the native Rolldown binding is an npm optional dependency,
+and `core-js`'s postinstall is only its donation notice.
+
 ## 4. Caddy in front (development)
 
 On a board, `install.sh` puts nginx in front, with the same routes from `config/irate-box.nginx` (§4b). For a dev checkout Caddy is quicker, because its Caddyfile runs as it is:
@@ -170,7 +195,7 @@ Every install also gets the two git servers: `cgit` and `fcgiwrap` from Debian, 
 
 It also sets up a `hub` system user and `irate-box.service` on loopback. The code goes in `/opt/irate-box`, state in `/var/lib/hub` and config in `/etc/hub`. `--with-notes` and `--with-sync` add SilverBullet and `syncthing@hub`. Syncthing is set up for an offline box as described in 4a, with the same admin login as the web server's gate, and shares `/var/lib/hub/notes` as the folder `hub-notes`.
 
-The apps are not built on the board. `--apps-from-actions` fetches the newest bundle of `draw`, `mermaid` and `serial` (and `room`, with `--with-collab`) from the forks' `irate-box-bundle.yml` artifacts through nightly.link, no token needed, and adds them to `/admin`'s Apps section, which keeps them current from then on. Or `--apps DIR` copies your own prebuilt `DIR/mermaid`, `DIR/draw`, `DIR/tools` and `DIR/serial` into `/usr/share/hub/apps/`. `serial` is the `npm run build` output of `nomdetom/serial-terminal`. `--tools` clones the calculators.
+The apps are not built on the board. `--apps-from-actions` fetches the newest bundle of `draw`, `mermaid`, `svg` and `serial` (and `room`, with `--with-collab`) from the forks' `irate-box-bundle.yml` artifacts through nightly.link, no token needed, and adds them to `/admin`'s Apps section, which keeps them current from then on. Or `--apps DIR` copies your own prebuilt `DIR/mermaid`, `DIR/draw`, `DIR/svg`, `DIR/tools` and `DIR/serial` into `/usr/share/hub/apps/`. `serial` is the `npm run build` output of `nomdetom/serial-terminal`. `--tools` clones the calculators.
 
 `--zim FILE|URL`, which can be repeated, installs `kiwix-serve` at `/wiki/`. It copies the file, or downloads the URL on the box, into `/var/lib/hub/zim` and registers it in `library.xml`. Kiwix is mounted at `/wiki`, so a book must not depend on where it is mounted. openZIM books, and docusaurus2zim's by default, use relative paths and work as they are. A book built for one prefix (docusaurus2zim `--base-url`) works only there; one built for `/content/<name>/` shows "did not load properly" on the hub.
 

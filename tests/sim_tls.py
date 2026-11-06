@@ -215,6 +215,7 @@ check(
         "nginx-mermaid.conf",
         "nginx-notebook.conf",
         "nginx-notes.conf",
+        "nginx-svg.conf",
         "nginx-sync.conf",
         "nginx-wiki.conf",
     ]
@@ -309,7 +310,7 @@ tls.front(True)
 sites = sorted(p.name for p in tls.FRONT.glob("caddy-site-*.caddy"))
 main_site = (tls.FRONT / "caddy-site-main.caddy").read_text()
 check(
-    "under Caddy: a twin per origin (the hub, add-ons, notes, books, cgit, administration, Excalidraw, Mermaid, Syncthing), each importing its snippet, with the certificate",
+    "under Caddy: a twin per origin (the hub, add-ons, notes, books, cgit, administration, Excalidraw, Mermaid, SVG-Edit, Syncthing), each importing its snippet, with the certificate",
     sites
     == [
         "caddy-site-addons.caddy",
@@ -319,12 +320,13 @@ check(
         "caddy-site-main.caddy",
         "caddy-site-mermaid.caddy",
         "caddy-site-notes.caddy",
+        "caddy-site-svg.caddy",
         "caddy-site-sync.caddy",
         "caddy-site-wiki.caddy",
     ]
     and all(
         f"import irate_box_{n}" in (tls.FRONT / f"caddy-site-{n}.caddy").read_text()
-        for n in ("notes", "wiki", "git", "admin", "draw", "mermaid", "sync")
+        for n in ("notes", "wiki", "git", "admin", "draw", "mermaid", "svg", "sync")
     )
     and "https://:443 {" in main_site
     and f"tls {tls.CHAIN} {tls.KEY}" in main_site

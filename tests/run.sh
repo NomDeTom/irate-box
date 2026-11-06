@@ -106,6 +106,7 @@ run sim_otherap.py
 run sim_store_quota.py
 run sim_shared_text.py
 run sim_store_edges.py
+run sim_store_app_scope.py
 run sim_radiotests.py
 run sim_roaming.py
 run sim_backup.py
@@ -142,6 +143,9 @@ run sim_visibility.py
 run sim_folders.py
 run sim_calculators.py
 run sim_drawing_folder.py
+run sim_svgedit_bundle.py
+run sim_svg_route.py
+run sim_svg_root.py
 run sim_visitors.py
 run sim_status_tiles.py
 run sim_reports.py

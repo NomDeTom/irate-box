@@ -69,6 +69,9 @@ try:
         r = c.getresponse()
         return r.status, r.read().decode()
 
+    # The Drawing folder now holds three built-in tools by default; keep them on the hub so a tile
+    # of one is what these checks measure.
+    go("POST", "/admin/folders", {"state": {"drawing": {"shown": "always", "keep": False}}})
     _, body = go("GET", "/admin/status-tiles")
     ids = [t["id"] for t in json.loads(body)["tiles"]]
     check("the box row's tiles listed", {"box-people", "box-qr", "box-system", "box-services"} <= set(ids), ids)

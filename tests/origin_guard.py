@@ -45,6 +45,7 @@ text = (
     .replace("@ADMIN_PORT@", "8095")
     .replace("@DRAW_PORT@", "8096")
     .replace("@MERMAID_PORT@", "8097")
+    .replace("@SVG_PORT@", "8099")
     .replace("@SYNC_PORT@", "8098")
 )
 text = (
@@ -57,15 +58,28 @@ text = (
     .replace("@ADMIN_TLS_PORT@", "8495")
     .replace("@DRAW_TLS_PORT@", "8496")
     .replace("@MERMAID_TLS_PORT@", "8497")
+    .replace("@SVG_TLS_PORT@", "8499")
     .replace("@SYNC_TLS_PORT@", "8498")
 )
 servers = secdoctor._nginx_servers(text)
 by_port = {tuple(p): b for p, b in servers}
 hub, notes = by_port.get(("80",), ""), by_port.get(("8091",), "")
 check(
-    "ten server blocks: the hub, add-ons, notes, books, cgit, notebooks, administration, Excalidraw, Mermaid, Syncthing",
+    "eleven server blocks: the hub, add-ons, notes, books, cgit, notebooks, administration, Excalidraw, Mermaid, SVG-Edit, Syncthing",
     sorted(by_port)
-    == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8094",), ("8095",), ("8096",), ("8097",), ("8098",)],
+    == [
+        ("80",),
+        ("8090",),
+        ("8091",),
+        ("8092",),
+        ("8093",),
+        ("8094",),
+        ("8095",),
+        ("8096",),
+        ("8097",),
+        ("8098",),
+        ("8099",),
+    ],
     sorted(by_port),
 )
 cgit = by_port.get(("8093",), "")
@@ -105,6 +119,7 @@ for (port,), name in (
     (("8095",), "admin-site"),
     (("8096",), "draw"),
     (("8097",), "mermaid"),
+    (("8099",), "svg"),
     (("8098",), "sync"),
 ):
     check(
@@ -131,6 +146,7 @@ check(
         "irate_box_admin_port": ("8495", "8095"),
         "irate_box_draw_port": ("8496", "8096"),
         "irate_box_mermaid_port": ("8497", "8097"),
+        "irate_box_svg_port": ("8499", "8099"),
         "irate_box_sync_port": ("8498", "8098"),
     },
     maps,
@@ -417,6 +433,7 @@ check(
         "admin": ("8095",),
         "draw": ("8096",),
         "mermaid": ("8097",),
+        "svg": ("8099",),
         "sync": ("8098",),
     },
     place,
@@ -439,15 +456,16 @@ check(
 caddy = expand((REPO / "config" / "Caddyfile").read_text())
 check(
     "  and on Caddy",
-    caddy.count('header_up Cookie "irate_session=[^;]*;?\\s*" ""') == 9,
+    caddy.count('header_up Cookie "irate_session=[^;]*;?\\s*" ""') == 10,
     caddy.count("header_up Cookie"),
 )
 # Caddy, the fallback: the same origins. Each site with its snippet in place.
 csites = {tuple(p): b for p, b in secdoctor._caddy_servers(secdoctor.parse_caddy(caddy))}
 chub, cnotes, cwiki, cgit_ = (csites.get((p,), "") for p in ("80", "8091", "8092", "8093"))
 check(
-    "Caddy: nine sites: the hub, add-ons, notes, books, cgit, administration, Excalidraw, Mermaid, Syncthing",
-    sorted(csites) == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8095",), ("8096",), ("8097",), ("8098",)],
+    "Caddy: ten sites: the hub, add-ons, notes, books, cgit, administration, Excalidraw, Mermaid, SVG-Edit, Syncthing",
+    sorted(csites)
+    == [("80",), ("8090",), ("8091",), ("8092",), ("8093",), ("8095",), ("8096",), ("8097",), ("8098",), ("8099",)],
     sorted(csites),
 )
 addons_origin = by_port.get(("8090",), "")
@@ -546,7 +564,7 @@ check(
     and "redir {scheme}://{host}:{irate_box_hub_port}{uri} 302" in cadmin
     and "{$HUB_ADMIN_PORT:8095}" in chub,
 )
-cdraw, cmermaid, csync = (csites.get((p,), "") for p in ("8096", "8097", "8098"))
+cdraw, cmermaid, csvg, csync = (csites.get((p,), "") for p in ("8096", "8097", "8099", "8098"))
 check(
     "Caddy: Excalidraw, Mermaid and Syncthing on origins of their own; the hub's port redirects, keeping the off switch",
     all(
@@ -555,30 +573,39 @@ check(
             chub,
         )
         is not None
-        for a in ("draw", "mermaid", "sync")
+        for a in ("draw", "mermaid", "svg", "sync")
     )
     and all(
-        f"redir /{a} {{scheme}}://{{host}}:{{irate_box_{a}_port}}/{a}/ 302" in chub for a in ("draw", "mermaid", "sync")
+        f"redir /{a} {{scheme}}://{{host}}:{{irate_box_{a}_port}}/{a}/ 302" in chub
+        for a in ("draw", "mermaid", "svg", "sync")
     )
     and "HUB_DRAW_ROOT" not in chub
     and "HUB_MERMAID_ROOT" not in chub
+    and "HUB_SVG_ROOT" not in chub
     and "127.0.0.1:8384" not in chub
     and "127.0.0.1:3002" not in chub
     and "/draw.caddy*" in cdraw
     and "reverse_proxy 127.0.0.1:3002" in cdraw
     and "/mermaid.caddy*" in cmermaid
     and "127.0.0.1:3002" not in cmermaid
+    and "/svg.caddy*" in csvg
+    and "header_up X-Irate-App svg" in csvg
+    and "script-src {scheme}://{host}:{irate_box_svg_port}/svg/" in csvg
+    and "/api/v2" not in csvg
+    and "127.0.0.1:3002" not in csvg
     and "reverse_proxy 127.0.0.1:8384" in csync
     and "admin-gate.caddy*" in csync
     and "header_up Host {upstream_hostport}" in csync
     and all(
         "frame-ancestors 'self' {scheme}://{host}:{irate_box_hub_port} {scheme}://{host}" in c
-        for c in (cdraw, cmermaid, csync)
+        for c in (cdraw, cmermaid, csvg, csync)
     )
     and "header_down -X-Frame-Options" in csync
-    and all("HUB_FRONT_SECRET" not in c and "request_header -X-Irate-Front" in c for c in (cdraw, cmermaid, csync)),
+    and all(
+        "HUB_FRONT_SECRET" not in c and "request_header -X-Irate-Front" in c for c in (cdraw, cmermaid, csvg, csync)
+    ),
 )
-for name in ("notes", "wiki", "git", "admin", "draw", "mermaid", "sync"):
+for name in ("notes", "wiki", "git", "admin", "draw", "mermaid", "svg", "sync"):
     check(
         f"Caddy: the {name} origin has a TLS twin",
         f'"{name}"' in (REPO / "irate_box/root/tls.py").read_text().split("_front_files", 1)[1].split("out = {}", 1)[0],
@@ -595,6 +622,7 @@ check(
         "origin-admin": "ok",
         "origin-draw": "ok",
         "origin-mermaid": "ok",
+        "origin-svg": "ok",
         "origin-sync": "ok",
     },
     seen,

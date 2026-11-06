@@ -229,10 +229,11 @@ check(
     [m["id"] for m in M.load() if m.get("tile") and m["tile"].get("href") and m["tile"]["href"] not in shown],
 )
 check(
-    "  the Drawing folder is hidden by default (two drawing tools), its tools still on the hub",
-    'href="/drawing.html"' not in shown
-    and 'href="/app.html#/draw/"' in shown
-    and 'href="/app.html#/mermaid/"' in shown,
+    "  the Drawing folder holds three tools by default, its tools inside it",
+    'href="/drawing.html"' in shown
+    and 'href="/app.html#/draw/"' not in shown
+    and 'href="/app.html#/svg/"' not in shown
+    and 'href="/app.html#/mermaid/"' not in shown,
 )
 private = 'href="/app.html#/git-private/"'
 check(

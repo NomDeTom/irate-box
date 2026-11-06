@@ -43,50 +43,52 @@ const before = { folders: read(FOLDERS), access: read(path.join(CONTROL, 'access
 function restore(file, body) { if (body === null) fs.rmSync(file, { force: true }); else write(file, body); }
 (async () => {
   try {
-    // Two drawing tools: Excalidraw and Mermaid. Hidden by default, both still on the hub.
+    // Three drawing tools are part of the hub: Excalidraw, SVG-Edit and Mermaid. With the
+    // default (When it holds them, and keeping them on) three are enough, so the folder is on the
+    // hub and the three tools are inside it.
     let d = await open('/');
-    check('two tools, the default: no Drawing tile', !has(d, 'Drawing'));
-    check('  Excalidraw and Mermaid show', !!has(d, 'Excalidraw') && !!has(d, 'Mermaid'));
+    check('three tools, the default: the Drawing tile', !!has(d, 'Drawing'));
+    check('  Excalidraw, SVG-Edit and Mermaid are inside it', !has(d, 'Excalidraw') && !has(d, 'SVG-Edit') && !has(d, 'Mermaid'), tiles(d).map((t) => t.name).join('|'));
     d = await open('/drawing.html');
-    check('  the folder page lists both', names(d).join('|') === 'Excalidraw|Mermaid', names(d).join('|'));
+    check('  the folder page lists all three, SVG-Edit beside Excalidraw', names(d).join('|') === 'Excalidraw|SVG-Edit|Mermaid', names(d).join('|'));
 
     await arrange('always');
     d = await open('/');
-    check('Shown at two: the Drawing tile, with the palette', !!has(d, 'Drawing') && /🎨/.test(has(d, 'Drawing').text) && has(d, 'Drawing').href === '/drawing.html');
-    check('  and its tools still on the hub', !!has(d, 'Excalidraw') && !!has(d, 'Mermaid'));
+    check('Shown at three: the Drawing tile, with the palette', !!has(d, 'Drawing') && /🎨/.test(has(d, 'Drawing').text) && has(d, 'Drawing').href === '/drawing.html');
+    check('  and its tools still inside', !has(d, 'Excalidraw') && !has(d, 'SVG-Edit') && !has(d, 'Mermaid'));
 
-    // A third lists the folder, but its files are not there yet: it does not count, so the two
-    // installed tools stay on the hub.
+    await arrange('auto', false);
+    d = await open('/');
+    check('the tickbox off: the folder goes, the three tools are on the hub', !has(d, 'Drawing') && !!has(d, 'Excalidraw') && !!has(d, 'SVG-Edit') && !!has(d, 'Mermaid'));
+    await arrange('hidden', true);
+    d = await open('/');
+    check('Hidden with the tickbox on: the tools on the hub, no folder', !has(d, 'Drawing') && !!has(d, 'Excalidraw') && !!has(d, 'SVG-Edit') && !!has(d, 'Mermaid'));
+    await arrange('always', true);
+    d = await open('/');
+    check('Shown with the tickbox on: the folder, and its tools inside it', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'SVG-Edit') && !has(d, 'Mermaid'));
+
+    // A fourth only lists the folder: draw.io's manifest is there, its files are not. It does not
+    // count, so the three installed tools stay inside and draw.io stays on the hub.
     write(path.join(APPS_D, 'drawio.json'), fs.readFileSync(path.join(REPO, 'addons/drawio.json')));
     const access = JSON.parse(before.access || '{}');
     write(path.join(CONTROL, 'access.json'), JSON.stringify({ ...access, drawio: 'public', jspaint: 'public' }));
     d = await open('/');
-    check('three list the folder but two are installed: its tools stay on the hub', !!has(d, 'Drawing') && !!has(d, 'Excalidraw') && !!has(d, 'Mermaid') && !!has(d, 'draw.io'), tiles(d).map((t) => t.name).join('|'));
+    check('four list the folder but three are installed: credit at three, draw.io on the hub', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'SVG-Edit') && !!has(d, 'draw.io') && !has(d, 'Mermaid'), tiles(d).map((t) => t.name).join('|'));
     d = await open('/drawing.html');
-    check('  its page lists the three', names(d).join('|') === 'Excalidraw|draw.io|Mermaid', names(d).join('|'));
+    check('  its page lists the four in order', names(d).join('|') === 'Excalidraw|SVG-Edit|draw.io|Mermaid', names(d).join('|'));
 
-    // Its files arrive. Shown still, so the folder keeps the three inside it.
+    // Its files arrive: the folder keeps all four.
     fs.mkdirSync(path.join(ADDONS, 'drawio'), { recursive: true });
     await new Promise((r) => setTimeout(r, 50));
     d = await open('/');
-    check('three installed, Shown: the folder stays, all three tools leave the hub', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'Mermaid') && !has(d, 'draw.io'), tiles(d).map((t) => t.name).join('|'));
+    check('four installed, Shown: the folder stays, all four tools leave the hub', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'SVG-Edit') && !has(d, 'Mermaid') && !has(d, 'draw.io'), tiles(d).map((t) => t.name).join('|'));
 
-    await arrange('auto', false);
-    d = await open('/');
-    check('the tickbox off: the folder goes, its tools are on the hub', !has(d, 'Drawing') && !!has(d, 'Excalidraw') && !!has(d, 'draw.io') && !!has(d, 'Mermaid'));
-    await arrange('hidden', true);
-    d = await open('/');
-    check('Hidden with the tickbox on: the conflict leaves the tools on the hub, no folder', !has(d, 'Drawing') && !!has(d, 'Excalidraw') && !!has(d, 'draw.io') && !!has(d, 'Mermaid'));
-    await arrange('always', true);
-    d = await open('/');
-    check('Shown with the tickbox on: the folder, and its tools inside it', !!has(d, 'Drawing') && !has(d, 'Excalidraw') && !has(d, 'draw.io') && !has(d, 'Mermaid'));
-
-    // A fourth: JS Paint. The folder lists all four.
+    // A fifth: JS Paint. The folder lists all five.
     write(path.join(APPS_D, 'jspaint.json'), fs.readFileSync(path.join(REPO, 'addons/jspaint.json')));
     fs.mkdirSync(path.join(ADDONS, 'jspaint'), { recursive: true });
     await new Promise((r) => setTimeout(r, 50));
     d = await open('/drawing.html');
-    check('four tools: the folder lists all four', names(d).join('|') === 'Excalidraw|draw.io|JS Paint|Mermaid', names(d).join('|'));
+    check('five tools: the folder lists all five', names(d).join('|') === 'Excalidraw|SVG-Edit|draw.io|JS Paint|Mermaid', names(d).join('|'));
   } finally {
     restore(FOLDERS, before.folders);
     restore(path.join(CONTROL, 'access.json'), before.access);
@@ -98,8 +100,8 @@ function restore(file, body) { if (body === null) fs.rmSync(file, { force: true 
   // The administrator's two settings on the Drawing folder's entry, and the conflict's warning.
   const adminApps = require('./admin-apps-fixture.cjs');
   const adminHtml = fs.readFileSync(`${WEB}/admin.html`, 'utf8');
-  const snap = { state: {}, folders: [{ id: 'drawing', title: 'Drawing', keep_members: { min: 3, word: 'drawing tools', shown: 'hidden', keep: true, installed: 3 },
-    entries: ['Excalidraw', 'draw.io', 'JS Paint', 'Mermaid'].map((name, i) => ({ href: `/app.html#/drawing/${i}`, name, desc: '', kind: 'page', from: 'draw', hidden: false, extra: false })) }] };
+  const snap = { state: {}, folders: [{ id: 'drawing', title: 'Drawing', keep_members: { min: 3, word: 'drawing tools', shown: 'hidden', keep: true, installed: 5 },
+    entries: ['Excalidraw', 'SVG-Edit', 'draw.io', 'JS Paint', 'Mermaid'].map((name, i) => ({ href: `/app.html#/drawing/${i}`, name, desc: '', kind: 'page', from: name === 'SVG-Edit' ? 'svg' : 'draw', hidden: false, extra: false })) }] };
   const posted = [];
   const vc = new VirtualConsole();
   const dom = new JSDOM(adminHtml, { url: 'http://box/admin/#page-app-drawing', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
@@ -116,7 +118,7 @@ function restore(file, body) { if (body === null) fs.rmSync(file, { force: true 
   const folder = ad.querySelector('.folder-block[data-folder="drawing"]');
   check('the Drawing entry has the folder\'s place on the hub', !!/The Drawing folder on the hub/.test(text(folder)) && !!folder.querySelector('[data-setting="shown"] .chip-group'), text(folder));
   check('  its three places, Shown, When it holds the drawing tools, Hidden', [...folder.querySelectorAll('[data-setting="shown"] .chip')].map(text).join('|') === 'Shown|When it holds the drawing tools|Hidden');
-  check('  the tickbox, and what it takes to act', !!/Show the drawing tools only in the Drawing folder/.test(text(folder)) && /Takes effect while three or more drawing tools are installed: now 3\./.test(text(folder)), text(folder));
+  check('  the tickbox, and what it takes to act', !!/Show the drawing tools only in the Drawing folder/.test(text(folder)) && /Takes effect while three or more drawing tools are installed: now 5\./.test(text(folder)), text(folder));
   check('  the one conflict, said', /The folder is hidden, so the drawing tools stay on the hub\./.test(text(folder)), text(folder));
   const hidden = [...folder.querySelectorAll('[data-setting="shown"] .chip')].find((b) => text(b) === 'Hidden');
   check('  Hidden chosen to start', hidden.getAttribute('aria-pressed') === 'true');

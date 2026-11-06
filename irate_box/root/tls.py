@@ -78,6 +78,7 @@ TWINS = _ports(
         "admin": ("HUB_ADMIN_TLS_PORT", 8495),
         "draw": ("HUB_DRAW_TLS_PORT", 8496),
         "mermaid": ("HUB_MERMAID_TLS_PORT", 8497),
+        "svg": ("HUB_SVG_TLS_PORT", 8499),
         "sync": ("HUB_SYNC_TLS_PORT", 8498),
     },
 )
@@ -94,6 +95,7 @@ PLAIN_PORTS = _ports(
         "admin": ("HUB_ADMIN_PORT", 8095),
         "draw": ("HUB_DRAW_PORT", 8096),
         "mermaid": ("HUB_MERMAID_PORT", 8097),
+        "svg": ("HUB_SVG_PORT", 8099),
         "sync": ("HUB_SYNC_PORT", 8098),
     },
 )
@@ -655,7 +657,7 @@ def _front_files():
         return {
             FRONT / f"caddy-site-{name}.caddy": f"# Written by irate-box (root/tls.py): the {name} site's TLS twin.\n"
             f"https://:{TWINS[name]} {{\n\ttls {CHAIN} {KEY}\n\timport irate_box_{'hub' if name == 'main' else name}\n}}\n"
-            for name in ("main", "addons", "notes", "wiki", "git", "admin", "draw", "mermaid", "sync")
+            for name in ("main", "addons", "notes", "wiki", "git", "admin", "draw", "mermaid", "svg", "sync")
         }
     out = {}
     for name, port in TWINS.items():

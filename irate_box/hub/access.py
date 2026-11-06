@@ -41,6 +41,7 @@ MODES = ("public", "users", "private", "off")
 # id -> (default, login always): what config/irate-box.nginx and config/Caddyfile gate.
 ROUTED = {
     "draw": ("public", False),
+    "svg": ("public", False),
     "mermaid": ("public", False),
     "serial": ("public", False),
     "tools": ("public", False),

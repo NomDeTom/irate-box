@@ -2303,6 +2303,47 @@ def check_hotspot_per_account():
     ]
 
 
+def check_svg_root():
+    """SVG-Edit is a built-in app: HUB_SVG_ROOT names its folder, and the build is whole when the
+    page and the editor script are both there. A dev checkout does not set the variable, which is
+    not a fault; a box with the bundle half-written is."""
+    title = M("svg-root.title", "SVG-Edit's files")
+    root = os.environ.get("HUB_SVG_ROOT", "").strip()
+    if not root:
+        return [finding("svg-root", title, "ok", M("svg-root.unset", "SVG-Edit is not part of this checkout."))]
+    folder = Path(root)
+    if not folder.is_dir():
+        return [
+            finding(
+                "svg-root",
+                title,
+                "problem",
+                M("svg-root.missing", "The folder that holds SVG-Edit is missing."),
+                fix=M("svg-root.fix", "Run the installer again, or install SVG-Edit from Library → Apps."),
+                evidence=[root],
+                actions=[RERUN],
+            )
+        ]
+    missing = [name for name in ("index.html", "Editor.js") if not (folder / name).is_file()]
+    if missing:
+        return [
+            finding(
+                "svg-root",
+                title,
+                "problem",
+                M(
+                    "svg-root.incomplete",
+                    "SVG-Edit's build is incomplete: {missing} is missing.",
+                    missing=" and ".join(missing),
+                ),
+                fix=M("svg-root.fix", "Run the installer again, or install SVG-Edit from Library → Apps."),
+                evidence=[str(folder / name) for name in missing],
+                actions=[RERUN],
+            )
+        ]
+    return [finding("svg-root", title, "ok", M("svg-root.ok", "SVG-Edit's page and editor script are there."))]
+
+
 def check_web():
     web = option(install_options(), "--web", "nginx") or "nginx"
     title = M("web-config.title", "Web server configuration")
@@ -9079,6 +9120,7 @@ def scan(quick=False):
         check_units,
         check_kiwix,
         check_web,
+        check_svg_root,
         check_port_80,
         check_git_addon,
         check_addon_front,

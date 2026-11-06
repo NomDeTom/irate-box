@@ -450,9 +450,9 @@ check(
             "location /sync/ {\n\t\tif ($irate_box_off_sync) { return 404; }\n\t\tauth_basic",
         )
     )
-    and site.count("location = /_irate_admin") == 8
+    and site.count("location = /_irate_admin") == 9
     and site.count("proxy_set_header X-Original-URI $request_uri;\n\t\tproxy_pass http://irate_box_hub/_irate/admin;")
-    == 8,
+    == 9,
 )
 check(
     "  the add-on server: its own /_irate_user and login too, the per-add-on gates included before the shared location",
@@ -464,8 +464,8 @@ gated = set(_re.findall(r"auth_basic \$irate_box_auth_(\w+);", site))
 check(
     "  the site: every app location with a login has its gate include",
     all(f"auth_basic $irate_box_auth_{i};\n" + "\t" * 2 + f"include @ACCESS@.d/gate-{i}.conf*;" in site for i in gated)
-    and site.count("location = /_irate_user") == 7
-    and site.count("location @irate_box_login") == 10,
+    and site.count("location = /_irate_user") == 8
+    and site.count("location @irate_box_login") == 11,
     sorted(gated),
 )
 os.environ.update(HUB_ETC_DIR=str(T / "etc"), HUB_WEB_SERVER="nginx", HUB_NGINX_LOGINS=str(T / "etc" / "htpasswd"))
@@ -860,6 +860,8 @@ try:
     check("  never back to another site", loc == "/account.html?next=/", loc)
     (st / "control").mkdir(exist_ok=True)
     (st / "control" / "access.json").write_text(json.dumps({"draw": "users"}))
+    # The Drawing folder holds three tools by default; keep draw on the hub for this check.
+    (st / "folders.json").write_text(json.dumps({"drawing": {"shown": "always", "keep": False}}))
 
     def home(cookie=None):
         r = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"Cookie": cookie} if cookie else {})

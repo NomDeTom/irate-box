@@ -1,0 +1,38 @@
+{
+  "id": "svg",
+  "order": 14,
+  "status": {
+    "path": "/svg/",
+    "name": "SVG-Edit",
+    "root_env": "HUB_SVG_ROOT"
+  },
+  "install": {
+    "dir": "apps/svg",
+    "needs": "index.html",
+    "title": "SVG-Edit"
+  },
+  "source": {
+    "type": "bundle",
+    "repo": "NomDeTom/svgedit",
+    "branch": "master",
+    "workflow": "irate-box-bundle.yml",
+    "pattern": "irate-box-svgedit-*"
+  },
+  "tile": {
+    "icon": "🖋️",
+    "name": "SVG-Edit",
+    "desc": "Edit SVG drawings",
+    "href": "/app.html#/svg/",
+    "new_tab": true
+  },
+  "entries": [
+    {
+      "menus": {
+        "drawing": 15
+      },
+      "name": "SVG-Edit",
+      "desc": "Direct SVG drawing, with layers and shapes",
+      "href": "/app.html#/svg/"
+    }
+  ]
+}

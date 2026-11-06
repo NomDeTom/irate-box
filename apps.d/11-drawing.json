@@ -4,13 +4,13 @@
   "tile": {
     "icon": "🎨",
     "name": "Drawing",
-    "desc": "Excalidraw, draw.io, JS Paint and Mermaid",
+    "desc": "Excalidraw, SVG-Edit, draw.io, JS Paint and Mermaid",
     "href": "/drawing.html"
   },
   "menu": {
     "title": "Drawing",
     "subtitle": "Whiteboards, diagrams and paint, all in the browser.",
-    "about": "The drawing apps on the box. Excalidraw and Mermaid are part of the hub. draw.io and JS Paint are web add-ons: add them from Add-ons, and they appear here.",
+    "about": "The drawing apps on the box. Excalidraw, SVG-Edit and Mermaid are part of the hub. draw.io and JS Paint are web add-ons: add them from Add-ons, and they appear here.",
     "art": "librarian",
     "addons": true,
     "keep_members": {
