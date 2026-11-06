@@ -12,6 +12,7 @@ Refusals are Refused(M(...)) with the messages in rescue-interfaces.md §4.2.  S
 
 import os
 import re
+import shlex
 import shutil
 import subprocess  # Fixed argv, trusted executables, no shell. # nosec B404
 import tempfile
@@ -23,6 +24,8 @@ FW_ENV = Path(os.environ.get("HUB_FW_ENV_CONFIG", "/etc/fw_env.config"))
 PROC_MTD = Path(os.environ.get("HUB_PROC_MTD", "/proc/mtd"))
 MTD_SYS = Path(os.environ.get("HUB_MTD_SYS", "/sys/class/mtd"))
 FW_PRINTENV = os.environ.get("HUB_FW_PRINTENV", "fw_printenv")
+FW_SETENV = os.environ.get("HUB_FW_SETENV", "fw_setenv")
+REBOOT = os.environ.get("HUB_REBOOT", "systemctl reboot")
 BOOT_BYTES = 32 << 20
 PRIMARY = 0x7E0000
 REDUNDANT = 0x7C0000
@@ -178,6 +181,98 @@ def show():
             "agree": primary is not None and redundant is not None and primary == redundant,
         },
     }
+
+
+def set_key(key, value):
+    """Set one environment key, then read it back. True only when the read-back matches."""
+    tool = FW_SETENV if os.path.isabs(FW_SETENV) else shutil.which(FW_SETENV)
+    if not tool:
+        raise Refused(
+            M(
+                "rescue.env.no-set-tool",
+                "The fw_setenv tool is not installed, so the box cannot change U-Boot's environment.",
+            )
+        )
+    run([tool, "-c", str(FW_ENV), key, str(value)])
+    values = _read(FW_ENV)
+    return values is not None and values.get(key) == str(value)
+
+
+def _reasons(data):
+    if not data.get("available"):
+        return [
+            M(
+                "rescue.restart.no-env",
+                "This box has no readable U-Boot environment, so it cannot restart into the rescue.",
+            )
+        ]
+    reasons = []
+    if data.get("bootlimit") is None:
+        reasons.append(
+            M(
+                "rescue.restart.no-bootlimit",
+                "U-Boot's environment has no bootlimit, so this box cannot restart into the rescue.",
+            )
+        )
+    if data.get("bootcount") is None:
+        reasons.append(
+            M(
+                "rescue.restart.no-bootcount",
+                "U-Boot's environment has no bootcount, so this box cannot restart into the rescue.",
+            )
+        )
+    if not data.get("altbootcmd_rescue"):
+        reasons.append(
+            M(
+                "rescue.restart.no-rescue",
+                "U-Boot's altbootcmd does not run the NAND rescue, so restarting into it would not work.",
+            )
+        )
+    return reasons
+
+
+def rescue_state(data=None):
+    """What the page's This box's rescue card shows: ready, or each reason it is not."""
+    data = data or snapshot()
+    reasons = _reasons(data)
+    return {
+        "ready": not reasons,
+        "reasons": [str(reason) for reason in reasons],
+        "bootcount": data.get("bootcount"),
+        "bootlimit": data.get("bootlimit"),
+        "altbootcmd_rescue": data.get("altbootcmd_rescue"),
+    }
+
+
+def restart_rescue(confirm):
+    """Set the count past the limit and restart, restoring the old count if anything fails."""
+    if confirm != "RESTART":
+        raise Refused(M("rescue.restart.confirm", "Type RESTART to restart the box into the rescue."))
+    try:
+        data = show()
+    except Refused as exc:
+        raise Refused(
+            M(
+                "rescue.restart.no-env",
+                "This box has no readable U-Boot environment, so it cannot restart into the rescue.",
+            )
+        ) from exc
+    reasons = _reasons(data)
+    if reasons:
+        raise Refused(reasons[0])
+    old = data["bootcount"]
+    new = data["bootlimit"] + 1
+    if not set_key("bootcount", new):
+        set_key("bootcount", old)
+        raise Refused(M("rescue.restart.set-failed", "The boot count could not be set, so the box was not restarted."))
+    result = run(shlex.split(REBOOT), timeout=60)
+    if result.returncode:
+        set_key("bootcount", old)
+        raise Refused(M("rescue.restart.reboot-failed", "The box could not restart, and the boot count was put back."))
+    return M(
+        "rescue.restart.started",
+        "The box is restarting into the rescue. The connection will drop, then the rescue hotspot starts. Leave the card in.",
+    )
 
 
 def snapshot():

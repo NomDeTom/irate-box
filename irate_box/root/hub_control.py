@@ -131,6 +131,10 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
       The card's view of the NAND U-Boot environment (rescueenv.py): read only. The config,
       the boot MTD, both copies, bootcount, bootlimit, card_confirms and the rescue path.
       control/rescue.json holds the reading (or why it could not be made) for the page.
+  {"id": ..., "action": "restart-rescue", "confirm": "RESTART"}
+      Set bootcount past bootlimit and restart, so the box reaches C. Refused unless the
+      environment has bootcount, bootlimit and an altbootcmd holding nand_boot_rescue; the
+      old count is put back if the write or the restart fails.
   {"id": ..., "action": "rk-bundle-stage", "bundle": "nand-uboot", "name": "u-boot.itb", "temp": "<upload>.part"}
   {"id": ..., "action": "rk-erase", "loader": "rk3506b"|null, "confirm": "<token>"|null}
   {"id": ..., "action": "rk-install", "bootloader": "nand-uboot", "loader": null, "confirm": "<token>"|null,
@@ -9442,6 +9446,19 @@ def kit_status(req):
     return (_kits_status(), KITS_STATUS)[1]
 
 
+def restart_rescue(req):
+    """The one confirmed restart into C, with the old count put back if anything fails."""
+    try:
+        said = rescueenv.restart_rescue(str(req.get("confirm") or ""))
+    finally:
+        data = rescueenv.snapshot()
+        safeio.write(
+            CONTROL / "rescue.json",
+            json.dumps({"at": time.time(), "env": data, "rescue": rescueenv.rescue_state(data)}, indent=1),
+        )
+    return said
+
+
 def rk_env_show(_req):
     """The card's view of the NAND U-Boot environment: read only, and the reading kept for the page."""
     try:
@@ -9587,6 +9604,7 @@ ACTIONS = {
     "will-show": will_show,
     "will-save": will_save,
     "will-push": will_push,
+    "restart-rescue": restart_rescue,
     "rk-write": rk_write,
     "rk-serial-setup": _rk_serial_setup,
     "rk-own-serial": _rk_own_serial,

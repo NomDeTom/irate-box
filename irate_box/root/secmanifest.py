@@ -131,6 +131,10 @@ _PATH_ACTIONS = {
             "control/rescue.json",
         ],
     },
+    "restart-rescue": {
+        "reads": ["etc/fw_env.config"],
+        "writes": ["control/rescue.json", "boot/uboot-env"],
+    },
     "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
     "hw-set": {
         "reads": [],

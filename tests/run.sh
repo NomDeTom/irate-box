@@ -34,6 +34,7 @@ run sim_card_history.py
 run sim_servicewrites.py
 run sim_nand_state.py
 run sim_rescue_env.py
+run sim_restart_rescue.py
 run sim_recommended.py
 run sim_nmrepair.py
 run sim_presets.py
