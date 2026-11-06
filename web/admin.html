@@ -6182,10 +6182,13 @@
                 <option value="folder" data-i18n="admin.pins.mui-map-folder">Tiles folder</option>
               </select>
               <span id="pins-mui-map-folder-box" hidden>
-                <label class="setting-name" for="pins-mui-map-folder" data-i18n="admin.pins.mui-map-folder-path">Tiles folder path</label>
-                <input id="pins-mui-map-folder" type="text" autocomplete="off" placeholder="/home/lyra/maps" data-i18n-placeholder="admin.pins.mui-map-folder-placeholder" />
+                <label class="setting-name" for="pins-mui-map-folder" data-i18n="admin.pins.mui-map-folder-path">Tiles folder</label>
+                <select id="pins-mui-map-folder"></select>
               </span>
             </div>
+            <p class="setting-desc" id="pins-mui-map-note" data-i18n="admin.pins.mui-map-note">
+              Tile folders are the folders root found under /var/lib/hub/maps. Put an offline z/x/y tile set in one.
+            </p>
             <p class="setting-desc action-note bad" id="pins-mui-log-warning" data-i18n="admin.pins.mui-log-warning" hidden>
               Debug logging writes about 100 lines a minute. On the card this wears it and fills the journal.
             </p>

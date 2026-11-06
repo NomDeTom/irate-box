@@ -147,7 +147,12 @@
     $('pins-mui-log-level').value = saved.log_level || 'warn';
     $('pins-mui-log-destination').value = saved.log_destination || 'ram';
     $('pins-mui-map-tiles').value = saved.map_tiles || 'dummy';
-    $('pins-mui-map-folder').value = saved.map_tiles_folder || '';
+    const folderSelect = $('pins-mui-map-folder');
+    const folders = (muiOptions && muiOptions.map_folders) || [];
+    const folderOptions = folders.map((name) => Object.assign(document.createElement('option'), { value: name, textContent: name }));
+    if (!folderOptions.length) folderOptions.push(Object.assign(document.createElement('option'), { value: '', textContent: 'No tile folders' }));
+    folderSelect.replaceChildren(...folderOptions);
+    if (folders.includes(saved.map_tiles_folder)) folderSelect.value = saved.map_tiles_folder;
     muiUpdate();
   }
   function muiSelectionNow() {
@@ -157,7 +162,7 @@
     sel.log_level = $('pins-mui-log-level').value || 'warn';
     sel.log_destination = $('pins-mui-log-destination').value || 'ram';
     sel.map_tiles = $('pins-mui-map-tiles').value || 'dummy';
-    sel.map_tiles_folder = $('pins-mui-map-folder').value.trim();
+    sel.map_tiles_folder = $('pins-mui-map-folder').value;
     return sel;
   }
   function muiDuplicates(sel) {

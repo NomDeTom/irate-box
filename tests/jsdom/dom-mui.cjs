@@ -57,6 +57,7 @@ const options = {
   log_levels: ['warn', 'info', 'debug'],
   log_destinations: ['ram', 'card'],
   map_tiles: ['dummy', 'folder'],
+  map_folders: ['tiles'],
   defaults,
   selection: defaults,
   binary: '/usr/local/bin/meshtasticd-per-host-spi',
@@ -140,8 +141,8 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
   await wait(20);
   check('the tiles-folder path appears and blocks Activate until filled', !d.getElementById('pins-mui-map-folder-box').hidden && d.getElementById('pins-mui-activate').disabled);
   const mapFolder = d.getElementById('pins-mui-map-folder');
-  mapFolder.value = '/home/lyra/maps';
-  mapFolder.dispatchEvent(new w.Event('input'));
+  mapFolder.value = 'tiles';
+  mapFolder.dispatchEvent(new w.Event('change'));
   const replaceBox = d.getElementById('pins-mui-replace-radio');
   replaceBox.checked = true;
   replaceBox.dispatchEvent(new w.Event('change'));

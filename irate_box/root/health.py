@@ -4085,7 +4085,8 @@ APT_RAM_UNIT = "run-irate\\x2dbox\\x2dapt.mount"  # systemd-escape -p --suffix=m
 JOURNAL_CONF = SYSTEMD_ETC / "journald.conf.d" / "50-irate-box.conf"
 MUI_UNIT = Path(os.environ.get("HUB_MUI_UNIT", "/etc/systemd/system/irate-box-mui.service"))
 MUI_JOURNAL = Path(os.environ.get("HUB_MUI_JOURNALD", "/etc/systemd/journald@mui.conf"))
-MUI_LOG_RATE_WARN = 1200  # lines an hour; the map's failed-tile and URL warnings were ~6,600
+MUI_CONFIG = Path(os.environ.get("HUB_MUI_CONFIG", "/etc/hub/mui.yaml"))
+MUI_LOG_RATE_WARN = {"warn": 120, "info": 1200}  # lines an hour; debug is reported by itself
 SYSCTL_D = Path(os.environ.get("HUB_SYSCTL_D", "/etc/sysctl.d"))
 WRITEBACK_CONF = SYSCTL_D / "50-irate-box-writeback.conf"
 COMMIT_UNIT = "irate-box-commit.service"
@@ -4125,6 +4126,16 @@ def _journal_sync_seconds():
     return int(m[1]) * {"": 1, "s": 1, "m": 60, "h": 3600}[m[2]]
 
 
+def _mui_log_level():
+    """The log level chosen in MUI's own YAML; warnings when it is absent or unreadable."""
+    try:
+        text = MUI_CONFIG.read_text(errors="replace")
+    except OSError:
+        return "warn"
+    found = re.search(r"^\s+LogLevel:\s*(warn|info|debug)\s*$", text, re.M)
+    return found[1] if found else "warn"
+
+
 def _mui_log_rate():
     """MUI's namespace journal over the last 30 minutes, as lines an hour; None when it cannot be measured."""
     said = run("journalctl", "--namespace=mui", "--since=-30min", "--no-pager", "-o", "cat", timeout=20)
@@ -4156,7 +4167,10 @@ def check_mui_log():
         problems.append(M("mui-log.card-unbounded", "MUI's log is kept on the card without a size cap."))
     elif not capped:
         problems.append(M("mui-log.no-cap", "MUI's journal has no size cap."))
-    if rate is not None and rate > MUI_LOG_RATE_WARN:
+    level = _mui_log_level()
+    if level == "debug":
+        problems.append(M("mui-log.debug", "MUI is logging at debug level."))
+    elif rate is not None and rate > MUI_LOG_RATE_WARN[level]:
         problems.append(M("mui-log.rate", "MUI wrote about {rate} lines an hour over the last 30 minutes.", rate=rate))
     if not problems:
         return []

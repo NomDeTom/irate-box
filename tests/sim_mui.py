@@ -14,6 +14,7 @@ T = Path(tempfile.mkdtemp(prefix="mui-"))
 for sub in ("boot/overlay-user", "state/control", "dt/__symbols__", "spi", "units", "bin"):
     (T / sub).mkdir(parents=True)
 (T / "boot_id").write_text("boot-one\n")
+(T / "tiles-root").mkdir()
 (T / "dt" / "model").write_bytes(b"Luckfox Lyra Zero W\0")
 for bus in (0, 1):
     for signal, rmio in (("clk", 24), ("mosi", 25), ("miso", 26), ("csn0", 16), ("csn1", 28)):
@@ -27,6 +28,7 @@ os.environ.update(
     HUB_SPI_SYS=str(T / "spi"),
     HUB_UNIT_DIR=str(T / "units"),
     HUB_MUI_JOURNALD=str(T / "journald@mui.conf"),
+    HUB_MUI_TILES=str(T / "tiles-root"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
@@ -263,6 +265,7 @@ check(
 )
 health.MUI_UNIT = mui.UNIT_PATH
 health.MUI_JOURNAL = mui.JOURNALD_NAMESPACE
+health.MUI_CONFIG = mui.CONFIG
 health._mui_log_rate = lambda: 0
 check("the bounded MUI log has no doctor finding", health.check_mui_log() == [])
 mui.JOURNALD_NAMESPACE.write_text("[Journal]\nStorage=persistent\n")
@@ -276,10 +279,25 @@ check(
     "a fast MUI log is a doctor warning with the measured rate",
     any("6600" in str(f.get("summary")) for f in health.check_mui_log()),
 )
+mui.CONFIG.write_text(mui.config({**sel, "log_level": "debug"}))
+check(
+    "debug logging is reported by itself",
+    any("debug" in str(f.get("summary")).lower() for f in health.check_mui_log()),
+)
+mui.CONFIG.write_text(mui.config(sel))
 health._mui_log_rate = lambda: 0
-tiles = T / "tiles"
+tiles = T / "tiles-root" / "tiles"
 (tiles / "3" / "0").mkdir(parents=True)
-mui.activate({**sel, "map_tiles": "folder", "map_tiles_folder": str(tiles)})
+(T / "tiles-root" / "link").symlink_to(tiles, target_is_directory=True)
+check(
+    "tile folders are names root found, and paths, .. and symlinks are refused",
+    mui.options()["map_folders"] == ["tiles"]
+    and refused(mui.activate, {**sel, "map_tiles": "folder", "map_tiles_folder": str(tiles)}) == "mui.map-folder"
+    and refused(mui.activate, {**sel, "map_tiles": "folder", "map_tiles_folder": ".."}) == "mui.map-folder"
+    and refused(mui.activate, {**sel, "map_tiles": "folder", "map_tiles_folder": "link"}) == "mui.map-folder",
+    (mui.options()["map_folders"], mui.FSDIR),
+)
+mui.activate({**sel, "map_tiles": "folder", "map_tiles_folder": "tiles"})
 style = mui.FSDIR / "maps" / "dummy"
 check("the tiles-folder choice links the style folder", style.is_symlink() and style.resolve() == tiles.resolve())
 mui.activate(sel)

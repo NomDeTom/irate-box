@@ -40,6 +40,7 @@ UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 UNIT = "irate-box-mui.service"
 UNIT_PATH = UNIT_DIR / UNIT
 JOURNALD_NAMESPACE = Path(os.environ.get("HUB_MUI_JOURNALD", "/etc/systemd/journald@mui.conf"))
+TILES_ROOT = Path(os.environ.get("HUB_MUI_TILES", "/var/lib/hub/maps"))
 OVERLAY = "irate-box-mui"
 DTBO = BOOT / "overlay-user" / f"{OVERLAY}.dtbo"
 DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
@@ -322,6 +323,22 @@ def _pin_ok(pin, role, sel, check_claims=True):
     return row
 
 
+TILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$")
+
+
+def _tile_styles():
+    """Names of directories root itself found under the fixed tile root; symlinks and paths are not names."""
+    try:
+        entries = sorted(TILES_ROOT.iterdir())
+    except OSError:
+        return []
+    return [
+        entry.name
+        for entry in entries
+        if entry.is_dir() and not entry.is_symlink() and TILE_NAME_RE.fullmatch(entry.name) and ".." not in entry.name
+    ]
+
+
 def _validate(selection, check_binary=False):
     sel = _normalize(selection)
     if not supported():
@@ -379,10 +396,8 @@ def _validate(selection, check_binary=False):
         raise Refused(M("mui.log-destination", "Select RAM or the card for the MUI log."))
     if sel["map_tiles"] not in MAP_TILES:
         raise Refused(M("mui.map-tiles", "Select the dummy tile or a tiles folder."))
-    if sel["map_tiles"] == "folder":
-        folder = Path(sel["map_tiles_folder"])
-        if not sel["map_tiles_folder"] or not folder.is_dir():
-            raise Refused(M("mui.map-folder", "The tiles folder does not exist."))
+    if sel["map_tiles"] == "folder" and sel["map_tiles_folder"] not in _tile_styles():
+        raise Refused(M("mui.map-folder", "The tiles folder is not one of the folders under {root}.", root=TILES_ROOT))
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", sel["radio_module"]):
         raise Refused(M("mui.radio-module", "The radio module name is not valid."))
     if sel["radio_module"] != "sim":
@@ -607,7 +622,12 @@ def _apply_map_tiles(selection):
     safeio.mkdir(root, mode=0o755)
     _remove_path(style)
     if sel["map_tiles"] == "folder":
-        style.symlink_to(Path(sel["map_tiles_folder"]), target_is_directory=True)
+        folder = TILES_ROOT / sel["map_tiles_folder"]
+        if folder.is_symlink() or not folder.is_dir():
+            raise Refused(
+                M("mui.map-folder", "The tiles folder is not one of the folders under {root}.", root=TILES_ROOT)
+            )
+        style.symlink_to(folder, target_is_directory=True)
         return
     safeio.mkdir(style, mode=0o755)
     tile = _dummy_png()
@@ -775,6 +795,7 @@ def options():
         "log_levels": list(LOG_LEVELS),
         "log_destinations": list(LOG_DESTINATIONS),
         "map_tiles": list(MAP_TILES),
+        "map_folders": _tile_styles(),
         "defaults": dict(DEFAULTS),
         "selection": _normalize(saved if isinstance(saved, dict) else {}),
         "config": str(CONFIG),
