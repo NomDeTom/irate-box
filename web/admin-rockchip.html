@@ -61,6 +61,30 @@
         </div>
         <p class="setting-desc action-note" id="rk-env-note" role="status" hidden></p>
       </div>
+      <div class="net-card setting" id="rk-boot-confirm">
+        <h3 data-i18n="admin-rockchip.confirm.title">Boot confirmation</h3>
+        <p class="setting-desc" data-i18n="admin-rockchip.confirm.intro">
+          U-Boot counts boots that do not finish. The unit confirms a boot after the hub answers. You can confirm
+          this boot here, and set whether the card confirms its own boot.
+        </p>
+        <div id="rk-confirm"></div>
+        <div id="rk-confirm-setting"></div>
+        <div class="library-buttons">
+          <button class="action-btn" type="button" id="rk-confirm-restart" data-i18n="admin-rockchip.confirm.confirm">Confirm this boot</button>
+        </div>
+        <div id="rk-confirm-ask" hidden>
+          <p class="setting-desc" data-i18n="admin-rockchip.confirm.ask">
+            Type CONFIRM to confirm this boot. The count is reset to 0, and the card setting is written with it.
+          </p>
+          <label class="setting-name" for="rk-confirm-input" data-i18n="admin-rockchip.confirm.label">Type CONFIRM</label>
+          <input id="rk-confirm-input" type="text" autocomplete="off" spellcheck="false" placeholder="CONFIRM" data-i18n-placeholder="admin-rockchip.confirm.placeholder">
+          <div class="library-buttons">
+            <button class="action-btn" type="button" id="rk-confirm-cancel" data-i18n="admin-rockchip.confirm.cancel">Cancel</button>
+            <button class="action-btn" type="button" id="rk-confirm-go" disabled data-i18n="admin-rockchip.confirm.go">Confirm this boot</button>
+          </div>
+        </div>
+        <p class="setting-desc action-note" id="rk-confirm-note" role="status" hidden></p>
+      </div>
     </section>
 
     <section class="admin-pane" id="rk-copies-pane" data-rk-pane="copies" aria-labelledby="rk-copies-title">

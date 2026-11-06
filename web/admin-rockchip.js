@@ -164,6 +164,10 @@
   const ERASE_ASK = "Erase the board's onboard flash? This deletes the system on it, and it cannot be undone.";
   let waiting = null;
   let running = false;
+  let cardConfirmsChoice = null;
+  let cardConfirmsDirty = false;
+  let confirmBusy = false;
+  let bootConfirmData = null;
   let chipChosen = 'rk3506b';
   let poll = null;
   let shown = '';
@@ -192,6 +196,7 @@
   function render(data) {
     renderFinish(data.setup);
     renderEnv(data.env);
+    renderBootConfirm(data.boot_confirm);
     const rec = document.getElementById('rk-recovery-status');
     if (rec) {
       const mask = (data.boards || []).find((b) => b.mode === 'maskrom');
@@ -483,6 +488,7 @@
       else if (!done.ok) say(resultSaid(done), false, note);
       else {
         say(resultSaid(done), true, note);
+        cardConfirmsDirty = false;
         shown = '';
         load();
       }
@@ -490,6 +496,100 @@
       say(err.message, false, note);
     } finally {
       button.disabled = false;
+    }
+  }
+
+  // ---- Boot confirmation (root/rescueenv.py, control/rescue-confirm.json): the count and limit, the last
+  // confirmation or why the unit did not confirm, the card_confirms setting, and the typed manual CONFIRM.
+  function confirmReason(over, reason) {
+    if (!reason) return '';
+    if (over === 'unit') {
+      const says = {
+        'card-confirms-off': 'The unit did not confirm this boot: the card does not confirm its own boot.',
+        'hub-unreachable': 'The unit did not confirm this boot: the hub was not reachable.',
+        'env-unreadable': 'The unit did not confirm this boot: the boot environment was not readable.',
+        'env-write-failed': 'The unit did not confirm this boot: the boot count could not be written.',
+      };
+      return says[reason] || `The unit did not confirm this boot: ${reason}.`;
+    }
+    return `The manual confirmation failed: ${reason}`;
+  }
+  function renderBootConfirm(boot) {
+    bootConfirmData = boot || {};
+    const at = document.getElementById('rk-confirm');
+    const setting = document.getElementById('rk-confirm-setting');
+    const button = document.getElementById('rk-confirm-restart');
+    if (!at || !setting || !button) return;
+    boot = bootConfirmData;
+    if (!boot.available) {
+      at.replaceChildren(el('p', { className: 'setting-desc bad', textContent: 'The boot environment is not readable, so the count cannot be confirmed. Read the boot environment first.' }));
+      setting.replaceChildren();
+      button.disabled = true;
+      return;
+    }
+    if (cardConfirmsChoice === null || !cardConfirmsDirty) cardConfirmsChoice = boot.card_confirms === true;
+    const counts = [
+      envTile('Boot count', boot.bootcount == null ? 'Unknown' : String(boot.bootcount), 'The count U-Boot has recorded.'),
+      envTile('Limit', boot.bootlimit == null ? 'Not set' : String(boot.bootlimit), 'After this many failed boots, the rescue route runs.'),
+    ];
+    const last = boot.last_confirm
+      ? {
+        value: `${boot.confirmed ? 'Confirmed' : 'Not confirmed'} ${boot.last_confirm_over === 'unit' ? 'by the unit' : 'manually'} on ${new Date(boot.last_confirm * 1000).toLocaleString()}.`,
+        detail: boot.confirmed ? 'The boot count was reset to 0.' : confirmReason(boot.last_confirm_over, boot.reason),
+      }
+      : { value: 'Not confirmed yet.', detail: 'The unit records a confirmation, or why it did not confirm, at each boot.' };
+    counts.push(envTile('Last confirmation', last.value, last.detail));
+    at.replaceChildren(el('div', { className: 'admin-tiles' }, ...counts));
+
+    let chips = null;
+    const drawSetting = () => {
+      const next = AW.onOffChips('Card confirms its own boot', cardConfirmsChoice === true, false, (on) => {
+        cardConfirmsChoice = on;
+        cardConfirmsDirty = true;
+        drawSetting();
+      });
+      if (chips) chips.replaceWith(next);
+      chips = next;
+      const warning = cardConfirmsChoice
+        ? 'On: a card that never finishes booting falls to the rescue after the limit.'
+        : 'Off: the count resets when the card\'s boot script loads, as before.';
+      setting.replaceChildren(
+        el('div', { className: 'aw-field' },
+          el('span', { className: 'aw-label', textContent: 'Card confirms its own boot' }),
+          chips,
+          el('span', { className: 'setting-desc warn', textContent: `${warning} It is written when you confirm this boot.` }),
+          boot.card_confirms == null
+            ? el('span', { className: 'setting-desc', textContent: 'Not set on the card yet.' })
+            : null),
+      );
+    };
+    drawSetting();
+    button.disabled = confirmBusy || !!waiting;
+  }
+  async function confirmBoot(event) {
+    if (confirmBusy) return;
+    const button = event.currentTarget;
+    const note = document.getElementById('rk-confirm-note');
+    const ask = document.getElementById('rk-confirm-ask');
+    confirmBusy = true;
+    button.disabled = true;
+    if (ask) ask.hidden = true;
+    say('Confirming this boot…', true, note);
+    try {
+      const id = (await postJSON('/admin/rkboard', { action: 'boot-confirm', confirm: 'CONFIRM', card_confirms: cardConfirmsChoice === true })).id;
+      const done = await awaitResult(id, note, 40);
+      if (!done) say('The confirmation was not answered in time.', false, note);
+      else if (!done.ok) say(resultSaid(done), false, note);
+      else {
+        say(resultSaid(done), true, note);
+        shown = '';
+        load();
+      }
+    } catch (err) {
+      say(err.message, false, note);
+    } finally {
+      confirmBusy = false;
+      renderBootConfirm(bootConfirmData);
     }
   }
 
@@ -1149,6 +1249,29 @@
 
   const envRead = document.getElementById('rk-env-read');
   if (envRead) envRead.addEventListener('click', readEnv);
+  const confirmRestart = document.getElementById('rk-confirm-restart');
+  if (confirmRestart) confirmRestart.addEventListener('click', () => {
+    const ask = document.getElementById('rk-confirm-ask');
+    if (ask) ask.hidden = false;
+    const input = document.getElementById('rk-confirm-input');
+    if (input) input.focus();
+  });
+  const confirmCancel = document.getElementById('rk-confirm-cancel');
+  if (confirmCancel) confirmCancel.addEventListener('click', () => {
+    const ask = document.getElementById('rk-confirm-ask');
+    if (ask) ask.hidden = true;
+    const input = document.getElementById('rk-confirm-input');
+    if (input) input.value = '';
+    const go = document.getElementById('rk-confirm-go');
+    if (go) go.disabled = true;
+  });
+  const confirmInput = document.getElementById('rk-confirm-input');
+  if (confirmInput) confirmInput.addEventListener('input', () => {
+    const go = document.getElementById('rk-confirm-go');
+    if (go) go.disabled = confirmInput.value !== 'CONFIRM';
+  });
+  const confirmGo = document.getElementById('rk-confirm-go');
+  if (confirmGo) confirmGo.addEventListener('click', confirmBoot);
 
   load();
   // For the page tests: the drawing, called with data of their own.
