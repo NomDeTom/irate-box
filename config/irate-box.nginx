@@ -217,7 +217,22 @@ server {
 	}
 	# The drawing store and the gallery take whole drawings (store.py MAX_BODY, 50 MB).
 	location ^~ /api/v2/ { client_max_body_size 50m; proxy_pass http://irate_box_hub; }
-	location ^~ /api/saves { client_max_body_size 50m; proxy_pass http://irate_box_hub; }
+	# The hub's own gallery sees every kind; a client cannot narrow it with the app header (the
+	# apps' own origins set it on their proxies, below). Setting a header here drops the server's,
+	# so all again.
+	location ^~ /api/saves {
+		client_max_body_size 50m;
+		proxy_set_header Host $http_host;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header X-Irate-Via $irate_box_via;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $irate_box_connection;
+		proxy_set_header X-Irate-Front "";
+		proxy_set_header X-Irate-App "";
+		proxy_pass http://irate_box_hub;
+	}
 	# The file drop's page and its files, behind the same switch as its upload.
 	location = /drop.html {
 		if ($irate_box_off_drop) { return 404; }
@@ -763,6 +778,7 @@ server {
 		proxy_set_header X-Irate-Via $irate_box_via;
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $http_host;
+		proxy_set_header X-Irate-App "";
 		proxy_pass http://irate_box_hub;
 	}
 	# Pages of the hub, wherever they are linked from (Git, Sync, the account and help pages): its origin.
@@ -889,6 +905,7 @@ server {
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header X-Irate-Front "";
+		proxy_set_header X-Irate-App "draw";
 		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_pass http://irate_box_hub;
 	}
@@ -999,6 +1016,7 @@ server {
 		proxy_set_header X-Forwarded-Proto $scheme;
 		proxy_set_header X-Forwarded-Host $http_host;
 		proxy_set_header X-Irate-Front "";
+		proxy_set_header X-Irate-App "mermaid";
 		proxy_set_header Cookie $irate_box_app_cookie;
 		proxy_pass http://irate_box_hub;
 	}

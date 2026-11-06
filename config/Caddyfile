@@ -112,6 +112,8 @@
 			file_server @asset
 			reverse_proxy 127.0.0.1:8000 {
 				header_up X-Irate-Via {env.HUB_VIA_SECRET}
+				# The hub's own gallery sees every kind; the apps' origins set the scope themselves.
+				header_up -X-Irate-App
 			}
 		}
 	}
@@ -618,6 +620,7 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-main.inc
 		reverse_proxy 127.0.0.1:8000 {
 			header_up X-Irate-Via {env.HUB_VIA_SECRET}
 			header_up X-Irate-Front {env.HUB_FRONT_SECRET}
+			header_up -X-Irate-App
 		}
 	}
 	# Pages of the hub, wherever they are linked from (Git, Sync, the account and help pages): its origin.
@@ -690,6 +693,7 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-admin.inc
 	handle /api/saves* {
 		reverse_proxy 127.0.0.1:8000 {
 			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+			header_up X-Irate-App draw
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}
@@ -750,6 +754,7 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-draw.inc
 	handle /api/saves* {
 		reverse_proxy 127.0.0.1:8000 {
 			header_up X-Irate-Via {env.HUB_VIA_SECRET}
+			header_up X-Irate-App mermaid
 			header_up Cookie "irate_session=[^;]*;?\s*" ""
 		}
 	}
