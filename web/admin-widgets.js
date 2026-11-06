@@ -438,7 +438,13 @@ const AW = (() => {
     for (const it of items) {
       const card = h('div', { class: 'aw-card', 'data-aw-id': it.id, 'data-card': '', ...rowData(it) });
       const head = h('button', { type: 'button', class: 'aw-card-head', 'aria-expanded': 'false', 'data-disclosure': '',
-        onclick: () => (card._drawer ? closeCard(card) : openCard(card, it, opts)) },
+        onclick: () => {
+          if (card._drawer) {
+            if (!opts.keepOpen) closeCard(card);
+            return;
+          }
+          openCard(card, it, opts);
+        } },
         h('span', { class: 't', text: it.title }), h('span', { class: 's', text: it.summary || '' }), h('span', { class: 'p' }, (it.badges || []).map((b) => pill(b))));
       card.append(head);
       grid.append(card);
