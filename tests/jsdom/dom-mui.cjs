@@ -26,7 +26,7 @@ const gpio = (pin, name, gpioNo, fixed = '') => ({
   pin, name, gpio: gpioNo, rmio: gpioNo, fixed, gpiochip: Math.floor(gpioNo / 32), line: gpioNo % 32,
   usable: !fixed, why: fixed ? `fixed for ${fixed}` : 'free',
 });
-const defaults = { bus: 1, clk: 27, mosi: 29, miso: 31, display_cs: 35, touch_cs: 37, dc: 26, rst: 28, bl: 36, touch: 'lgfx', replace_radio: false };
+const defaults = { bus: 1, clk: 27, mosi: 29, miso: 31, display_cs: 35, touch_cs: 37, dc: 26, rst: 28, bl: 36, touch: 'lgfx', replace_radio: false, log_level: 'warn', log_destination: 'ram', map_tiles: 'dummy', map_tiles_folder: '' };
 const options = {
   supported: true,
   board: 'Luckfox Lyra Zero W',
@@ -54,6 +54,9 @@ const options = {
     gpio(24, 'GPIO0_B2', 10), gpio(26, 'GPIO0_B1', 9),
   ],
   touch_modes: ['lgfx', 'none'],
+  log_levels: ['warn', 'info', 'debug'],
+  log_destinations: ['ram', 'card'],
+  map_tiles: ['dummy', 'folder'],
   defaults,
   selection: defaults,
   binary: '/usr/local/bin/meshtasticd-per-host-spi',
@@ -115,9 +118,40 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
       && d.getElementById('pins-mui-clk').value === '27'
       && d.getElementById('pins-mui-touch-cs').value === '37'
       && d.getElementById('pins-mui-touch-cs').selectedOptions[0].dataset.cs === '1'
+      && d.getElementById('pins-mui-log-level').value === 'warn'
+      && d.getElementById('pins-mui-log-destination').value === 'ram'
+      && d.getElementById('pins-mui-map-tiles').value === 'dummy'
       && text('pins-mui-state') === 'Off.',
     [d.getElementById('pins-mui-clk').value, d.getElementById('pins-mui-touch-cs').value, d.getElementById('pins-mui-touch-cs').selectedOptions[0].dataset.cs, text('pins-mui-state')],
   );
+  const logLevel = d.getElementById('pins-mui-log-level');
+  const logDest = d.getElementById('pins-mui-log-destination');
+  const mapTiles = d.getElementById('pins-mui-map-tiles');
+  logLevel.value = 'debug';
+  logLevel.dispatchEvent(new w.Event('change'));
+  await wait(20);
+  check('debug logging shows the plain warning', !d.getElementById('pins-mui-log-warning').hidden && /writes about 100 lines a minute/.test(text('pins-mui-log-warning')));
+  logDest.value = 'card';
+  logDest.dispatchEvent(new w.Event('change'));
+  await wait(20);
+  check('card logging keeps the warning visible', !d.getElementById('pins-mui-log-warning').hidden);
+  mapTiles.value = 'folder';
+  mapTiles.dispatchEvent(new w.Event('change'));
+  await wait(20);
+  check('the tiles-folder path appears and blocks Activate until filled', !d.getElementById('pins-mui-map-folder-box').hidden && d.getElementById('pins-mui-activate').disabled);
+  const mapFolder = d.getElementById('pins-mui-map-folder');
+  mapFolder.value = '/home/lyra/maps';
+  mapFolder.dispatchEvent(new w.Event('input'));
+  await wait(20);
+  check('a filled tiles folder enables Activate', !d.getElementById('pins-mui-activate').disabled);
+  // Return the visual controls to the remaining pin tests.
+  logLevel.value = 'warn';
+  logLevel.dispatchEvent(new w.Event('change'));
+  logDest.value = 'ram';
+  logDest.dispatchEvent(new w.Event('change'));
+  mapTiles.value = 'dummy';
+  mapTiles.dispatchEvent(new w.Event('change'));
+  await wait(20);
   check('a fixed pin is offered unavailable with its reason', option('pins-mui-dc', 8).disabled && /fixed for UART0 TX/.test(option('pins-mui-dc', 8).textContent), option('pins-mui-dc', 8).textContent);
   const bus = d.getElementById('pins-mui-bus');
   bus.value = '0';
@@ -152,7 +186,14 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
   const sent = posted.find((body) => body.action === 'mui-activate');
   check(
     'Activate posts the selected pins and replace_radio',
-    sent && sent.selection.bus === 0 && sent.selection.clk === 12 && sent.selection.dc === 7 && sent.selection.replace_radio === true,
+    sent &&
+      sent.selection.bus === 0 &&
+      sent.selection.clk === 12 &&
+      sent.selection.dc === 7 &&
+      sent.selection.replace_radio === true &&
+      sent.selection.log_level === 'warn' &&
+      sent.selection.log_destination === 'ram' &&
+      sent.selection.map_tiles === 'dummy',
     sent,
   );
   check('  pending: Restart now is offered', !d.getElementById('pins-mui-restart').hidden && /waiting for a restart/.test(text('pins-mui-state')), [d.getElementById('pins-mui-restart').hidden, text('pins-mui-state')]);

@@ -21,8 +21,11 @@ radio can be fitted on SPI0 later. Stdlib only.
 import json
 import os
 import re
+import shutil
+import struct
 import subprocess  # Fixed argv, trusted executable, no shell. # nosec B404
 import sys
+import zlib
 from pathlib import Path
 
 from irate_box.msg import M, Refused
@@ -36,6 +39,7 @@ FSDIR = ETC / "mui-fs"
 UNIT_DIR = Path(os.environ.get("HUB_UNIT_DIR", "/etc/systemd/system"))
 UNIT = "irate-box-mui.service"
 UNIT_PATH = UNIT_DIR / UNIT
+JOURNALD_NAMESPACE = Path(os.environ.get("HUB_MUI_JOURNALD", "/etc/systemd/journald@mui.conf"))
 OVERLAY = "irate-box-mui"
 DTBO = BOOT / "overlay-user" / f"{OVERLAY}.dtbo"
 DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
@@ -46,6 +50,12 @@ DEFAULT_RADIO = "spidev0.0"
 DISPLAY_WIDTH = 480
 DISPLAY_HEIGHT = 320
 TOUCH_MODES = ("lgfx", "none")
+LOG_LEVELS = ("warn", "info", "debug")
+LOG_DESTINATIONS = ("ram", "card")
+MAP_TILES = ("dummy", "folder")
+MAP_STYLE = "dummy"
+MAP_ZOOM = 3
+MAP_TILE_SIZE = 256
 SIGNALS = ("clk", "mosi", "miso", "csn0", "csn1")
 ROLES = {
     "clk": "SPI clock",
@@ -72,6 +82,10 @@ DEFAULTS = {
     "radio_module": "sim",
     "replace_radio": False,
     "bus_frequency": 10000000,
+    "log_level": "warn",
+    "log_destination": "ram",
+    "map_tiles": "dummy",
+    "map_tiles_folder": "",
 }
 # Fallback labels for a kernel without __symbols__: the two SPI controllers share these RM_IOs.
 FALLBACK_LABELS = {
@@ -251,6 +265,10 @@ def _normalize(selection):
     sel["touch"] = str(sel.get("touch") or "lgfx")
     sel["radio_spidev"] = str(sel.get("radio_spidev") or "")
     sel["radio_module"] = str(sel.get("radio_module") or "sim")
+    sel["log_level"] = str(sel.get("log_level") or "warn").lower()
+    sel["log_destination"] = str(sel.get("log_destination") or "ram").lower()
+    sel["map_tiles"] = str(sel.get("map_tiles") or "dummy").lower()
+    sel["map_tiles_folder"] = str(sel.get("map_tiles_folder") or "").strip()
     # A path is root's own: never accept one from a hub request.
     sel["binary"] = DEFAULT_BINARY
     return sel
@@ -355,6 +373,16 @@ def _validate(selection, check_binary=False):
         sel["_touch_cs"] = touch
     if not (1000000 <= sel["bus_frequency"] <= 40000000):
         raise Refused(M("mui.bus-frequency", "The display bus frequency must be 1-40 MHz."))
+    if sel["log_level"] not in LOG_LEVELS:
+        raise Refused(M("mui.log-level", "Choose warnings, info or debug logging."))
+    if sel["log_destination"] not in LOG_DESTINATIONS:
+        raise Refused(M("mui.log-destination", "Choose RAM or the card for the MUI log."))
+    if sel["map_tiles"] not in MAP_TILES:
+        raise Refused(M("mui.map-tiles", "Choose the dummy tile or a tiles folder."))
+    if sel["map_tiles"] == "folder":
+        folder = Path(sel["map_tiles_folder"])
+        if not sel["map_tiles_folder"] or not folder.is_dir():
+            raise Refused(M("mui.map-folder", "The tiles folder does not exist."))
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", sel["radio_module"]):
         raise Refused(M("mui.radio-module", "The radio module name is not valid."))
     if sel["radio_module"] != "sim":
@@ -512,7 +540,17 @@ def config(selection):
                 "  Rotate: 0",
             ]
         )
-    out.extend(["", "Config:", "  DisplayMode: COLOR", ""])
+    out.extend(
+        [
+            "",
+            "Logging:",
+            f"  LogLevel: {sel['log_level']}",
+            "",
+            "Config:",
+            "  DisplayMode: COLOR",
+            "",
+        ]
+    )
     return "\n".join(out)
 
 
@@ -525,13 +563,66 @@ Conflicts=meshtasticd.service
 
 [Service]
 Type=simple
-ExecStart={sel["binary"]} -c {CONFIG} --fsdir {FSDIR} -p 4404 -v
+ExecStart={sel["binary"]} -c {CONFIG} --fsdir {FSDIR} -p 4404
+LogNamespace=mui
 Restart=on-failure
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
 """
+
+
+def journald(selection):
+    """The MUI journal namespace: volatile RAM by default, or a capped journal on the card."""
+    sel = _validate(selection)
+    if sel["log_destination"] == "card":
+        return "[Journal]\nStorage=persistent\nSystemMaxUse=4M\n"
+    return "[Journal]\nStorage=volatile\nRuntimeMaxUse=4M\n"
+
+
+def _dummy_png():
+    """One small neutral 256x256 PNG for the default map style."""
+    raw = b"".join(b"\0" + bytes((48, 48, 48)) * MAP_TILE_SIZE for _ in range(MAP_TILE_SIZE))
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    header = struct.pack(">IIBBBBB", MAP_TILE_SIZE, MAP_TILE_SIZE, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+
+
+def _remove_path(path):
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _apply_map_tiles(selection):
+    """Make /maps/dummy the one map style: generated neutral tiles, or a symlink to the chosen folder."""
+    sel = _validate(selection)
+    root = FSDIR / "maps"
+    style = root / MAP_STYLE
+    safeio.mkdir(root, mode=0o755)
+    _remove_path(style)
+    if sel["map_tiles"] == "folder":
+        style.symlink_to(Path(sel["map_tiles_folder"]), target_is_directory=True)
+        return
+    safeio.mkdir(style, mode=0o755)
+    tile = _dummy_png()
+    source = style / "tile.png"
+    safeio.write(source, tile, 0o644)
+    side = 1 << MAP_ZOOM
+    safeio.mkdir(style / str(MAP_ZOOM), mode=0o755)
+    for x in range(side):
+        for y in range(side):
+            target = style / str(MAP_ZOOM) / str(x) / f"{y}.png"
+            safeio.mkdir(target.parent, mode=0o755)
+            try:
+                os.link(source, target)
+            except OSError:
+                shutil.copyfile(source, target)
 
 
 def _boot_id():
@@ -681,6 +772,9 @@ def options():
         "gpios": gpios,
         "touch_modes": list(TOUCH_MODES),
         "radio_spidevs": [DEFAULT_RADIO, "spidev1.0"],
+        "log_levels": list(LOG_LEVELS),
+        "log_destinations": list(LOG_DESTINATIONS),
+        "map_tiles": list(MAP_TILES),
         "defaults": dict(DEFAULTS),
         "selection": _normalize(saved if isinstance(saved, dict) else {}),
         "config": str(CONFIG),
@@ -779,9 +873,13 @@ def activate(selection):
     # DeviceUIConfig: version=1, brightness=153, screen_timeout=0, alert_enabled=1, banner_enabled=1.
     # The default 30 s timeout blanks the panel because this setup has no LGFX backlight control.
     safeio.write(FSDIR / "prefs" / "uiconfig.proto", bytes.fromhex("0801109901180040014801"), 0o644)
+    safeio.mkdir(JOURNALD_NAMESPACE.parent, mode=0o755)
+    safeio.write(JOURNALD_NAMESPACE, journald(sel), 0o644)
+    _apply_map_tiles(sel)
     safeio.mkdir(UNIT_DIR, mode=0o755)
     safeio.write(UNIT_PATH, unit(sel), 0o644)
     _systemctl("daemon-reload")
+    _systemctl("try-restart", "systemd-journald@mui.service")
     _systemctl("enable", UNIT)
     if package_enabled:
         _systemctl("disable", "--now", "meshtasticd.service")

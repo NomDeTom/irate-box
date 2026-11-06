@@ -26,6 +26,7 @@ os.environ.update(
     HUB_DEVICE_TREE=str(T / "dt"),
     HUB_SPI_SYS=str(T / "spi"),
     HUB_UNIT_DIR=str(T / "units"),
+    HUB_MUI_JOURNALD=str(T / "journald@mui.conf"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
@@ -134,8 +135,29 @@ check(
     and "pin: 26" in cfg
     and "line: 9" in cfg
     and "Module: sim" in cfg
-    and "spidev: spidev0.0" in cfg,
+    and "spidev: spidev0.0" in cfg
+    and "Logging:\n  LogLevel: warn" in cfg,
     cfg,
+)
+check(
+    "the unit namespaces MUI's log and no longer forces -v",
+    "LogNamespace=mui" in mui.unit(sel) and " -v" not in mui.unit(sel),
+    mui.unit(sel),
+)
+check(
+    "the journal namespace defaults to bounded RAM",
+    mui.journald(sel) == "[Journal]\nStorage=volatile\nRuntimeMaxUse=4M\n",
+    mui.journald(sel),
+)
+check(
+    "the card choice is bounded",
+    mui.journald({**sel, "log_destination": "card"}) == "[Journal]\nStorage=persistent\nSystemMaxUse=4M\n",
+    mui.journald({**sel, "log_destination": "card"}),
+)
+check(
+    "unknown log levels and destinations are refused",
+    refused(mui.activate, {"log_level": "trace"}) == "mui.log-level"
+    and refused(mui.activate, {"log_destination": "disk"}) == "mui.log-destination",
 )
 check(
     "a display pin cannot be the radio bus",
@@ -232,6 +254,10 @@ check(
     and (mui.FSDIR / "prefs" / "uiconfig.proto").read_bytes() == bytes.fromhex("0801109901180040014801")
     and mui.UNIT_PATH.is_file()
     and "Conflicts=meshtasticd.service" in mui.UNIT_PATH.read_text()
+    and mui.JOURNALD_NAMESPACE.is_file()
+    and "Storage=volatile" in mui.JOURNALD_NAMESPACE.read_text()
+    and (mui.FSDIR / "maps" / "dummy" / "3" / "0" / "0.png").is_file()
+    and (mui.FSDIR / "maps" / "dummy" / "tile.png").is_file()
     and msg.get("id") == "mui.saved",
     (msg, env.read_text(), mui.UNIT_PATH.read_text() if mui.UNIT_PATH.is_file() else ""),
 )

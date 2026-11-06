@@ -120,6 +120,10 @@
       dc: sel.dc,
       rst: sel.rst,
       bl: sel.bl,
+      log_level: sel.log_level || 'warn',
+      log_destination: sel.log_destination || 'ram',
+      map_tiles: sel.map_tiles || 'dummy',
+      map_tiles_folder: sel.map_tiles_folder || '',
     };
   }
   function muiRebuild(initial) {
@@ -140,12 +144,20 @@
       }
     }
     $('pins-mui-touch-cs').disabled = touch === 'none';
+    $('pins-mui-log-level').value = saved.log_level || 'warn';
+    $('pins-mui-log-destination').value = saved.log_destination || 'ram';
+    $('pins-mui-map-tiles').value = saved.map_tiles || 'dummy';
+    $('pins-mui-map-folder').value = saved.map_tiles_folder || '';
     muiUpdate();
   }
   function muiSelectionNow() {
     const sel = { bus: Number($('pins-mui-bus').value || 1), touch: $('pins-mui-touch').value || 'lgfx' };
     for (const role of Object.keys(MUI_ROLE_SELECTS)) sel[role] = Number($(MUI_ROLE_SELECTS[role]).value);
     sel.replace_radio = Boolean($('pins-mui-replace-radio').checked);
+    sel.log_level = $('pins-mui-log-level').value || 'warn';
+    sel.log_destination = $('pins-mui-log-destination').value || 'ram';
+    sel.map_tiles = $('pins-mui-map-tiles').value || 'dummy';
+    sel.map_tiles_folder = $('pins-mui-map-folder').value.trim();
     return sel;
   }
   function muiDuplicates(sel) {
@@ -220,6 +232,10 @@
     }
     const sel = muiSelectionNow();
     const dup = muiDuplicates(sel);
+    const logWarning = $('pins-mui-log-warning');
+    if (logWarning) logWarning.hidden = !(sel.log_level === 'debug' || sel.log_destination === 'card');
+    const folderBox = $('pins-mui-map-folder-box');
+    if (folderBox) folderBox.hidden = sel.map_tiles !== 'folder';
     const touchOption = touchSelect && touchSelect.selectedOptions[0];
     const csConflict = Boolean(
       touchOption && displayCs !== undefined && touchOption.dataset.cs !== undefined && touchOption.dataset.cs === displayCs
@@ -232,7 +248,8 @@
     const restart = $('pins-mui-restart');
     const supported = Boolean(muiOptions && muiStatus && muiStatus.supported);
     const binary = Boolean(muiStatus && muiStatus.binary_present);
-    if (activate) activate.disabled = !supported || !binary || Boolean(dup) || csConflict || (configured && !sel.replace_radio);
+    const folderMissing = sel.map_tiles === 'folder' && !sel.map_tiles_folder;
+    if (activate) activate.disabled = !supported || !binary || Boolean(dup) || csConflict || folderMissing || (configured && !sel.replace_radio);
     if (deactivate) {
       deactivate.disabled = !muiStatus || !(muiStatus.overlay_enabled || muiStatus.unit_active || muiStatus.pending);
     }
@@ -909,6 +926,10 @@
   $('pins-mui-touch').addEventListener('change', () => { muiRebuild(); });
   for (const id of Object.values(MUI_ROLE_SELECTS)) $(id).addEventListener('change', () => { muiUpdate(); });
   $('pins-mui-replace-radio').addEventListener('change', () => { muiUpdate(); });
+  $('pins-mui-log-level').addEventListener('change', () => { muiUpdate(); });
+  $('pins-mui-log-destination').addEventListener('change', () => { muiUpdate(); });
+  $('pins-mui-map-tiles').addEventListener('change', () => { muiUpdate(); });
+  $('pins-mui-map-folder').addEventListener('input', () => { muiUpdate(); });
   $('pins-mui-activate').addEventListener('click', async (event) => {
     const button = event.currentTarget;
     if (!muiOptions || !muiStatus) return;
