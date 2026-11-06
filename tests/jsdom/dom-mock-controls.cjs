@@ -45,7 +45,7 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   const names = rows.map((row) => text(row.querySelector('h3')));
   const want = ['Action buttons', 'Chips: one of a few', 'Filter chips: any of a few', 'On and Off chips: a yes/no setting', 'On and Off chips over a checkbox', 'Joined tabs', 'Pills', 'Help that expands', 'A fold',
     'Uptime', 'Short entries, with a filter', 'Cards with a drawer', "A card after a pane's words", 'Records', 'A block of settings', 'Choice tiles', 'An ordered scale, as a slider', 'A drop-down of a few, as chips',
-    'Updates: how often, how far, and the three buttons', 'A block kept while it is drawn again', 'Finding cards, one per state', 'Findings as a short list',
+    'Updates: how often, how far, and the three buttons', 'A block kept while it is drawn again', 'Card lists: 0 to 20 entries', 'Finding cards, one per state', 'Findings as a short list',
     'Form fields', 'Colour', 'Progress, output and space used', 'Tabs with their panels', 'A table', 'An empty list',
     'An app\'s page: its facts and its Access', 'The home page\'s tiles', 'The setup steps', 'A link to where the reason is', 'A package\'s card',
     'The theme picker and the name colour'];
@@ -71,6 +71,27 @@ const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : ''
   d.querySelector('#mock-cards .aw-card-head').click();
   [...d.querySelectorAll('#mock-cards .aw-drawer .chip')].find((chip) => text(chip) === 'On').click();
   check('a card\'s drawer: its setting brings Save and Discard', !d.querySelector('#mock-cards .aw-foot').hidden && /Unsaved/.test(text(d.querySelector('#mock-cards .aw-foot'))));
+
+  // The card-list slider: 0 to 20 entries in every layout the pages use; 9 and 10 stay cards.
+  const slider = d.getElementById('mock-card-list-entries');
+  const setEntries = (n) => { slider.value = String(n); slider.dispatchEvent(new w.Event('input', { bubbles: true })); };
+  setEntries(9);
+  check('card lists at 9: the toolkit layout is cards, not strips',
+    d.querySelectorAll('#mock-card-list .aw-card').length === 9 && !d.querySelector('#mock-card-list .source-row'));
+  setEntries(10);
+  check('  at 10: still cards (the step where they once turned into strips)',
+    d.querySelectorAll('#mock-card-list .aw-card').length === 10 && !d.querySelector('#mock-card-list .source-row'));
+  check('  the short entries and source rows follow the same number',
+    d.querySelectorAll('#mock-card-list-short .aw-row').length === 10 && d.querySelectorAll('#mock-card-list-source .source-row').length === 10);
+  setEntries(0);
+  check('  at 0: every layout is empty, and the number is said',
+    !d.querySelector('#mock-card-list .aw-card') && !d.querySelector('#mock-card-list-short .aw-row') && !d.querySelector('#mock-card-list-source .source-row')
+    && /0 of 20 entries/.test(text(d.getElementById('mock-card-list-count'))));
+  setEntries(20);
+  check('  at 20: every entry in every layout',
+    d.querySelectorAll('#mock-card-list .aw-card').length === 20 && d.querySelectorAll('#mock-card-list-short .aw-row').length === 20
+    && d.querySelectorAll('#mock-card-list-source .source-row').length === 20);
+  setEntries(7);
 
   // Remove now asks on the page; Cancel keeps it.
   const remove = [...d.querySelectorAll('#mock-buttons button')].find((button) => text(button) === 'Remove now');

@@ -186,6 +186,47 @@
         'AW.drawKept(box, nodes); live parts marked data-live', kept));
   }
 
+  // ---- A card list at any length: the layouts the pages use, drawn with one number of entries ----
+  // The slider is the point: 0 to 20 entries, so the same data can be seen in each layout, and the
+  // step from 9 to 10 (where the toolkit cards once turned into strips) is beside it.
+  function cardLists() {
+    const n = 7;
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      id: `mock-list-${index + 1}`,
+      title: `Toolkit ${index + 1}`,
+      summary: index % 2 ? 'Not cached' : 'Cached',
+      badges: index % 2 ? [] : ['Cached'],
+      detail: { State: index % 2 ? 'Not cached' : 'Cached', Size: `${index + 1} MB` },
+    }));
+    const sourceItems = items.map((item, index) => ({ ...item, pill: index % 2 ? AW.pill('not cached') : AW.pill('cached', 'ok'),
+      body: [h('p', { class: 'setting-desc', text: 'The longer words, in the row\'s drawer.' })] }));
+    const cardsBox = h('div', { id: 'mock-card-list' });
+    const shortBox = h('div', { id: 'mock-short-list' });
+    const sourceBox = h('div', { id: 'mock-source-list' });
+    const count = h('span', { class: 'setting-desc', id: 'mock-card-list-count' });
+    const slider = h('input', { type: 'range', min: '0', max: '20', step: '1', value: String(n),
+      id: 'mock-card-list-entries', 'aria-label': 'Entries in each card list' });
+    const draw = () => {
+      const shown = Number(slider.value);
+      count.textContent = `${shown} of 20 entries.`;
+      cardsBox.replaceChildren(AW.cards(items.slice(0, shown), { id: 'mock-card-list-cards', save: () => pretendSave(),
+        body: (item) => [AW.dl({ State: item.detail.State, Size: item.detail.Size })] }));
+      shortBox.replaceChildren(AW.shortList(items.slice(0, shown), { id: 'mock-card-list-short' }));
+      sourceBox.replaceChildren(AW.sourceList(sourceItems.slice(0, shown), { id: 'mock-card-list-source' }));
+    };
+    slider.addEventListener('input', draw);
+    draw();
+    return group('Card lists at any length', 'The same entries in each card layout the pages use. Move the slider from 0 to 20: the toolkit cards stay cards at 9 and 10, and the rows, short entries and source rows show their own form.',
+      row('card-lists', 'Card lists: 0 to 20 entries', 'Cards with a drawer (the toolkits), short entries with a filter, and source rows. The slider sets how many each one shows.',
+        'AW.cards(items); AW.shortList(items); AW.sourceList(items)',
+        h('div', {},
+          h('label', { class: 'aw-field' }, h('span', { class: 'aw-label', text: 'Entries' }), slider, count),
+          h('div', { class: 'settings' },
+            h('div', {}, h('p', { class: 'setting-name', text: 'Cards with a drawer (the toolkits)' }), cardsBox),
+            h('div', {}, h('p', { class: 'setting-name', text: 'Short entries with a filter' }), shortBox),
+            h('div', {}, h('p', { class: 'setting-name', text: 'Source rows' }), sourceBox)))));
+  }
+
   // ---- The cards and findings the doctors draw, one of each ----
   function cardsAndFindings() {
     const STATES = ['problem', 'warn', 'suggest', 'info', 'ok', 'not-here', 'accepted', 'fixed'];
@@ -365,7 +406,7 @@
     const box = document.getElementById('mock-controls-body');
     if (!box) return;
     drawn = true;
-    box.replaceChildren(fromTheMock(), sinceTheMock(), cardsAndFindings(), fromThePages());
+    box.replaceChildren(fromTheMock(), sinceTheMock(), cardLists(), cardsAndFindings(), fromThePages());
   }
   window.addEventListener('hashchange', () => setTimeout(() => { draw(); placePicker(); }));
   AL.onBuild(() => { draw(); placePicker(); });
