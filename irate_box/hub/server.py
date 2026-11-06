@@ -3144,6 +3144,8 @@ FORWARDED_HEADERS = (
     "X-Original-URI",
     "X-Original-Method",
     "X-Real-IP",
+    # The app origin's gallery scope: the web server sets it, so it is the front's word too.
+    "X-Irate-App",
 )
 
 

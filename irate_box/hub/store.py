@@ -87,6 +87,15 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")  # \Z: "$" would let a trailing ne
 
 MAX_NAME = 64
 MAX_KIND = 32
+# An app origin asks for the gallery with a fixed header the web server sets on its proxy and
+# overrides whatever the client sent: an app's script sees only its own kind, never the other
+# apps' saves. The hub's own origin clears the header, so its gallery and its Store pane see all.
+APP_HEADER = "X-Irate-App"
+APP_KINDS = {"draw": "excalidraw", "mermaid": "mermaid", "svg": "svgedit"}
+# SVG-Edit renders its own preview as a PNG data URL. Check that on the server rather than store
+# whatever bytes arrive under the name "thumbnail": 512 KB is far beyond a drawing's preview.
+THUMB_MAX = int(os.environ.get("HUB_STORE_THUMB_MAX", 512 * 1024))
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 # What the store and the drop refuse, said in more than one place (refused.py: {"error": English, "message": message}).
 BAD_ID = M("store.id.invalid", "Invalid file identifier.")
@@ -95,6 +104,12 @@ DROP_GONE = M("drop.not-found", "File not found. It was deleted, or it expired."
 BAD_METHOD = M("store.method.invalid", "Invalid request. The store does not answer this method here.")
 BAD_JSON = M("store.json.invalid", "Invalid request. The body is not a JSON object.")
 NAME_REQUIRED = M("store.name.required", "Enter a name.")
+THUMB_NOT_PNG = M("store.thumb.not-png", "The drawing's preview is not a PNG image.")
+THUMB_LARGE = M(
+    "store.thumb.large",
+    "The drawing's preview is larger than {kb} KB.",
+    kb=THUMB_MAX >> 10,
+)
 NO_LENGTH = M("drop.length.none", "Send the file with a Content-Length header.")
 NO_SPACE = M("drop.storage.full", "Insufficient free storage. Delete files from the box, then upload again.")
 INTERRUPTED = M("drop.upload.interrupted", "Upload interrupted. Upload the file again.")
@@ -964,6 +979,21 @@ def can_see(meta, me):
     return True
 
 
+def app_kind(handler):
+    """The one kind this request's app origin may see, or None for the hub's own origin.
+
+    The web server sets APP_HEADER on each app origin's /api/saves proxy, overriding anything the
+    client sent; the hub's own origin clears it. An unknown value is treated as no scope, never
+    as permission to see more than the app named.
+    """
+    value = str(handler.headers.get(APP_HEADER, "") or "").strip().lower()
+    return APP_KINDS.get(value)
+
+
+def visible_to_app(meta, kind):
+    return kind is None or meta.get("kind") == kind
+
+
 def handle(handler, method, path, store, drop=None):
     """Route one request. Returns True if this module owned it.
 
@@ -1108,10 +1138,11 @@ def _with_state(store, meta):
 
 
 def _handle_saves(handler, method, path, store):
+    kind = app_kind(handler)
     if path == "/api/saves":
         if method == "GET":
             me = VIEWER(handler) if VIEWER else None
-            saves = [m for m in store.list_saves() if can_see(m, me)]
+            saves = [m for m in store.list_saves() if can_see(m, me) and visible_to_app(m, kind)]
             if "full=1" in (handler.path.split("?", 1)[1] if "?" in handler.path else ""):
                 # Opt-in: the listing normally stays metadata-only so a gallery costs
                 # one small read per entry. Text documents are cheap enough to inline,
@@ -1128,7 +1159,7 @@ def _handle_saves(handler, method, path, store):
             )
             return True
         if method == "POST":
-            _create_save(handler, store)
+            _create_save(handler, store, kind)
             return True
         _send_json(handler, 405, say(BAD_METHOD))
         return True
@@ -1140,6 +1171,14 @@ def _handle_saves(handler, method, path, store):
         return True
 
     wants_thumb = len(rest) > 1 and rest[1] == "thumb"
+
+    if kind is not None:
+        # The app origin sees its own kind only: another app's id is simply not found, so its
+        # existence, name and thumbnail do not leak through this origin.
+        meta = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
+        if meta is None or not visible_to_app(meta, kind):
+            _send_json(handler, 404, say(NOT_FOUND))
+            return True
 
     if method == "GET" and wants_thumb:
         # Seen by whoever may see the save itself: ids travel in the clear on a plain-HTTP hotspot.
@@ -1211,7 +1250,7 @@ def _handle_saves(handler, method, path, store):
     return True
 
 
-def _create_save(handler, store):
+def _create_save(handler, store, kind=None):
     raw = _read_body(handler)
     if raw is None:
         _send_json(handler, 413, say(body_too_large()))
@@ -1230,7 +1269,9 @@ def _create_save(handler, store):
         _send_json(handler, 400, say(M("store.state.required", "Invalid save. The request has no drawing state.")))
         return
 
-    kind = str(payload.get("kind", "unknown")).strip()[:MAX_KIND] or "unknown"
+    # An app origin's fixed header wins over the body: a script on /svg/ cannot write, say, an
+    # Excalidraw save that the Excalidraw origin would then trust as its own.
+    kind = kind or str(payload.get("kind", "unknown")).strip()[:MAX_KIND] or "unknown"
     name = str(payload.get("name", "")).strip()[:MAX_NAME] or "untitled"
 
     key = payload.get("id")
@@ -1239,6 +1280,13 @@ def _create_save(handler, store):
         if not ID_RE.match(key):
             _send_json(handler, 400, say(BAD_ID))
             return
+        if kind is not None:
+            # An app origin may save over its own kind only: choosing another app's id must not
+            # move that row into this app (or replace the other app's drawing with this one).
+            old = store._read_meta(confine.under(store._dir("saves"), key + ".meta"))
+            if old is not None and old.get("kind") != kind:
+                _send_json(handler, 404, say(NOT_FOUND))
+                return
 
     thumb = None
     if payload.get("thumb"):
@@ -1252,6 +1300,17 @@ def _create_save(handler, store):
             thumb = base64.b64decode(blob, validate=True)
         except (ValueError, TypeError):
             thumb = None
+        if kind == "svgedit" and thumb is None:
+            _send_json(handler, 400, say(THUMB_NOT_PNG))
+            return
+
+    if thumb is not None and kind == "svgedit":
+        if len(thumb) > THUMB_MAX:
+            _send_json(handler, 400, say(THUMB_LARGE))
+            return
+        if not thumb.startswith(PNG_MAGIC):
+            _send_json(handler, 400, say(THUMB_NOT_PNG))
+            return
 
     body = json.dumps(state).encode()
     cost = len(body) + len(thumb or b"")
