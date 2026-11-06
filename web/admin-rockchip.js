@@ -1056,6 +1056,39 @@
       AW.cards([...found, other], { id: 'rk-setup-cards', body: (item) => setupBody(item, setup) }));
   }
 
+  // The Rockchip page's own tabs: one function at a time. An old link to the cards or the setup section
+  // (both moved to pages of their own) goes there. The cards and setup pages have no tabs, so this does nothing.
+  (() => {
+    const moved = { 'rk-cards': '/admin/rk-cards.html', 'rk-cards-pane': '/admin/rk-cards.html', 'rk-setup': '/admin/rk-setup.html', 'rk-setup-pane': '/admin/rk-setup.html' };
+    if (moved[location.hash.slice(1)]) { location.replace(moved[location.hash.slice(1)]); return; }
+    const tabs = [...document.querySelectorAll('[data-rk-tab]')];
+    if (!tabs.length) return;
+    const panes = [...document.querySelectorAll('[data-rk-pane]')];
+    const show = (id) => {
+      tabs.forEach((tab) => {
+        const on = tab.dataset.rkTab === id;
+        tab.classList.toggle('active', on);
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+      });
+      panes.forEach((pane) => { pane.hidden = pane.dataset.rkPane !== id; });
+      if (id) history.replaceState(null, '', '#' + id);
+    };
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => show(tab.dataset.rkTab));
+      tab.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        const step = event.key === 'ArrowRight' ? 1 : -1;
+        const next = tabs[(index + step + tabs.length) % tabs.length];
+        next.focus();
+        show(next.dataset.rkTab);
+      });
+    });
+    const hash = location.hash.slice(1);
+    show(tabs.some((tab) => tab.dataset.rkTab === hash) ? hash : tabs[0].dataset.rkTab);
+  })();
+
   load();
   // For the page tests: the drawing, called with data of their own.
   if (typeof window !== 'undefined') { window.rkRender = render; window.rkRenderSetup = renderSetup; window.rkRenderCards = renderCards; window.rkProblem = problem; }
