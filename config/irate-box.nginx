@@ -1106,6 +1106,13 @@ server {
 		add_header X-Content-Type-Options nosniff always;
 		add_header Referrer-Policy no-referrer always;
 	}
+	location = /svg/lock.js {
+		alias @STATIC@/lock.js;
+		add_header Cache-Control "no-cache";
+		add_header Content-Security-Policy $irate_box_svg_csp always;
+		add_header X-Content-Type-Options nosniff always;
+		add_header Referrer-Policy no-referrer always;
+	}
 	# The trimmed build: no hashed names, so everything revalidates.
 	location = /svg { return 301 /svg/; }
 	location ^~ /svg/ {

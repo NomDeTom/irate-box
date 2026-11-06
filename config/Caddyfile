@@ -800,6 +800,11 @@ import {$HUB_TLS_FRONT:/etc/hub/tls/front}/caddy-http-mermaid.inc
 		header Cache-Control "no-cache"
 		file_server
 	}
+	handle /svg/lock.js {
+		root * {$HUB_STATIC:/home/user/irate-box/web}
+		header Cache-Control "no-cache"
+		file_server
+	}
 	handle_path /svg/* {
 		import {$HUB_ACCESS_DIR:/etc/caddy/irate-box-access}/svg.caddy*
 		root * {$HUB_SVG_ROOT:/home/user/irate-box/apps/svg}

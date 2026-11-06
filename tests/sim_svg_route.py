@@ -105,8 +105,11 @@ check(
     "/api/v2" not in svg and "/socket.io" not in svg,
 )
 check(
-    "  the link back to the hub is the hub's own file under /svg/, where the policy admits it",
-    "location = /svg/hub-return.js {" in svg and "alias @STATIC@/hub-return.js;" in svg,
+    "  the link back to the hub and the lock helper are the hub's own files under /svg/",
+    "location = /svg/hub-return.js {" in svg
+    and "alias @STATIC@/hub-return.js;" in svg
+    and "location = /svg/lock.js {" in svg
+    and "alias @STATIC@/lock.js;" in svg,
 )
 
 csp = re.search(r'set \$irate_box_svg_csp "([^"]+)";', svg)
@@ -227,7 +230,8 @@ check(
     and "header_up X-Irate-App svg" in caddy
     and 'header_up Cookie "irate_session=[^;]*;?\\s*" ""' in caddy
     and "header_down X-Content-Type-Options nosniff" in caddy
-    and "root * {$HUB_SVG_ROOT:" in caddy,
+    and "root * {$HUB_SVG_ROOT:" in caddy
+    and "handle /svg/lock.js" in caddy,
 )
 check(
     "TLS: the twin is 8499, so each scheme keeps its own origin",

@@ -200,15 +200,10 @@ check(
     hub_js,
 )
 check(
-    "the gallery extension and the lock helper ship, and the wrapper loads both",
+    "the gallery extension ships, and the wrapper loads it and the hub's lock helper",
     (REPO / "apps" / "svgedit" / "ext-hub-store.js").is_file()
-    and (REPO / "apps" / "svgedit" / "lock.js").is_file()
     and "userExtensions: [{ pathName: './ext-hub-store.js' }]" in hub_js
     and '<script src="./lock.js"></script>' in wrapper,
-)
-check(
-    "  the app's lock helper is the hub's own, byte for byte",
-    (REPO / "apps" / "svgedit" / "lock.js").read_bytes() == (REPO / "web" / "lock.js").read_bytes(),
 )
 
 install = (REPO / "install.sh").read_text()
@@ -233,8 +228,8 @@ if built:
     bundle_names = tree_names(bundle)
     check("  it has index.html", "index.html" in bundle_names)
     check(
-        "  and the hub's gallery extension and lock helper",
-        "ext-hub-store.js" in bundle_names and "lock.js" in bundle_names,
+        "  and the hub's gallery extension",
+        "ext-hub-store.js" in bundle_names,
         sorted(name for name in bundle_names if name.endswith(".js") and "/" not in name),
     )
     check(
