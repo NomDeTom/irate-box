@@ -22,7 +22,13 @@
   </header>
 
   <main class="admin-main">
-    <section class="admin-pane" id="rockchip" aria-label="Rockchip boards" data-i18n-aria-label="admin-rockchip.main.aria-rockchip-boards">
+    <div class="view-switch rk-tabs" role="tablist" aria-label="Rockchip boards" data-i18n-aria-label="admin-rockchip.tabs.aria">
+      <button class="view-switch-btn active" type="button" role="tab" aria-selected="true" data-rk-tab="board" data-i18n="admin-rockchip.tabs.board">The board</button>
+      <button class="view-switch-btn" type="button" role="tab" aria-selected="false" tabindex="-1" data-rk-tab="copies" data-i18n="admin-rockchip.tabs.copies">Saved copies</button>
+      <button class="view-switch-btn" type="button" role="tab" aria-selected="false" tabindex="-1" data-rk-tab="images" data-i18n="admin-rockchip.tabs.images">Board images</button>
+      <button class="view-switch-btn" type="button" role="tab" aria-selected="false" tabindex="-1" data-rk-tab="recovery" data-i18n="admin-rockchip.tabs.recovery">MaskROM recovery</button>
+    </div>
+    <section class="admin-pane" id="rockchip" data-rk-pane="board" aria-label="Rockchip boards" data-i18n-aria-label="admin-rockchip.main.aria-rockchip-boards">
       <p class="setting-desc" data-i18n="admin-rockchip.main.intro">
         Prepare a Luckfox Lyra or another RK3506 board for mPWRD-OS: the box erases the board's onboard flash, so that
         the board starts from its SD card. You can install the original bootloader or the irate-box NAND U-Boot, and
@@ -44,7 +50,7 @@
       </div>
     </section>
 
-    <section class="admin-pane" id="rk-copies-pane" aria-labelledby="rk-copies-title">
+    <section class="admin-pane" id="rk-copies-pane" data-rk-pane="copies" aria-labelledby="rk-copies-title">
       <h2 id="rk-copies-title" data-i18n="admin-rockchip.copies.title">Saved copies</h2>
       <p class="setting-desc" data-i18n="admin-rockchip.copies.intro">
         Full copies of a board's onboard flash, saved before an install. Download one to keep it elsewhere.
@@ -58,7 +64,7 @@
     <!-- Board images (library/rkimages.py): the newest mPWRD-OS and Armbian releases the librarian mirrors into
          rk-images, one per Lyra board. The shared parts in the approved order: state, access, schedule, space,
          Check now and Update, then the images themselves. -->
-    <section class="admin-pane" id="rk-images-pane" aria-labelledby="rk-images-title">
+    <section class="admin-pane" id="rk-images-pane" data-rk-pane="images" aria-labelledby="rk-images-title">
       <h2 id="rk-images-title" data-i18n="admin-rockchip.images.title">Board images</h2>
       <p class="setting-desc" data-i18n="admin-rockchip.images.intro">
         The librarian mirrors the newest mPWRD-OS and Armbian releases into rk-images, one image for each Lyra
@@ -69,7 +75,7 @@
 
     <!-- Recovering a board whose NAND boot chain is damaged: bridge the two underside MaskROM pads while
          powering on. The box reads and saves the flash, then writes the NAND U-Boot and the Alpine rescue. -->
-    <section class="admin-pane" id="rk-recovery-pane" aria-labelledby="rk-recovery-title">
+    <section class="admin-pane" id="rk-recovery-pane" data-rk-pane="recovery" aria-labelledby="rk-recovery-title">
       <h2 id="rk-recovery-title" data-i18n="admin-rockchip.recovery.title">Recover a dead Lyra in MaskROM</h2>
       <p class="setting-desc warn-text" id="rk-recovery-status" role="status" hidden></p>
       <p class="setting-desc" data-i18n="admin-rockchip.recovery.intro">

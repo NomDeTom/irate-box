@@ -58,6 +58,15 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
     && /two MaskROM pads in a red box/.test(drawing.getAttribute('aria-label'))
     && !drawing.querySelector('title') && !drawing.querySelector('[id]')
     && !/<script|href=/.test(drawing.innerHTML), drawing && drawing.getAttribute('viewBox'));
+  const tab = (name) => [...d.querySelectorAll('[data-rk-tab]')].find((b) => b.dataset.rkTab === name);
+  const pane = (name) => d.querySelector(`[data-rk-pane="${name}"]`);
+  check('the Rockchip page is tabbed: the board first, the other functions one at a time',
+    tab('board').classList.contains('active') && !pane('board').hidden && pane('images').hidden && pane('recovery').hidden);
+  tab('images').click();
+  check('  Board images: its own tab', !pane('images').hidden && pane('board').hidden && tab('images').getAttribute('aria-selected') === 'true');
+  tab('recovery').click();
+  check('  MaskROM recovery: its own tab, with the underside drawing', !pane('recovery').hidden && !!pane('recovery').querySelector('svg'));
+  tab('board').click();
   check('no board: said how to connect one, no buttons', /No Rockchip board is connected/.test(text('rk-board')) && buttons().length === 0, text('rk-board'));
   await show({ boards: [board('system')] });
   check('its own system: said, Switch to Loader mode offered', /running its own system/.test(text('rk-board')) && buttons().map((b) => b.textContent).join() === 'Switch to Loader mode', text('rk-board'));
