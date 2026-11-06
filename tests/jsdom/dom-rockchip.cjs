@@ -97,6 +97,45 @@ const show = async (s) => { state = { ...state, ...s }; w.rkRender(state); await
   state.results = [];
   await show({ env: envReading });
 
+  // Boot confirmation: the count and limit, the last unit/manual answer, the card setting, and the typed CONFIRM.
+  check('boot confirmation: not readable, so the confirm is off', /boot environment is not readable/.test(text('rk-confirm')) && d.getElementById('rk-confirm-restart').disabled, text('rk-confirm'));
+  await show({ boot_confirm: { available: true, bootcount: 2, bootlimit: 3, card_confirms: false,
+    last_confirm: 1762500000, last_confirm_over: 'unit', confirmed: false, reason: 'card-confirms-off' } });
+  check('  the count, limit and the unit\'s reason, in plain words',
+    /Boot count\s*2/.test(text('rk-confirm')) && /Limit\s*3/.test(text('rk-confirm'))
+      && /Not confirmed by the unit on/.test(text('rk-confirm')) && /the card does not confirm its own boot/.test(text('rk-confirm')),
+    text('rk-confirm'));
+  check('  card_confirms is a setting, with its warning',
+    /Card confirms its own boot/.test(text('rk-confirm-setting')) && /Off: the count resets when the card's boot script loads/.test(text('rk-confirm-setting'))
+      && !d.getElementById('rk-confirm-restart').disabled, text('rk-confirm-setting'));
+  await show({ boot_confirm: { available: true, bootcount: 2, bootlimit: 3, card_confirms: true,
+    last_confirm: 1762500000, last_confirm_over: 'manual', confirmed: true, reason: '' } });
+  check('  a manual confirmation, and the On warning',
+    /Confirmed manually on/.test(text('rk-confirm')) && /boot count was reset to 0/.test(text('rk-confirm'))
+      && /On: a card that never finishes booting falls to the rescue/.test(text('rk-confirm-setting')),
+    [text('rk-confirm'), text('rk-confirm-setting')]);
+  await show({ boot_confirm: { available: true, bootcount: 2, bootlimit: 3, card_confirms: false,
+    last_confirm: 1762500000, last_confirm_over: 'unit', confirmed: false, reason: 'card-confirms-off' } });
+  [...d.querySelectorAll('#rk-confirm-setting .chip')].find((chip) => chip.textContent.trim() === 'On').click();
+  check('  On chosen: the warning changes before the confirm', /On: a card that never finishes booting/.test(text('rk-confirm-setting')));
+  d.getElementById('rk-confirm-restart').click();
+  check('  the typed words are asked first', !d.getElementById('rk-confirm-ask').hidden && d.getElementById('rk-confirm-go').disabled);
+  d.getElementById('rk-confirm-input').value = 'CONFIRM';
+  d.getElementById('rk-confirm-input').dispatchEvent(new w.Event('input', { bubbles: true }));
+  check('  typed CONFIRM: the confirm is offered', !d.getElementById('rk-confirm-go').disabled);
+  state.boot_confirm = { available: true, bootcount: 0, bootlimit: 3, card_confirms: true,
+    last_confirm: 1762501000, last_confirm_over: 'manual', confirmed: true, reason: '' };
+  state.results = [{ id: 'rk1', ok: true, msg: { id: 'rescue.confirm.card-on', en: 'The boot count is now 0, and the card confirms its own boot.' } }];
+  posted.length = 0;
+  d.getElementById('rk-confirm-go').click();
+  await wait(700);
+  check('  the confirm is sent with CONFIRM and the chosen card setting',
+    posted.some((x) => x.action === 'boot-confirm' && x.confirm === 'CONFIRM' && x.card_confirms === true), posted);
+  check('  the answer and the new count are shown',
+    /boot count is now 0/.test(text('rk-confirm-note')) && /Boot count\s*0/.test(text('rk-confirm')) && /Confirmed manually on/.test(text('rk-confirm')),
+    [text('rk-confirm-note'), text('rk-confirm')]);
+  state.results = [];
+  await show({ boot_confirm: state.boot_confirm });
   // This box's rescue: not ready, ready, the typed RESTART, the answer, and no retry.
   await show({ rescue: undefined });
   check('this box\'s rescue: not read yet, so not ready, with the restart off',
