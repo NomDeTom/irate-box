@@ -2695,10 +2695,14 @@ def queue_snapshot():
     data = _queue_read()
     with _queue_lock:
         thread = _queue_job["thread"]
+        running = bool(thread and thread.is_alive())
         return {
             **data,
-            "items": _queue_job["items"] if (thread and thread.is_alive()) else data["items"],
-            "running": bool(thread and thread.is_alive()),
+            # What is installing, and the items left for their own consent: both stay on the page.
+            "items": queue_order(_queue_job["items"] + list(_queue_job.get("held") or []))
+            if running
+            else data["items"],
+            "running": running,
             "waiting": bool(_queue_job.get("waiting")),
             "current": _queue_job["current"],
             "results": list(_queue_job["results"]),
@@ -2714,10 +2718,10 @@ def _queue_wait_control(rid, seconds=600):
     return {"ok": False, "message": "The root helper did not answer."}
 
 
-def _queue_run(items):
+def _queue_run(run):
     global _queue_job
     results = []
-    for item in items:
+    for item in run:
         with _queue_lock:
             _queue_job["current"] = item
         try:
@@ -2740,14 +2744,25 @@ def _queue_run(items):
                     with _queue_lock:
                         _queue_job["waiting"] = True
                     time.sleep(2)
+                # The librarian's job, not this queue's own thread: waiting on that one would wait on itself.
+                with _library_lock:
+                    job_thread = _library_job["thread"]
                 with _queue_lock:
-                    thread = _queue_job["thread"]
                     _queue_job["waiting"] = False
-                while thread and thread.is_alive():
+                while job_thread and job_thread.is_alive():
                     time.sleep(1)
-                outcome = (_queue_job.get("result") or {}).get(name, "")
+                with _library_lock:
+                    job_result = _library_job.get("result") or {}
+                outcome = job_result.get(name, "") if isinstance(job_result, dict) else ""
                 state = librarian.load_status().get(name) or {}
-                results.append({"item": item, "ok": not state.get("error"), "message": str(outcome)[:300]})
+                failed = state.get("error") or (job_result.get("error") if isinstance(job_result, dict) else None)
+                results.append(
+                    {
+                        "item": item,
+                        "ok": not failed,
+                        "message": str(failed or outcome)[:300],
+                    }
+                )
             elif item["kind"] == "addon":
                 rid = control_request({"action": "addon", "addon": item["id"], "on": True})
                 answer = _queue_wait_control(rid)
@@ -2762,15 +2777,19 @@ def _queue_run(items):
         with _queue_lock:
             _queue_job["results"] = list(results)
             _queue_job["current"] = None
+            held = list(_queue_job.get("held") or [])
         _queue_write(
             {
-                "items": [it for it in items if it not in [r["item"] for r in results if r.get("ok")]],
+                "items": queue_order(
+                    [it for it in run if it not in [r["item"] for r in results if r.get("ok")]] + held
+                ),
                 "settings": _queue_read()["settings"],
             }
         )
     with _queue_lock:
         _queue_job["current"] = None
         _queue_job["waiting"] = False
+        _queue_job["held"] = []
 
 
 def queue_action(payload):
@@ -2806,17 +2825,22 @@ def queue_action(payload):
             items = queue_order([i for i in (_queue_item(x) for x in data["items"]) if i])
             if not items:
                 return 400, refused.say(M("install-queue.empty", "Select something to install first."))
-            for item in items:
-                if item.get("consent") and ticks.get(f"{item['kind']}:{item['id']}") is not True:
-                    return 400, refused.say(
-                        M(
-                            "install-queue.consent",
-                            "Tick the consent for {title} before installing it.",
-                            title=item["title"],
-                        )
+            # An item holds only itself: one whose consent is not ticked stays in the queue and says so,
+            # while the rest install. Before, it stopped the whole queue without saying why.
+            run = [
+                item for item in items if not item.get("consent") or ticks.get(f"{item['kind']}:{item['id']}") is True
+            ]
+            held = [item for item in items if item not in run]
+            if not run:
+                return 400, refused.say(
+                    M(
+                        "install-queue.consent",
+                        "Tick the consent for {title} before installing it.",
+                        title=held[0]["title"],
                     )
-            _queue_job.update(items=items, current=None, results=[], thread=None)
-            thread = threading.Thread(target=_queue_run, args=(items,), daemon=True)
+                )
+            _queue_job.update(items=run, held=held, current=None, results=[], thread=None)
+            thread = threading.Thread(target=_queue_run, args=(run,), daemon=True)
             _queue_job["thread"] = thread
             thread.start()
         return 200, queue_snapshot()

@@ -95,6 +95,7 @@ w.fetch = async (u, opts = {}) => {
     return new Response('{"id":"x"}', { status: 202 });
   }
   if (u === '/admin/accounts') return new Response(JSON.stringify(accountsData), { status: 200 });
+  if (u === '/admin/queue') return new Response(JSON.stringify(queueData), { status: 200 });
   if (u === '/admin/git') return new Response(JSON.stringify(gitData), { status: 200 });
   if (u === '/admin/apps') return new Response(JSON.stringify({ apps: adminApps() }), { status: 200 });
   if (u === '/admin/health') return new Response(JSON.stringify(health), { status: 200 });
@@ -708,8 +709,36 @@ setTimeout(() => {
       check('  after a reload: the fold still open, the unsaved Download still chosen', pol && pol.open
         && [...pol.querySelectorAll('.chip.selected')].some((c) => c.textContent === 'Download'), pol && [...pol.querySelectorAll('.chip.selected')].map((c) => c.textContent));
     }
-      console.log('\nfailures:', fails);
-      process.exit(fails ? 1 : 0);
+    {
+      // lyra-tft, 2026-11-07: SVG-Edit queued beside InspIRCd, whose consent was not ticked. Its own
+      // line must say so, and it must not stop the app behind it (or the Install button at all).
+      queueData = {
+        items: [
+          { kind: 'app', id: 'svg', title: 'SVG-Edit' },
+          { kind: 'addon', id: 'inspircd', title: 'IRC server (InspIRCd)', consent: 'The server answers every device.' },
+        ],
+        settings: {}, running: false, current: null, results: [],
+      };
+      w.pollQuick();
+      setTimeout(() => {
+        const box = t('#quick-installer')[0] || '';
+        const installBtn = [...d.querySelectorAll('#quick-installer button')].find((b) => b.textContent === 'Install queued');
+        check(
+          'Quick installer: an unticked consent on one item does not disable Install for the rest',
+          installBtn && !installBtn.disabled && /waiting for your consent/.test(box),
+          JSON.stringify({ box, disabled: installBtn && installBtn.disabled, exists: !!installBtn }),
+        );
+        if (installBtn) installBtn.click();
+        const sent = posted.filter((p) => p[0] === '/admin/queue' && p[1].action === 'install').pop();
+        check(
+          '  and Install sends no consent tick it was not given',
+          sent && Object.keys(sent[1].ticks || {}).length === 0,
+          sent,
+        );
+        console.log('\nfailures:', fails);
+        process.exit(fails ? 1 : 0);
+      }, 50);
+    }
     }, 100);
   }, 300);
 }, 2500);

@@ -19091,7 +19091,9 @@ function renderQuickInstaller(rows) {
           ? state.ok
             ? "done"
             : `failed: ${state.message}`
-          : "waiting";
+          : item.consent && !quickTicks.has(quickKey(item))
+            ? "waiting for your consent"
+            : "waiting";
     const row = el(
       "li",
       { className: "quick-line" },
@@ -19122,12 +19124,13 @@ function renderQuickInstaller(rows) {
         renderQuickInstaller(rows);
       });
   });
-  const unticked = quickQueue.items.some((item) => item.consent && !quickTicks.has(quickKey(item)));
+  // A consent waits for its own tick, not the whole queue: the other items install now and it stays.
+  const runnable = quickQueue.items.some((item) => !item.consent || quickTicks.has(quickKey(item)));
   const install = el("button", {
     type: "button",
     className: "action-btn primary",
     textContent: quickQueue.running ? "Installing…" : "Install queued",
-    disabled: quickQueue.running || !quickQueue.items.length || unticked,
+    disabled: quickQueue.running || !quickQueue.items.length || !runnable,
   });
   install.addEventListener("click", () => {
     install.disabled = true;
