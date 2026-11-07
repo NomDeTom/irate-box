@@ -770,13 +770,10 @@ def _same_build(installed, cand):
     return str(installed.get("run")) == run_id
 
 
-def update_app(src, cand, entry, mode):
-    """One app source's part of update(): compare builds; for "fetch", download and check
-    the bundle into APP_STAGING; for "update", also queue it for the root helper (using the
-    fetched one when it is still the newest)."""
-    installed = installed_app(src["name"])
-    meta = installed or {}
-    entry["current"] = {
+def _current_build(meta, installed):
+    """The "current" a status entry shows for a bundle on the disk: its run or commit, and a
+    label. installed is the folder's metadata (or None when the app is not there)."""
+    return {
         "version": f"run-{meta['run']}"
         if meta.get("run")
         else (f"git-{meta['commit']}" if meta.get("commit") else None),
@@ -788,6 +785,14 @@ def update_app(src, cand, entry, mode):
             else "not installed"
         ),
     }
+
+
+def update_app(src, cand, entry, mode):
+    """One app source's part of update(): compare builds; for "fetch", download and check
+    the bundle into APP_STAGING; for "update", also queue it for the root helper (using the
+    fetched one when it is still the newest)."""
+    installed = installed_app(src["name"])
+    entry["current"] = _current_build(installed or {}, installed)
     staged = APP_STAGING / f"{src['name']}.zip"
     if _same_build(meta, cand):
         entry.pop("fetched", None)
@@ -2526,13 +2531,50 @@ def _hub_update_state():
     return selfupdate.load_state()
 
 
-def snapshot():
-    """Everything the admin page shows."""
+def settle_pending(results):
+    """Fold the root helper's answer into a pending app install: the entry stops waiting, says
+    what happened, and its current is the build now on the disk. A result not written yet (or one
+    whose file has gone) leaves the entry waiting for the next look. Saves only what changed, and
+    only while no other librarian run holds the lock: a run is the one writing status then."""
+    status = load_status()
+    if not any(isinstance(e, dict) and e.get("pending") in results for e in status.values()):
+        return status
+    try:
+        with Lock():
+            status = load_status()
+            changed = False
+            for name, entry in status.items():
+                if not isinstance(entry, dict):
+                    continue
+                rid = entry.get("pending")
+                result = results.get(rid) if rid else None
+                if not result:
+                    continue
+                entry.pop("pending", None)
+                entry["install_result"] = result
+                if result.get("ok"):
+                    if name in APPS:
+                        installed = installed_app(name)
+                        entry["current"] = _current_build(installed or {}, installed)
+                    entry["outcome"] = result.get("message") or f"installed {name}"
+                else:
+                    entry["outcome"] = f"error: {result.get('message') or 'the install failed'}"
+                changed = True
+            if changed:
+                save_status(status)
+    except LibrarianError:  # a run holds the lock: its own save is the truth; look again next time
+        return load_status()
+    return status
+
+
+def snapshot(root_results=None):
+    """Everything the admin page shows. root_results, when given, is the root helper's results by
+    id: a pending install that has answered is folded into the status first."""
     cfg = load_config()
     return {
         "policy": cfg["policy"],
         "sources": cfg["sources"],
-        "status": load_status(),
+        "status": settle_pending(root_results) if root_results is not None else load_status(),
         "token_set": bool(token()),
         "running": is_running(),
         "types": list(TYPES),
