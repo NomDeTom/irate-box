@@ -123,7 +123,10 @@ check("  from the dnsmasq config", fw.hotspot_iface() == "wlan1")
 (ETC / "ap.json").write_text(
     json.dumps({"up": True, "plan": {"kind": "own-radio", "iface": "wlx001122", "channel": 6}})
 )
-check("  from the hotspot's record when it is up", fw.hotspot_iface() == "wlx001122")
+check(
+    "  from the hotspot's record when it is up: ap0, whatever its radio (a USB dongle's wlx… here)",
+    fw.hotspot_iface() == "ap0",
+)
 (ETC / "ap.json").write_text(json.dumps({"up": False, "plan": {"kind": "own-radio", "iface": "wlx001122"}}))
 check("  not when it is down", fw.hotspot_iface() == "wlan1")
 (ETC / "ap.json").unlink()
