@@ -2371,6 +2371,30 @@ def check_wifi_roles():
                     go=GO_HOTSPOT,
                 )
             )
+    if rec.get("up") and plan.get("kind") in ("own-channel", "follow") and plan.get("backend") != "hostapd":
+        # A shared radio's ap0 is kept for the hotspot by the drop-in alone, and NetworkManager reads
+        # allowed-connections from 1.34 on; before, the file is accepted and does nothing.
+        got = run("nmcli", "-t", "-f", "VERSION", "general")
+        parts = re.findall(r"\d+", (got.stdout or "").strip())[:2] if got.returncode == 0 else []
+        if len(parts) == 2 and (int(parts[0]), int(parts[1])) < (1, 34):
+            out.append(
+                finding(
+                    "wifi-roles:nm-version",
+                    title,
+                    "warn",
+                    M(
+                        "wifi-roles.nm-version",
+                        "NetworkManager {version} does not apply the rule that keeps ap0 for the hotspot.",
+                        version=(got.stdout or "").strip(),
+                    ),
+                    M(
+                        "wifi-roles.nm-version.why",
+                        "The hotspot shares its radio with the WiFi link. A WiFi profile that names no interface can "
+                        "take ap0 from the hotspot. NetworkManager 1.34 and later apply the rule.",
+                    ),
+                    commands=["nmcli -t -f VERSION general"],
+                )
+            )
     if modes and not out:
         out.append(
             finding(

@@ -653,5 +653,16 @@ check(
     "  the watchdog's own choice of link never ap0",
     U.own_network("ap0") and U.own_network("usb0") and not U.own_network("wlan0"),
 )
+real_nm_ipv4 = U.nm_ipv4
+U.nm_ipv4 = lambda: None  # NetworkManager not answering
+U.candidate_links({"wlan0": "managed", "ap0": "managed"})
+check("  NetworkManager not answering: what was known is kept", U.GATEWAYLESS == {"eth1"}, U.GATEWAYLESS)
+U.nm_ipv4 = real_nm_ipv4
+lk = U.Link("eth1", S())
+lk.up, lk.answers, lk.gw = True, True, None
+check("  a gateway-less link that is up counts as working (it holds a step that reaches every link)", lk.healthy())
+lk2 = U.Link("eth0", S())
+lk2.up, lk2.answers, lk2.gw = True, False, None
+check("  a link whose gateway is missing does not", not lk2.healthy())
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

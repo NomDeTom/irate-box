@@ -793,5 +793,110 @@ check(
     "  written where one was, then unchanged",
     ap.refresh_nm_rules(True) is True and ap.refresh_nm_rules(True) is False and ap.NM_RULES.exists(),
 )
+# A record from before every hotspot ran on ap0 (no hotspot_iface): it comes down as that version brought it up.
+old_nm = {"kind": "own-radio", "iface": "wlan0", "channel": 6, "backend": "networkmanager"}
+old_hostapd = dict(old_nm, backend="hostapd")
+check(
+    "legacy record: its hotspot is where that version put it (wlan0), for the firewall and the doctor",
+    ap.ap_iface(old_nm) == "wlan0"
+    and ap.ap_iface({**old_nm, "kind": "follow"}) == "ap0"
+    and not ap.holds_radio(old_nm),
+)
+check(
+    "  hostapd: down takes 192.168.4.1/24 off wlan0, and deletes no ap0 it never made",
+    ["ip", "addr", "del", "192.168.4.1/24", "dev", "wlan0"] in ap.down_steps(old_hostapd)
+    and ["iw", "dev", "ap0", "del"] not in ap.down_steps(old_hostapd),
+    ap.down_steps(old_hostapd),
+)
+check(
+    "  NetworkManager: the connection down, wlan0 not handed back (it was never held)",
+    ["nmcli", "connection", "down", "irate-box-ap"] in ap.down_steps(old_nm)
+    and not any("managed" in c for c in ap.down_steps(old_nm)),
+    ap.down_steps(old_nm),
+)
+ap.RECORD.write_text(json.dumps({"up": True, "plan": old_hostapd}))
+calls.clear()
+ap.remove(renamed_there)
+check(
+    "  remove: the legacy address taken off wlan0",
+    ["ip", "addr", "del", "192.168.4.1/24", "dev", "wlan0"] in calls,
+    calls,
+)
+
+# The rename back failing: the plan kept, so ap0 (the radio's own interface) is never deleted later.
+ap.RECORD.write_text(json.dumps({"up": False}))
+p9 = ap.start(no_second_iface, inv8, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+
+
+def name_stuck(*cmd, **kw):
+    calls.append(list(cmd))
+    if cmd[:3] == ("ip", "link", "show"):
+        return subprocess.CompletedProcess(cmd, 0 if cmd[3] == "ap0" else 1, "", "")
+    if cmd[:3] == ("ip", "link", "set") and "name" in cmd:
+        return subprocess.CompletedProcess(cmd, 2, "", "RTNETLINK answers: Device or resource busy")
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+
+
+calls.clear()
+said = ap.stop(name_stuck)
+rec9 = json.loads(ap.RECORD.read_text())
+check(
+    "rename back failed: off, but it says so, and the plan is kept (last_plan) with renamed_from",
+    "still named ap0" in said and rec9["last_plan"]["renamed_from"] == "wlan0" and not rec9["up"],
+    (said, rec9),
+)
+calls.clear()
+ap.remove(name_stuck)
+check("  remove then names it back, never deletes it", ["iw", "dev", "ap0", "del"] not in calls, calls)
+inv9 = copy.deepcopy(inv8)
+for r in inv9["radios"]:
+    r["iface"] = "ap0"
+inv9["ap"] = netinv.ap_verdicts(inv9)
+ap.RECORD.write_text(json.dumps({"up": False}))
+try:
+    ap.start(fake_run, inv9, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+    refused_ap0 = False
+except ValueError:
+    refused_ap0 = True
+check("  ap0 the radio's own interface with no record of its name: refused, nothing deleted", refused_ap0)
+
+# The hostapd route: ap0 kept out of NetworkManager's hands, the rule written where NetworkManager is installed.
+ap.RECORD.write_text(json.dumps({"up": False}))
+ap.NM_RULES.unlink(missing_ok=True)
+calls.clear()
+ap.start(fake_run, inv4, settings)
+check(
+    "hostapd route: NetworkManager told to keep off ap0, and the rule written",
+    ["nmcli", "device", "set", "ap0", "managed", "no"] in calls and ap.NM_RULES.exists(),
+    calls,
+)
+ap.stop(fake_run)
+
+# The doctor: NetworkManager too old to apply the rule, on a shared radio.
+inv["ap"] = v
+ap.RECORD.write_text(json.dumps({"up": False}))
+ap.start(fake_run, inv, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+roles.update(ap0="AP", wlan0="managed")
+nm_version = {"v": "1.30.0"}
+
+
+def old_nm_run(*cmd, **kw):
+    if cmd[:4] == ("nmcli", "-t", "-f", "VERSION"):
+        return subprocess.CompletedProcess(cmd, 0, nm_version["v"] + "\n", "")
+    return roles_run(*cmd, **kw)
+
+
+health.run = old_nm_run
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check(
+    "doctor: NetworkManager 1.30 on a shared radio: a warning, not ok",
+    f.get("wifi-roles:nm-version", {}).get("status") == "warn" and "wifi-roles" not in f,
+    f,
+)
+nm_version["v"] = "1.42.4"
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check("  1.42: ok", set(f) == {"wifi-roles"}, f)
+health.run = doc_run
+ap.stop(fake_run)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

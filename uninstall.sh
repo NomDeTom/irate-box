@@ -83,13 +83,17 @@ else
 	nmcli connection delete irate-box-ap >/dev/null 2>&1 || true
 	# A radio whose own interface was renamed ap0 (a driver with no second interface) gets its name back, never deleted.
 	renamed="$(sed -n 's/.*"renamed_from": *"\([A-Za-z0-9_.-]*\)".*/\1/p' "$ETC"/ap.json 2>/dev/null | head -n 1)"
+	radio="$(sed -n 's/.*"iface": *"\([A-Za-z0-9_.-]*\)".*/\1/p' "$ETC"/ap.json 2>/dev/null | head -n 1)"
 	if ip link show ap0 >/dev/null 2>&1; then
 		if [ -n "$renamed" ]; then
 			ip link set ap0 down 2>/dev/null && ip link set ap0 name "$renamed" 2>/dev/null
-			nmcli device set "$renamed" managed yes >/dev/null 2>&1 || true
-		else
+		elif [ "$radio" != ap0 ]; then
 			iw dev ap0 del 2>/dev/null
 		fi
+	fi
+	# A radio the hotspot held (out of NetworkManager's hands while it ran): given back.
+	if [ -n "$radio" ] && [ "$radio" != ap0 ]; then
+		nmcli device set "$radio" managed yes >/dev/null 2>&1 || true
 	fi
 	rm -f /etc/NetworkManager/system-connections/irate-box-ap.nmconnection /etc/NetworkManager/dispatcher.d/90-irate-box-ap \
 		/etc/NetworkManager/conf.d/zz-80-irate-box-ap.conf \

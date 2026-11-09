@@ -29,7 +29,7 @@ from irate_box.msg import M, Refused
 from irate_box.root import secmanifest
 
 CONNECTION = "irate-box-ap"
-SHARED_IFACE = "ap0"
+SHARED_IFACE = apmode.HOTSPOT_IFACE
 KEYFILE = "/etc/NetworkManager/system-connections/irate-box-ap.nmconnection"
 DNSMASQ_CONF = "/etc/hub/ap-dnsmasq.conf"
 DNSMASQ_UNIT = "irate-box-ap-dns.service"
@@ -138,7 +138,7 @@ def hostapd_conf(plan, settings, ssid=None, country=None, second_ssid=None):
     _, net = nets[0]
     lines = [
         "# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
-        validate.config_line("interface", ap_iface(plan)),
+        validate.config_line("interface", SHARED_IFACE),
         "driver=nl80211",
         validate.config_line("hw_mode", "a" if plan.get("band") == "5 GHz" else "g"),
         validate.config_line("channel", str(int(plan["channel"]))),
@@ -178,14 +178,24 @@ def hostapd_unit():
     )
 
 
+def legacy(plan):
+    """A plan recorded by a version before every hotspot ran on ap0 (it names no hotspot_iface): one with the radio
+    to itself ran on the radio's own interface, with nothing held or renamed. Still the truth for a hotspot it
+    started, until the hotspot is started again."""
+    return bool(plan) and "hotspot_iface" not in plan
+
+
 def ap_iface(plan):
-    """The interface the hotspot runs on: ap0, whichever radio it is on."""
+    """The interface the hotspot runs on: ap0, whichever radio it is on; for a legacy plan, where that version put
+    it (the radio's own interface when it had the radio to itself)."""
+    if legacy(plan):
+        return plan["iface"] if plan.get("kind") == "own-radio" or plan.get("drops_uplink") else SHARED_IFACE
     return SHARED_IFACE
 
 
 def holds_radio(plan):
     """Whether the hotspot has its radio to itself while it runs (rung 1, or rung 4 with the link given up)."""
-    return plan.get("kind") in HOLDS_RADIO or bool(plan.get("drops_uplink"))
+    return not legacy(plan) and (plan.get("kind") in HOLDS_RADIO or bool(plan.get("drops_uplink")))
 
 
 def _names(settings, ssid=None, second_ssid=None):
@@ -218,7 +228,7 @@ def keyfile(plan, settings, ssid=None, second_ssid=None):
         "[connection]",
         f"id={CONNECTION}",
         "type=wifi",
-        f"interface-name={ap_iface(plan)}",
+        f"interface-name={SHARED_IFACE}",
         "autoconnect=true",
         "autoconnect-priority=-10",
         "",
@@ -329,8 +339,24 @@ def start_steps(plan):
 
 def down_steps(plan):
     """The commands that take it down again, leaving the box's own links as they were: ap0 removed (or, renamed
-    from the radio's own interface, given its name back), a radio it held given back."""
+    from the radio's own interface, given its name back), a radio it held given back. A legacy plan comes down as
+    that version brought it up: its address off the interface it was on, ap0 removed only where it made one."""
     hostapd = plan.get("backend") == "hostapd"
+    if legacy(plan):
+        iface = ap_iface(plan)
+        if hostapd:
+            steps = [
+                ["systemctl", "stop", DNSMASQ_UNIT],
+                ["systemctl", "stop", HOSTAPD_UNIT],
+                ["ip", "addr", "del", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
+            ]
+        else:
+            steps = [["systemctl", "stop", DNSMASQ_UNIT], ["nmcli", "connection", "down", CONNECTION]]
+        if iface == SHARED_IFACE:
+            steps.append(["iw", "dev", SHARED_IFACE, "del"])
+        if plan.get("drops_uplink") and plan.get("uplink"):
+            steps.append(["nmcli", "device", "connect", plan["uplink"]])
+        return steps
     if hostapd:
         steps = [
             ["systemctl", "stop", DNSMASQ_UNIT],
@@ -342,7 +368,7 @@ def down_steps(plan):
     radio = plan.get("renamed_from")
     if radio:
         steps += [["ip", "link", "set", SHARED_IFACE, "down"], ["ip", "link", "set", SHARED_IFACE, "name", radio]]
-    else:
+    elif plan.get("iface") != SHARED_IFACE:  # ap0 the radio's own interface: never deleted
         steps.append(["iw", "dev", SHARED_IFACE, "del"])
     if holds_radio(plan):
         radio = plan["iface"]
@@ -596,9 +622,20 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
     old = _load(RECORD, {})
     if old.get("up"):
         _run_all(run, down_steps(old["plan"]), check=False)
-    if plan.get("iface") == SHARED_IFACE and (old.get("plan") or {}).get("renamed_from"):
-        # Planned from a look taken while the radio's own interface was named ap0: its own name again now.
-        plan = dict(plan, iface=old["plan"]["renamed_from"])
+    was = old.get("plan") or old.get("last_plan") or {}
+    if plan.get("iface") == SHARED_IFACE and was.get("renamed_from"):
+        # Planned from a look taken while the radio's own interface was named ap0: its own name again now (or still
+        # ap0, should the name not have come back: then the plan names it and nothing deletes it).
+        own = was["renamed_from"]
+        plan = dict(plan, iface=own if run("ip", "link", "show", own).returncode == 0 else SHARED_IFACE)
+    if plan.get("iface") == SHARED_IFACE and not was.get("renamed_from"):
+        raise Refused(
+            M(
+                "ap.radio-named-ap0",
+                "The radio's own interface is named ap0, and the box has no record of its name before. "
+                "Restart the box, then enable the hotspot again.",
+            )
+        )
     if plan.get("backend") == "hostapd":
         # Following the link's channel needs NetworkManager's hook: here a following hotspot takes the
         # link's channel when it starts (and after a reboot), not when the link roams.
@@ -618,7 +655,8 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
     if not link.exists() or link.read_text() != link_file():
         _put(link, link_file())
         run("udevadm", "control", "--reload")
-    if plan.get("backend") != "hostapd" and refresh_nm_rules():
+    if NM_RULES.parent.parent.exists() and refresh_nm_rules():
+        # Wherever NetworkManager is installed, even on the hostapd route: it must not take ap0 for a client.
         run("nmcli", "general", "reload", "conf")
     boot = UNITS / BOOT_UNIT
     if not boot.exists() or boot.read_text() != boot_unit():
@@ -635,6 +673,9 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
             # The driver offers no second interface: the radio's own takes the name while the hotspot holds it.
             _run_all(run, rename_steps(plan))
             plan = dict(plan, renamed_from=plan["iface"])
+        if plan.get("backend") == "hostapd":
+            # hostapd runs ap0, NetworkManager (where it runs at all) keeps off it.
+            run("nmcli", "device", "set", SHARED_IFACE, "managed", "no")
         _run_all(run, rest)
     except RuntimeError:
         _run_all(run, down_steps(plan), check=False)
@@ -661,13 +702,21 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
 
 
 def stop(run):
+    """Off. The plan is kept as last_plan: should a renamed radio not get its name back, a later start or remove()
+    still knows ap0 is the radio's own interface, and names it back rather than deleting it."""
     rec = _load(RECORD, {})
+    plan = rec.get("plan") or rec.get("last_plan") or {}
     if rec.get("up"):
         _run_all(run, down_steps(rec["plan"]), check=False)
     run("systemctl", "stop", "irate-box-ap-deadman.timer")
     run("systemctl", "disable", BOOT_UNIT)
     DISPATCHER.unlink(missing_ok=True)
-    _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time()}))
+    _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time(), "last_plan": plan}))
+    own = plan.get("renamed_from")
+    if own and run("ip", "link", "show", SHARED_IFACE).returncode == 0 and run("ip", "link", "show", own).returncode:
+        return (
+            f"The hotspot is off, but the radio's interface is still named {SHARED_IFACE}, not {own}. Restart the box."
+        )
     return "The hotspot is off."
 
 
@@ -684,7 +733,10 @@ def remove(run):
         run("systemctl", "disable", "--now", unit)
     run("nmcli", "connection", "down", CONNECTION)
     run("nmcli", "connection", "delete", CONNECTION)
-    plan = _load(RECORD, {}).get("plan") or {}
+    rec = _load(RECORD, {})
+    plan = rec.get("plan") or rec.get("last_plan") or {}
+    if legacy(plan) and plan.get("backend") == "hostapd" and ap_iface(plan) != SHARED_IFACE:
+        run("ip", "addr", "del", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", ap_iface(plan))
     if run("ip", "link", "show", SHARED_IFACE).returncode == 0:
         if plan.get("renamed_from"):  # the radio's own interface: its name back, never deleted
             run("ip", "link", "set", SHARED_IFACE, "down")

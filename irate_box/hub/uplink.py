@@ -12,7 +12,8 @@ Links  Each link (a WiFi client, a cable, a USB adapter; never one of the box's 
        hotspot's ap*, a USB gadget's cable, a connection the box shares out) is watched or
        not, as the owner sets it (watch); one not set follows watch_new: always (the default),
        while it holds the box's route (and while it is in trouble after), or never. A link whose
-       own settings give it no gateway (a fixed address, none set) is judged by its link alone. Each
+       NetworkManager settings give it no gateway (a fixed address, none set) is judged by its link
+       alone. Each
        watched link has a watchdog of its own (Watch, in a Link), with the settings below and its
        own per_iface ones. The steps that reach every link (restart, reboot) wait while another
        link works, unless box_steps says otherwise; a cable with no carrier is waited for
@@ -2318,10 +2319,13 @@ def own_network(iface):
 
 
 def nm_ipv4():
-    """{iface: (method, gateway)} of NetworkManager's active connections; {} where it doesn't run."""
+    """{iface: (method, gateway)} of NetworkManager's active connections; None when it couldn't be read (not running,
+    or nmcli failing), so what was known before is kept."""
     code, out = run("nmcli", "-t", "-f", "DEVICE,UUID", "connection", "show", "--active")
+    if code != 0:
+        return None
     found = {}
-    for line in out.splitlines() if code == 0 else []:
+    for line in out.splitlines():
         dev, _, uid = line.rpartition(":")
         if not dev or dev == "lo" or not uid:
             continue
@@ -2332,8 +2336,9 @@ def nm_ipv4():
     return found
 
 
-# The links whose own settings give them no gateway (a fixed address and none set): judged by the link alone, as a
-# gateway that was never there can't go silent. Refreshed with the candidates.
+# The links whose own settings give them no gateway (in NetworkManager's: a fixed address and none set): judged by the
+# link alone, as a gateway that was never there can't go silent. Refreshed with the candidates; kept as it was when
+# NetworkManager can't be read. A link another backend runs is judged by its gateway, as before.
 GATEWAYLESS = set()
 
 
@@ -2343,7 +2348,8 @@ def candidate_links(types=None, ipv4=None):
     NetworkManager connection the box shares out)."""
     if types is None:
         types = {i: info.get("type") for i, info in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).items()}
-    ipv4 = nm_ipv4() if ipv4 is None else ipv4
+    read = nm_ipv4() if ipv4 is None else ipv4
+    ipv4 = read or {}
     out = {}
     try:
         dirs = sorted(SYS_NET.iterdir())
@@ -2358,8 +2364,9 @@ def candidate_links(types=None, ipv4=None):
         if method == "shared":
             continue
         out[d.name] = link_kind(d.name)
-    GATEWAYLESS.clear()
-    GATEWAYLESS.update(i for i in out if ipv4.get(i, ("", ""))[0] == "manual" and not ipv4[i][1])
+    if read is not None:
+        GATEWAYLESS.clear()
+        GATEWAYLESS.update(i for i in out if ipv4.get(i, ("", ""))[0] == "manual" and not ipv4[i][1])
     return out
 
 
@@ -2609,7 +2616,8 @@ class Link:
         return obs
 
     def healthy(self):
-        return bool(self.up) and self.answers is not False and self.gw is not None
+        # A link with no gateway of its own works when it is up: it counts as working while another is down.
+        return bool(self.up) and self.answers is not False and (self.gw is not None or self.iface in GATEWAYLESS)
 
     def act(self, now, actions, status):
         """The steps the watchdog decided on, taken; status(): this link's report, written before a reboot."""
@@ -2847,7 +2855,9 @@ def serve(dry=False):
             notify.watchdog()
         # What else works now: the links a whole-box step would cut off (box_steps).
         works = {i for i, lk in links.items() if lk.healthy()}
-        works |= {i for i in cands if i not in links and inv.get(i, {}).get("up") and gateway_of(i)}
+        works |= {
+            i for i in cands if i not in links and inv.get(i, {}).get("up") and (i in GATEWAYLESS or gateway_of(i))
+        }
         full = sorted(i for i in links if links[i].how == "full") or sorted(links)
         primary = route_if if route_if in links else next((i for i in full if links[i].w.outage), full[0])
         asked = take_request(now) if NOW.exists() else None
