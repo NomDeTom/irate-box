@@ -2282,6 +2282,107 @@ def check_hotspot():
     return out
 
 
+def _wifi_modes():
+    """{iface: "client" | "ap"} for each WiFi interface whose mode can be read: `iw dev`'s type, else the mode of
+    NetworkManager's active connection on it (a box with no iw)."""
+    from irate_box.hub import netinv
+
+    modes = {}
+    got = run("iw", "dev")
+    for iface, info in netinv.parse_iw_dev(got.stdout or "" if got.returncode == 0 else "").items():
+        kind = {"managed": "client", "AP": "ap"}.get(info.get("type"))
+        if kind:
+            modes[iface] = kind
+    act = run("nmcli", "-t", "-f", "DEVICE,TYPE,NAME", "connection", "show", "--active")
+    for line in (act.stdout or "").splitlines() if act.returncode == 0 else []:
+        dev, kind, name = (line.split(":", 2) + ["", ""])[:3]
+        if dev in modes or kind != "802-11-wireless":
+            continue
+        mode = run("nmcli", "-g", "802-11-wireless.mode", "connection", "show", name.replace("\\:", ":"))
+        modes[dev] = "ap" if (mode.stdout or "").strip() == "ap" else "client"
+    return modes
+
+
+def check_wifi_roles():
+    """ap* carries only the hotspot and wlan* only WiFi links (root/ap.py): a client on ap* (the box's link where its
+    hotspot belongs), an access point on wlan*, and, while the hotspot runs through NetworkManager, the drop-in that
+    keeps it so (ap.nm_rules)."""
+    from irate_box.root import ap
+
+    title = M("wifi-roles.title", "WiFi interface roles")
+    out = []
+    modes = _wifi_modes()
+    for iface, mode in sorted(modes.items()):
+        if iface.startswith("ap") and mode == "client":
+            out.append(
+                finding(
+                    "wifi-roles:" + iface,
+                    title,
+                    "problem",
+                    M("wifi-roles.client-on-ap", "{iface} is joined to a network as a client.", iface=iface),
+                    M(
+                        "wifi-roles.client-on-ap.why",
+                        "{iface} is the hotspot's interface. While a client holds it, the hotspot is down.",
+                        iface=iface,
+                    ),
+                    M("hotspot.toggle.fix", "On Network, Hotspot, switch the hotspot off and on again."),
+                    commands=["nmcli -t -f NAME,DEVICE connection show --active"],
+                    go=GO_HOTSPOT,
+                )
+            )
+        elif iface.startswith("wlan") and mode == "ap":
+            out.append(
+                finding(
+                    "wifi-roles:" + iface,
+                    title,
+                    "warn",
+                    M("wifi-roles.ap-on-wlan", "{iface} is an access point.", iface=iface),
+                    M(
+                        "wifi-roles.ap-on-wlan.why",
+                        "irate-box runs its hotspot on ap0 and keeps wlan* for WiFi links. "
+                        "This access point is not irate-box's.",
+                    ),
+                    commands=["nmcli -t -f NAME,DEVICE connection show --active"],
+                )
+            )
+    rec = ap._load(ap.RECORD, {})
+    plan = rec.get("plan") or {}
+    if rec.get("up") and plan.get("backend") != "hostapd":
+        try:
+            current = ap.NM_RULES.read_text() == ap.nm_rules()
+        except OSError:
+            current = False
+        if not current:
+            out.append(
+                finding(
+                    "wifi-roles:rules",
+                    title,
+                    "warn",
+                    M(
+                        "wifi-roles.rules",
+                        "NetworkManager's rule for the hotspot's interface is missing or out of date.",
+                    ),
+                    M(
+                        "wifi-roles.rules.why",
+                        "Without it, a WiFi profile that names no interface can take ap0 from the hotspot.",
+                    ),
+                    M("hotspot.toggle.fix", "On Network, Hotspot, switch the hotspot off and on again."),
+                    commands=[f"cat {ap.NM_RULES}"],
+                    go=GO_HOTSPOT,
+                )
+            )
+    if modes and not out:
+        out.append(
+            finding(
+                "wifi-roles",
+                title,
+                "ok",
+                M("wifi-roles.ok", "ap* carries only the hotspot and wlan* only WiFi links."),
+            )
+        )
+    return out
+
+
 def check_hotspot_per_account():
     """While the hotspot is on: whether it could give each account a WiFi password of its own (ap.per_account).
     Information for the administrator's choice, never a problem."""
@@ -9205,6 +9306,7 @@ def scan(quick=False):
         check_uplink,
         check_inventory,
         check_hotspot,
+        check_wifi_roles,
         check_hotspot_per_account,
         check_wifi_stalls,
         check_wifi_gone,

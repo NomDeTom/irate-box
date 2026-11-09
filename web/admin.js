@@ -7379,7 +7379,7 @@ const upPick = {
   roaming: "roam",
   lock_bssid: null,
   ignore_roams: false,
-  watch_new: "uplink",
+  watch_new: "all",
   box_steps: "nothing-works",
   cable_out: "wait",
   cable_reach: "reconnect",
@@ -7410,7 +7410,7 @@ const WATCHNEW_WORDS = {
   ],
   all: [
     "Monitor all interfaces",
-    "The watchdog monitors every interface of the box. Each interface has its own watchdog.",
+    "The watchdog monitors every interface except the hotspot and the USB device cable. Each interface has its own watchdog.",
   ],
   none: [
     "Do not monitor",
