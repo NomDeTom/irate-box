@@ -8356,7 +8356,7 @@ function capSource(row) {
   const word = CAP_SOURCE[row.source] || row.source || "";
   return row.detail ? `${word}: ${row.detail}` : word;
 }
-function radioCapTable(inv, phy, iface, section, line) {
+function radioCapTable(inv, phy, iface, section) {
   const rec = (inv.radio_caps || {})[phy];
   if (!rec || !rec.rows) return null;
   const body = el(
@@ -8439,7 +8439,7 @@ function radioCard(inv, group, hazards) {
       ),
     );
   if (managed && (managed.power_save || managed.powersave_from)) kids.push(section(powerSaveLine(managed)));
-  const caps = radioCapTable(inv, primary.phy, managed ? managed.iface : primary.iface, section, line);
+  const caps = radioCapTable(inv, primary.phy, managed ? managed.iface : primary.iface, section);
   if (caps) kids.push(caps);
   const ifaces = new Set(group.map((r) => r.iface));
   const mine = hazards.filter((h) => h.iface && ifaces.has(h.iface));
