@@ -142,6 +142,10 @@ setTimeout(async () => {
     panel('network/hardware').contains(d.getElementById('net-devices')) && panel('network/access').contains(d.getElementById('up-pace'))
     && panel('network/hotspot').contains(d.getElementById('hs-modes'))
     && panel('network/status').contains(d.getElementById('up-events')));
+  check('the hotspot move interval is on the Hotspot tab, not with the watchdog, at 300 s',
+    panel('network/hotspot').contains(d.getElementById('hs-move-seconds'))
+    && !d.getElementById('up-move') && d.getElementById('hs-move-seconds').value === '300',
+    d.getElementById('hs-move-seconds') && d.getElementById('hs-move-seconds').value);
   check('  the hotspot keeps its encryption, and says where guest internet access is now',
     !panel('network/hotspot').contains(d.getElementById('guest-net-box'))
     && !!panel('network/hotspot').querySelector('#guest-net-moved a[href="#security/guest-access"]')

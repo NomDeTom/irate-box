@@ -7281,7 +7281,6 @@ const net = {
   retry: document.getElementById("up-retry"),
   giveUp: document.getElementById("up-giveup"),
   sens: document.getElementById("up-sens"),
-  move: document.getElementById("up-move"),
   roaming: document.getElementById("up-roaming"),
   lockAps: document.getElementById("up-lock-aps"),
   ignoreRoams: document.getElementById("up-ignore-roams"),
@@ -7377,7 +7376,6 @@ const upPick = {
   retry: "steady",
   give_up: "never",
   sensitivity: 3,
-  hotspot_move: 300,
   roaming: "roam",
   lock_bssid: null,
   ignore_roams: false,
@@ -7960,7 +7958,6 @@ function fillUpForm(chosen, levels) {
   for (const k of ["watch_new", "box_steps", "cable_out", "cable_reach"])
     upPick[k] = chosen[k] || levels.default[k];
   upWatch = { ...chosen.watch };
-  net.move.value = String(chosen.hotspot_move ?? levels.default.hotspot_move ?? 300);
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll("[data-key]")) {
     const v = upGet(over, input.dataset.key);
@@ -8031,13 +8028,9 @@ function readUpForm() {
     if (key.startsWith("steps.")) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
-  const moveRaw = net.move.value.trim() || "300";
-  const move = Number(moveRaw);
-  if (!Number.isInteger(move) || move < 30 || move > 86400)
-    throw new Error("Hotspot move interval: enter a whole number of seconds from 30 to 86400.");
   const all = {
     ...upPick,
-    hotspot_move: move,
+    hotspot_move: Number((upSaved && upSaved.hotspot_move) || 300),
     lock_bssid: upPick.roaming === "lock" ? upPick.lock_bssid : null,
     iface: "auto",
     watch: { ...upWatch },
@@ -8049,7 +8042,6 @@ function readUpForm() {
   // One connection's own: those five, over what is saved for every connection.
   return {
     ...base,
-    hotspot_move: move,
     steps_off: all.steps_off,
     per_iface: {
       ...base.per_iface,
@@ -9234,6 +9226,7 @@ function renderNetwork(data) {
       : []),
   ]);
   drawNetTabs(data, inv, uplink);
+  syncHotspotMove();
   AW.drawKept(net.hazards, [
     ...hz
       .map((h) =>
@@ -10941,6 +10934,38 @@ const hsSec = AW.section({
   onChange: () => hsDraw(hsSec.values()),
 });
 document.getElementById("hs-foot").append(hsSec.foot, hsSec.reason);
+// The hotspot's move interval (hub/uplink.py's hotspot_move, still saved in /etc/hub/uplink.json): a hotspot that
+// follows the link moves at most this often, by channel switch or by starting again.
+const hsMove = { input: document.getElementById("hs-move-seconds") };
+const hsMoveSec = AW.section({
+  id: "hotspot-move",
+  label: "Hotspot moves",
+  saved: null,
+  why: (changes) => {
+    const n = Number(changes.hotspot_move);
+    return Number.isInteger(n) && n >= 30 && n <= 86400 ? "" : "Enter a whole number of seconds from 30 to 86400.";
+  },
+  onChange: () => hsMoveDraw(),
+  save: (changes, values) => {
+    const base = (netData && netData.uplink && netData.uplink.chosen) || {};
+    const j = AW.job();
+    netRequest({ action: "settings", settings: { ...base, hotspot_move: Number(values.hotspot_move) } }, "up", j.done);
+    return j;
+  },
+});
+document.getElementById("hs-move-foot").append(hsMoveSec.foot, hsMoveSec.reason);
+function hsMoveDraw() {
+  if (!hsMoveSec.loaded() || document.activeElement === hsMove.input) return;
+  hsMove.input.value = String(hsMoveSec.get("hotspot_move") ?? 300);
+}
+hsMove.input.addEventListener("input", () => {
+  const n = Number(hsMove.input.value);
+  hsMoveSec.set("hotspot_move", Number.isInteger(n) ? n : hsMove.input.value, true);
+});
+function syncHotspotMove() {
+  const chosen = netData && netData.uplink && netData.uplink.chosen;
+  if (chosen) hsMoveSec.update({ hotspot_move: Number(chosen.hotspot_move ?? 300) });
+}
 // What the page shows, into the draft (the controls drew themselves).
 function hsTouched() {
   for (const [k, v] of Object.entries({
