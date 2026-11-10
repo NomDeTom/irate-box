@@ -1584,7 +1584,15 @@ check(
     and said == "The hotspot moved to channel 6 with the link (it was on 11).",
     (box.moves, said),
 )
+box.chan["wlan0"] = 1
+box.rec["moved_at"] = 1060  # the move ap.follow just made
+check(
+    "  inside ap.follow's move interval: quiet, not logged as a failure",
+    f.check("wlan0", 1100, roamed_at=1080) == "" and box.moves == ["wlan0"],
+    box.moves,
+)
 box.chan["wlan0"] = 11  # roams back
+box.rec["moved_at"] = 0
 check(
     "  a roam back: moved again at once; the move interval is ap.follow's own",
     f.check("wlan0", 1200, roamed_at=1150).startswith("The hotspot moved to channel 11")

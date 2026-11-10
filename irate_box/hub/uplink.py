@@ -2181,6 +2181,10 @@ class HotspotFollow:
             self.seen[iface] = (link_channel, since)
         if now - since < FOLLOW_STEADY or self.joining():
             return ""
+        # The move interval is ap.follow's, from the record's last move; inside it the follower stays quiet
+        # rather than reading the unchanged channel as a failure.
+        if now - (rec.get("moved_at") or 0) < ap.move_interval():
+            return ""
         code, out = self.move(iface)
         if self.channels().get(hotspot) == link_channel:
             self.seen.pop(iface, None)
