@@ -2488,6 +2488,8 @@ class Link:
         self.known_backend = None  # the last real backend seen, so its going away can be told
         self.radio_seen = None  # its radio's facts while it was there, for when it has gone
         self.reset_at = 0.0  # the radio's last reset (here or by its driver): older evidence is left behind
+        self.reset_mine = False  # this watchdog reset it: its recovery is a learned capability row
+        self.reset_learned = False  # that row is written
         self.hotspot_due = False  # the driver reset its radio: the hotspot started again once the link is back
         self.ssids_known = None  # the WiFi networks NetworkManager knows, read once an outage needs them
         self.pinned = None
@@ -2624,10 +2626,33 @@ class Link:
         # A link with no gateway of its own works when it is up: it counts as working while another is down.
         return bool(self.up) and self.answers is not False and (self.gw is not None or self.iface in GATEWAYLESS)
 
+    def _learn_reset(self, now):
+        """After this watchdog's radio reset: whether the link came back within RADIO_WAIT, as a learned capability
+        row (root/radiocaps.py). Written once for each reset; a driver's own reset is not ours to judge."""
+        if self.dry or not self.reset_mine or self.reset_learned or not self.reset_at:
+            return
+        if self.up and self.answers:
+            took = round(now - self.reset_at)
+            self.reset_learned = True
+            self._learn("yes", f"The link was back {took} s after the watchdog reset the radio.")
+        elif now - self.reset_at >= RADIO_WAIT:
+            self.reset_learned = True
+            self._learn("no", f"The link was not back {RADIO_WAIT} s after the watchdog reset the radio.")
+
+    def _learn(self, value, detail):
+        from irate_box.root import radiocaps
+
+        radio = dict(self.radio_seen or getattr(self.actor, "facts", None) or {}, iface=self.iface)
+        try:
+            radiocaps.record_learned(radio, "reset-recovery", value, detail, at=self.reset_at)
+        except (OSError, ValueError):
+            pass
+
     def act(self, now, actions, status):
         """The steps the watchdog decided on, taken; status(): this link's report, written before a reboot."""
         notify.watchdog()
         w, _i = self.w, self.iface
+        self._learn_reset(now)
         if self.up and self.answers:
             notify.watchdog()
             self.actor.remember()
@@ -2664,6 +2689,7 @@ class Link:
                 self.pinned = None if step in ("reconnect", "restart", "radio") else self.pinned
                 if step == "radio":
                     self.reset_at = time.time()
+                    self.reset_mine, self.reset_learned = self.kind == "wifi", False
             notify.watchdog()
             if result:
                 w.log(time.time(), "result", str(result)[:300])

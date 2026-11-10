@@ -83,13 +83,13 @@ check(
     netinv.known_facts({"usb": {"id": "a69c:88dc"}, "driver": "aic8800_fdrv"})["hotspot_channel"] == "link"
     and netinv.known_facts({"usb": {"id": "a69c:8d81"}, "driver": "aic8800_fdrv"}).get("hotspot_channel") is None,
 )
-p = apmode.plan(inv, v, tried={"phy0": False})
+p = apmode.plan(inv, v, caps={"phy0": {"own-channel": {"value": "no", "detail": ""}}})
 check(
     "  the try failed: rung 3, following the link's channel",
     (p["rung"], p["kind"], p["channel"], p["follows_uplink"]) == (3, "follow", 11, True),
     p,
 )
-p = apmode.plan(inv, v, tried={"phy0": True})
+p = apmode.plan(inv, v, caps={"phy0": {"own-channel": {"value": "yes", "detail": ""}}})
 check("  the try worked: rung 2, nothing left to try", (p["rung"], p["to_try"]) == (2, False), p)
 
 inv, v = box([radio(lyra, "wlan0", "phy0")], {"iface": "eth0", "kind": "ethernet"})
@@ -250,6 +250,10 @@ import subprocess
 import tempfile
 
 T = Path(tempfile.mkdtemp(prefix="ap-"))
+from irate_box.root import radiocaps
+
+radiocaps.STATE = T / "state"
+radiocaps.STORE = radiocaps.STATE / "radio-caps.json"
 ap.RECORD, ap.TRIED, ap.DISPATCHER, ap.UNITS = T / "ap.json", T / "ap-tried.json", T / "90-irate-box-ap", T / "units"
 ap.KEYFILE, ap.DNSMASQ_CONF = T / "kf", T / "dns.conf"
 ap.LINKS = T / "network"
@@ -310,7 +314,9 @@ calls.clear()
 worked, p2 = ap.try_own_channel(fake_run, inv, settings, wait=0, sleep=lambda s: None)
 check(
     "the try: the hotspot on a channel other than the link's (1), held, so it works; recorded; then back to the plan",
-    worked is True and json.loads(ap.TRIED.read_text()) == {"phy0": True} and p2["kind"] == "own-channel",
+    worked is True
+    and radiocaps.stored(inv["radios"][0])["own-channel"]["value"] == "yes"
+    and p2["kind"] == "own-channel",
     (worked, p2),
 )
 check(
@@ -331,10 +337,10 @@ def forced_run(*cmd, **kw):
 worked, p3 = ap.try_own_channel(forced_run, inv, settings, wait=0, sleep=lambda s: None)
 check(
     "  a driver that drags the hotspot onto the link's channel: the try fails, recorded, the plan becomes following",
-    worked is False and json.loads(ap.TRIED.read_text()) == {"phy0": False} and p3["kind"] == "follow",
+    worked is False and radiocaps.stored(inv["radios"][0])["own-channel"]["value"] == "no" and p3["kind"] == "follow",
     (worked, p3),
 )
-ap.TRIED.unlink()
+radiocaps.STORE.unlink(missing_ok=True)
 
 
 def refusing_run(*cmd, **kw):
@@ -349,7 +355,7 @@ worked, p3b = ap.try_own_channel(refusing_run, inv, settings, wait=0, sleep=lamb
 check(
     "  a driver that won't start the hotspot off the link's channel: the try fails (no crash), undone, then following",
     worked is False
-    and json.loads(ap.TRIED.read_text()) == {"phy0": False}
+    and radiocaps.stored(inv["radios"][0])["own-channel"]["value"] == "no"
     and p3b["kind"] == "follow"
     and ["iw", "dev", "ap0", "del"] in calls
     and json.loads(ap.RECORD.read_text())["up"],
@@ -369,7 +375,7 @@ try:
 except RuntimeError as exc:
     failed = str(exc)
 check("a start that fails says why (for the Network page)", failed and "no suitable device" in failed, failed)
-ap.TRIED.write_text(json.dumps({"phy0": False}))
+radiocaps.record_test(inv["radios"][0], "own-channel", False, "")
 inv2, v2 = box([radio(lyra, "wlan0", "phy0", 6)], wifi_up)
 inv2["ap"] = v2
 calls.clear()
