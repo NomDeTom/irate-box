@@ -182,8 +182,10 @@ check(
 )
 d = ap.dnsmasq_conf(p)
 check(
-    "  dnsmasq on ap0 alone: DHCP .10-.200, every name the hub's, the leases where the hub counts guests",
-    "interface=ap0" in d
+    "  dnsmasq on the hotspot's address alone (never ap0's other networks): DHCP .10-.200, every name the hub's, "
+    "the leases where the hub counts guests",
+    "listen-address=192.168.4.1" in d
+    and "interface=" not in d.replace("except-interface=", "")
     and "dhcp-range=192.168.4.10,192.168.4.200,255.255.255.0,12h" in d
     and "address=/#/192.168.4.1" in d
     and "dhcp-leasefile=/var/lib/misc/dnsmasq.leases" in d
@@ -201,10 +203,22 @@ check(
 check("  down: dnsmasq, the connection, ap0 removed", ap.down_steps(p)[-1] == ["iw", "dev", "ap0", "del"])
 inv, v = box([radio(lyra, "wlan0", "phy0")], {"iface": "eth0", "kind": "ethernet"})
 p = apmode.plan(inv, v)
+steps = ap.up_steps(p)
 check(
-    "applied, a radio to itself: on wlan0 directly, no ap0",
-    "interface-name=wlan0" in ap.keyfile(p, {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"})
-    and not any("__ap" in " ".join(s) for s in ap.up_steps(p)),
+    "applied, a radio to itself: still on ap0, added on wlan0, wlan0 held (out of NetworkManager's hands, down) first",
+    "interface-name=ap0" in ap.keyfile(p, {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"})
+    and steps[:3]
+    == [
+        ["nmcli", "device", "set", "wlan0", "managed", "no"],
+        ["ip", "link", "set", "wlan0", "down"],
+        ["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"],
+    ],
+    steps,
+)
+check(
+    "  down: ap0 removed, wlan0 given back to NetworkManager",
+    ap.down_steps(p)[-2:] == [["iw", "dev", "ap0", "del"], ["nmcli", "device", "set", "wlan0", "managed", "yes"]],
+    ap.down_steps(p),
 )
 inv, v = box([radio(lyra, "wlan0", "phy0", 11, ap_beside_client=False)], wifi_up)
 p = apmode.plan(inv, v)
@@ -215,9 +229,18 @@ except ValueError:
     check("  a plan waiting on the owner: refused", True)
 p = apmode.plan(inv, v, owner={"take_radio": True})
 check(
-    "  the owner took the radio: the link disconnected on the way up, reconnected on the way down",
-    ["nmcli", "device", "disconnect", "wlan0"] in ap.up_steps(p)
-    and ap.down_steps(p)[-1] == ["nmcli", "device", "connect", "wlan0"],
+    "  the owner took the radio: the link's wlan0 held on the way up, the hotspot on ap0 beside it; given back and "
+    "connected on the way down",
+    ap.up_steps(p)[:3]
+    == [
+        ["nmcli", "device", "set", "wlan0", "managed", "no"],
+        ["ip", "link", "set", "wlan0", "down"],
+        ["iw", "dev", "wlan0", "interface", "add", "ap0", "type", "__ap"],
+    ]
+    and "interface-name=ap0" in ap.keyfile(p, {"mode": "open", "password": "", "allow_wpa2": False, "second": "owe"})
+    and ap.down_steps(p)[-2:]
+    == [["nmcli", "device", "set", "wlan0", "managed", "yes"], ["nmcli", "device", "connect", "wlan0"]],
+    (ap.up_steps(p), ap.down_steps(p)),
 )
 
 # Running it (root/ap.py's executor), with the commands stood in and the files in a temp folder.
@@ -230,6 +253,7 @@ T = Path(tempfile.mkdtemp(prefix="ap-"))
 ap.RECORD, ap.TRIED, ap.DISPATCHER, ap.UNITS = T / "ap.json", T / "ap-tried.json", T / "90-irate-box-ap", T / "units"
 ap.KEYFILE, ap.DNSMASQ_CONF = T / "kf", T / "dns.conf"
 ap.LINKS = T / "network"
+ap.NM_RULES = T / "conf.d" / "zz-80-irate-box-ap.conf"
 calls, iw = [], {"wlan0": 11, "ap0": None}
 
 
@@ -263,6 +287,15 @@ check(
     and rec["confirmed"]
     and rec["plan"]["channel"] == 11,
     rec,
+)
+check(
+    "  NetworkManager's rule written and read again (no restart): ap* only the hotspot's connection, wlan* never it",
+    "[device-irate-box-hotspot]\nmatch-device=interface-name:ap*\nallowed-connections=id:irate-box-ap"
+    in ap.NM_RULES.read_text()
+    and "match-device=interface-name:wlan*\nallowed-connections=except:id:irate-box-ap" in ap.NM_RULES.read_text()
+    and ["nmcli", "general", "reload", "conf"] in calls
+    and calls.index(["nmcli", "general", "reload", "conf"])
+    < calls.index(["nmcli", "connection", "up", "irate-box-ap"]),
 )
 link = ap.LINKS / ap.LINK_FILE
 check(
@@ -530,6 +563,40 @@ check(
 del iw["ap0"]
 f = {x["id"]: x for x in health.check_hotspot()}
 check("  its interface gone: a problem", f["hotspot-iface"]["status"] == "problem", f)
+iw["ap0"] = 11
+roles = {"ap0": "AP", "wlan0": "managed"}
+
+
+def roles_run(*cmd, **kw):
+    if cmd[:2] == ("iw", "dev"):
+        text = "phy#0\n" + "".join(f"\tInterface {i}\n\t\ttype {t}\n" for i, t in roles.items())
+        return subprocess.CompletedProcess(cmd, 0, text, "")
+    return doc_run(*cmd, **kw)
+
+
+health.run = roles_run
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check("doctor, WiFi roles: the hotspot on ap0, the link on wlan0, the rule there: ok", set(f) == {"wifi-roles"}, f)
+roles["ap0"] = "managed"
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check(
+    "  a client on ap0 (the box's link where its hotspot belongs): a problem, Network → Hotspot",
+    f["wifi-roles:ap0"]["status"] == "problem" and "wifi-roles" not in f,
+    f,
+)
+roles.update(ap0="AP", wlan0="AP")
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check("  an access point on wlan0 (not irate-box's): a warning", f["wifi-roles:wlan0"]["status"] == "warn", f)
+roles["wlan0"] = "managed"
+ap.NM_RULES.write_text("# an older rule\n")
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check(
+    "  NetworkManager's rule out of date while the hotspot runs: a warning",
+    f["wifi-roles:rules"]["status"] == "warn",
+    f,
+)
+ap.NM_RULES.write_text(ap.nm_rules())
+health.run = doc_run
 iw["ap0"] = None
 ap.stop(fake_run)
 check("  off: nothing to check", health.check_hotspot() == [])
@@ -633,9 +700,203 @@ check(
             "irate-box-ap.nmconnection",
             "ap-dnsmasq.conf",
             "ap-hostapd.conf",
+            ap.NM_RULES.name,
+            "renamed_from",
         )
     ),
 )
 check("  and it warns that a device on the hotspot loses its connection", "loses its connection" in un[:loop])
+
+# A driver that can't add a second interface: the radio the hotspot holds has its own interface renamed ap0.
+ap.RECORD.write_text(json.dumps({"up": False}))
+calls.clear()
+
+
+def no_second_iface(*cmd, **kw):
+    if cmd[:2] == ("iw", "dev") and "interface" in cmd and "add" in cmd:
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 1, "", "command failed: Operation not supported (-95)")
+    return fake_run(*cmd, **kw)
+
+
+inv8, v8 = box([radio(lyra, "wlan0", "phy0")], {"iface": "eth0", "kind": "ethernet"})
+inv8["ap"] = v8
+p8 = ap.start(no_second_iface, inv8, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+check(
+    "no second interface: wlan0 held, then renamed ap0 (never the hotspot on wlan0), recorded to give the name back",
+    p8.get("renamed_from") == "wlan0"
+    and calls.index(["ip", "link", "set", "wlan0", "down"])
+    < calls.index(["ip", "link", "set", "wlan0", "name", "ap0"])
+    < calls.index(["nmcli", "connection", "up", "irate-box-ap"])
+    and json.loads(ap.RECORD.read_text())["plan"]["renamed_from"] == "wlan0"
+    and "interface-name=ap0" in (T / "kf").read_text(),
+    calls,
+)
+calls.clear()
+ap.stop(fake_run)
+check(
+    "  off: ap0 named wlan0 again (not deleted), and given back to NetworkManager",
+    ["ip", "link", "set", "ap0", "name", "wlan0"] in calls
+    and ["iw", "dev", "ap0", "del"] not in calls
+    and calls.index(["ip", "link", "set", "ap0", "name", "wlan0"])
+    < calls.index(["nmcli", "device", "set", "wlan0", "managed", "yes"]),
+    calls,
+)
+p8 = ap.start(no_second_iface, inv8, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+calls.clear()
+
+
+def renamed_there(*cmd, **kw):
+    if cmd[:3] == ("ip", "link", "show"):
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    return fake_run(*cmd, **kw)
+
+
+ap.remove(renamed_there)
+check(
+    "  remove: a renamed radio's interface named back, never deleted",
+    ["ip", "link", "set", "ap0", "name", "wlan0"] in calls and ["iw", "dev", "ap0", "del"] not in calls,
+    calls,
+)
+
+
+def shared_no_second(*cmd, **kw):
+    return no_second_iface(*cmd, **kw)
+
+
+ap.RECORD.write_text(json.dumps({"up": False}))
+calls.clear()
+try:
+    ap.start(shared_no_second, inv, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+    refused = False
+except RuntimeError:
+    refused = True
+check(
+    "  a radio shared with the link can't be renamed: the start fails, and nothing of wlan0 is touched",
+    refused and not any(c[:3] == ["ip", "link", "set"] and "wlan0" in c for c in calls),
+    calls,
+)
+
+# An update: the running hotspot's dnsmasq file in this version's form, restarted by the install.
+ap.RECORD.write_text(json.dumps({"up": True, "plan": p8}))
+ap.DNSMASQ_CONF.write_text("interface=ap0\n")
+check(
+    "update: an older dnsmasq file (interface=ap0) rewritten on the hotspot's address, its unit to restart",
+    ap.DNSMASQ_UNIT in ap.refresh_units() and "listen-address=192.168.4.1" in ap.DNSMASQ_CONF.read_text(),
+)
+check("  a second run changes nothing", ap.DNSMASQ_UNIT not in ap.refresh_units())
+ap.NM_RULES.unlink()
+ap.KEYFILE.unlink(missing_ok=True)
+check("  NetworkManager's rule: not written where no hotspot was set up through it", ap.refresh_nm_rules(True) is False)
+ap.KEYFILE.write_text("[connection]\nid=irate-box-ap\n")
+check(
+    "  written where one was, then unchanged",
+    ap.refresh_nm_rules(True) is True and ap.refresh_nm_rules(True) is False and ap.NM_RULES.exists(),
+)
+# A record from before every hotspot ran on ap0 (no hotspot_iface): it comes down as that version brought it up.
+old_nm = {"kind": "own-radio", "iface": "wlan0", "channel": 6, "backend": "networkmanager"}
+old_hostapd = dict(old_nm, backend="hostapd")
+check(
+    "legacy record: its hotspot is where that version put it (wlan0), for the firewall and the doctor",
+    ap.ap_iface(old_nm) == "wlan0"
+    and ap.ap_iface({**old_nm, "kind": "follow"}) == "ap0"
+    and not ap.holds_radio(old_nm),
+)
+check(
+    "  hostapd: down takes 192.168.4.1/24 off wlan0, and deletes no ap0 it never made",
+    ["ip", "addr", "del", "192.168.4.1/24", "dev", "wlan0"] in ap.down_steps(old_hostapd)
+    and ["iw", "dev", "ap0", "del"] not in ap.down_steps(old_hostapd),
+    ap.down_steps(old_hostapd),
+)
+check(
+    "  NetworkManager: the connection down, wlan0 not handed back (it was never held)",
+    ["nmcli", "connection", "down", "irate-box-ap"] in ap.down_steps(old_nm)
+    and not any("managed" in c for c in ap.down_steps(old_nm)),
+    ap.down_steps(old_nm),
+)
+ap.RECORD.write_text(json.dumps({"up": True, "plan": old_hostapd}))
+calls.clear()
+ap.remove(renamed_there)
+check(
+    "  remove: the legacy address taken off wlan0",
+    ["ip", "addr", "del", "192.168.4.1/24", "dev", "wlan0"] in calls,
+    calls,
+)
+
+# The rename back failing: the plan kept, so ap0 (the radio's own interface) is never deleted later.
+ap.RECORD.write_text(json.dumps({"up": False}))
+p9 = ap.start(no_second_iface, inv8, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+
+
+def name_stuck(*cmd, **kw):
+    calls.append(list(cmd))
+    if cmd[:3] == ("ip", "link", "show"):
+        return subprocess.CompletedProcess(cmd, 0 if cmd[3] == "ap0" else 1, "", "")
+    if cmd[:3] == ("ip", "link", "set") and "name" in cmd:
+        return subprocess.CompletedProcess(cmd, 2, "", "RTNETLINK answers: Device or resource busy")
+    return subprocess.CompletedProcess(cmd, 0, "", "")
+
+
+calls.clear()
+said = ap.stop(name_stuck)
+rec9 = json.loads(ap.RECORD.read_text())
+check(
+    "rename back failed: off, but it says so, and the plan is kept (last_plan) with renamed_from",
+    "still named ap0" in said and rec9["last_plan"]["renamed_from"] == "wlan0" and not rec9["up"],
+    (said, rec9),
+)
+calls.clear()
+ap.remove(name_stuck)
+check("  remove then names it back, never deletes it", ["iw", "dev", "ap0", "del"] not in calls, calls)
+inv9 = copy.deepcopy(inv8)
+for r in inv9["radios"]:
+    r["iface"] = "ap0"
+inv9["ap"] = netinv.ap_verdicts(inv9)
+ap.RECORD.write_text(json.dumps({"up": False}))
+try:
+    ap.start(fake_run, inv9, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+    refused_ap0 = False
+except ValueError:
+    refused_ap0 = True
+check("  ap0 the radio's own interface with no record of its name: refused, nothing deleted", refused_ap0)
+
+# The hostapd route: ap0 kept out of NetworkManager's hands, the rule written where NetworkManager is installed.
+ap.RECORD.write_text(json.dumps({"up": False}))
+ap.NM_RULES.unlink(missing_ok=True)
+calls.clear()
+ap.start(fake_run, inv4, settings)
+check(
+    "hostapd route: NetworkManager told to keep off ap0, and the rule written",
+    ["nmcli", "device", "set", "ap0", "managed", "no"] in calls and ap.NM_RULES.exists(),
+    calls,
+)
+ap.stop(fake_run)
+
+# The doctor: NetworkManager too old to apply the rule, on a shared radio.
+inv["ap"] = v
+ap.RECORD.write_text(json.dumps({"up": False}))
+ap.start(fake_run, inv, settings, keyfile_path=T / "kf", conf_path=T / "dns.conf")
+roles.update(ap0="AP", wlan0="managed")
+nm_version = {"v": "1.30.0"}
+
+
+def old_nm_run(*cmd, **kw):
+    if cmd[:4] == ("nmcli", "-t", "-f", "VERSION"):
+        return subprocess.CompletedProcess(cmd, 0, nm_version["v"] + "\n", "")
+    return roles_run(*cmd, **kw)
+
+
+health.run = old_nm_run
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check(
+    "doctor: NetworkManager 1.30 on a shared radio: a warning, not ok",
+    f.get("wifi-roles:nm-version", {}).get("status") == "warn" and "wifi-roles" not in f,
+    f,
+)
+nm_version["v"] = "1.42.4"
+f = {x["id"]: x for x in health.check_wifi_roles()}
+check("  1.42: ok", set(f) == {"wifi-roles"}, f)
+health.run = doc_run
+ap.stop(fake_run)
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

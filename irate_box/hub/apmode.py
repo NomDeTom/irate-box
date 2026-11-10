@@ -28,6 +28,9 @@ authority already permits (root/tls.py HOTSPOT). Pure: the root helper acts on t
 """
 
 ADDRESS = "192.168.4.1"
+# The interface every hotspot runs on (root/ap.py), whatever its radio. In each plan, so a record written before it
+# (the hotspot on the radio's own interface) is told apart.
+HOTSPOT_IFACE = "ap0"
 PREFERRED_24 = (1, 6, 11)  # the 2.4 GHz channels that don't overlap
 TOP_24 = {"US": 11, "CA": 11, "TW": 11, "MX": 11}  # elsewhere, channels up to 13 (14: Japan, 802.11b only)
 RUNG = {"own-radio": 1, "own-channel": 2, "follow": 3, "choose": 4, "none": 5}
@@ -101,7 +104,14 @@ def plan(inv, verdicts, owner=None, tried=None):
             continue
         options.append((RUNG[kind], 0 if owner.get("radio") == v["iface"] else 1, v, r, chans, link_ch, kind))
     if not options:
-        return {"rung": 5, "kind": "none", "text": TEXT["none"], "iface": None, "address": ADDRESS}
+        return {
+            "rung": 5,
+            "kind": "none",
+            "text": TEXT["none"],
+            "iface": None,
+            "address": ADDRESS,
+            "hotspot_iface": None,
+        }
     options.sort(key=lambda o: (o[1], o[0]))  # the owner's radio first, then the lowest rung
     _, _, v, r, chans, link_ch, kind = options[0]
     out = {
@@ -112,6 +122,7 @@ def plan(inv, verdicts, owner=None, tried=None):
         "phy": v["phy"],
         "backend": v["backend"],
         "address": ADDRESS,
+        "hotspot_iface": HOTSPOT_IFACE,
         "uplink": up.get("iface"),
         "to_try": kind == "own-channel" and tried.get(v["phy"]) is None,
     }

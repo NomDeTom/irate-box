@@ -8,9 +8,12 @@ link it watches: is the interface up, and does the gateway answer (a ping, or fa
 ARP entry: some routers drop pings but none ignore ARP). The internet is never checked: the box
 is meant to work offline, and a LAN with no internet is not a fault.
 
-Links  Each link (a WiFi client, a cable, a USB adapter; not the hotspot's radio) is watched or
-       not, as the owner sets it (watch); one not set follows watch_new: watched while it holds
-       the box's route (the default, and while it is in trouble after), always, or never. Each
+Links  Each link (a WiFi client, a cable, a USB adapter; never one of the box's own networks: the
+       hotspot's ap*, a USB gadget's cable, a connection the box shares out) is watched or
+       not, as the owner sets it (watch); one not set follows watch_new: always (the default),
+       while it holds the box's route (and while it is in trouble after), or never. A link whose
+       NetworkManager settings give it no gateway (a fixed address, none set) is judged by its link
+       alone. Each
        watched link has a watchdog of its own (Watch, in a Link), with the settings below and its
        own per_iface ones. The steps that reach every link (restart, reboot) wait while another
        link works, unless box_steps says otherwise; a cable with no carrier is waited for
@@ -234,7 +237,7 @@ DEFAULT = {
     "give_up": "never",
     "watch": {},
     "watch_hw": {},
-    "watch_new": "uplink",
+    "watch_new": "all",
     "box_steps": "nothing-works",
     "cable_out": "wait",
     "cable_reach": "reconnect",
@@ -539,7 +542,7 @@ def migrate(raw):
             raw["watch_new"] = "none"
             raw["iface"] = "auto"
         else:
-            raw["watch_new"] = "uplink"
+            raw["watch_new"] = DEFAULT["watch_new"]
     if "eagerness" in raw and "pace" not in raw:
         old = raw.pop("eagerness")
         if old not in EAGERNESS_WAS:
@@ -1574,8 +1577,8 @@ def watching_words(chosen):
         "look": "the link holding the box's route, and every other looked at only",
         "all": "every link",
         "none": None,
-    }[chosen.get("watch_new", "uplink")]
-    parts = ([new] if new else []) + on
+    }[chosen.get("watch_new", DEFAULT["watch_new"])]
+    parts = ([new] if new else []) + ([] if chosen.get("watch_new", DEFAULT["watch_new"]) == "all" else on)
     said = " and ".join([", ".join(parts[:-1]), parts[-1]] if len(parts) > 1 else parts) or "no link"
     return said + (f" (never {', '.join(off)})" if off else "")
 
@@ -1595,12 +1598,12 @@ def pick_iface(chosen, last):
     if chosen != "auto":
         return chosen
     route = netinv.default_route()
-    if route:
+    if route and not own_network(route["iface"]):
         return route["iface"]
-    if last:
+    if last and not own_network(last):
         return last  # in an outage the route goes with the link: keep watching the same one
     for iface, info in sorted(netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).items()):
-        if info.get("type") == "managed":
+        if info.get("type") == "managed" and not own_network(iface):
             return iface
     return None
 
@@ -2304,22 +2307,66 @@ def carrier(iface):
     return {"1": True, "0": False}.get(v)
 
 
-def candidate_links(types=None):
+def own_network(iface):
+    """One of the box's own networks, which it serves rather than joins: the hotspot's (ap*, whatever runs on it),
+    or a USB gadget's (the box is the device end of the cable)."""
+    if iface.startswith("ap"):
+        return True
+    try:
+        return (SYS_NET / iface / "device" / "subsystem").resolve().name == "gadget"
+    except OSError:
+        return False
+
+
+def nm_ipv4():
+    """{iface: (method, gateway)} of NetworkManager's active connections; None when it couldn't be read (not running,
+    or nmcli failing), so what was known before is kept."""
+    code, out = run("nmcli", "-t", "-f", "DEVICE,UUID", "connection", "show", "--active")
+    if code != 0:
+        return None
+    found = {}
+    for line in out.splitlines():
+        dev, _, uid = line.rpartition(":")
+        if not dev or dev == "lo" or not uid:
+            continue
+        code, got = run("nmcli", "-g", "ipv4.method,ipv4.gateway", "connection", "show", "uuid", uid)
+        if code == 0:
+            method, gateway = ([*got.splitlines(), "", ""])[:2]
+            found[dev] = (method.strip(), gateway.strip())
+    return found
+
+
+# The links whose own settings give them no gateway (in NetworkManager's: a fixed address and none set): judged by the
+# link alone, as a gateway that was never there can't go silent. Refreshed with the candidates; kept as it was when
+# NetworkManager can't be read. A link another backend runs is judged by its gateway, as before.
+GATEWAYLESS = set()
+
+
+def candidate_links(types=None, ipv4=None):
     """The links that could carry the box to a network, {iface: kind}: every interface with a device behind it,
-    less the loopback and a WiFi radio that is not a client (the hotspot's, a monitor)."""
+    less the loopback, a WiFi radio that is not a client (a monitor), and the box's own networks (own_network, and a
+    NetworkManager connection the box shares out)."""
     if types is None:
         types = {i: info.get("type") for i, info in netinv.parse_iw_dev(netinv.run("iw", "dev")[1]).items()}
+    read = nm_ipv4() if ipv4 is None else ipv4
+    ipv4 = read or {}
     out = {}
     try:
         dirs = sorted(SYS_NET.iterdir())
     except OSError:
         return out
     for d in dirs:
-        if d.name == "lo" or not (d / "device").exists():
+        if d.name == "lo" or not (d / "device").exists() or own_network(d.name):
             continue
         if (d / "phy80211").exists() and types.get(d.name) not in (None, "managed"):
             continue
+        method, gateway = ipv4.get(d.name, ("", ""))
+        if method == "shared":
+            continue
         out[d.name] = link_kind(d.name)
+    if read is not None:
+        GATEWAYLESS.clear()
+        GATEWAYLESS.update(i for i in out if ipv4.get(i, ("", ""))[0] == "manual" and not ipv4[i][1])
     return out
 
 
@@ -2380,7 +2427,7 @@ def watched_links(chosen, route, candidates, troubled=(), alias=None):
         if said(i) is True:
             out[i] = "full"
     if new in ("uplink", "look"):
-        if route and said(route) is not False:
+        if route and said(route) is not False and not own_network(route):
             out[route] = "full"
         for i, how in troubled.items():
             if said(i) is not False:
@@ -2504,7 +2551,7 @@ class Link:
             self.actor.facts = self.radio_seen
         up = link_up(i)
         gw = gateway_of(i) if up else None
-        answers = gateway_answers(i, gw) if gw else (False if up else None)
+        answers = gateway_answers(i, gw) if gw else (None if not up else i in GATEWAYLESS)
         link = netinv.parse_link(netinv.run("iw", "dev", i, "link")[1]) if up and wifi_here else {}
         same = bool(link.get("ssid")) and link.get("ssid") == (self.roams.last or {}).get("ssid", link.get("ssid"))
         drops, blips = sort_drops(watcher.take(i, now, w.eff.get("blip", 20)), w.eff, same)
@@ -2569,7 +2616,8 @@ class Link:
         return obs
 
     def healthy(self):
-        return bool(self.up) and self.answers is not False and self.gw is not None
+        # A link with no gateway of its own works when it is up: it counts as working while another is down.
+        return bool(self.up) and self.answers is not False and (self.gw is not None or self.iface in GATEWAYLESS)
 
     def act(self, now, actions, status):
         """The steps the watchdog decided on, taken; status(): this link's report, written before a reboot."""
@@ -2807,7 +2855,9 @@ def serve(dry=False):
             notify.watchdog()
         # What else works now: the links a whole-box step would cut off (box_steps).
         works = {i for i, lk in links.items() if lk.healthy()}
-        works |= {i for i in cands if i not in links and inv.get(i, {}).get("up") and gateway_of(i)}
+        works |= {
+            i for i in cands if i not in links and inv.get(i, {}).get("up") and (i in GATEWAYLESS or gateway_of(i))
+        }
         full = sorted(i for i in links if links[i].how == "full") or sorted(links)
         primary = route_if if route_if in links else next((i for i in full if links[i].w.outage), full[0])
         asked = take_request(now) if NOW.exists() else None

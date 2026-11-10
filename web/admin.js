@@ -7379,7 +7379,7 @@ const upPick = {
   roaming: "roam",
   lock_bssid: null,
   ignore_roams: false,
-  watch_new: "uplink",
+  watch_new: "all",
   box_steps: "nothing-works",
   cable_out: "wait",
   cable_reach: "reconnect",
@@ -7410,7 +7410,7 @@ const WATCHNEW_WORDS = {
   ],
   all: [
     "Monitor all interfaces",
-    "The watchdog monitors every interface of the box. Each interface has its own watchdog.",
+    "The watchdog monitors every interface except the hotspot and the USB device cable. Each interface has its own watchdog.",
   ],
   none: [
     "Do not monitor",
@@ -10661,9 +10661,20 @@ function renderAp(run) {
   apRun = run;
   if (netData) drawApHealth();
   const plan = run.up ? run.plan : run.preview;
+  // Every plan runs on ap0 (hotspot_iface): beside the WiFi link on a shared radio, alone on a radio it holds. A plan
+  // recorded before (no hotspot_iface) ran on the radio's own interface when it had the radio to itself.
+  const shared = (q) => q.kind === "own-channel" || q.kind === "follow";
   const where = (q) =>
     q && q.channel
-      ? ` on ${q.iface === "ap0" || q.kind === "own-channel" || q.kind === "follow" ? "a second interface beside " + q.iface : q.iface}, channel ${q.channel}`
+      ? ` on ${
+          q.hotspot_iface
+            ? shared(q)
+              ? "a second interface beside " + q.iface
+              : `${q.hotspot_iface}, on the radio of ${q.iface}`
+            : q.iface === "ap0" || shared(q)
+              ? "a second interface beside " + q.iface
+              : q.iface
+        }, channel ${q.channel}`
       : "";
   apEl.state.textContent = run.up
     ? `On${where(plan)}. ${plan.text}${run.confirmed === false ? " Your WiFi link is disabled. Join the hotspot network and open the hub. Then select Keep hotspot settings. If you do not, the WiFi link returns automatically." : ""}`
