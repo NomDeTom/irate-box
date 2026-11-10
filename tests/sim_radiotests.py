@@ -232,7 +232,6 @@ check(
     and "held a channel of its own" in R.results(radio)["own-channel"]["detail"],
     (said, R.results(radio)),
 )
-import json
 
 ap_mod.RECORD = T / "ap.json"
 ap_mod.RECORD.write_text(
