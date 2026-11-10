@@ -8307,22 +8307,15 @@ const BUS_WORDS = {
   pci: "built-in (PCI)",
   platform: "built-in",
 };
-const COND_WORD = {
-  how: "",
-  limit: "Limit: ",
-  untested: "Not tested yet: ",
-  needs: "Needs: ",
-};
 // Experiments the box runs on a radio (root/radiotests.py), each said before it runs.
 const RADIO_TEST_SAYS = {
-  "follows-roam":
-    "The WiFi link moves to another access point of your network on another channel for a few seconds. Then it moves back. Guests lose the hotspot for a moment, so the test runs only when no guests are connected.",
-  "radio-reset":
-    "The box resets the radio as the watchdog would. The WiFi and the hotspot stop for up to 1 minute. The test runs only when no guests are connected.",
-  "driver-reset":
-    "The box makes one command to the WiFi chip count as timed out. The driver then resets the chip itself. The WiFi and the hotspot stop for a few seconds. The test runs only when no guests are connected.",
+  "own-channel": "The hotspot runs on a channel of its own for a few seconds; guests lose it for a moment.",
+  "follows-roam": "Your WiFi moves to another access point for a few seconds; guests lose the hotspot for a moment.",
+  "radio-reset": "The box resets the radio; the WiFi and the hotspot stop for up to 1 minute.",
+  "driver-reset": "The driver resets the chip; the WiFi and the hotspot stop for a few seconds.",
 };
 const TEST_LABEL = {
+  "own-channel": "Test own channel",
   "follows-roam": "Test roaming",
   "radio-reset": "Test radio reset",
   "driver-reset": "Test driver timeout recovery",
@@ -8341,35 +8334,145 @@ function radioTestButton(iface, exp, label) {
     el("span", { className: "setting-desc", textContent: ` ${RADIO_TEST_SAYS[exp]}` }),
   );
 }
-function radioTests(inv, iface, section, line) {
-  const t = (inv.radio_tests || {})[iface];
-  if (!t || !(t.can || []).length) return [];
-  return [
-    section(
-      line("Radio tests", ""),
+// The capability record (root/radiocaps.py) as a terse table: the value, the source and one clause why. A row
+// with no answer shows "Not tested" and its button only when the test can run here; a row answered by the chip
+// list, a test or what the box saw has no button (not even "Test again").
+const CAP_SOURCE = { driver: "driver", known: "chip list", test: "test", learned: "seen here" };
+const CAP_PLURAL = { driver: "driver", known: "chip list", test: "tested", learned: "seen here" };
+function capText(value) {
+  if (value == null) return "Not tested";
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "string" && /^(yes|no)$/i.test(value))
+    return value[0].toUpperCase() + value.slice(1).toLowerCase();
+  return String(value);
+}
+function capBelow(below) {
+  if (!below || !below.length) return null;
+  return ` (${below.map((b) => `${CAP_PLURAL[b.source] || b.source}: ${capText(b.value)}`).join("; ")})`;
+}
+function capSource(row) {
+  const word = CAP_SOURCE[row.source] || row.source || "";
+  return row.detail ? `${word}: ${row.detail}` : word;
+}
+function radioCapTable(inv, phy, iface, section, line) {
+  const rec = (inv.radio_caps || {})[phy];
+  if (!rec || !rec.rows) return null;
+  const body = el(
+    "tbody",
+    {},
+    ...Object.values(rec.rows).map((row) =>
       el(
-        "ul",
-        { className: "net-facts radio-tests" },
-        ...t.can.map((exp) => {
-          const got = (t.found || {})[exp];
-          return el(
-            "li",
-            {},
-            el("strong", { textContent: t.questions[exp] }),
-            " ",
-            got
-              ? `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}. `
-              : "Not run. ",
-            radioTestButton(
-              iface,
-              exp,
-              got ? "Test again" : TEST_LABEL[exp] || "Run test",
-            ),
-          );
-        }),
+        "tr",
+        {},
+        el("td", { textContent: row.label }),
+        el(
+          "td",
+          {},
+          el("span", { textContent: capText(row.value) }),
+          capBelow(row.below) ? el("span", { className: "setting-desc", textContent: capBelow(row.below) }) : null,
+          row.value == null && row.testable
+            ? radioTestButton(iface, row.test, TEST_LABEL[row.test] || "Run test")
+            : null,
+        ),
+        el("td", { className: "setting-desc", textContent: capSource(row) }),
       ),
     ),
+  );
+  return section(
+    el(
+      "table",
+      { className: "net-caps" },
+      el(
+        "thead",
+        {},
+        el(
+          "tr",
+          {},
+          el("th", { textContent: "Capability" }),
+          el("th", { textContent: "Value" }),
+          el("th", { textContent: "Source" }),
+        ),
+      ),
+      body,
+    ),
+  );
+}
+function radioCard(inv, group, hazards) {
+  const line = netLine;
+  const section = (...parts) => el("div", { className: "net-section" }, ...parts);
+  const primary = group.find((r) => r.type === "managed") || group[0];
+  const chip = group.map((r) => r.known).find(Boolean);
+  const usb = primary.usb || {};
+  const title = (chip && chip.chip) || primary.driver || primary.iface;
+  const version = primary.driver_version || primary.srcversion;
+  const what = [
+    BUS_WORDS[primary.bus] || primary.bus || "",
+    usb.id ? `USB id ${usb.id}` : null,
+    primary.driver ? `driver ${primary.driver}${version ? ` ${version}` : ""}` : null,
+    chip && chip.firmware ? `firmware ${chip.firmware}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const doing = group.map((r) => {
+    if (r.type === "AP") return `${r.iface} hotspot${r.stations ? `, ${r.stations} guest${r.stations === 1 ? "" : "s"}` : ""}`;
+    const l = r.link || {};
+    if (l.ssid) return `${r.iface} link on ${l.ssid}, channel ${l.channel}, ${l.signal} dBm`;
+    return `${r.iface} not connected`;
+  });
+  const kids = [
+    netHead(title, [group.some((r) => r.type === "AP") ? "WiFi + hotspot" : "WiFi"]),
+    section(line("Radio", what || "—"), line("Interfaces", doing.join("; ") + ".")),
   ];
+  if (chip && chip.summary)
+    kids.push(el("p", { className: "setting-desc", textContent: chip.summary }));
+  const managed = primary.type === "managed" ? primary : group.find((r) => r.type === "managed");
+  if (managed && managed.owner)
+    kids.push(
+      section(
+        line(
+          "Connection manager",
+          (MANAGED_BY[managed.owner] || managed.owner) +
+            (managed.manager ? ` With ${managed.manager} for the address.` : ""),
+        ),
+      ),
+    );
+  if (managed && (managed.power_save || managed.powersave_from)) kids.push(section(powerSaveLine(managed)));
+  const caps = radioCapTable(inv, primary.phy, managed ? managed.iface : primary.iface, section, line);
+  if (caps) kids.push(caps);
+  const ifaces = new Set(group.map((r) => r.iface));
+  const mine = hazards.filter((h) => h.iface && ifaces.has(h.iface));
+  if (mine.length)
+    kids.push(
+      section(
+        el(
+          "p",
+          { className: "net-line" },
+          el("span", { className: "net-label", textContent: "Findings" }),
+          el(
+            "span",
+            {},
+            `The Box doctor has ${mine.length} finding${mine.length === 1 ? "" : "s"} for this radio. `,
+            el("a", { href: "#health", textContent: "Open the Box doctor →" }),
+          ),
+        ),
+        el("p", {
+          className: "setting-desc",
+          textContent: "WiFi and radio checks, and the settings around them, are on the Box doctor.",
+        }),
+      ),
+    );
+  if (chip && chip.evidence && chip.evidence.length)
+    kids.push(
+      el(
+        "details",
+        { className: "sec-fold" },
+        el("summary", { textContent: "Notes from testing" }),
+        el("ul", { className: "net-facts" }, ...chip.evidence.map((note) => el("li", { textContent: note }))),
+      ),
+    );
+  return el("div", { className: "net-device setting" }, ...kids);
 }
 
 function signalWords(dbm) {
@@ -8625,54 +8728,6 @@ function deviceCard(inv, device, wifi, hazards) {
         ),
       ),
     );
-  if (wifi && (device.power_save || device.powersave_from))
-    kids.push(section(powerSaveLine(device)));
-  if (wifi) {
-    const hotspot = (inv.ap || []).find((x) => x.phy === device.phy);
-    if (hotspot) {
-      const conds = hotspot.conditions || [{ kind: "how", text: hotspot.detail }];
-      const any = conds.some((c) => c.kind !== "how");
-      const verdict = !hotspot.possible
-        ? "No."
-        : any
-          ? `Yes, with conditions (through ${hotspot.backend}).`
-          : `Yes (through ${hotspot.backend}).`;
-      const tests = (inv.radio_tests || {})[device.iface] || {};
-      kids.push(
-        section(
-          line("Hotspot support", verdict),
-          el(
-            "ul",
-            { className: "net-conditions" },
-            ...conds.map((c) => {
-              const got = c.test && (tests.found || {})[c.test];
-              if (c.kind === "untested" && got)
-                return el(
-                  "li",
-                  { className: "cond-tested" },
-                  `Tested ${new Date(got.at * 1000).toLocaleDateString()}: ${got.detail}.`,
-                );
-              return el(
-                "li",
-                { className: `cond-${c.kind}` },
-                `${COND_WORD[c.kind] || ""}${c.text}`,
-                c.kind === "untested" &&
-                  c.test &&
-                  (tests.can || []).includes(c.test)
-                  ? radioTestButton(
-                      device.iface,
-                      c.test,
-                      TEST_LABEL[c.test] || "Run test",
-                    )
-                  : null,
-              );
-            }),
-          ),
-        ),
-      );
-    }
-    kids.push(...radioTests(inv, device.iface, section, line));
-  }
   // What the box knows about this device, in words: what to review first, then what is known.
   const mine = hazards.filter((h) => h.iface === device.iface);
   const look = mine.filter(
@@ -9141,13 +9196,14 @@ function renderNetwork(data) {
       ? "Checking…"
       : "Not checked yet.";
   net.scan.disabled = busy;
-  // A card per device, in plain words: what it is, what it's doing, what manages it, whether it
-  // can run the hotspot and on what conditions, and the warnings that are about it.
-  const shownIfaces = new Set(
-    inv
-      ? [...inv.radios.map((radio) => radio.iface), ...inv.wired.map((w) => w.iface)]
-      : [],
-  );
+  // A card per radio (one radio, one card, however many interfaces it has) and per wired port, in plain words:
+  // what it is, what each interface is doing, and the capabilities the settings depend on.
+  const radioGroups = new Map();
+  for (const radio of inv ? inv.radios : []) {
+    const key = radio.phy || radio.iface;
+    if (!radioGroups.has(key)) radioGroups.set(key, []);
+    radioGroups.get(key).push(radio);
+  }
   // A review item accepted (on this page or the Box doctor's, one list: "net:<id>") is said as that and sorts with the passed.
   const accNet = data.accepted || {};
   const hz = inv
@@ -9162,7 +9218,7 @@ function renderNetwork(data) {
   AW.drawKept(net.devices, [
     ...(inv
       ? [
-          ...inv.radios.map((radio) => deviceCard(inv, radio, true, hz)),
+          ...[...radioGroups.values()].map((group) => radioCard(inv, group, hz)),
           ...inv.wired.map((w) => deviceCard(inv, w, false, hz)),
         ]
       : []),
@@ -9170,7 +9226,6 @@ function renderNetwork(data) {
   drawNetTabs(data, inv, uplink);
   AW.drawKept(net.hazards, [
     ...hz
-      .filter((h) => !(h.iface && shownIfaces.has(h.iface)))
       .map((h) =>
         el(
           "div",

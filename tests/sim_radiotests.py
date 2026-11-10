@@ -37,6 +37,9 @@ radio = {
     "type": "managed",
     "phy": "phy0",
     "driver": "aic8800_fdrv",
+    "ap": True,
+    "ap_beside_client": True,
+    "channels_at_once": 3,
     "usb": {"id": "a69c:88dc", "port": "1-1.1", "product": "AIC8800DC"},
     "profile": {"uuid": "0c3bb1fa-0f6a-3707-8c8d-4e23598253db"},
     "link": {"bssid": "04:95:e6:72:b6:d1", "channel": 11},
@@ -110,17 +113,18 @@ for i, exp, why in (
 
 said = R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 key = R.radio_key(radio)
-got = R.results()[key]["follows-roam"]
+got = R.results(radio)["follows-roam"]
 check(
     "follows-roam: the hotspot moved with the link; kept per radio and driver version",
-    got["answer"] == "follows" and "from channel 11 to 6" in got["detail"] and key == "a69c:88dc aic8800_fdrv 6.4.3.0",
+    got["answer"] == "yes"
+    and "from channel 11 to 6" in got["detail"]
+    and key == "usb:a69c:88dc@1-1.1|aic8800_fdrv 6.4.3.0",
     (key, got),
 )
 check(
-    "  said: the question, then the answer; kept as English for the page and as a message",
+    "  said: the question, then the answer; the record keeps the English detail",
     ids(said)[1:] == ["radio-test.q.follows-roam", "text.sentences", "radio-test.roam.follows"]
     and args_of(said, "radio-test.roam.follows")["before"] == 11
-    and args_of(got["msg"], "radio-test.roam.follows")["after"] == 6
     and said["en"] == "{all}",
     (said, got),
 )
@@ -133,13 +137,12 @@ st.update(ignore_lock=True)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check(
     "  a link that did not move: not counted as an answer",
-    R.results()[key]["follows-roam"]["answer"] == "unknown"
-    and "did not move" in R.results()[key]["follows-roam"]["detail"],
+    R.results(radio)["follows-roam"]["answer"] is None and "did not move" in R.results(radio)["follows-roam"]["detail"],
 )
 st.update(ignore_lock=False)
 st.update(follow=False, ap=11)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
-check("  a hotspot that stays: said so", R.results()[key]["follows-roam"]["answer"] == "stays")
+check("  a hotspot that stays: said so", R.results(radio)["follows-roam"]["answer"] == "no")
 from irate_box.root import radio as radio_mod
 
 restored = []
@@ -148,32 +151,29 @@ st.update(ap_dies=True)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check(
     "  a hotspot that went down: said so, and started again",
-    R.results()[key]["follows-roam"]["answer"] == "doesn't" and restored,
+    R.results(radio)["follows-roam"]["answer"] == "no" and restored,
 )
 st.update(ap_dies=False)
 
 radio_mod.reset = lambda *a, **k: "USB 1-1.1 (AIC8800DC) reset at its port. wlan0 is back. The hotspot started again."
 R.experiment(inv, "wlan0", "radio-reset", sleep=nap)
-got = R.results()[key]["radio-reset"]
+got = R.results(radio)["radio-reset"]
 check(
     "radio-reset: timed, the link and the hotspot back",
-    got["answer"] == "works"
-    and "The link was back" in got["detail"]
-    and "The hotspot was back" in got["detail"]
-    and {"radio-test.reset.link-back", "radio-test.reset.hotspot-back"} <= set(ids(got["msg"])),
+    got["answer"] == "yes" and "The link was back" in got["detail"] and "The hotspot was back" in got["detail"],
     got,
 )
 
 R.experiment(inv, "wlan0", "driver-reset", sleep=nap)
-got = R.results()[key]["driver-reset"]
+got = R.results(radio)["driver-reset"]
 check(
     "driver-reset: the count moved, the link back",
-    got["answer"] == "works" and "reset its device" in got["detail"],
+    got["answer"] == "yes" and "reset its device" in got["detail"],
     got,
 )
 st["reset"] = False
 R.experiment(inv, "wlan0", "driver-reset", sleep=nap)
-check("  a driver that didn't reset: said so", R.results()[key]["driver-reset"]["answer"] == "doesn't")
+check("  a driver that didn't reset: said so", R.results(radio)["driver-reset"]["answer"] == "no")
 (params / "fake_cmd_timeout").unlink()
 try:
     R.check_ready(inv, "wlan0", "driver-reset")
@@ -182,7 +182,19 @@ except Refused as exc:
     check("refused: a driver without a fake timeout", exc.message["id"] == "radio-test.no-fake", exc.message)
 check(
     "the answers kept: three experiments for this radio",
-    sorted(R.results()[key]) == ["driver-reset", "follows-roam", "radio-reset"],
+    sorted(R.results(radio)) == ["driver-reset", "follows-roam", "radio-reset"],
+)
+from irate_box.root import ap as ap_mod
+
+real_try = ap_mod.try_own_channel
+ap_mod.try_own_channel = lambda run, inv, settings, **kw: (True, {"kind": "own-channel", "phy": "phy0"})
+said = R.experiment(inv, "wlan0", "own-channel", sleep=nap)
+ap_mod.try_own_channel = real_try
+check(
+    "own-channel: today's try, as a radio test, kept as its row",
+    R.results(radio)["own-channel"]["answer"] == "yes"
+    and "held a channel of its own" in R.results(radio)["own-channel"]["detail"],
+    (said, R.results(radio)),
 )
 
 shutil.rmtree(T, ignore_errors=True)

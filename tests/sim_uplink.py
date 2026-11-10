@@ -1733,5 +1733,40 @@ finally:
         _real_uptime,
     )
 
+# A radio reset by the watchdog teaches the capability record: back within RADIO_WAIT, or not.
+import tempfile
+
+from irate_box.root import radiocaps as RC
+
+RT = Path(tempfile.mkdtemp(prefix="uplink-caps-"))
+RC.STATE, RC.STORE = RT, RT / "radio-caps.json"
+wlink = U.Link("wlan0", C("persistent"))
+wlink.kind, wlink.dry, wlink.iface = "wifi", False, "wlan0"
+wlink.radio_seen = {"driver": "aic8800_fdrv", "usb": {"id": "a69c:88dc", "port": "1-1.1"}}
+wlink.reset_mine, wlink.reset_at = True, 1000.0
+wlink.up, wlink.answers = True, True
+wlink._learn_reset(1060.0)
+row = RC.stored({**wlink.radio_seen, "iface": "wlan0"})["reset-recovery"]
+check(
+    "a watchdog radio reset, the link back within RADIO_WAIT: learned reset-recovery yes",
+    row["value"] == "yes" and row["source"] == "learned" and "back 60 s" in row["detail"],
+    row,
+)
+wlink.reset_mine, wlink.reset_learned, wlink.reset_at = True, False, 2000.0
+wlink.up, wlink.answers = False, None
+wlink._learn_reset(2000.0 + U.RADIO_WAIT + 1)
+row = RC.stored({**wlink.radio_seen, "iface": "wlan0"})["reset-recovery"]
+check(
+    "  and not back within RADIO_WAIT: learned reset-recovery no, written once",
+    row["value"] == "no" and "not back" in row["detail"],
+    row,
+)
+wlink.reset_mine, wlink.reset_learned, wlink.reset_at = True, False, 3000.0
+wlink.dry = True
+wlink._learn_reset(3000.0 + U.RADIO_WAIT + 1)
+check(
+    "  a dry run learns nothing", RC.stored({**wlink.radio_seen, "iface": "wlan0"})["reset-recovery"]["value"] == "no"
+)
+
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

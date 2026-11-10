@@ -3186,6 +3186,31 @@ body.drop > section + section {
 .net-section .net-conditions {
   margin-top: 0.35rem;
 }
+/* A radio's capabilities (radiocaps.py) as a terse table: the value, its source, and a test only where none answers. */
+.net-caps {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.net-caps th,
+.net-caps td {
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid var(--border);
+}
+.net-caps thead th {
+  color: var(--muted);
+  font-weight: 600;
+  border-top: 0;
+}
+.net-caps td:first-child {
+  white-space: nowrap;
+}
+.net-caps .radio-test {
+  display: block;
+  margin-top: 0.2rem;
+}
 .net-device h4 .state {
   color: var(--muted);
 }

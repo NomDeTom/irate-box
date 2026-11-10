@@ -45,23 +45,41 @@ w.fetch = async (u, opts = {}) => {
     const wl = data.inventory.radios.find((r) => r.iface === 'wlan0');
     wl.powersave_from = { where: 'default', value: '2' };
     // What irate-box knows of its chip (hub/known_radios.json).
+    wl.driver_version = '6.4.3.0';
     wl.known = { chip: 'Broadcom onboard (CYW43455, Raspberry Pi 3B+)', in_kernel: true, hotspot: true,
+      firmware: 'firmware-brcm80211',
+      summary: 'Power saving hurts it as a hotspot.',
+      evidence: ['65–73 ms with it on, about 5 ms off.', 'Moves its hotspot to the link\'s channel by itself.'],
       notes: ['Power saving hurts it as a hotspot.'], tested_by: ['irate-box'] };
     wl.roaming = { ssid: wl.link.ssid, aps: [{ bssid: 'aa:00:00:00:00:01', channel: 6, freq: 2437, signal: 100 }, { bssid: 'aa:00:00:00:00:02', channel: 6, freq: 2437, signal: 87 },
       { bssid: 'aa:00:00:00:00:03', channel: 11, freq: 2462, signal: 80 }], channels: [6, 11], bgscan: 'simple:30:-65:300', nm_version: '1.52.1',
       choices: ['roam', 'no-scan', 'lock'], why: {}, hotspot_shares: true };
     // The watchdog's report, with a few events, for the event log.
     const now = Math.floor(Date.now() / 1000);
-    // The radio's tests (radiotests.py): one run, one not.
     // netplan's connections on a NetworkManager without its integration (nmhandover.py): one file that can be handed
     // over, one that cannot, and one handed over before.
     data.inventory.handover = { integrated: false,
       files: [{ name: '90-NM-wlan0.yaml', ok: true, connections: [{ name: 'netplan-wlan0-ExampleWiFi1' }] },
         { name: '50-cloud-init.yaml', ok: false, why: 'It also sets up the cable, which NetworkManager does not run here.', connections: [] }],
       done: [{ name: '91-NM-guest.yaml', at: now - 86400, connections: [{ keyfile: '/etc/NetworkManager/system-connections/GuestWiFi.nmconnection' }] }] };
-    data.inventory.radio_tests = { wlan0: { key: 'k', can: ['radio-reset', 'follows-roam'],
-      questions: { 'radio-reset': 'Does it come back after a reset?', 'follows-roam': 'Does the hotspot follow a roam?' },
-      found: { 'radio-reset': { at: now - 86400, detail: 'it came back in 40 s' } } } };
+    const cap = (id, label, value, source, detail, test, testable, below = []) =>
+      ({ id, label, value, source, detail, at: now - 86400, test, testable, below });
+    data.inventory.radio_caps = { phy0: { key: 'k', radio: 'usb:a69c:88dc@1-1.1', at: now,
+      driver: { name: 'aic8800_fdrv', version: '6.4.3.0', srcversion: 'X', kernel: '6.1' }, previous: null,
+      rows: {
+        bands: cap('bands', 'Bands', ['2.4 GHz'], 'driver', '', null, false),
+        ap: cap('ap', 'AP mode', 'yes', 'driver', '', null, false),
+        'ap-beside-link': cap('ap-beside-link', 'AP beside link', 'yes', 'driver', '', null, false),
+        'channels-at-once': cap('channels-at-once', 'Channels at once', 1, 'known', 'The firmware stalls on a second channel.', null, false,
+          [{ source: 'driver', value: 3, detail: '' }]),
+        'own-channel': cap('own-channel', 'AP on own channel', 'no', 'known', 'The firmware stalls on a second channel.', 'own-channel', false),
+        'follows-by-itself': cap('follows-by-itself', 'AP follows link', 'yes', 'known', "The hotspot follows the link's channel.", 'follows-roam', false),
+        sae: cap('sae', 'WPA3 (SAE)', 'yes', 'driver', '', null, false),
+        'sched-scan': cap('sched-scan', 'Scheduled scan', 'yes', 'driver', '', null, false),
+        country: cap('country', 'Regulatory domain', 'follows the box', 'driver', 'Country US.', null, false),
+        'reset-recovery': cap('reset-recovery', 'Radio reset', 'yes', 'test', 'The link was back in 40 s.', 'radio-reset', false),
+        'cmd-timeout-recovery': cap('cmd-timeout-recovery', 'Driver timeout recovery', null, null, '', 'driver-reset', true),
+      } } };
     data.uplink = data.uplink || { at: now, state: 'up', iface: 'wlan0', link: {}, gateway: '192.168.1.1', backend: 'networkmanager',
       repairs: ['reconnect'], chosen: { pace: 'gentle', reach: 'reboot', guests: 'protect', on_wedge: 'ladder', sensitivity: 3, iface: 'auto', overrides: {} },
       events: [{ at: now - 600, text: 'wlan0 down: the gateway missed 3 checks' }, { at: now - 540, text: 'Reconnected wlan0 (nmcli device connect)' },
@@ -81,28 +99,40 @@ setTimeout(async () => {
   const t = (sel) => [...d.querySelectorAll(sel)].map((n) => n.textContent.replace(/\s+/g, ' ').trim());
   console.log('WHEN:', t('#net-when')[0]);
   console.log('DEVICES:', [...d.querySelectorAll('#up-iface option')].map((o) => o.value).join(', '));
-  // A card per device: plain lines, the hotspot's conditions one per line, its warnings on it.
+  // A card per radio, not per interface: the chip first, then its identity, its interfaces and a terse table.
   const cards = [...d.querySelectorAll('#net-devices .net-device')];
-  check('a card per device', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('wlan0'), cards.length);
+  check('a card per radio', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('Broadcom onboard'), cards.length);
   const card = cards[0] ? cards[0].textContent : '';
-  check('what it is, in words', /USB WiFi adapter, driver aic8800/.test(card), card.slice(0, 200));
-  check('what it is doing, with the signal in words', /Current connection:? ?ExampleWiFi\d*, channel \d+ \(2\.4 GHz\), signal -\d+ dBm \((excellent|good|fair|weak|poor)\)/.test(card), card);
-  check('Radio tests: each with its result, or Not run', /Radio tests/.test(card) && /Does it come back after a reset\? Tested [^:]+: it came back in 40 s\./.test(card)
-    && /Does the hotspot follow a roam\? Not run\./.test(card) && !/Tested on this radio/.test(card), card);
+  check('what it is, in words: bus, USB id, driver and version, firmware', /USB, USB id a69c:88dc, driver aic8800_fdrv 6\.4\.3\.0, firmware firmware-brcm80211/.test(card), card.slice(0, 240));
+  check('what each interface is doing, with the signal', /Interfaces\s*wlan0 link on ExampleWiFi\d*, channel \d+, -\d+ dBm\./.test(card), card);
+  check('the chip summary under the identity line', /Power saving hurts it as a hotspot\./.test(card), card);
   const ps = cards[0] && [...cards[0].querySelectorAll('.net-line')].find((n) => /^Power saving/.test(n.textContent));
   check('power saving as a setting: its value, where it is set, a link there; not a warning', ps && /Power saving\s*Off, set in Default connection settings\./.test(ps.textContent)
     && ps.querySelector('a').getAttribute('href') === '#net-defaults-card' && !/Power saving is enabled/.test(card), ps && ps.textContent);
   check('managed by, explained', /NetworkManager, the system's own network settings/.test(card));
-  check('the hotspot: yes, with conditions', /Yes, with conditions \(through networkmanager\)/.test(card));
-  const conds = cards[0] ? [...cards[0].querySelectorAll('.net-conditions li')].map((li) => li.className) : [];
-  check('its conditions one per line, untested marked', conds.join(' ') === 'cond-how cond-limit cond-untested', conds.join(' '));
-  const own = cards[0] ? [...cards[0].querySelectorAll('.net-facts:not(.radio-tests) li')].length : 0;
-  check('its own findings on its card (3): to review, then what is known', own === 3, own);
+  const capRows = cards[0] ? [...cards[0].querySelectorAll('.net-caps tbody tr')] : [];
+  const row = (name) => capRows.find((tr) => tr.children[0].textContent === name);
+  check('the capabilities as a table: the value, its source, one clause', capRows.length === 11
+    && /^\s*1 \(driver: 3\)/.test(row('Channels at once').children[1].textContent)
+    && /chip list: The firmware stalls on a second channel\./.test(row('Channels at once').children[2].textContent)
+    && /Yes/.test(row('AP beside link').children[1].textContent), capRows.map((tr) => tr.textContent).join(' | '));
+  check('test buttons only on the unanswered rows; never "Test again"', cards[0].querySelectorAll('.net-caps .radio-test').length === 1
+    && !!row('Driver timeout recovery').querySelector('.radio-test')
+    && !row('AP on own channel').querySelector('.radio-test')
+    && !row('AP follows link').querySelector('.radio-test')
+    && !row('Radio reset').querySelector('.radio-test')
+    && !/Test again/.test(card), card);
+  const own = cards[0] ? [...cards[0].querySelectorAll('.net-section')].filter((n) => /To review|Known limitations/.test(n.textContent)).length : 0;
+  check('no findings on the card: one pointer to the Box doctor', own === 0 && /The Box doctor has \d+ finding/.test(card)
+    && !!cards[0].querySelector('a[href="#health"]'), card);
+  const evidence = cards[0] && cards[0].querySelector('.sec-fold');
+  check('the chip evidence under a closed fold', evidence && !evidence.open && /Notes from testing/.test(evidence.textContent)
+    && /65–73 ms/.test(evidence.textContent), evidence && evidence.textContent);
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, the chip, current connection, managed by, power saving, the hotspot, radio tests, to review, known about it', secs.length === 9
-    && secs.every((n) => n.querySelector('.net-line, .net-facts')) && !cards[0].querySelector('.net-uptime'), secs.length);
+  check('the card in sections: what, identity and interfaces, managed by, power saving, the capability table, the findings pointer', secs.length === 5
+    && secs.every((n) => n.querySelector('.net-line, .net-caps')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];
   check('four tabs: Status, Hardware, Connection settings, Hotspot', tabs.map((x) => x.textContent.replace(/\s+/g, ' ').trim()).join('|') === 'Status|Hardware|Connection settings|Hotspot');
@@ -144,8 +174,8 @@ setTimeout(async () => {
   const joinSays = d.getElementById('net-join-says').textContent.replace(/\s+/g, ' ');
   check('  Add and connect: the page may lose the box, said under it; sent at once, the password cleared from the form', /this page can lose the box/.test(joinSays) && !popped
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
-  const hsec = secs.find((n) => n.querySelector('.net-conditions'));
-  check('the hotspot\'s conditions stay in its own section', hsec && /^Hotspot support/.test(hsec.textContent) && hsec.querySelectorAll('.net-line').length === 1);
+  const capSec = secs.find((n) => n.querySelector('.net-caps'));
+  check('the capability table is a section of its own', capSec && capSec.querySelectorAll('.net-caps tbody tr').length === 11);
   // One space wherever the stylesheet has any: the rules are checked by their content, not their layout.
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/\s+/g, ' ');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
@@ -153,7 +183,7 @@ setTimeout(async () => {
   check('labels in a column, above their text on a phone', /\.net-line \{ display: grid; grid-template-columns: 11rem 1fr/.test(css)
     && /max-width: 560px\) \{ \.net-line \{ grid-template-columns: 1fr/.test(css));
   const general = t('#net-hazards .net-device h4');
-  check('the rest in the general list, a card each, not repeated', general.length === 2 && !general.some((g) => /handshake|retries/i.test(g)), general.join(' | '));
+  check('every finding now in the general list, one card each', general.length === 5, general.join(' | '));
   const evs = [...d.querySelectorAll('#up-events li')];
   check('the event log: one line per event, newest first', evs.length === 3 && /up again/.test(evs[0].textContent)
     && evs.every((li) => li.querySelector('.ev-time') && li.querySelector('.ev-text') && !li.querySelector('.setting-desc')), evs.map((li) => li.innerHTML).join(' | '));
@@ -335,10 +365,10 @@ setTimeout(async () => {
     failPost = false;
     const waitKeys = [...d.querySelectorAll('[data-wait]')].map((n) => n.dataset.wait);
     check('no two connected buttons share a wait key', new Set(waitKeys).size === waitKeys.length, waitKeys.filter((k, i) => waitKeys.indexOf(k) !== i));
-    const chipLine = [...d.querySelectorAll('#net-devices .net-line')].find((p) => /^Chip/.test(p.textContent));
-    check('a known chip on its card: its name, its driver in the kernel, the notes, who tested it',
-      chipLine && /Broadcom onboard/.test(chipLine.textContent) && /driver is in the kernel/.test(chipLine.textContent)
-      && /Power saving hurts it/.test(chipLine.textContent) && /Tested by irate-box/.test(chipLine.textContent), chipLine && chipLine.textContent);
+    const chipTitle = d.querySelector('#net-devices .net-device h4');
+    check('a known chip on its card: its name first, the one-line summary under the identity',
+      chipTitle && /Broadcom onboard/.test(chipTitle.textContent)
+      && /Power saving hurts it as a hotspot\./.test(d.querySelector('#net-devices').textContent), chipTitle && chipTitle.textContent);
     check('no page errors', errors.length === 0, errors.join(' | '));
     console.log(fails ? `${fails} failure(s)` : 'ok');
     process.exit(fails ? 1 : 0);
