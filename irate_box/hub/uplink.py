@@ -1155,6 +1155,7 @@ class Watch:
                 why = self._held(now, obs, "radio")
                 if not why:
                     o["done"].append("radio")
+                    o["radio_at_was"] = o.get("radio_at")
                     o["next_reconnect"], o["radio_at"] = None, now
                     self.log(
                         now,
@@ -1217,7 +1218,7 @@ class Watch:
             # Still not up a few minutes after the reconnect: the adapter reset, before anything heavier, as a stuck port
             # or PHY is the likeliest reason a cable that is back gives no link.
             o["done"].append("radio")
-            o["radio_at"] = now
+            o["radio_at_was"], o["radio_at"] = o.get("radio_at"), now
             self.log(
                 now,
                 "repair",
@@ -1258,7 +1259,7 @@ class Watch:
             if step == "reboot":
                 self.reboots.append(now)
             if step == "radio":
-                o["radio_at"] = now
+                o["radio_at_was"], o["radio_at"] = o.get("radio_at"), now
             o["next_reconnect"] = now + max(o["gap"], 30) if eff["repeat"] else None
             act = self._reconnect_as(o, can) if step == "reconnect" else step
             self.log(
@@ -1306,12 +1307,22 @@ class Watch:
         o["repeats"] = o.get("repeats", 0) + 1
         return "reconnect"
 
-    def unmark(self, step, at):
-        """A step decided at `at` but not taken after all (held as it was about to run): not counted as done, so it
-        can come due again, and a reboot not counted against the day's."""
+    def hold_taken(self, at, step, why):
+        """A step decided at `at` but held as it was about to be taken: said once in the outage, not counted as
+        done (so it can come due again), a reboot not counted against the day's, and a radio reset's time put back."""
         o = self.outage
-        if o and step in o["done"]:
-            o["done"].remove(step)
+        if o:
+            if step in o["done"]:
+                o["done"].remove(step)
+            if step == "radio" and "radio_at_was" in o:
+                o["radio_at"] = o.pop("radio_at_was")
+                if o["radio_at"] is None:
+                    del o["radio_at"]
+            if step not in o["held"]:
+                o["held"].append(step)
+                self.log(at, "held", f"Would {self.labels[step]}, but {why}.", step)
+        else:
+            self.log(at, "held", f"Would {self.labels[step]}, but {why}.", step)
         if step == "reboot" and at in self.reboots:
             self.reboots.remove(at)
 
@@ -1333,6 +1344,8 @@ class Watch:
 
     def _held(self, now, obs, step, hand=False):
         eff = self.eff
+        if step in ("restart", "radio", "reboot") and obs.get("driver_reset") is not None:
+            return f"the radio's driver reset it itself {human(obs['driver_reset'])} ago: left to it"
         if step in ("restart", "radio", "reboot") and not hand and self._roams_only(obs):
             return "every miss was a roam between access points of the same network, and its gateway answers"
         # A step that reaches every link waits while another link works, as the owner chose (box_steps); one
@@ -1785,13 +1798,14 @@ def _file_reset(iface, port):
         print(f"uplink: the radio reset not filed: {exc}", file=sys.stderr)
 
 
-def own_reset():
+def own_reset(driver=None):
     """Seconds since the radio's driver reset its device itself, while that is recent enough to
-    leave it to come back (root/radio.py's DRIVER_GRACE); None otherwise."""
+    leave it to come back (root/radio.py's DRIVER_GRACE); None otherwise. With `driver`, that
+    driver's reset alone (a link's own radio), not any radio's on the box."""
     from irate_box.root import radio
 
     try:
-        _marker, age = radio.driver_reset()
+        _marker, age = radio.driver_reset(driver=driver)
     except OSError:
         return None
     return age if age is not None and age < radio.DRIVER_GRACE else None
@@ -2526,6 +2540,10 @@ class Link:
         self.roamed_at = None  # its last roam: a following hotspot moves once the link has held the new channel
         self.obs, self.up, self.gw, self.answers, self.roam_rows = {}, False, None, None, []
 
+    def driver(self):
+        """This link's radio's driver (while it was there), for its own reset: None for a link with no radio."""
+        return (self.radio_seen or {}).get("driver") if self.kind == "wifi" else None
+
     def settings(self, chosen):
         """Its numbers: its own settings (under the name they are saved as); looked at only, nothing done (reach watch)."""
         if self.how == "look":
@@ -2560,7 +2578,7 @@ class Link:
                 self.actor.backend = self.backend
             # The driver's own reset takes the interface away while it works (a USB reset re-enumerates the chip):
             # left to it for DRIVER_GRACE, as on the path below. Read from sysfs, never from the radio's tools.
-            own = own_reset()
+            own = own_reset(self.driver())
             if own is not None:
                 self.reset_at, self.hotspot_due = max(self.reset_at, now - own), True
             obs = {
@@ -2591,6 +2609,10 @@ class Link:
         link = netinv.parse_link(netinv.run("iw", "dev", i, "link")[1]) if up and wifi_here else {}
         same = bool(link.get("ssid")) and link.get("ssid") == (self.roams.last or {}).get("ssid", link.get("ssid"))
         drops, blips = sort_drops(watcher.take(i, now, w.eff.get("blip", 20)), w.eff, same)
+        # A roam for the watchdog's hold: a short drop that came back on another access point of the network. Back
+        # on the same one, it may be the access point or the driver dropping the link, which heavier steps can mend.
+        was_bssid = (self.roams.last or {}).get("bssid")
+        moved = bool(link.get("bssid")) and bool(was_bssid) and link["bssid"] != was_bssid
         self.roam_rows = self.roams.see(now, link, blips)
         if self.roam_rows:
             self.roamed_at = self.roam_rows[-1]["at"]
@@ -2600,7 +2622,7 @@ class Link:
             "link": up,
             "gateway": answers,
             "drops": drops,
-            "roams": [d[0] for d in blips],
+            "roams": [d[0] for d in blips] if moved else [],
             "guests": guests(),
             "busy": busy(),
             "uptime": uptime(),
@@ -2618,7 +2640,7 @@ class Link:
                 w.log(now, "info", f"{i} is now run by {self.backend} (was {was}).")
             known = was if was != "none" else self.known_backend
             exists, wifi = (SYS_NET / i).exists(), self.radio_seen is not None and self.kind == "wifi"
-            own = own_reset() if wifi else None
+            own = own_reset(self.driver()) if wifi else None
             if own is not None:
                 self.reset_at, self.hotspot_due = max(self.reset_at, now - own), True
             obs["wedged"] = wedge_evidence(
@@ -2693,15 +2715,10 @@ class Link:
                 # Read again now: the look that decided this can be seconds old, and a driver that resets its own
                 # device says so only when it starts. Taken on top of that reset, the step would stop NetworkManager
                 # and reset the radio while the driver is bringing the chip back.
-                own = own_reset() if step in ("restart", "radio", "reboot") else None
+                heavy = step in ("restart", "radio", "reboot") and self.kind == "wifi"
+                own = own_reset(self.driver()) if heavy else None
                 if own is not None:
-                    w.log(
-                        time.time(),
-                        "held",
-                        f"Would {STEP_LABEL[step]}, but the radio's driver reset it itself {human(own)} ago: left to it.",
-                        step,
-                    )
-                    w.unmark(step, now)
+                    w.hold_taken(now, step, f"the radio's driver reset it itself {human(own)} ago: left to it")
                     continue
                 if step == "reboot":
                     write_status(status())
@@ -2916,6 +2933,8 @@ def serve(dry=False):
             lk.obs["is_uplink"] = i == route_if
             actions = lk.w.tick(now, lk.obs)
             if asked and i == primary:
+                # Read again as it is asked: a step by hand waits for the driver's own reset like any other.
+                lk.obs["driver_reset"] = own_reset(lk.driver()) if lk.kind == "wifi" else None
                 more, _ = lk.w.by_hand(now, lk.obs, asked)
                 actions += [s for s in more if s not in actions]
             share(lk.w, i, dry)  # before acting: a reboot leaves no time after
