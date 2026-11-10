@@ -8410,7 +8410,7 @@ function radioCapTable(inv, phy, iface, section) {
     ),
   );
 }
-function radioCard(inv, group, hazards) {
+function radioCard(inv, group) {
   const line = netLine;
   const section = (...parts) => el("div", { className: "net-section" }, ...parts);
   const primary = group.find((r) => r.type === "managed") || group[0];
@@ -8426,15 +8426,36 @@ function radioCard(inv, group, hazards) {
   ]
     .filter(Boolean)
     .join(", ");
-  const doing = group.map((r) => {
-    if (r.type === "AP") return `${r.iface} hotspot${r.stations ? `, ${r.stations} guest${r.stations === 1 ? "" : "s"}` : ""}`;
+  // What each interface is doing. The signal and the guest count move at every poll: their spans are marked live,
+  // so a poll that brings nothing else keeps the card (and a selection in it) and redraws only those.
+  const doing = [];
+  group.forEach((r, i) => {
+    if (i) doing.push("; ");
+    if (r.type === "AP") {
+      const guests = r.stations || 0;
+      doing.push(`${r.iface} hotspot`, liveAs(el("span", { textContent: `, ${guests} guest${guests === 1 ? "" : "s"}` }), "now"));
+      return;
+    }
     const l = r.link || {};
-    if (l.ssid) return `${r.iface} link on ${l.ssid}, channel ${l.channel}, ${l.signal} dBm`;
-    return `${r.iface} not connected`;
+    if (l.ssid) {
+      doing.push(
+        `${r.iface} link on ${l.ssid}, channel ${l.channel}, `,
+        liveAs(el("span", { textContent: `signal ${l.signal} dBm` }), "now"),
+      );
+    } else doing.push(`${r.iface} not connected`);
   });
+  doing.push(".");
   const kids = [
     netHead(title, [group.some((r) => r.type === "AP") ? "WiFi + hotspot" : "WiFi"]),
-    section(line("Radio", what || "—"), line("Interfaces", doing.join("; ") + ".")),
+    section(
+      line("Radio", what || "—"),
+      el(
+        "p",
+        { className: "net-line" },
+        el("span", { className: "net-label", textContent: "Interfaces" }),
+        el("span", {}, ...doing),
+      ),
+    ),
   ];
   if (chip && chip.summary)
     kids.push(el("p", { className: "setting-desc", textContent: chip.summary }));
@@ -8452,28 +8473,6 @@ function radioCard(inv, group, hazards) {
   if (managed && (managed.power_save || managed.powersave_from)) kids.push(section(powerSaveLine(managed)));
   const caps = radioCapTable(inv, primary.phy, managed ? managed.iface : primary.iface, section);
   if (caps) kids.push(caps);
-  const ifaces = new Set(group.map((r) => r.iface));
-  const mine = hazards.filter((h) => h.iface && ifaces.has(h.iface));
-  if (mine.length)
-    kids.push(
-      section(
-        el(
-          "p",
-          { className: "net-line" },
-          el("span", { className: "net-label", textContent: "Findings" }),
-          el(
-            "span",
-            {},
-            `The Box doctor has ${mine.length} finding${mine.length === 1 ? "" : "s"} for this radio. `,
-            el("a", { href: "#health", textContent: "Open the Box doctor →" }),
-          ),
-        ),
-        el("p", {
-          className: "setting-desc",
-          textContent: "WiFi and radio checks, and the settings around them, are on the Box doctor.",
-        }),
-      ),
-    );
   if (chip && chip.evidence && chip.evidence.length)
     kids.push(
       el(
@@ -9229,7 +9228,7 @@ function renderNetwork(data) {
   AW.drawKept(net.devices, [
     ...(inv
       ? [
-          ...[...radioGroups.values()].map((group) => radioCard(inv, group, hz)),
+          ...[...radioGroups.values()].map((group) => radioCard(inv, group)),
           ...inv.wired.map((w) => deviceCard(inv, w, false, hz)),
         ]
       : []),

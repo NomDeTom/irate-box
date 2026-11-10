@@ -146,7 +146,10 @@ def previous(radio):
     return best
 
 
-def _put(radio, rid, value, source, detail, at=None):
+def _put(radio, rid, value, source, detail, at=None, msg=None):
+    known = _known_rows(radio)
+    if rid in known and known[rid].get("value") is not None:
+        return
     data = _load()
     name = key(radio)
     entry = data["radios"].setdefault(
@@ -161,29 +164,41 @@ def _put(radio, rid, value, source, detail, at=None):
     entry["driver"] = driver_identity(radio)
     entry["at"] = time.time()
     rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
-    was = (entry.setdefault("rows", {}).get(rid) or {}).get("source")
-    if was is None or rank.get(source, 0) >= rank.get(was, 0):
+    row = entry.setdefault("rows", {}).get(rid) or {}
+    was, stamp = row.get("source"), at if at is not None else time.time()
+    # A test and what the box saw are both facts from a moment: the newer one is the answer. A stored row
+    # of either kind stays above a driver's answer.
+    newer = stamp >= (row.get("at") or 0)
+    if was is None:
+        keep = True
+    elif was in ("test", "learned") and source in ("test", "learned"):
+        keep = newer
+    else:
+        keep = rank.get(source, 0) >= rank.get(was, 0)
+    if keep:
         entry["rows"][rid] = {
             "value": value,
             "source": source,
             "detail": detail or "",
-            "at": at if at is not None else time.time(),
+            "at": stamp,
+            "msg": msg,
         }
     _save(data)
 
 
-def record_test(radio, exp, answer, detail, at=None):
-    """A test's answer as its row. `answer` is the experiment's own word (follows, works, ...)."""
+def record_test(radio, exp, answer, detail, at=None, msg=None):
+    """A test's answer as its row. `answer` is the experiment's own word (follows, works, ...); `msg` keeps the
+    answer as a message, so the page can say it in the reader's language."""
     rid, values = ANSWER_ROW.get(exp, (exp, {}))
     value = values.get(answer)
     if value is None and answer not in (None, "unknown"):
         value = answer
-    _put(radio, rid, value, "test", detail, at)
+    _put(radio, rid, value, "test", detail, at, msg)
 
 
-def record_learned(radio, rid, value, detail, at=None):
+def record_learned(radio, rid, value, detail, at=None, msg=None):
     """What the box saw happen, on a row no test settles."""
-    _put(radio, rid, value, "learned", detail, at)
+    _put(radio, rid, value, "learned", detail, at, msg)
 
 
 def _driver_rows(radio):
@@ -267,12 +282,28 @@ def rows(radio, stored_rows=None, can=()):
                     "value": row["value"],
                     "detail": row.get("detail") or "",
                     "at": row.get("at"),
+                    "msg": row.get("msg"),
                 }
             )
-        rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
-        candidates.sort(key=lambda r: rank.get(r["source"], 0))
-        top = candidates[-1] if candidates else {"source": None, "value": None, "detail": "", "at": None}
-        below = [r for r in candidates[:-1] if r["value"] != top["value"] and r["source"] in ("driver", "known")]
+        # The chip list's answer is the record's answer wherever it has one: a test or what the box saw is
+        # kept below it, so a firmware's known limit cannot be overwritten by one try that happened to hold.
+        known_row = known.get(rid)
+        if known_row is not None and known_row.get("value") is not None:
+            top = {
+                "source": "known",
+                "value": known_row["value"],
+                "detail": known_row.get("detail") or "",
+                "at": None,
+                "msg": known_row.get("msg"),
+            }
+            below = [r for r in candidates if r["value"] != top["value"]]
+        else:
+            rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
+            candidates.sort(key=lambda r: rank.get(r["source"], 0))
+            top = (
+                candidates[-1] if candidates else {"source": None, "value": None, "detail": "", "at": None, "msg": None}
+            )
+            below = [r for r in candidates[:-1] if r["value"] != top["value"]]
         out[rid] = {
             "id": rid,
             "label": label,
@@ -280,6 +311,7 @@ def rows(radio, stored_rows=None, can=()):
             "source": top["source"],
             "detail": top["detail"],
             "at": top["at"],
+            "msg": top.get("msg"),
             "test": test,
             "testable": bool(test and test in set(can or ())),
             "below": below,
@@ -348,7 +380,9 @@ def _ap_capable(radio):
 
 def migrate(inv=None, force=False):
     """Fill the record from the two old stores, once. `inv`: the inventory the old keys are matched
-    against. Returns whether anything was written."""
+    against. `ap-tried.json`'s phy number is stale after a driver reload; where the box has one radio that can
+    be an access point, its one entry is that radio's, whatever the number (more than one entry is dropped).
+    Returns whether anything was written."""
     if STORE.exists() and not force:
         return False
     if inv is None:
@@ -372,9 +406,10 @@ def migrate(inv=None, force=False):
                 {"radio": radio_identity(radio), "driver": driver_identity(radio), "at": time.time(), "rows": {}},
             )
             entry["radio"], entry["driver"] = radio_identity(radio), driver_identity(radio)
+            known = _known_rows(radio)
             for exp, answer in found.items():
                 rid, values = ANSWER_ROW.get(exp, (None, {}))
-                if not rid or not isinstance(answer, dict):
+                if not rid or not isinstance(answer, dict) or known.get(rid, {}).get("value") is not None:
                     continue
                 value = values.get(answer.get("answer"))
                 if value is None and answer.get("answer") not in (None, "unknown"):
@@ -386,6 +421,7 @@ def migrate(inv=None, force=False):
                         "source": "test",
                         "detail": answer.get("detail") or "",
                         "at": answer.get("at") or time.time(),
+                        "msg": answer.get("msg"),
                     },
                 )
                 changed = True
@@ -401,10 +437,12 @@ def migrate(inv=None, force=False):
         if phy not in capable or radio.get("type") == "managed":
             capable[phy] = radio
     capable = list(capable.values())
-    if isinstance(tried, dict) and len(capable) == 1:
+    if isinstance(tried, dict) and len(capable) == 1 and len(tried) == 1:
         radio = capable[0]
-        value = tried.get(radio.get("phy"))
-        if isinstance(value, bool):
+        # The old file keys its one answer by a phy number that a driver reload renumbers (lyra-tft: phy0,
+        # its radio on phy6). With one radio that can be an access point, its one answer is that radio's.
+        value = next(iter(tried.values()))
+        if isinstance(value, bool) and _known_rows(radio).get("own-channel", {}).get("value") is None:
             name = key(radio)
             entry = data["radios"].setdefault(
                 name,
