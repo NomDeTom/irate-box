@@ -920,8 +920,7 @@ def follow(run, inv, settings, iface, ssid=None):
         return False, f"The hotspot moved {round(now - moved_at)} s ago; it moves again after {hold} s."
     radio = next((r for r in inv.get("radios") or [] if r.get("iface") == iface), {})
     csa = (radiocaps.rows(radio, radiocaps.stored(radio)).get("csa") or {}).get("value")
-    declared = "channel_switch" in (radio.get("commands") or [])
-    if csa == "yes" or (csa is None and declared):
+    if csa == "yes":
         ssid, second_ssid = _names(settings, ssid)
         ok, why = channel_switch(run, rec["plan"], plan)
         if ok:
