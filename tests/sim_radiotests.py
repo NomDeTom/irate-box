@@ -6,6 +6,7 @@ going down when the link moves channel, and the link moved back; a radio reset t
 seen by its count; answers kept per radio and driver version.
 python3 tests/sim_radiotests.py"""
 
+import json
 import os
 import shutil
 import sys
@@ -102,6 +103,11 @@ for i, exp, why in (
     ({"radios": [radio], "stacks": NM}, "follows-roam", "radio-test.no-hotspot"),
     ({**inv, "stacks": {"networkmanager": None}}, "follows-roam", "radio-test.no-nm"),
     ({**inv, "stacks": {"networkmanager": {"running": False}}}, "follows-roam", "radio-test.no-nm"),
+    (
+        {**inv, "radios": [dict(radio, known={"hotspot_channel": "link"}), inv["radios"][1]]},
+        "follows-roam",
+        "radio-test.answered",
+    ),
     (inv, "warp", "radio-test.unknown"),
     (inv, "radio-reset", None),
 ):
@@ -133,6 +139,20 @@ check(
     ran_locks[-2:] == ["50:0f:f5:ad:15:e1", ""] and st["lock"] == "" and st["link"] == 11,
     ran_locks,
 )
+from irate_box.root import radiocaps as RC
+
+
+def forget_row(rid):
+    try:
+        data = json.loads(RC.STORE.read_text())
+    except (OSError, ValueError):
+        return
+    for entry in data.get("radios", {}).values():
+        entry.get("rows", {}).pop(rid, None)
+    RC.STORE.write_text(json.dumps(data))
+
+
+RC.STORE.unlink(missing_ok=True)
 st.update(ignore_lock=True)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check(
@@ -143,6 +163,13 @@ st.update(ignore_lock=False)
 st.update(follow=False, ap=11)
 R.experiment(inv, "wlan0", "follows-roam", sleep=nap)
 check("  a hotspot that stays: said so", R.results(radio)["follows-roam"]["answer"] == "no")
+try:
+    R.check_ready(inv, "wlan0", "follows-roam")
+    refused = None
+except Refused as exc:
+    refused = exc.message["id"]
+check("  a row the record answers: refused at root too", refused == "radio-test.answered", refused)
+RC.STORE.unlink(missing_ok=True)
 from irate_box.root import radio as radio_mod
 
 restored = []
@@ -172,6 +199,7 @@ check(
     got,
 )
 st["reset"] = False
+forget_row("cmd-timeout-recovery")
 R.experiment(inv, "wlan0", "driver-reset", sleep=nap)
 check("  a driver that didn't reset: said so", R.results(radio)["driver-reset"]["answer"] == "no")
 (params / "fake_cmd_timeout").unlink()

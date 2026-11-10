@@ -177,6 +177,18 @@ def check_ready(inv, iface, exp):
                 "This radio cannot run the hotspot on a channel of its own beside your WiFi link.",
             )
         )
+    rid = radiocaps.ANSWER_ROW.get(exp, (None,))[0]
+    if rid:
+        row = radiocaps.rows(radio, radiocaps.stored(radio)).get(rid) or {}
+        if row.get("source") in ("known", "test", "learned") and row.get("value") is not None:
+            source = {"known": "the chip list", "test": "a test", "learned": "what the box saw"}[row["source"]]
+            raise Refused(
+                M(
+                    "radio-test.answered",
+                    "The box already has an answer for this, from {source}.",
+                    source=source,
+                )
+            )
     return radio, ap
 
 
