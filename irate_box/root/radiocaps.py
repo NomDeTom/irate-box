@@ -145,6 +145,9 @@ def previous(radio):
 
 
 def _put(radio, rid, value, source, detail, at=None):
+    known = _known_rows(radio)
+    if rid in known and known[rid].get("value") is not None:
+        return
     data = _load()
     name = key(radio)
     entry = data["radios"].setdefault(
@@ -261,10 +264,22 @@ def rows(radio, stored_rows=None, can=()):
                     "at": row.get("at"),
                 }
             )
-        rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
-        candidates.sort(key=lambda r: rank.get(r["source"], 0))
-        top = candidates[-1] if candidates else {"source": None, "value": None, "detail": "", "at": None}
-        below = [r for r in candidates[:-1] if r["value"] != top["value"] and r["source"] in ("driver", "known")]
+        # The chip list's answer is the record's answer wherever it has one: a test or what the box saw is
+        # kept below it, so a firmware's known limit cannot be overwritten by one try that happened to hold.
+        known_row = known.get(rid)
+        if known_row is not None and known_row.get("value") is not None:
+            top = {
+                "source": "known",
+                "value": known_row["value"],
+                "detail": known_row.get("detail") or "",
+                "at": None,
+            }
+            below = [r for r in candidates if r["value"] != top["value"]]
+        else:
+            rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
+            candidates.sort(key=lambda r: rank.get(r["source"], 0))
+            top = candidates[-1] if candidates else {"source": None, "value": None, "detail": "", "at": None}
+            below = [r for r in candidates[:-1] if r["value"] != top["value"]]
         out[rid] = {
             "id": rid,
             "label": label,
@@ -364,9 +379,10 @@ def migrate(inv=None, force=False):
                 {"radio": radio_identity(radio), "driver": driver_identity(radio), "at": time.time(), "rows": {}},
             )
             entry["radio"], entry["driver"] = radio_identity(radio), driver_identity(radio)
+            known = _known_rows(radio)
             for exp, answer in found.items():
                 rid, values = ANSWER_ROW.get(exp, (None, {}))
-                if not rid or not isinstance(answer, dict):
+                if not rid or not isinstance(answer, dict) or known.get(rid, {}).get("value") is not None:
                     continue
                 value = values.get(answer.get("answer"))
                 if value is None and answer.get("answer") not in (None, "unknown"):
@@ -393,10 +409,12 @@ def migrate(inv=None, force=False):
         if phy not in capable or radio.get("type") == "managed":
             capable[phy] = radio
     capable = list(capable.values())
-    if isinstance(tried, dict) and len(capable) == 1:
+    if isinstance(tried, dict) and len(capable) == 1 and len(tried) == 1:
         radio = capable[0]
-        value = tried.get(radio.get("phy"))
-        if isinstance(value, bool):
+        # The old file keys its one answer by a phy number that a driver reload renumbers (lyra-tft: phy0,
+        # its radio on phy6). With one radio that can be an access point, its one answer is that radio's.
+        value = next(iter(tried.values()))
+        if isinstance(value, bool) and _known_rows(radio).get("own-channel", {}).get("value") is None:
             name = key(radio)
             entry = data["radios"].setdefault(
                 name,

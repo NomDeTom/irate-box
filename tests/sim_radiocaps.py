@@ -118,10 +118,10 @@ radiocaps.record_test(usb, "own-channel", True, "It held a channel of its own.")
 radiocaps.record_test(usb, "radio-reset", "works", "The link was back in 4 s.")
 rows = radiocaps.rows(usb, radiocaps.stored(usb), can=("own-channel", "radio-reset"))
 check(
-    "a test sits above the chip list, which stays visible below it",
-    rows["own-channel"]["value"] == "yes"
-    and rows["own-channel"]["source"] == "test"
-    and rows["own-channel"]["below"][0]["source"] == "known"
+    "a test on a row the chip list answers is not stored: the chip list stays the answer",
+    "own-channel" not in radiocaps.stored(usb)
+    and rows["own-channel"]["value"] == "no"
+    and rows["own-channel"]["source"] == "known"
     and rows["reset-recovery"]["value"] == "yes"
     and rows["reset-recovery"]["source"] == "test",
     {k: rows[k] for k in ("own-channel", "reset-recovery")},
@@ -177,14 +177,16 @@ inv = {
 )
 (T / "etc").mkdir(parents=True, exist_ok=True)
 (T / "etc" / "ap-tried.json").write_text(json.dumps({"phy5": True}))
+migrated = radiocaps.stored(usb) if radiocaps.migrate(inv) else {}
+migrated_rows = radiocaps.rows(usb, migrated)
 check(
-    "the migration reads both old stores once, keyed to every radio that matches",
-    radiocaps.migrate(inv) is True
-    and radiocaps.stored(usb)["follows-by-itself"]["value"] == "yes"
-    and radiocaps.stored(usb)["reset-recovery"]["value"] == "yes"
-    and radiocaps.stored(usb)["own-channel"]["value"] == "yes"
-    and radiocaps.stored(usb)["own-channel"]["detail"] == "Tested before the capability record existed.",
-    radiocaps.stored(usb),
+    "the migration reads both old stores once; the chip list's own rows are left to it",
+    migrated.get("reset-recovery", {}).get("value") == "yes"
+    and "follows-by-itself" not in migrated
+    and "own-channel" not in migrated
+    and migrated_rows["follows-by-itself"]["value"] == "yes"
+    and migrated_rows["own-channel"]["value"] == "no",
+    (migrated, {k: migrated_rows[k]["value"] for k in ("follows-by-itself", "own-channel")}),
 )
 check(
     "  the old files are left in place, unread from now on",
@@ -192,9 +194,29 @@ check(
 )
 check("  a second run changes nothing", radiocaps.migrate(inv) is False)
 
+# lyra-tft's real file: {"phy0": true}, while its radio is phy6 (a driver reload renumbers the phy).
 radiocaps.STORE.unlink(missing_ok=True)
-two = {"radios": [dict(usb), dict(builtin)]}
-(T / "etc" / "ap-tried.json").write_text(json.dumps({"phy5": True}))
+tft = dict(builtin, iface="wlan0", phy="phy6")
+tft_inv = {"radios": [tft, dict(tft, iface="ap0", type="AP")]}
+(T / "etc" / "ap-tried.json").write_text(json.dumps({"phy0": True}))
+radiocaps.migrate(tft_inv)
+check(
+    "the stale phy number in ap-tried.json: its one answer goes to the box's one radio that can be an AP",
+    radiocaps.stored(tft)["own-channel"]["value"] == "yes",
+    radiocaps.stored(tft),
+)
+radiocaps.STORE.unlink(missing_ok=True)
+(T / "etc" / "ap-tried.json").write_text(json.dumps({"phy0": True, "phy6": False}))
+radiocaps.migrate(tft_inv)
+check(
+    "  more than one entry: dropped",
+    "own-channel" not in radiocaps.stored(tft),
+    radiocaps.stored(tft),
+)
+radiocaps.STORE.unlink(missing_ok=True)
+other = dict(builtin, iface="wlan1", phy="phy7", addr="dc:a6:32:12:34:57")
+two = {"radios": [tft, other]}
+(T / "etc" / "ap-tried.json").write_text(json.dumps({"phy6": True}))
 radiocaps.migrate(two)
 check(
     "the phy-only ap-tried answer is dropped where two radios can be an access point",
