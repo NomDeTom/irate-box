@@ -313,6 +313,14 @@ summary + .view-switch {
 .kit-offer ~ .setting-desc {
   margin-top: 0.2rem !important;
 }
+/* The hotspot's move interval: its own group under the security section's footer. */
+#hs-move-fields {
+  margin-top: 0.7rem;
+  gap: 0.7rem;
+}
+#hs-move-fields .setting-desc {
+  margin-top: 0;
+}
 /* Network recovery's own groups. */
 .up-steps + .up-box-only {
   margin-top: 0.4rem;
