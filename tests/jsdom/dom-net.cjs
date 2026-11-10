@@ -104,7 +104,7 @@ setTimeout(async () => {
   check('a card per radio', cards.length === 1 && cards[0].querySelector('h4').textContent.startsWith('Broadcom onboard'), cards.length);
   const card = cards[0] ? cards[0].textContent : '';
   check('what it is, in words: bus, USB id, driver and version, firmware', /USB, USB id a69c:88dc, driver aic8800_fdrv 6\.4\.3\.0, firmware firmware-brcm80211/.test(card), card.slice(0, 240));
-  check('what each interface is doing, with the signal', /Interfaces\s*wlan0 link on ExampleWiFi\d*, channel \d+, -\d+ dBm\./.test(card), card);
+  check('what each interface is doing, with the signal', /Interfaces\s*wlan0 link on ExampleWiFi\d*, channel \d+, signal -\d+ dBm\./.test(card), card);
   check('the chip summary under the identity line', /Power saving hurts it as a hotspot\./.test(card), card);
   const ps = cards[0] && [...cards[0].querySelectorAll('.net-line')].find((n) => /^Power saving/.test(n.textContent));
   check('power saving as a setting: its value, where it is set, a link there; not a warning', ps && /Power saving\s*Off, set in Default connection settings\./.test(ps.textContent)
@@ -123,15 +123,14 @@ setTimeout(async () => {
     && !row('Radio reset').querySelector('.radio-test')
     && !/Test again/.test(card), card);
   const own = cards[0] ? [...cards[0].querySelectorAll('.net-section')].filter((n) => /To review|Known limitations/.test(n.textContent)).length : 0;
-  check('no findings on the card: one pointer to the Box doctor', own === 0 && /The Box doctor has \d+ finding/.test(card)
-    && !!cards[0].querySelector('a[href="#health"]'), card);
+  check('no findings on the card', own === 0 && !cards[0].querySelector('a[href="#health"]'), card);
   const evidence = cards[0] && cards[0].querySelector('.sec-fold');
   check('the chip evidence under a closed fold', evidence && !evidence.open && /Notes from testing/.test(evidence.textContent)
     && /65–73 ms/.test(evidence.textContent), evidence && evidence.textContent);
   // Each labelled part a section, a hairline between them.
   const secs = cards[0] ? [...cards[0].children].filter((n) => n.classList.contains('net-section')) : [];
   // A device's uptime is on the Status tab, with the link it belongs to.
-  check('the card in sections: what, identity and interfaces, managed by, power saving, the capability table, the findings pointer', secs.length === 5
+  check('the card in sections: what, identity and interfaces, managed by, power saving, the capability table', secs.length === 4
     && secs.every((n) => n.querySelector('.net-line, .net-caps')) && !cards[0].querySelector('.net-uptime'), secs.length);
   // The page in tabs by role, with cards per device or connection type within each.
   const tabs = [...d.querySelectorAll('[data-tabs="network"] [role="tab"]')];

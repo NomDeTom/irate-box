@@ -8399,7 +8399,7 @@ function radioCapTable(inv, phy, iface, section) {
     ),
   );
 }
-function radioCard(inv, group, hazards) {
+function radioCard(inv, group) {
   const line = netLine;
   const section = (...parts) => el("div", { className: "net-section" }, ...parts);
   const primary = group.find((r) => r.type === "managed") || group[0];
@@ -8462,28 +8462,6 @@ function radioCard(inv, group, hazards) {
   if (managed && (managed.power_save || managed.powersave_from)) kids.push(section(powerSaveLine(managed)));
   const caps = radioCapTable(inv, primary.phy, managed ? managed.iface : primary.iface, section);
   if (caps) kids.push(caps);
-  const ifaces = new Set(group.map((r) => r.iface));
-  const mine = hazards.filter((h) => h.iface && ifaces.has(h.iface));
-  if (mine.length)
-    kids.push(
-      section(
-        el(
-          "p",
-          { className: "net-line" },
-          el("span", { className: "net-label", textContent: "Findings" }),
-          el(
-            "span",
-            {},
-            `The Box doctor has ${mine.length} finding${mine.length === 1 ? "" : "s"} for this radio. `,
-            el("a", { href: "#health", textContent: "Open the Box doctor →" }),
-          ),
-        ),
-        el("p", {
-          className: "setting-desc",
-          textContent: "WiFi and radio checks, and the settings around them, are on the Box doctor.",
-        }),
-      ),
-    );
   if (chip && chip.evidence && chip.evidence.length)
     kids.push(
       el(
@@ -9239,7 +9217,7 @@ function renderNetwork(data) {
   AW.drawKept(net.devices, [
     ...(inv
       ? [
-          ...[...radioGroups.values()].map((group) => radioCard(inv, group, hz)),
+          ...[...radioGroups.values()].map((group) => radioCard(inv, group)),
           ...inv.wired.map((w) => deviceCard(inv, w, false, hz)),
         ]
       : []),
