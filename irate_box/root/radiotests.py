@@ -388,8 +388,10 @@ def csa(inv, radio, ap, sleep=time.sleep):
     started = _link_up(radio["iface"], 1, sleep)
     target = {"channel": other["channel"], "freq": other["freq"]}
     ok, why = ap_mod.channel_switch(_proc_run, plan, target)
-    back = {"channel": now_ch, "freq": plan.get("freq") or 0}
-    if ok:
+    back = next((c for c in chans if c["channel"] == now_ch), None)
+    if back is None:
+        ok, why = False, "the hotspot's channel is not one this radio may use"
+    elif ok:
         ok, why = ap_mod.channel_switch(_proc_run, plan, back)
     if not ok:
         try:

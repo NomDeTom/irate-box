@@ -245,7 +245,7 @@ ap_mod.RECORD.write_text(
                 "hotspot_iface": "ap0",
                 "backend": "networkmanager",
                 "channel": 11,
-                "freq": 2462,
+                "freq": 2407,
             },
         }
     )
@@ -255,7 +255,7 @@ switched = []
 
 
 def fake_switch(run, plan, new, wait=3, sleep=None):
-    switched.append(new["channel"])
+    switched.append((new["channel"], new["freq"]))
     st["ap"] = new["channel"]
     return True, ""
 
@@ -266,7 +266,7 @@ said = R.experiment(inv, "wlan0", "csa", sleep=nap)
 ap_mod.channel_switch = real_switch
 check(
     "csa: switched to another allowed channel and back, then kept as its row",
-    switched == [1, 11]
+    switched == [(1, 2412), (11, 2462)]
     and R.results(radio)["csa"]["answer"] == "yes"
     and "switched to channel 1 and back" in R.results(radio)["csa"]["detail"],
     (switched, said, R.results(radio)),
