@@ -162,13 +162,23 @@ def _put(radio, rid, value, source, detail, at=None):
     entry["driver"] = driver_identity(radio)
     entry["at"] = time.time()
     rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
-    was = (entry.setdefault("rows", {}).get(rid) or {}).get("source")
-    if was is None or rank.get(source, 0) >= rank.get(was, 0):
+    row = entry.setdefault("rows", {}).get(rid) or {}
+    was, stamp = row.get("source"), at if at is not None else time.time()
+    # A test and what the box saw are both facts from a moment: the newer one is the answer. A stored row
+    # of either kind stays above a driver's answer.
+    newer = stamp >= (row.get("at") or 0)
+    if was is None:
+        keep = True
+    elif was in ("test", "learned") and source in ("test", "learned"):
+        keep = newer
+    else:
+        keep = rank.get(source, 0) >= rank.get(was, 0)
+    if keep:
         entry["rows"][rid] = {
             "value": value,
             "source": source,
             "detail": detail or "",
-            "at": at if at is not None else time.time(),
+            "at": stamp,
         }
     _save(data)
 

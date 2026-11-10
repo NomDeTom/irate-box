@@ -129,11 +129,17 @@ check(
 radiocaps.record_learned(usb, "reset-recovery", "no", "The link was not back in 180 s.")
 rows = radiocaps.rows(usb, radiocaps.stored(usb))
 check(
-    "a learned row cannot override a test (test > learned), and stays the answer when there is none",
-    rows["reset-recovery"]["value"] == "yes"
-    and rows["reset-recovery"]["source"] == "test"
-    and radiocaps.stored(usb)["reset-recovery"]["source"] == "test",
+    "between a test and what the box saw, the newer is the answer (a live failure after a passed test)",
+    rows["reset-recovery"]["value"] == "no"
+    and rows["reset-recovery"]["source"] == "learned"
+    and radiocaps.stored(usb)["reset-recovery"]["source"] == "learned",
     rows["reset-recovery"],
+)
+radiocaps.record_test(usb, "radio-reset", "works", "The link was back in 4 s.")
+check(
+    "  and a later test takes it back",
+    radiocaps.rows(usb, radiocaps.stored(usb))["reset-recovery"]["source"] == "test",
+    radiocaps.stored(usb)["reset-recovery"],
 )
 radiocaps.record_learned(builtin, "reset-recovery", "no", "The link was not back in 180 s.")
 check(
