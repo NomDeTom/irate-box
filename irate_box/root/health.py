@@ -8038,6 +8038,9 @@ def check_watchdogs_alive(now=None):
 # box's files, and when it does find damage it names the card.
 UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 PACKAGE_CHECK = CONTROL / "package-check.json"
+DPKG_STATUS = Path(
+    os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status")
+)  # changes with every package installed or removed
 # What the box boots and serves with: install.sh's own package list and nginx, the base system, and the network.
 STARTUP_PACKAGES = (
     "systemd",
@@ -8431,21 +8434,41 @@ def _package_cache():
     return data if isinstance(data, dict) else {}
 
 
+def _dpkg_state():
+    """When dpkg's list of packages last changed: an install, upgrade or removal makes a kept answer stale."""
+    try:
+        return DPKG_STATUS.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 def _write_package_cache(findings):
     from irate_box.root import safeio
 
     safeio.mkdir(CONTROL, mode=0o755)
-    safeio.write(PACKAGE_CHECK, json.dumps({"at": time.time(), "boot": _boot_id(), "findings": findings}, indent=1))
+    safeio.write(
+        PACKAGE_CHECK,
+        json.dumps(
+            {"at": time.time(), "boot": _boot_id(), "dpkg": _dpkg_state(), "findings": findings},
+            indent=1,
+        ),
+    )
 
 
 def check_package_files(quick=False):
     """Package files and irate-box's own tree (notes: box-doctor-hardening-plan Part 1, step 1). The weekly full run
     verifies every package and the tree; a quick run, after a boot, verifies the startup packages and their
-    dependencies once, keeping that boot's answer for the runs from /admin. Both read only, and the timer's run is
+    dependencies once, keeping that boot's answer for the runs from /admin until a package changes. Both read only, and the timer's run is
     already at low priority and idle I/O, so neither delays a service."""
     if quick:
         cached = _package_cache()
-        if cached.get("boot") == _boot_id() and isinstance(cached.get("findings"), list):
+        # That boot's answer, while no package has changed since: an update or a toolkit installed in the same
+        # boot is verified afresh.
+        if (
+            cached.get("boot") == _boot_id()
+            and cached.get("dpkg") == _dpkg_state()
+            and isinstance(cached.get("findings"), list)
+        ):
             return cached["findings"]
         packages = startup_packages()
         found = _package_findings(_dpkg_verify(packages), packages)

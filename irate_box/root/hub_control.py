@@ -3645,6 +3645,9 @@ def _recorded_source(repo):
         ) from None
 
 
+CHECK_FRESH = 600  # seconds a check's answer is reused by a download, without asking the source again
+
+
 def _check_for_update(progress):
     """Bring the cache up to the recorded branch and work out what is new: two steps.
     Returns (state for update.json, install options)."""
@@ -3906,7 +3909,10 @@ def update_fetch(req):
         cached = (UPDATE_SRC / ".git").is_dir() and run(
             "git", "-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD"
         ).stdout.strip()
-        if state.get("up_to_date") or not cached or cached != state.get("available"):
+        # The cache is reused only straight after a check (Check, then Download): an older check's answer is
+        # asked again, or a box that once downloaded a version would keep verifying it after main moved on.
+        stale = time.time() - (state.get("fetched") or 0) > CHECK_FRESH
+        if state.get("up_to_date") or not cached or cached != state.get("available") or stale:
             progress.add_steps(2)
             state, opts = _check_for_update(progress)
         else:

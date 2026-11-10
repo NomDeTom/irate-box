@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -158,6 +159,7 @@ H._write_update_state(
         "changes": [],
         "changes_known": True,
         "checks": [],
+        "fetched": time.time(),
     }
 )
 carried_check = H._security_check(src, installed)
@@ -182,6 +184,32 @@ check(
     and H._force_actions(state) == [],
     (H._approve_actions(state), H._force_actions(state)),
 )
+
+# A download reuses the cache only straight after a check. A check's answer from long ago is asked again: a box
+# that once downloaded a version, and was never told of a newer one, kept verifying the old one.
+asked = []
+
+
+def recheck(progress):
+    asked.append(1)
+    return dict(json.loads(H.UPDATE_STATE.read_text()), fetched=time.time()), []
+
+
+for age, expect in ((3600, [1]), (60, [])):
+    asked.clear()
+    H._write_update_state(dict(json.loads(H.UPDATE_STATE.read_text()), up_to_date=False, fetched=time.time() - age))
+    with (
+        mock.patch.object(H, "_check_for_update", recheck),
+        mock.patch.object(H, "verify_update", lambda *args, **kw: [carried_check]),
+        mock.patch.object(H, "_install_options", lambda: []),
+    ):
+        H.update_fetch({})
+    check(
+        f"a download {age} s after its check: "
+        + ("the source asked again" if expect else "the check's answer reused, the source not asked twice"),
+        asked == expect,
+        asked,
+    )
 
 H.secchanges.record_install(
     "ccccccc",

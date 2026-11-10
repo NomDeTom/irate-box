@@ -253,6 +253,26 @@ check(
     calls,
 )
 
+# A package installed or upgraded within the boot (an update, a toolkit): the kept answer is checked again.
+dpkg_status = state / "dpkg-status"
+dpkg_status.write_text("Package: one\n")
+os.utime(dpkg_status, ns=(1_000_000_000, 1_000_000_000))
+health.DPKG_STATUS = dpkg_status
+os.environ["HUB_BOOT_ID"] = "boot-d"
+health.check_package_files(quick=True)
+calls.clear()
+health.check_package_files(quick=True)
+kept = not any(c[0] == "dpkg" and len(c) > 2 for c in calls)
+dpkg_status.write_text("Package: one\nPackage: two\n")
+os.utime(dpkg_status, ns=(2_000_000_000, 2_000_000_000))
+calls.clear()
+health.check_package_files(quick=True)
+check(
+    "  within one boot the answer is kept until a package changes, then checked again",
+    kept and any(c[0] == "dpkg" and len(c) > 2 for c in calls),
+    (kept, calls),
+)
+
 verify["startup"] = f"??5??????   {ff_file}\n"
 os.environ["HUB_BOOT_ID"] = "boot-c"
 found = health.check_package_files(quick=True)
