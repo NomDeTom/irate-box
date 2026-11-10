@@ -222,9 +222,13 @@ def parse_phys(text):
 
 def parse_phy(text):
     modes, in_modes = [], False
+    commands, in_commands = [], False
     for line in text.splitlines():
         if re.match(r"^\tSupported interface modes:", line):
-            in_modes = True
+            in_modes, in_commands = True, False
+            continue
+        if re.match(r"^\tSupported commands:", line):
+            in_commands, in_modes = True, False
             continue
         if in_modes:
             m = re.fullmatch(r"^\t\t \* (.+)$", line)
@@ -232,6 +236,12 @@ def parse_phy(text):
                 modes.append(m.group(1).strip())
                 continue
             in_modes = False
+        if in_commands:
+            m = re.fullmatch(r"^\t\t \* (.+)$", line)
+            if m:
+                commands.append(m.group(1).strip())
+                continue
+            in_commands = False
     freqs = [int(f) for f in re.findall(r"^\t\t\t\* (\d+)(?:\.\d+)? MHz(?! \[\d+\] \(disabled\))", text, re.M)]
     # Each channel the driver lists, with what stops an access point there: disabled, no initiating
     # radiation ("no IR": a client may answer, never start), or radar detection (DFS: an AP must
@@ -269,6 +279,7 @@ def parse_phy(text):
         ],
         "sched_scan": bool(sched and int(sched.group(1)) > 0),
         "sae": "SAE" in text and "Device supports SAE" in text,
+        "commands": commands,
         "channels": chan_list,
     }
 
@@ -425,13 +436,19 @@ def known_facts(radio):
     row = knownradios.lookup((radio.get("usb") or {}).get("id"), radio.get("driver")) if knownradios else None
     if not row:
         return None
+    notes = row.get("notes", [])
+    summary = row.get("summary") or (notes[0] if notes else "")
     return {
         "chip": row["chip"],
         "in_kernel": row.get("in_kernel"),
         "hotspot": row.get("hotspot"),
         # "link": its hotspot must share the link's channel (a channel of its own stalls its firmware).
         "hotspot_channel": row.get("hotspot_channel"),
-        "notes": row.get("notes", []),
+        "firmware": row.get("firmware"),
+        # A line under the identity, and the rest of the notes (the stall numbers and history) under a fold.
+        "summary": summary,
+        "evidence": notes[1:] if row.get("summary") is None and notes else notes,
+        "notes": notes,
         "source": row.get("source"),
         "tested_by": [result["by"] for result in row.get("tested", [])],
     }
@@ -461,6 +478,10 @@ def device_facts(iface):
     if mod.exists() and mod.resolve().name != "usbcore":
         name = mod.resolve().name
     facts["driver"] = name
+    if name:
+        moddir = Path("/sys/module") / name.replace("-", "_")
+        facts["driver_version"] = read(moddir / "version")
+        facts["srcversion"] = read(moddir / "srcversion")
     if facts["bus"] == "usb":
         usb = real if (real / "idVendor").exists() else real.parent
         if (usb / "idVendor").exists():
@@ -470,6 +491,7 @@ def device_facts(iface):
                 "product": read(usb / "product"),
                 "autosuspend": read(usb / "power" / "control") == "auto",
             }
+            facts["port"] = usb.name
     if name:
         params = {}
         pdir = Path("/sys/module") / name.replace("-", "_") / "parameters"
@@ -916,6 +938,7 @@ def scan(focus=None):
     iw_ok = shutil.which("iw") is not None
     phys = parse_phys(run("iw", "list")[1]) if iw_ok else {}
     ifaces = parse_iw_dev(run("iw", "dev")[1]) if iw_ok else {}
+    regs = parse_reg(run("iw", "reg", "get")[1]) if iw_ok else {}
     route = default_route()
     stacks = {
         "networkmanager": nm,
@@ -949,6 +972,7 @@ def scan(focus=None):
             "type": info.get("type"),
             **device_facts(iface),
             **cap,
+            "reg": regs.get(phy),
             "owner": owner,
             "manager": manager_of(iface, ifupdown, networkd) if owner == "wpa_supplicant" else None,
             "rfkill": rfkill_for(phy),
@@ -1012,27 +1036,26 @@ def scan(focus=None):
         except (OSError, ValueError, ImportError):
             inv["other_ap"] = {}
         inv["duplicate_profiles"] = duplicate_profiles()
-        # What the box has found out about each WiFi radio by testing it (root/radiotests.py), and what it can test.
+        # What each radio can do (root/radiocaps.py): the driver and the chip table read live, with the tests
+        # and what the box saw stored. The old stores are read once, here, on a box without this record.
         try:
-            from irate_box.root import radiotests
+            from irate_box.root import radiocaps
 
-            found = radiotests.results()
-            inv["radio_tests"] = {}
+            can_by_phy = {}
             for r in radios:
                 if r.get("type") != "managed":
                     continue
                 shares = any(a.get("type") == "AP" and a.get("phy") == r.get("phy") for a in radios)
-                can = (
-                    ["radio-reset"]
-                    + (["follows-roam"] if shares else [])
-                    + (["driver-reset"] if "fake_cmd_timeout" in (r.get("params") or {}) else [])
-                )
-                inv["radio_tests"][r["iface"]] = {
-                    "key": radiotests.radio_key(r),
-                    "found": found.get(radiotests.radio_key(r), {}),
-                    "can": can,
-                    "questions": {e: radiotests.QUESTIONS[e] for e in can},
-                }
+                can = ["radio-reset"]
+                if shares:
+                    can.append("follows-roam")
+                if "fake_cmd_timeout" in (r.get("params") or {}):
+                    can.append("driver-reset")
+                if r.get("ap") and r.get("ap_beside_client") and r.get("channels_at_once", 1) >= 2:
+                    can.append("own-channel")
+                can_by_phy[r.get("phy")] = can
+            radiocaps.migrate(inv)
+            inv["radio_caps"] = radiocaps.by_phy(inv, can_by_phy)
         except (OSError, ValueError, ImportError):
             pass
         if stacks.get("netplan") is not None and shutil.which("netplan"):

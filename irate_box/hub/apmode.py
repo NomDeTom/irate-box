@@ -69,13 +69,16 @@ def pick_channel(chans, owner=None, near=None):
     return pool[0] if pool else None
 
 
-def plan(inv, verdicts, owner=None, tried=None):
+def plan(inv, verdicts, owner=None, caps=None):
     """The hotspot's plan for this box, from the inventory and netinv.ap_verdicts(inv).
     owner: the owner's choices {"radio", "band", "channel", "take_radio" (rung 4: True to give the
-    WiFi link up for the hotspot)}. tried: {phy: True|False}, whether keeping a channel of its own
-    beside the link has worked on this box (rung 2), None until tried."""
-    owner, tried = owner or {}, tried or {}
+    WiFi link up for the hotspot)}. caps: {phy: stored rows} from root/radiocaps.py, merged with the
+    driver and the chip table here (rung 2's own channel is a record row, not a try kept elsewhere)."""
+    from irate_box.root import radiocaps
+
+    owner, caps = owner or {}, caps or {}
     radios = {r["phy"]: r for r in inv.get("radios", [])}
+    records = {phy: radiocaps.rows(radio, caps.get(phy) or {}) for phy, radio in radios.items()}
     up = inv.get("uplink") or {}
     country = inv.get("country")
     options = []
@@ -90,12 +93,13 @@ def plan(inv, verdicts, owner=None, tried=None):
         if v["mode"] == "radio-alone":
             kind = "own-radio"
         elif v["mode"] == "beside-client":
-            # A channel of its own where the driver offers two, the try hasn't failed, and the chip isn't one
-            # whose firmware stalls that way (known_radios.json "hotspot_channel": "link", the AIC8800DC).
-            own = (
-                r.get("channels_at_once", 1) >= 2
-                and tried.get(v["phy"]) is not False
-                and (r.get("known") or {}).get("hotspot_channel") != "link"
+            # A channel of its own where the record's channels-at-once offers two and its own-channel row is not
+            # "no" (the chip list's firmware stall, or a try or the box's own sight): an unanswered row is left
+            # to the try, as it always was.
+            row = records.get(v["phy"]) or {}
+            channels = (row.get("channels-at-once") or {}).get("value")
+            own = (channels if isinstance(channels, int) else r.get("channels_at_once", 1)) >= 2 and (
+                (row.get("own-channel") or {}).get("value") not in (False, "no")
             )
             kind = "own-channel" if own else "follow"
         elif v["mode"] == "takes-radio":
@@ -124,7 +128,7 @@ def plan(inv, verdicts, owner=None, tried=None):
         "address": ADDRESS,
         "hotspot_iface": HOTSPOT_IFACE,
         "uplink": up.get("iface"),
-        "to_try": kind == "own-channel" and tried.get(v["phy"]) is None,
+        "to_try": kind == "own-channel" and (records.get(v["phy"], {}).get("own-channel") or {}).get("value") is None,
     }
     if kind == "choose" and not owner.get("take_radio"):
         out.update(needs_choice=True, channel=None)

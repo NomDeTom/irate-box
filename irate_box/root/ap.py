@@ -497,7 +497,16 @@ def boot_unit():
 
 def refresh_units():
     """The hotspot's units brought up to this version's text, for each one already written here (an
-    update changes them; only a hotspot set up again would otherwise). Their names, for a restart."""
+    update changes them; only a hotspot set up again would otherwise). Their names, for a restart.
+    Also where an update's install reads the two old capability stores into the record (radiocaps.py)."""
+    from irate_box.hub import netinv
+    from irate_box.root import radiocaps
+
+    if not radiocaps.STORE.exists():
+        try:
+            radiocaps.migrate(netinv.scan())
+        except (OSError, ValueError):
+            pass
     changed = []
     for name, text in ((DNSMASQ_UNIT, dnsmasq_unit()), (HOSTAPD_UNIT, hostapd_unit()), (BOOT_UNIT, boot_unit())):
         path = UNITS / name
@@ -614,7 +623,9 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
     none, is returned without starting anything. On a failed step, what was done is undone."""
     owner = owner or {}
     ssid, second_ssid = _names(settings, ssid)
-    plan = apmode.plan(inv, inv.get("ap") or [], owner, _load(TRIED, {}))
+    from irate_box.root import radiocaps
+
+    plan = apmode.plan(inv, inv.get("ap") or [], owner, radiocaps.stored_by_phy(inv))
     if plan.get("needs_choice") or plan["kind"] == "none":
         return plan
     if plan.get("backend") == "hostapd" and not _hostapd_present(inv):
@@ -797,7 +808,9 @@ def try_own_channel(run, inv, settings, ssid=None, wait=TRY_WAIT, sleep=time.sle
     """Rung 2 or 3, tried on this box: the hotspot up on a channel other than the link's, held for a
     while with the link still up there? Recorded per radio; the hotspot left running as the plan
     then says. Returns (worked, plan)."""
-    plan = apmode.plan(inv, inv.get("ap") or [], {}, {})
+    from irate_box.root import radiocaps
+
+    plan = apmode.plan(inv, inv.get("ap") or [], {}, radiocaps.stored_by_phy(inv))
     if plan["kind"] != "own-channel":
         return None, plan
     link = plan.get("uplink")
@@ -817,9 +830,17 @@ def try_own_channel(run, inv, settings, ssid=None, wait=TRY_WAIT, sleep=time.sle
         sleep(wait)
         now = channels_now(run)
         worked = now.get(ap_iface(plan)) == other and now.get(link) == link_ch and link_ch is not None
-    tried = _load(TRIED, {})
-    tried[plan["phy"]] = worked
-    _put(TRIED, json.dumps(tried))
+    from irate_box.root import radiocaps
+
+    radio = next((r for r in inv.get("radios") or [] if r.get("phy") == plan["phy"]), {})
+    radiocaps.record_test(
+        radio,
+        "own-channel",
+        worked,
+        "The hotspot held a channel of its own beside the link."
+        if worked
+        else "The hotspot did not hold a channel of its own beside the link.",
+    )
     return worked, start(run, inv, settings, owner, ssid)
 
 
@@ -829,7 +850,9 @@ def follow(run, inv, settings, iface, ssid=None):
     rec = _load(RECORD, {})
     if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink") or rec["plan"].get("uplink") != iface:
         return False, "The hotspot has no link to follow."
-    plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, _load(TRIED, {}))
+    from irate_box.root import radiocaps
+
+    plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, radiocaps.stored_by_phy(inv))
     if plan.get("channel") == rec["plan"].get("channel"):
         return False, f"The hotspot is still on channel {plan.get('channel')}."
     start(run, inv, settings, rec.get("owner") or {}, ssid)

@@ -181,7 +181,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "other-ap", "uuid": "...", "do": "remove"|"leave"|"undo"|"forget"}
       A hotspot profile that is not irate-box's (root/otherap.py): removed (kept for undo), or left
       and no longer listed.
-  {"id": ..., "action": "radio-test", "iface": "wlan0", "exp": "follows-roam"|"radio-reset"|"driver-reset"}
+  {"id": ..., "action": "radio-test", "iface": "wlan0", "exp": "follows-roam"|"radio-reset"|"driver-reset"|"own-channel"}
       An experiment on one of the box's radios (root/radiotests.py), refused while guests are on the
       hotspot; its answer kept per radio and driver version.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
@@ -7703,6 +7703,17 @@ def _ap_owner(req):
     return out
 
 
+def _ap_caps():
+    """The capability record's stored rows, by phy, for the page's preview of the plan (radiocaps.py)."""
+    from irate_box.root import radiocaps
+
+    try:
+        inv = json.loads((CONTROL / "netinv.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return radiocaps.stored_by_phy(inv)
+
+
 def _ap_record_status(plan=None, note=""):
     """ap.json, for the Network page: the note in English (a message said there as it is)."""
     note = render(note)
@@ -7716,7 +7727,7 @@ def _ap_record_status(plan=None, note=""):
                 "confirmed": rec.get("confirmed", True),
                 "since": rec.get("since"),
                 "owner": rec.get("owner") or {},
-                "tried": ap._load(ap.TRIED, {}),
+                "caps": _ap_caps(),
                 "note": note,
                 "at": time.time(),
             }

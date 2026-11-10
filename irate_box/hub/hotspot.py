@@ -256,10 +256,10 @@ def running():
     try:
         st = json.loads(AP_STATUS.read_text())
     except (OSError, ValueError):
-        st = {"up": False, "plan": None, "tried": {}, "owner": {}, "confirmed": True, "note": ""}
+        st = {"up": False, "plan": None, "caps": {}, "owner": {}, "confirmed": True, "note": ""}
     try:
         inv = json.loads(NETINV.read_text())
-        preview = apmode.plan(inv, inv.get("ap") or [], st.get("owner") or {}, st.get("tried") or {})
+        preview = apmode.plan(inv, inv.get("ap") or [], st.get("owner") or {}, st.get("caps") or {})
         radios = [
             {"iface": r["iface"], "channels": [c["channel"] for c in apmode.allowed(r, inv.get("country"))]}
             for r in inv.get("radios", [])

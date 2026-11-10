@@ -12,23 +12,24 @@ was found, and asked again when the driver changes.
                  whether the hotspot comes back.
   driver-reset   Where the driver resets its own device on a command timeout and offers a fake one
                  (the patched AIC8800's fake_cmd_timeout): how long until the link is back.
+  own-channel    Whether the hotspot can keep a channel of its own beside the link (root/ap.py's
+                 try_own_channel, run as an experiment).
 
-Results: STATE/radio-tests.json ({radio key: {experiment: {answer, detail, msg, at}}}): detail in English for the
-page as it reads it now, msg the same as a message. Root only; stdlib only.
+Results go into the radio's capability record (root/radiocaps.py), as its `test` rows, keyed by the radio
+and its driver; the old radio-tests.json is read once by that module's migration. Root only; stdlib only.
 """
 
-import json
 import os
 import re
 import subprocess
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from irate_box.hub import netinv
 from irate_box.msg import M, Refused, duration, render, sentences
+from irate_box.root import radiocaps
 
-STATE = Path(os.environ.get("HUB_STATE_DIR", "/var/lib/hub"))
-RESULTS = STATE / "radio-tests.json"
 SYS = Path(os.environ.get("HUB_SYSFS", "/sys"))
 IFACE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
 QUESTION_MSG = {
@@ -42,6 +43,10 @@ QUESTION_MSG = {
     "driver-reset": M(
         "radio-test.q.driver-reset",
         "Whether the driver reset brings the WiFi back without help, and how many seconds it takes.",
+    ),
+    "own-channel": M(
+        "radio-test.q.own-channel",
+        "Whether the hotspot can keep a channel of its own beside your WiFi link.",
     ),
 }
 QUESTIONS = {e: render(m) for e, m in QUESTION_MSG.items()}  # in English, as netinv gives them to the page
@@ -57,33 +62,31 @@ def run(*cmd, timeout=60):
     return p.returncode, (p.stdout + p.stderr).strip()
 
 
-def results():
-    try:
-        data = json.loads(RESULTS.read_text())
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+def results(radio):
+    """This radio's test answers from the capability record, keyed by experiment: {exp: {answer, detail, at}}."""
+    from irate_box.root import radiocaps as caps
+
+    reverse = {rid: exp for exp, (rid, _values) in caps.ANSWER_ROW.items()}
+    out = {}
+    for rid, row in caps.stored(radio).items():
+        exp = reverse.get(rid)
+        if exp and row.get("source") == "test":
+            out[exp] = {
+                "answer": row.get("value"),
+                "detail": row.get("detail"),
+                "at": row.get("at"),
+                "msg": row.get("msg"),
+            }
+    return out
 
 
-def _keep(key, exp, answer, detail):
-    data = results()
-    data.setdefault(key, {})[exp] = {"answer": answer, "detail": render(detail), "msg": detail, "at": time.time()}
-    from irate_box.root import safeio
-
-    STATE.mkdir(parents=True, exist_ok=True)
-    safeio.write(RESULTS, json.dumps(data, indent=1), 0o644)
+def _keep(radio, exp, answer, detail):
+    radiocaps.record_test(radio, exp, answer, render(detail), msg=detail)
 
 
 def radio_key(radio):
-    """A radio's identity for its answers: USB id (or driver) and the driver's version."""
-    drv = radio.get("driver") or "?"
-    ver = SYS / "module" / drv.replace("-", "_") / "version"
-    try:
-        version = ver.read_text().strip()
-    except OSError:
-        version = ""
-    who = (radio.get("usb") or {}).get("id") or drv
-    return f"{who} {drv} {version}".strip()
+    """A radio's identity for its answers: its USB id and port, and its driver's identity."""
+    return radiocaps.key(radio)
 
 
 def _channels():
@@ -170,6 +173,27 @@ def check_ready(inv, iface, exp):
                 "This driver has no fake command timeout, so the test cannot start the driver reset.",
             )
         )
+    if exp == "own-channel" and not (
+        radio.get("ap") and radio.get("ap_beside_client") and radio.get("channels_at_once", 1) >= 2
+    ):
+        raise Refused(
+            M(
+                "radio-test.no-own-channel",
+                "This radio cannot run the hotspot on a channel of its own beside your WiFi link.",
+            )
+        )
+    rid = radiocaps.ANSWER_ROW.get(exp, (None,))[0]
+    if rid:
+        row = radiocaps.rows(radio, radiocaps.stored(radio)).get(rid) or {}
+        if row.get("source") in ("known", "test", "learned") and row.get("value") is not None:
+            source = {"known": "the chip list", "test": "a test", "learned": "what the box saw"}[row["source"]]
+            raise Refused(
+                M(
+                    "radio-test.answered",
+                    "The box already has an answer for this, from {source}.",
+                    source=source,
+                )
+            )
     return radio, ap
 
 
@@ -322,10 +346,40 @@ def driver_reset(radio, ap, sleep=time.sleep):
     )
 
 
+def _proc_run(*cmd, timeout=60):
+    """root/ap.py's runner shape (returncode, stdout, stderr) over this module's run()."""
+    code, out = run(*cmd, timeout=timeout)
+    return SimpleNamespace(returncode=code, stdout=out, stderr="")
+
+
+def own_channel(inv, radio, sleep=time.sleep):
+    """A channel of its own beside the link, tried for a few seconds: today's try_own_channel, as a radio test."""
+    from irate_box.hub import hotspot
+    from irate_box.root import ap as ap_mod
+
+    try:
+        worked, plan = ap_mod.try_own_channel(_proc_run, inv, hotspot.load(), sleep=sleep)
+    except RuntimeError as exc:
+        return "doesn't", M(
+            "radio-test.own.failed", "The hotspot could not start on a channel of its own: {why}", why=str(exc)[-160:]
+        )
+    if worked is None:
+        return "unknown", M(
+            "radio-test.own.nothing",
+            "There is no other channel this radio can run the hotspot on, so there is nothing to try.",
+        )
+    if worked:
+        return "works", M("radio-test.own.works", "The hotspot held a channel of its own beside the link.")
+    return "doesn't", M("radio-test.own.doesnt", "The hotspot did not hold a channel of its own beside the link.")
+
+
 def experiment(inv, iface, exp, sleep=time.sleep):
     radio, ap = check_ready(inv, iface, exp)
-    answer, detail = {"follows-roam": follows_roam, "radio-reset": radio_reset, "driver-reset": driver_reset}[exp](
-        radio, ap, sleep
-    )
-    _keep(radio_key(radio), exp, answer, detail)
+    if exp == "own-channel":
+        answer, detail = own_channel(inv, radio, sleep)
+    else:
+        answer, detail = {"follows-roam": follows_roam, "radio-reset": radio_reset, "driver-reset": driver_reset}[exp](
+            radio, ap, sleep
+        )
+    _keep(radio, exp, answer, detail)
     return sentences(QUESTION_MSG[exp], detail)
