@@ -1579,6 +1579,21 @@ check(
     v["pace"] == "brisk" and w["per_iface"].get("wlan0", {}).get("pace") == "brisk",
     (v["pace"], w["per_iface"]),
 )
+move = U.validate({"hotspot_move": 600})
+check(
+    "the hotspot move interval: 300 s by default, the owner's number when set",
+    U.validate({})["hotspot_move"] == 300 and move["hotspot_move"] == 600,
+)
+try:
+    U.validate({"hotspot_move": 10})
+    bad_move = None
+except U.Refused as exc:
+    bad_move = exc
+check(
+    "  out of range: refused",
+    bad_move is not None and bad_move.message["id"] == "uplink.hotspot-move.range",
+    bad_move,
+)
 
 
 # A hotspot that follows its link's channel, after a roam (the dispatcher moves it only when the link comes up).
@@ -1623,17 +1638,22 @@ check(
     and said == "The hotspot moved to channel 6 with the link (it was on 11).",
     (box.moves, said),
 )
-box.chan["wlan0"] = 11  # roams back within the hold-off
+box.chan["wlan0"] = 1
+box.rec["moved_at"] = 1060  # the move ap.follow just made
 check(
-    "  a roam back within 5 minutes: not moved again yet",
-    f.check("wlan0", 1200, roamed_at=1150) == "" and box.moves == ["wlan0"],
+    "  inside ap.follow's move interval: quiet, not logged as a failure",
+    f.check("wlan0", 1100, roamed_at=1080) == "" and box.moves == ["wlan0"],
+    box.moves,
 )
+box.chan["wlan0"] = 11  # roams back
+box.rec["moved_at"] = 0
 check(
-    "  after the hold-off, with the link settled there: moved back",
-    f.check("wlan0", 1400, roamed_at=1150).startswith("The hotspot moved to channel 11")
+    "  a roam back: moved again at once; the move interval is ap.follow's own",
+    f.check("wlan0", 1200, roamed_at=1150).startswith("The hotspot moved to channel 11")
     and box.moves == ["wlan0", "wlan0"],
     box.moves,
 )
+check("  then nothing more: on its channel", f.check("wlan0", 1400) == "" and box.moves == ["wlan0", "wlan0"])
 box = Box(follows=False)
 box.chan["wlan0"] = 6
 f = follower(box)

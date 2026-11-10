@@ -8030,6 +8030,7 @@ function readUpForm() {
   }
   const all = {
     ...upPick,
+    hotspot_move: Number((upSaved && upSaved.hotspot_move) || 300),
     lock_bssid: upPick.roaming === "lock" ? upPick.lock_bssid : null,
     iface: "auto",
     watch: { ...upWatch },
@@ -8313,12 +8314,14 @@ const RADIO_TEST_SAYS = {
   "follows-roam": "Your WiFi moves to another access point for a few seconds; guests lose the hotspot for a moment.",
   "radio-reset": "The box resets the radio; the WiFi and the hotspot stop for up to 1 minute.",
   "driver-reset": "The driver resets the chip; the WiFi and the hotspot stop for a few seconds.",
+  csa: "The hotspot switches to another channel for a few seconds and back; guests lose it for a moment.",
 };
 const TEST_LABEL = {
   "own-channel": "Test own channel",
   "follows-roam": "Test roaming",
   "radio-reset": "Test radio reset",
   "driver-reset": "Test driver timeout recovery",
+  csa: "Test channel switch",
 };
 // A radio test's button, what the test does beside it: it runs at once.
 function radioTestButton(iface, exp, label) {
@@ -8372,7 +8375,7 @@ function radioCapTable(inv, phy, iface, section) {
           {},
           el("span", { textContent: capText(row.value) }),
           capBelow(row.below) ? el("span", { className: "setting-desc", textContent: capBelow(row.below) }) : null,
-          row.value == null && row.testable
+          row.testable && !["known", "test", "learned"].includes(row.source) && row.test
             ? radioTestButton(iface, row.test, TEST_LABEL[row.test] || "Run test")
             : null,
         ),
@@ -9223,6 +9226,7 @@ function renderNetwork(data) {
       : []),
   ]);
   drawNetTabs(data, inv, uplink);
+  syncHotspotMove();
   AW.drawKept(net.hazards, [
     ...hz
       .map((h) =>
@@ -10930,6 +10934,38 @@ const hsSec = AW.section({
   onChange: () => hsDraw(hsSec.values()),
 });
 document.getElementById("hs-foot").append(hsSec.foot, hsSec.reason);
+// The hotspot's move interval (hub/uplink.py's hotspot_move, still saved in /etc/hub/uplink.json): a hotspot that
+// follows the link moves at most this often, by channel switch or by starting again.
+const hsMove = { input: document.getElementById("hs-move-seconds") };
+const hsMoveSec = AW.section({
+  id: "hotspot-move",
+  label: "Hotspot moves",
+  saved: null,
+  why: (changes) => {
+    const n = Number(changes.hotspot_move);
+    return Number.isInteger(n) && n >= 30 && n <= 86400 ? "" : "Enter a whole number of seconds from 30 to 86400.";
+  },
+  onChange: () => hsMoveDraw(),
+  save: (changes, values) => {
+    const base = (netData && netData.uplink && netData.uplink.chosen) || {};
+    const j = AW.job();
+    netRequest({ action: "settings", settings: { ...base, hotspot_move: Number(values.hotspot_move) } }, "up", j.done);
+    return j;
+  },
+});
+document.getElementById("hs-move-foot").append(hsMoveSec.foot, hsMoveSec.reason);
+function hsMoveDraw() {
+  if (!hsMoveSec.loaded() || document.activeElement === hsMove.input) return;
+  hsMove.input.value = String(hsMoveSec.get("hotspot_move") ?? 300);
+}
+hsMove.input.addEventListener("input", () => {
+  const n = Number(hsMove.input.value);
+  hsMoveSec.set("hotspot_move", Number.isInteger(n) ? n : hsMove.input.value, true);
+});
+function syncHotspotMove() {
+  const chosen = netData && netData.uplink && netData.uplink.chosen;
+  if (chosen) hsMoveSec.update({ hotspot_move: Number(chosen.hotspot_move ?? 300) });
+}
 // What the page shows, into the draft (the controls drew themselves).
 function hsTouched() {
   for (const [k, v] of Object.entries({

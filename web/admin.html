@@ -4303,6 +4303,30 @@
               </div>
               <ul class="admin-checks" id="hs-warnings"></ul>
               <div id="hs-foot"></div>
+              <div class="net-settings" id="hs-move-fields">
+                <label
+                  class="setting-name"
+                  for="hs-move-seconds"
+                  data-i18n="admin.network.hs-move-label"
+                  >Hotspot move interval (s)</label
+                >
+                <input
+                  type="number"
+                  id="hs-move-seconds"
+                  min="30"
+                  max="86400"
+                  step="10"
+                  inputmode="numeric"
+                />
+                <span
+                  class="setting-desc"
+                  id="hs-move-says"
+                  data-i18n="admin.network.hs-move-says"
+                  >A move by channel switch keeps the guests. A restart drops them for a
+                  few seconds.</span
+                >
+              </div>
+              <div id="hs-move-foot"></div>
               <p
                 class="setting-desc action-note"
                 id="hs-note"

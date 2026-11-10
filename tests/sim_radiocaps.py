@@ -110,8 +110,13 @@ check(
     {k: rows[k] for k in ("reset-recovery", "own-channel", "follows-by-itself")},
 )
 check(
-    "the Pi's brcmfmac has no channel_switch row answer (the csa row is PR 2's): its AP and SAE are the driver's",
-    rows["ap"]["value"] == "yes" and rows["sae"]["value"] == "yes",
+    "the csa row is the driver's: yes on the Lyra, no on the Pi's brcmfmac",
+    rows["csa"]["value"] == "yes"
+    and rows["csa"]["source"] == "driver"
+    and radiocaps.rows(builtin)["csa"]["value"] == "no"
+    and rows["ap"]["value"] == "yes"
+    and rows["sae"]["value"] == "yes",
+    {k: rows[k]["value"] for k in ("csa", "ap", "sae")},
 )
 
 radiocaps.record_test(usb, "own-channel", True, "It held a channel of its own.")

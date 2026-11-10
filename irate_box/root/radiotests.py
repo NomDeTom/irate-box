@@ -48,6 +48,10 @@ QUESTION_MSG = {
         "radio-test.q.own-channel",
         "Whether the hotspot can keep a channel of its own beside your WiFi link.",
     ),
+    "csa": M(
+        "radio-test.q.csa",
+        "Whether the hotspot can change channel in place, without dropping its guests.",
+    ),
 }
 QUESTIONS = {e: render(m) for e, m in QUESTION_MSG.items()}  # in English, as netinv gives them to the page
 
@@ -182,6 +186,21 @@ def check_ready(inv, iface, exp):
                 "This radio cannot run the hotspot on a channel of its own beside your WiFi link.",
             )
         )
+    if exp == "csa":
+        if "channel_switch" not in (radio.get("commands") or []):
+            raise Refused(
+                M(
+                    "radio-test.no-csa",
+                    "This driver does not declare channel switch, so the test cannot start it.",
+                )
+            )
+        if not ap:
+            raise Refused(
+                M(
+                    "radio-test.csa.no-hotspot",
+                    "There is no hotspot on this radio, so there is no channel to switch.",
+                ),
+            )
     rid = radiocaps.ANSWER_ROW.get(exp, (None,))[0]
     if rid:
         row = radiocaps.rows(radio, radiocaps.stored(radio)).get(rid) or {}
@@ -346,6 +365,58 @@ def driver_reset(radio, ap, sleep=time.sleep):
     )
 
 
+def csa(inv, radio, ap, sleep=time.sleep):
+    """A channel switch in place: to another allowed channel and back, with the link still joined and no
+    command timeout in the driver's log. The hotspot is put back by starting it again if a switch fails."""
+    from irate_box.hub import apmode, hotspot
+    from irate_box.root import ap as ap_mod
+
+    rec = ap_mod._load(ap_mod.RECORD, {})
+    plan = rec.get("plan") or {}
+    if not rec.get("up") or not plan.get("channel"):
+        return "unknown", M("radio-test.csa.off", "The hotspot is not running, so there is no channel to switch.")
+    iface = ap_mod.ap_iface(plan)
+    now_ch = ap_mod.channels_now(_proc_run).get(iface)
+    if now_ch is None:
+        return "unknown", M(
+            "radio-test.csa.unread", "The hotspot's channel cannot be read, so there is nothing to switch."
+        )
+    chans = apmode.allowed(radio, inv.get("country"))
+    other = next((c for c in chans if c["channel"] != now_ch), None)
+    if other is None:
+        return "unknown", M("radio-test.csa.no-channel", "There is no other channel this radio can use.")
+    started = _link_up(radio["iface"], 1, sleep)
+    target = {"channel": other["channel"], "freq": other["freq"]}
+    ok, why = ap_mod.channel_switch(_proc_run, plan, target)
+    back = next((c for c in chans if c["channel"] == now_ch), None)
+    if back is None:
+        ok, why = False, "the hotspot's channel is not one this radio may use"
+    elif ok:
+        ok, why = ap_mod.channel_switch(_proc_run, plan, back)
+    if not ok:
+        try:
+            ap_mod.start(_proc_run, inv, hotspot.load())
+        except RuntimeError:
+            pass
+        return "doesn't", M(
+            "radio-test.csa.failed",
+            "The hotspot did not switch channel in place: {why}. The box started it again.",
+            why=why,
+        )
+    still = _link_up(radio["iface"], 1, sleep)
+    code, log = run("journalctl", "-k", "--since", "-30s", timeout=10)
+    timed_out = code == 0 and "cmd timed-out" in log
+    if not started or not still:
+        return "doesn't", M("radio-test.csa.link", "The WiFi link did not stay joined during the channel switch.")
+    if timed_out:
+        return "doesn't", M("radio-test.csa.timeout", "The driver logged a command timeout during the channel switch.")
+    return "works", M(
+        "radio-test.csa.works",
+        "The hotspot switched to channel {channel} and back, and the link stayed joined.",
+        channel=other["channel"],
+    )
+
+
 def _proc_run(*cmd, timeout=60):
     """root/ap.py's runner shape (returncode, stdout, stderr) over this module's run()."""
     code, out = run(*cmd, timeout=timeout)
@@ -377,6 +448,8 @@ def experiment(inv, iface, exp, sleep=time.sleep):
     radio, ap = check_ready(inv, iface, exp)
     if exp == "own-channel":
         answer, detail = own_channel(inv, radio, sleep)
+    elif exp == "csa":
+        answer, detail = csa(inv, radio, ap, sleep)
     else:
         answer, detail = {"follows-roam": follows_roam, "radio-reset": radio_reset, "driver-reset": driver_reset}[exp](
             radio, ap, sleep
