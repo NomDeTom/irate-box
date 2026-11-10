@@ -2527,6 +2527,11 @@ class Link:
                 self.can = (repairs_for("none", i, self.radio_seen) | {"radio"}) - {"reboot"}
             if self.actor:
                 self.actor.backend = self.backend
+            # The driver's own reset takes the interface away while it works (a USB reset re-enumerates the chip):
+            # left to it for DRIVER_GRACE, as on the path below. Read from sysfs, never from the radio's tools.
+            own = own_reset()
+            if own is not None:
+                self.reset_at, self.hotspot_due = max(self.reset_at, now - own), True
             obs = {
                 "link": False,
                 "gateway": None,
@@ -2538,9 +2543,9 @@ class Link:
                 "hold_until": chosen.get("hold_until", 0),
                 "owner_off": False,
                 "shared_radio": False,
-                "wedged": f"{i} has gone: its radio's driver did not bring it back",
-                "driver_reset": None,
-                "cause": "radio",
+                "wedged": None if own is not None else f"{i} has gone: its radio's driver did not bring it back",
+                "driver_reset": own,
+                "cause": None if own is not None else "radio",
             }
             self.obs, self.up, self.gw, self.answers = obs, False, None, None
             return obs

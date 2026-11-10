@@ -1658,6 +1658,46 @@ try:
         "radio" in obs["can"] and "reboot" not in obs["can"],
         obs["can"],
     )
+    # The driver resetting its own device takes the interface away while it works (lyra-tft, 2026-11-09 12:09 and
+    # 23:04: the watchdog reset the radio on top of it in the same second).
+    _real_own = U.own_reset
+    U.own_reset = lambda: 2.0
+    calls.clear()
+    gone = U.Link("wlan0", chosen, dry=True)
+    gone.radio_seen = {"driver": "aic8800_fdrv", "usb": {"port": "1-1.1"}}
+    obs = gone.look(1000, chosen, Watcher())
+    check(
+        "  gone during the driver's own reset: no wedge, no cause yet, the reset's age passed on; still no tool asked",
+        obs["driver_reset"] == 2.0 and obs["wedged"] is None and obs["cause"] is None and calls == [],
+        (obs, calls),
+    )
+    U.own_reset = _real_own
+    w = U.Watch(U.effective(U.validate({"pace": "brisk", "reach": "reboot", "on_wedge": "reboot"})))
+    acts = []
+    for t in range(0, 300, 10):
+        own = t if t < 90 else None  # the driver's reset at 0; DRIVER_GRACE is 90 s
+        obs = {
+            "link": False,
+            "drops": [],
+            "can": {"radio"},
+            "guests": 0,
+            "uptime": 1e9,
+            "wedged": None if own is not None else "wlan0 has gone: its radio's driver did not bring it back",
+            "driver_reset": own,
+            "cause": None if own is not None else "radio",
+        }
+        acts += [(t, x) for x in w.tick(t, obs)]
+    check(
+        "  lyra-tft's settings (brisk, reboot, on_wedge reboot): no radio reset during the driver's 90 s",
+        not any(x == "radio" and t < 90 for t, x in acts)
+        and not any("looks wedged" in e["text"] for e in w.events if e["at"] < 90),
+        (acts, [(e["at"], e["text"]) for e in w.events]),
+    )
+    check(
+        "  still gone after it: the radio reset, as before",
+        any(x == "radio" and t >= 90 for t, x in acts),
+        acts,
+    )
     (_net / "wlan0").mkdir()
     calls.clear()
     obs = link.look(1060, chosen, Watcher())
