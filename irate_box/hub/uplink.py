@@ -886,6 +886,7 @@ class Watch:
         self.first_fail = None
         self.outage = None  # {since, declared, done: [...], held: [...], next_reconnect, gap}
         self.miss_at = deque()  # the missed checks and link drops within the pace's window
+        self.roam_at = set()  # those drops that were roams: back within `blip` on the same network
         self.last_ok = None
         self.pause_until = 0.0
         self.owner_off = False
@@ -913,7 +914,8 @@ class Watch:
     def tick(self, now, obs):
         """obs: link (bool), gateway (True/False/None: not known), drops ([times]), guests (int),
         busy (str or None), uptime (s), can (set of repairs), hold_until (epoch), owner_off (the
-        owner took the link down on purpose: `nmcli dev disconnect`).
+        owner took the link down on purpose: `nmcli dev disconnect`), roams ([times]: those drops that
+        were roams, back within `blip` on the same network).
 
         Each failed check, and each drop of the link between two, is a miss, kept for the pace's
         window; `sensitivity` misses within it put the link on the ladder: down,
@@ -934,6 +936,7 @@ class Watch:
         self.owner_off = False
         drops = list(obs.get("drops", ()))
         self.miss_at.extend(sorted(drops))
+        self.roam_at.update(d for d in obs.get("roams", ()) if d in drops)
         healthy = obs["link"] and obs.get("gateway") is not False
         if not healthy:
             self.miss_at.append(now)
@@ -941,6 +944,7 @@ class Watch:
                 self.first_fail = min([now, *drops])
         while self.miss_at and self.miss_at[0] < now - eff["window"]:
             self.miss_at.popleft()
+        self.roam_at.intersection_update(self.miss_at)
         self.misses = len(self.miss_at)
         tripped = self.misses >= eff["sensitivity"]
         if healthy:
@@ -1302,8 +1306,35 @@ class Watch:
         o["repeats"] = o.get("repeats", 0) + 1
         return "reconnect"
 
+    def unmark(self, step, at):
+        """A step decided at `at` but not taken after all (held as it was about to run): not counted as done, so it
+        can come due again, and a reboot not counted against the day's."""
+        o = self.outage
+        if o and step in o["done"]:
+            o["done"].remove(step)
+        if step == "reboot" and at in self.reboots:
+            self.reboots.remove(at)
+
+    def _roams_only(self, obs):
+        """On the ladder for roams alone: flapping, with every miss in the window a roam between access points
+        of the same network, and the link up with its gateway answering now. NetworkManager's background scan
+        roams every few minutes where a network has two access points; restarting the network service,
+        resetting the radio or rebooting mends nothing there, and each of them drops the hotspot too: counted
+        alone, an hour of roams would reset a working radio."""
+        o = self.outage
+        return bool(
+            o
+            and o.get("flapping")
+            and obs.get("link")
+            and obs.get("gateway") is True
+            and self.miss_at
+            and all(m in self.roam_at for m in self.miss_at)
+        )
+
     def _held(self, now, obs, step, hand=False):
         eff = self.eff
+        if step in ("restart", "radio", "reboot") and not hand and self._roams_only(obs):
+            return "every miss was a roam between access points of the same network, and its gateway answers"
         # A step that reaches every link waits while another link works, as the owner chose (box_steps); one
         # asked for by hand is the owner's own call.
         others = obs.get("others_up") or []
@@ -2569,6 +2600,7 @@ class Link:
             "link": up,
             "gateway": answers,
             "drops": drops,
+            "roams": [d[0] for d in blips],
             "guests": guests(),
             "busy": busy(),
             "uptime": uptime(),
@@ -2658,6 +2690,19 @@ class Link:
                 if "locked to" in result:
                     self.pinned = {"bssid": result.split()[2].rstrip(":"), "at": now}
             else:
+                # Read again now: the look that decided this can be seconds old, and a driver that resets its own
+                # device says so only when it starts. Taken on top of that reset, the step would stop NetworkManager
+                # and reset the radio while the driver is bringing the chip back.
+                own = own_reset() if step in ("restart", "radio", "reboot") else None
+                if own is not None:
+                    w.log(
+                        time.time(),
+                        "held",
+                        f"Would {STEP_LABEL[step]}, but the radio's driver reset it itself {human(own)} ago: left to it.",
+                        step,
+                    )
+                    w.unmark(step, now)
+                    continue
                 if step == "reboot":
                     write_status(status())
                 result = self.actor.do(step)
