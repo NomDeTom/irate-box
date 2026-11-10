@@ -8415,15 +8415,36 @@ function radioCard(inv, group, hazards) {
   ]
     .filter(Boolean)
     .join(", ");
-  const doing = group.map((r) => {
-    if (r.type === "AP") return `${r.iface} hotspot${r.stations ? `, ${r.stations} guest${r.stations === 1 ? "" : "s"}` : ""}`;
+  // What each interface is doing. The signal and the guest count move at every poll: their spans are marked live,
+  // so a poll that brings nothing else keeps the card (and a selection in it) and redraws only those.
+  const doing = [];
+  group.forEach((r, i) => {
+    if (i) doing.push("; ");
+    if (r.type === "AP") {
+      const guests = r.stations || 0;
+      doing.push(`${r.iface} hotspot`, liveAs(el("span", { textContent: `, ${guests} guest${guests === 1 ? "" : "s"}` }), "now"));
+      return;
+    }
     const l = r.link || {};
-    if (l.ssid) return `${r.iface} link on ${l.ssid}, channel ${l.channel}, ${l.signal} dBm`;
-    return `${r.iface} not connected`;
+    if (l.ssid) {
+      doing.push(
+        `${r.iface} link on ${l.ssid}, channel ${l.channel}, `,
+        liveAs(el("span", { textContent: `signal ${l.signal} dBm` }), "now"),
+      );
+    } else doing.push(`${r.iface} not connected`);
   });
+  doing.push(".");
   const kids = [
     netHead(title, [group.some((r) => r.type === "AP") ? "WiFi + hotspot" : "WiFi"]),
-    section(line("Radio", what || "—"), line("Interfaces", doing.join("; ") + ".")),
+    section(
+      line("Radio", what || "—"),
+      el(
+        "p",
+        { className: "net-line" },
+        el("span", { className: "net-label", textContent: "Interfaces" }),
+        el("span", {}, ...doing),
+      ),
+    ),
   ];
   if (chip && chip.summary)
     kids.push(el("p", { className: "setting-desc", textContent: chip.summary }));
