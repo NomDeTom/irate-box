@@ -365,7 +365,9 @@ def _ap_capable(radio):
 
 def migrate(inv=None, force=False):
     """Fill the record from the two old stores, once. `inv`: the inventory the old keys are matched
-    against. Returns whether anything was written."""
+    against. `ap-tried.json`'s phy number is stale after a driver reload; where the box has one radio that can
+    be an access point, its one entry is that radio's, whatever the number (more than one entry is dropped).
+    Returns whether anything was written."""
     if STORE.exists() and not force:
         return False
     if inv is None:
