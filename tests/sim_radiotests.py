@@ -124,6 +124,8 @@ check(
     "follows-roam: the hotspot moved with the link; kept per radio and driver version",
     got["answer"] == "yes"
     and "from channel 11 to 6" in got["detail"]
+    and got["msg"]
+    and "radio-test.roam.follows" in ids(got["msg"])
     and key == "usb:a69c:88dc@1-1.1|aic8800_fdrv 6.4.3.0",
     (key, got),
 )

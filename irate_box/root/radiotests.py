@@ -71,12 +71,17 @@ def results(radio):
     for rid, row in caps.stored(radio).items():
         exp = reverse.get(rid)
         if exp and row.get("source") == "test":
-            out[exp] = {"answer": row.get("value"), "detail": row.get("detail"), "at": row.get("at")}
+            out[exp] = {
+                "answer": row.get("value"),
+                "detail": row.get("detail"),
+                "at": row.get("at"),
+                "msg": row.get("msg"),
+            }
     return out
 
 
 def _keep(radio, exp, answer, detail):
-    radiocaps.record_test(radio, exp, answer, render(detail))
+    radiocaps.record_test(radio, exp, answer, render(detail), msg=detail)
 
 
 def radio_key(radio):

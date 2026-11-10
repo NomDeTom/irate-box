@@ -144,7 +144,7 @@ def previous(radio):
     return best
 
 
-def _put(radio, rid, value, source, detail, at=None):
+def _put(radio, rid, value, source, detail, at=None, msg=None):
     known = _known_rows(radio)
     if rid in known and known[rid].get("value") is not None:
         return
@@ -179,22 +179,24 @@ def _put(radio, rid, value, source, detail, at=None):
             "source": source,
             "detail": detail or "",
             "at": stamp,
+            "msg": msg,
         }
     _save(data)
 
 
-def record_test(radio, exp, answer, detail, at=None):
-    """A test's answer as its row. `answer` is the experiment's own word (follows, works, ...)."""
+def record_test(radio, exp, answer, detail, at=None, msg=None):
+    """A test's answer as its row. `answer` is the experiment's own word (follows, works, ...); `msg` keeps the
+    answer as a message, so the page can say it in the reader's language."""
     rid, values = ANSWER_ROW.get(exp, (exp, {}))
     value = values.get(answer)
     if value is None and answer not in (None, "unknown"):
         value = answer
-    _put(radio, rid, value, "test", detail, at)
+    _put(radio, rid, value, "test", detail, at, msg)
 
 
-def record_learned(radio, rid, value, detail, at=None):
+def record_learned(radio, rid, value, detail, at=None, msg=None):
     """What the box saw happen, on a row no test settles."""
-    _put(radio, rid, value, "learned", detail, at)
+    _put(radio, rid, value, "learned", detail, at, msg)
 
 
 def _driver_rows(radio):
@@ -272,6 +274,7 @@ def rows(radio, stored_rows=None, can=()):
                     "value": row["value"],
                     "detail": row.get("detail") or "",
                     "at": row.get("at"),
+                    "msg": row.get("msg"),
                 }
             )
         # The chip list's answer is the record's answer wherever it has one: a test or what the box saw is
@@ -283,12 +286,15 @@ def rows(radio, stored_rows=None, can=()):
                 "value": known_row["value"],
                 "detail": known_row.get("detail") or "",
                 "at": None,
+                "msg": known_row.get("msg"),
             }
             below = [r for r in candidates if r["value"] != top["value"]]
         else:
             rank = {"driver": 1, "known": 2, "learned": 3, "test": 4}
             candidates.sort(key=lambda r: rank.get(r["source"], 0))
-            top = candidates[-1] if candidates else {"source": None, "value": None, "detail": "", "at": None}
+            top = (
+                candidates[-1] if candidates else {"source": None, "value": None, "detail": "", "at": None, "msg": None}
+            )
             below = [r for r in candidates[:-1] if r["value"] != top["value"]]
         out[rid] = {
             "id": rid,
@@ -297,6 +303,7 @@ def rows(radio, stored_rows=None, can=()):
             "source": top["source"],
             "detail": top["detail"],
             "at": top["at"],
+            "msg": top.get("msg"),
             "test": test,
             "testable": bool(test and test in set(can or ())),
             "below": below,
@@ -406,6 +413,7 @@ def migrate(inv=None, force=False):
                         "source": "test",
                         "detail": answer.get("detail") or "",
                         "at": answer.get("at") or time.time(),
+                        "msg": answer.get("msg"),
                     },
                 )
                 changed = True
