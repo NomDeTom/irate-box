@@ -47,6 +47,7 @@ ROWS = (
     ("channels-at-once", "Channels at once", None),
     ("own-channel", "AP on own channel", "own-channel"),
     ("follows-by-itself", "AP follows link", "follows-roam"),
+    ("csa", "Channel switch (CSA)", "csa"),
     ("sae", "WPA3 (SAE)", None),
     ("sched-scan", "Scheduled scan", None),
     ("country", "Regulatory domain", None),
@@ -62,6 +63,7 @@ ANSWER_ROW = {
     "own-channel": ("own-channel", {"works": "yes", "doesn't": "no", True: "yes", False: "no"}),
     "radio-reset": ("reset-recovery", {"works": "yes", "doesn't": "no"}),
     "driver-reset": ("cmd-timeout-recovery", {"works": "yes", "doesn't": "no"}),
+    "csa": ("csa", {"works": "yes", "doesn't": "no"}),
 }
 
 
@@ -206,6 +208,12 @@ def _driver_rows(radio):
         "channels-at-once": {
             "value": radio.get("channels_at_once", 1),
             "detail": f"The driver allows up to {radio.get('channels_at_once', 1)} at once.",
+        },
+        "csa": {
+            "value": "yes" if "channel_switch" in (radio.get("commands") or []) else "no",
+            "detail": "The driver declares channel switch."
+            if "channel_switch" in (radio.get("commands") or [])
+            else "The driver does not declare channel switch.",
         },
         "sae": {
             "value": "yes" if radio.get("sae") else "no",

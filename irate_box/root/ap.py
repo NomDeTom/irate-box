@@ -140,6 +140,8 @@ def hostapd_conf(plan, settings, ssid=None, country=None, second_ssid=None):
         "# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
         validate.config_line("interface", SHARED_IFACE),
         "driver=nl80211",
+        # hostapd_cli's socket, for a channel switch in place (root/ap.py's follow); hostapd creates the folder.
+        "ctrl_interface=/run/hostapd",
         validate.config_line("hw_mode", "a" if plan.get("band") == "5 GHz" else "g"),
         validate.config_line("channel", str(int(plan["channel"]))),
         "wmm_enabled=1",
@@ -422,6 +424,7 @@ LINK_FILE = "10-irate-box-ap.link"
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 TRY_WAIT = 20  # seconds the hotspot must hold its own channel in the try
 DEADMAN = 300  # seconds before a hotspot that took the box's link undoes itself
+MOVE_INTERVAL = 300  # seconds between two moves of a following hotspot, unless the owner sets it lower
 
 
 def _load(path, default):
@@ -648,8 +651,8 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
             )
         )
     if plan.get("backend") == "hostapd":
-        # Following the link's channel needs NetworkManager's hook: here a following hotspot takes the
-        # link's channel when it starts (and after a reboot), not when the link roams.
+        # hostapd gets a control socket, so the watchdog's follower can move a following hotspot by channel
+        # switch (follow() below) as it does on NetworkManager's boxes; the dispatcher hook is NetworkManager's.
         _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, inv.get("country"), second_ssid), 0o600)
         units = {DNSMASQ_UNIT: dnsmasq_unit(), HOSTAPD_UNIT: hostapd_unit()}
     else:
@@ -844,9 +847,65 @@ def try_own_channel(run, inv, settings, ssid=None, wait=TRY_WAIT, sleep=time.sle
     return worked, start(run, inv, settings, owner, ssid)
 
 
+def move_interval():
+    """Seconds between two moves of a following hotspot: the owner's setting in /etc/hub/uplink.json, else 300."""
+    try:
+        from irate_box.hub import uplink
+
+        return max(30, int(uplink.load_settings().get("hotspot_move", MOVE_INTERVAL)))
+    except (OSError, ValueError, TypeError):
+        return MOVE_INTERVAL
+
+
+def channel_switch(run, plan, new, wait=3, sleep=time.sleep):
+    """Switch the running hotspot to `new`'s channel in place, and check it moved. Returns (ok, why)."""
+    iface = ap_iface(plan)
+    cli = "hostapd_cli" if plan.get("backend") == "hostapd" else "wpa_cli"
+    try:
+        out = run(cli, "-i", iface, "chan_switch", "5", str(int(new["freq"])), "ht")
+    except OSError as exc:
+        return False, str(exc)[-160:]
+    if out.returncode != 0:
+        why = (out.stderr or out.stdout or "").strip()
+        return False, why[-160:] if why else f"{cli} refused the channel switch"
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if channels_now(run).get(iface) == new["channel"]:
+            if plan.get("backend") != "hostapd":
+                try:
+                    status = run("wpa_cli", "-i", iface, "status")
+                except OSError as exc:
+                    return False, str(exc)[-160:]
+                said = (status.stdout or "") if status.returncode == 0 else ""
+                if "wpa_state=COMPLETED" not in said or "mode=AP" not in said:
+                    return False, "The hotspot did not stay up after the channel switch"
+            return True, ""
+        sleep(1)
+    return False, "The hotspot did not move to the new channel"
+
+
+def _retune_files(plan, settings, ssid, second_ssid, country):
+    if plan.get("backend") == "hostapd":
+        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, country, second_ssid), 0o600)
+    else:
+        _put(Path(KEYFILE), keyfile(plan, settings, ssid, second_ssid), 0o600)
+
+
+def _mark_moved(plan, method):
+    rec = _load(RECORD, {})
+    if not rec.get("up"):
+        return
+    rec["plan"] = dict(rec.get("plan") or {}, channel=plan["channel"], freq=plan.get("freq"), band=plan.get("band"))
+    rec["moved_at"] = time.time()
+    rec["moved_by"] = method
+    _put(RECORD, json.dumps(rec))
+
+
 def follow(run, inv, settings, iface, ssid=None):
-    """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel.
-    (moved, note): whether it moved, and what happened in words."""
+    """A following hotspot moves to the link's channel: in place by channel switch where the radio has it,
+    else by starting the hotspot again. Both triggers (NetworkManager's dispatcher and the watchdog's
+    follower) come here, so the move interval is obeyed by both. (moved, note): whether it moved, and what
+    happened in words."""
     rec = _load(RECORD, {})
     if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink") or rec["plan"].get("uplink") != iface:
         return False, "The hotspot has no link to follow."
@@ -855,5 +914,24 @@ def follow(run, inv, settings, iface, ssid=None):
     plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, radiocaps.stored_by_phy(inv))
     if plan.get("channel") == rec["plan"].get("channel"):
         return False, f"The hotspot is still on channel {plan.get('channel')}."
+    now, hold = time.time(), move_interval()
+    moved_at = rec.get("moved_at") or 0
+    if moved_at and now - moved_at < hold:
+        return False, f"The hotspot moved {round(now - moved_at)} s ago; it moves again after {hold} s."
+    radio = next((r for r in inv.get("radios") or [] if r.get("iface") == iface), {})
+    csa = (radiocaps.rows(radio, radiocaps.stored(radio)).get("csa") or {}).get("value")
+    declared = "channel_switch" in (radio.get("commands") or [])
+    if csa == "yes" or (csa is None and declared):
+        ssid, second_ssid = _names(settings, ssid)
+        ok, why = channel_switch(run, rec["plan"], plan)
+        if ok:
+            _retune_files(plan, settings, ssid, second_ssid, inv.get("country"))
+            _mark_moved(plan, "switch")
+            return True, f"The hotspot moved to channel {plan['channel']} with the link (channel switch)."
+        radiocaps.record_learned(radio, "csa", "no", f"The channel switch failed: {why}.")
+        fallback = " (restarted: channel switch failed)"
+    else:
+        fallback = ""
     start(run, inv, settings, rec.get("owner") or {}, ssid)
-    return True, f"The hotspot moved to channel {plan.get('channel')} with the link."
+    _mark_moved(plan, "restart")
+    return True, f"The hotspot moved to channel {plan['channel']} with the link{fallback}."

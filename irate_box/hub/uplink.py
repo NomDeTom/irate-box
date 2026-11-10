@@ -241,6 +241,7 @@ DEFAULT = {
     "box_steps": "nothing-works",
     "cable_out": "wait",
     "cable_reach": "reconnect",
+    "hotspot_move": 300,
 }
 # Which links are watched, each with a watchdog of its own. A link the owner set is watched or not (watch:
 # {iface: bool}); any other follows watch_new: "uplink", the link that holds the box's route (and one in
@@ -287,7 +288,6 @@ RETRY = {"eager": 600, "steady": 3600, "sparing": 21600}
 HOTSPOT_RETRY = 300  # seconds between starts of a hotspot found down with the link up (one that won't start isn't retried every check)
 _hotspot_tried = [0.0]  # when the last such start was tried (one for the box: several links share it)
 FOLLOW_STEADY = 20  # seconds the link holds a new channel before a hotspot that follows it moves there
-FOLLOW_HOLD = 300  # seconds between two moves of a following hotspot: each drops its guests for 15-30 s
 # How long to keep reconnecting while the network is at fault; then stop, and say so.
 GIVE_UP = {"never": None, "hour": 3600, "day": 86400, "week": 7 * 86400}
 # A pace's old name: settings saved with it still load.
@@ -608,6 +608,26 @@ def validate(raw):
         raise Refused(_not_one_of("retry", RETRY))
     if give_up not in GIVE_UP:
         raise Refused(_not_one_of("give_up", GIVE_UP))
+    try:
+        move = int(raw.get("hotspot_move", out["hotspot_move"]))
+    except (TypeError, ValueError):
+        raise Refused(
+            M(
+                "uplink.hotspot-move.range",
+                "The hotspot move interval must be from {low} to {high} seconds.",
+                low=30,
+                high=86400,
+            )
+        ) from None
+    if not 30 <= move <= 86400:
+        raise Refused(
+            M(
+                "uplink.hotspot-move.range",
+                "The hotspot move interval must be from {low} to {high} seconds.",
+                low=30,
+                high=86400,
+            )
+        )
     roaming, ignore = raw.get("roaming", "roam"), raw.get("ignore_roams", False)
     if roaming in ROAMING_WAS:
         roaming, ignore = ROAMING_WAS[roaming][0], ignore or ROAMING_WAS[roaming][1]
@@ -695,6 +715,7 @@ def validate(raw):
         roaming=roaming,
         lock_bssid=lock if roaming == "lock" else None,
         ignore_roams=ignore,
+        hotspot_move=move,
         watch=dict(watch),
         watch_hw=clean_hw,
         **choices,
@@ -2128,9 +2149,9 @@ class HotspotFollow:
     """A hotspot that follows its link's channel, left on the old one after a roam. NetworkManager's dispatcher
     moves it only when the link comes up, and a roam within one connection never does; on an AIC8800 a hotspot on
     another channel than the link's is behind every recorded stall. Moved once the link has held its channel for
-    FOLLOW_STEADY with no WiFi join under way, at most every FOLLOW_HOLD (one for the box: the hotspot is one),
-    so a link that roams back in the meantime is left to settle. The move is root/ap.py's follow(), as the
-    dispatcher's (hub_control ap-follow), which also says it on the Network page."""
+    FOLLOW_STEADY with no WiFi join under way, so a link that roams back in the meantime is left to settle.
+    The move is root/ap.py's follow(), as the dispatcher's (hub_control ap-follow), which holds the move
+    interval once and also says the move on the Network page."""
 
     def __init__(self, record=None, channels=None, joining=None, move=None):
         self.record = record or _ap_record
@@ -2138,7 +2159,6 @@ class HotspotFollow:
         self.joining = joining or _wifi_joining
         self.move = move or _ap_follow
         self.seen = {}  # link -> (its channel, since when), while the hotspot is on another
-        self.moved = 0.0
 
     def check(self, iface, now, roamed_at=None):
         """One line of what was done, or "" (nothing to do, or not yet). roamed_at: the link's last roam, if seen."""
@@ -2159,9 +2179,8 @@ class HotspotFollow:
         if channel != link_channel:
             since = roamed_at if roamed_at is not None and roamed_at <= now else now
             self.seen[iface] = (link_channel, since)
-        if now - since < FOLLOW_STEADY or now - self.moved < FOLLOW_HOLD or self.joining():
+        if now - since < FOLLOW_STEADY or self.joining():
             return ""
-        self.moved = now
         code, out = self.move(iface)
         if self.channels().get(hotspot) == link_channel:
             self.seen.pop(iface, None)

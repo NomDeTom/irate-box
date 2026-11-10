@@ -7281,6 +7281,7 @@ const net = {
   retry: document.getElementById("up-retry"),
   giveUp: document.getElementById("up-giveup"),
   sens: document.getElementById("up-sens"),
+  move: document.getElementById("up-move"),
   roaming: document.getElementById("up-roaming"),
   lockAps: document.getElementById("up-lock-aps"),
   ignoreRoams: document.getElementById("up-ignore-roams"),
@@ -7376,6 +7377,7 @@ const upPick = {
   retry: "steady",
   give_up: "never",
   sensitivity: 3,
+  hotspot_move: 300,
   roaming: "roam",
   lock_bssid: null,
   ignore_roams: false,
@@ -7958,6 +7960,7 @@ function fillUpForm(chosen, levels) {
   for (const k of ["watch_new", "box_steps", "cable_out", "cable_reach"])
     upPick[k] = chosen[k] || levels.default[k];
   upWatch = { ...chosen.watch };
+  net.move.value = String(chosen.hotspot_move ?? levels.default.hotspot_move ?? 300);
   const over = chosen.overrides || {};
   for (const input of net.fields.querySelectorAll("[data-key]")) {
     const v = upGet(over, input.dataset.key);
@@ -8028,8 +8031,13 @@ function readUpForm() {
     if (key.startsWith("steps.")) (overrides.steps ||= {})[key.slice(6)] = v;
     else overrides[key] = v;
   }
+  const moveRaw = net.move.value.trim() || "300";
+  const move = Number(moveRaw);
+  if (!Number.isInteger(move) || move < 30 || move > 86400)
+    throw new Error("Hotspot move interval: enter a whole number of seconds from 30 to 86400.");
   const all = {
     ...upPick,
+    hotspot_move: move,
     lock_bssid: upPick.roaming === "lock" ? upPick.lock_bssid : null,
     iface: "auto",
     watch: { ...upWatch },
@@ -8041,6 +8049,7 @@ function readUpForm() {
   // One connection's own: those five, over what is saved for every connection.
   return {
     ...base,
+    hotspot_move: move,
     steps_off: all.steps_off,
     per_iface: {
       ...base.per_iface,
@@ -8313,12 +8322,14 @@ const RADIO_TEST_SAYS = {
   "follows-roam": "Your WiFi moves to another access point for a few seconds; guests lose the hotspot for a moment.",
   "radio-reset": "The box resets the radio; the WiFi and the hotspot stop for up to 1 minute.",
   "driver-reset": "The driver resets the chip; the WiFi and the hotspot stop for a few seconds.",
+  csa: "The hotspot switches to another channel for a few seconds and back; guests lose it for a moment.",
 };
 const TEST_LABEL = {
   "own-channel": "Test own channel",
   "follows-roam": "Test roaming",
   "radio-reset": "Test radio reset",
   "driver-reset": "Test driver timeout recovery",
+  csa: "Test channel switch",
 };
 // A radio test's button, what the test does beside it: it runs at once.
 function radioTestButton(iface, exp, label) {
@@ -8372,7 +8383,7 @@ function radioCapTable(inv, phy, iface, section) {
           {},
           el("span", { textContent: capText(row.value) }),
           capBelow(row.below) ? el("span", { className: "setting-desc", textContent: capBelow(row.below) }) : null,
-          row.value == null && row.testable
+          row.testable && !["known", "test", "learned"].includes(row.source) && row.test
             ? radioTestButton(iface, row.test, TEST_LABEL[row.test] || "Run test")
             : null,
         ),

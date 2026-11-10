@@ -273,6 +273,11 @@ def fake_run(*cmd, **kw):
     if cmd[:3] == ("nmcli", "connection", "up"):
         kf = (T / "kf").read_text()
         iw["ap0"] = int(next(ln for ln in kf.splitlines() if ln.startswith("channel=")).split("=")[1])
+    if cmd[0] == "wpa_cli" and "chan_switch" in cmd:
+        iw["ap0"] = netinv.freq_channel(int(cmd[cmd.index("chan_switch") + 2]))
+        return subprocess.CompletedProcess(cmd, 0, "OK", "")
+    if cmd[0] == "wpa_cli" and cmd[-1] == "status":
+        return subprocess.CompletedProcess(cmd, 0, "wpa_state=COMPLETED\nmode=AP\n", "")
     return subprocess.CompletedProcess(cmd, 0, "", "")
 
 
@@ -381,15 +386,68 @@ inv2["ap"] = v2
 calls.clear()
 moved, out = ap.follow(fake_run, inv2, settings, "wlan0")
 check(
-    "follow: the link came up on channel 6, the hotspot moves there, and says it moved",
-    moved and "moved to channel 6" in out and json.loads(ap.RECORD.read_text())["plan"]["channel"] == 6,
-    out,
+    "follow: the link came up on channel 6, the hotspot moves there in place, and says so",
+    moved
+    and "(channel switch)" in out
+    and any(c[0] == "wpa_cli" and "chan_switch" in c for c in calls)
+    and json.loads(ap.RECORD.read_text())["plan"]["channel"] == 6,
+    (out, calls),
 )
 again = ap.follow(fake_run, inv2, settings, "wlan0")
 check(
     "  the same channel again: nothing done, and not said as moved",
     again[0] is False and "still on channel 6" in again[1],
     again,
+)
+# The move interval lives in ap.follow, so both triggers obey it (HotspotFollow has no hold of its own).
+inv1, v1 = box([radio(lyra, "wlan0", "phy0", 1)], wifi_up)
+inv1["ap"] = v1
+held, why = ap.follow(fake_run, inv1, settings, "wlan0")
+check("  inside the move interval: held, and said so", held is False and "moves again after" in why, why)
+rec = json.loads(ap.RECORD.read_text())
+rec["moved_at"] = 0
+ap.RECORD.write_text(json.dumps(rec))
+calls.clear()
+moved, why = ap.follow(fake_run, inv1, settings, "wlan0")
+check(
+    "  after the interval: moved by channel switch",
+    moved and "(channel switch)" in why and json.loads(ap.RECORD.read_text())["plan"]["channel"] == 1,
+    why,
+)
+
+
+def no_switch(*cmd, **kw):
+    if cmd[0] == "wpa_cli" and "chan_switch" in cmd:
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 4, "", "FAIL")
+    return fake_run(*cmd, **kw)
+
+
+inv6, v6 = box([radio(lyra, "wlan0", "phy0", 6)], wifi_up)
+inv6["ap"] = v6
+rec = json.loads(ap.RECORD.read_text())
+rec["moved_at"] = 0
+ap.RECORD.write_text(json.dumps(rec))
+calls.clear()
+moved, why = ap.follow(no_switch, inv6, settings, "wlan0")
+check(
+    "  a channel switch that fails: learned csa no, and the hotspot restarted",
+    moved
+    and "restarted: channel switch failed" in why
+    and radiocaps.rows(inv6["radios"][0], radiocaps.stored(inv6["radios"][0]))["csa"]["value"] == "no",
+    (why, radiocaps.stored(inv6["radios"][0])),
+)
+inv11, v11 = box([radio(lyra, "wlan0", "phy0", 11)], wifi_up)
+inv11["ap"] = v11
+rec = json.loads(ap.RECORD.read_text())
+rec["moved_at"] = 0
+ap.RECORD.write_text(json.dumps(rec))
+calls.clear()
+moved, why = ap.follow(no_switch, inv11, settings, "wlan0")
+check(
+    "  the learned no stands: restarted without trying the switch again",
+    moved and not any(c[0] == "wpa_cli" and "chan_switch" in c for c in calls),
+    (why, calls),
 )
 inv3, v3 = box([radio(lyra, "wlan0", "phy0", 11, ap_beside_client=False)], wifi_up)
 inv3["ap"] = v3
@@ -477,6 +535,7 @@ check(
     p6["backend"] == "hostapd"
     and "interface=ap0" in conf
     and "channel=6" in conf
+    and "ctrl_interface=/run/hostapd" in conf
     and "country_code=GB" in conf
     and "wpa_key_mgmt=OWE" in conf
     and "ieee80211w=2" in conf

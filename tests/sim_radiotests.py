@@ -40,6 +40,12 @@ radio = {
     "ap": True,
     "ap_beside_client": True,
     "channels_at_once": 3,
+    "commands": ["channel_switch"],
+    "channels": [
+        {"channel": 1, "freq": 2412, "ap_ok": True},
+        {"channel": 6, "freq": 2437, "ap_ok": True},
+        {"channel": 11, "freq": 2462, "ap_ok": True},
+    ],
     "usb": {"id": "a69c:88dc", "port": "1-1.1", "product": "AIC8800DC"},
     "profile": {"uuid": "0c3bb1fa-0f6a-3707-8c8d-4e23598253db"},
     "link": {"bssid": "04:95:e6:72:b6:d1", "channel": 11},
@@ -195,6 +201,45 @@ check(
     R.results(radio)["own-channel"]["answer"] == "yes"
     and "held a channel of its own" in R.results(radio)["own-channel"]["detail"],
     (said, R.results(radio)),
+)
+import json
+
+ap_mod.RECORD = T / "ap.json"
+ap_mod.RECORD.write_text(
+    json.dumps(
+        {
+            "up": True,
+            "plan": {
+                "kind": "follow",
+                "iface": "wlan0",
+                "hotspot_iface": "ap0",
+                "backend": "networkmanager",
+                "channel": 11,
+                "freq": 2462,
+            },
+        }
+    )
+)
+st["ap"], st["link"] = 11, 11
+switched = []
+
+
+def fake_switch(run, plan, new, wait=3, sleep=None):
+    switched.append(new["channel"])
+    st["ap"] = new["channel"]
+    return True, ""
+
+
+real_switch = ap_mod.channel_switch
+ap_mod.channel_switch = fake_switch
+said = R.experiment(inv, "wlan0", "csa", sleep=nap)
+ap_mod.channel_switch = real_switch
+check(
+    "csa: switched to another allowed channel and back, then kept as its row",
+    switched == [1, 11]
+    and R.results(radio)["csa"]["answer"] == "yes"
+    and "switched to channel 1 and back" in R.results(radio)["csa"]["detail"],
+    (switched, said, R.results(radio)),
 )
 
 shutil.rmtree(T, ignore_errors=True)

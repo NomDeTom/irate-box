@@ -1049,6 +1049,8 @@ def scan(focus=None):
                 can = ["radio-reset"]
                 if shares:
                     can.append("follows-roam")
+                    if "channel_switch" in (r.get("commands") or []):
+                        can.append("csa")
                 if "fake_cmd_timeout" in (r.get("params") or {}):
                     can.append("driver-reset")
                 if r.get("ap") and r.get("ap_beside_client") and r.get("channels_at_once", 1) >= 2:

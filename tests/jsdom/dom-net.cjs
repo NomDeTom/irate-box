@@ -74,6 +74,7 @@ w.fetch = async (u, opts = {}) => {
           [{ source: 'driver', value: 3, detail: '' }]),
         'own-channel': cap('own-channel', 'AP on own channel', 'no', 'known', 'The firmware stalls on a second channel.', 'own-channel', false),
         'follows-by-itself': cap('follows-by-itself', 'AP follows link', 'yes', 'known', "The hotspot follows the link's channel.", 'follows-roam', false),
+        csa: cap('csa', 'Channel switch (CSA)', 'yes', 'driver', 'The driver declares channel switch.', 'csa', true),
         sae: cap('sae', 'WPA3 (SAE)', 'yes', 'driver', '', null, false),
         'sched-scan': cap('sched-scan', 'Scheduled scan', 'yes', 'driver', '', null, false),
         country: cap('country', 'Regulatory domain', 'follows the box', 'driver', 'Country US.', null, false),
@@ -112,12 +113,13 @@ setTimeout(async () => {
   check('managed by, explained', /NetworkManager, the system's own network settings/.test(card));
   const capRows = cards[0] ? [...cards[0].querySelectorAll('.net-caps tbody tr')] : [];
   const row = (name) => capRows.find((tr) => tr.children[0].textContent === name);
-  check('the capabilities as a table: the value, its source, one clause', capRows.length === 11
+  check('the capabilities as a table: the value, its source, one clause', capRows.length === 12
     && /^\s*1 \(driver: 3\)/.test(row('Channels at once').children[1].textContent)
     && /chip list: The firmware stalls on a second channel\./.test(row('Channels at once').children[2].textContent)
     && /Yes/.test(row('AP beside link').children[1].textContent), capRows.map((tr) => tr.textContent).join(' | '));
-  check('test buttons only on the unanswered rows; never "Test again"', cards[0].querySelectorAll('.net-caps .radio-test').length === 1
+  check('test buttons only where the chip list, a test or what the box saw has not answered; never "Test again"', cards[0].querySelectorAll('.net-caps .radio-test').length === 2
     && !!row('Driver timeout recovery').querySelector('.radio-test')
+    && !!row('Channel switch (CSA)').querySelector('.radio-test')
     && !row('AP on own channel').querySelector('.radio-test')
     && !row('AP follows link').querySelector('.radio-test')
     && !row('Radio reset').querySelector('.radio-test')
@@ -175,7 +177,7 @@ setTimeout(async () => {
   check('  Add and connect: the page may lose the box, said under it; sent at once, the password cleared from the form', /this page can lose the box/.test(joinSays) && !popped
     && sentJoin && sentJoin.ssid === 'Cafe' && sentJoin.security === 'wpa-psk' && sentJoin.now === true && sentJoin.hidden === false && jf.elements.psk.value === '');
   const capSec = secs.find((n) => n.querySelector('.net-caps'));
-  check('the capability table is a section of its own', capSec && capSec.querySelectorAll('.net-caps tbody tr').length === 11);
+  check('the capability table is a section of its own', capSec && capSec.querySelectorAll('.net-caps tbody tr').length === 12);
   // One space wherever the stylesheet has any: the rules are checked by their content, not their layout.
   const css = fs.readFileSync(`${WEB}/style.css`, 'utf8').replace(/\s+/g, ' ');
   check('a hairline between sections, and under the heading (style.css)', /\.net-section \+ \.net-section \{ border-top: 1px solid var\(--border\)/.test(css)
