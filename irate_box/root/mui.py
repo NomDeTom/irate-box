@@ -8,8 +8,9 @@ the caller passes header-pin numbers for the bus signals and the plain GPIOs, an
   * lists the valid choices from the board's current pinout and the kernel's rm_io*_spi* pinctrl labels;
   * rejects duplicates, power/ground pins, fixed-role pins, an occupied pin, and a display bus that
     collides with the radio's spidev;
-  * writes one Armbian user overlay (irate-box-mui.dtbo) for the selected bus/CS and backlight;
-  * writes /etc/hub/mui.yaml for the per-host meshtasticd build (display + LGFX XPT2046 touch);
+  * writes one Armbian user overlay (irate-box-mui.dtbo) for the selected bus/CS;
+  * writes /etc/hub/mui.yaml for the per-host meshtasticd build (display + LGFX XPT2046 touch), with the
+    backlight GPIO, so MUI switches the backlight off while its screen sleeps;
   * writes and enables irate-box-mui.service, with Conflicts=meshtasticd.service;
   * records the selection and paths in /etc/hub/mui.json and reports pending/active state.
 
@@ -47,6 +48,9 @@ DT = Path(os.environ.get("HUB_DEVICE_TREE", "/proc/device-tree"))
 SPI_SYS = Path(os.environ.get("HUB_SPI_SYS", "/sys/bus/spi/devices"))
 BOOT_ID = Path(os.environ.get("HUB_BOOT_ID", "/proc/sys/kernel/random/boot_id"))
 DEFAULT_BINARY = os.environ.get("HUB_MUI_BINARY", "/usr/local/bin/meshtasticd-per-host-spi")
+# The kernel's gpio-leds driver, which held the backlight under the earlier display overlays.
+LEDS_GPIO = Path(os.environ.get("HUB_PLATFORM_DRIVERS", "/sys/bus/platform/drivers")) / "leds-gpio"
+BACKLIGHT_LED = "lcd-backlight"
 DEFAULT_RADIO = "spidev0.0"
 DISPLAY_WIDTH = 480
 DISPLAY_HEIGHT = 320
@@ -419,13 +423,6 @@ def _validate(selection, check_binary=False):
     return sel
 
 
-def _gpio_cell(pin):
-    row = _pin(pin)
-    if row is None or row["gpio"] is None:
-        raise Refused(M("mui.not-gpio", "Pin {pin} is power or ground, not a GPIO.", pin=pin))
-    return f"<&gpio{row['gpiochip']} {row['line']} 0>"
-
-
 def dts(selection):
     """The Armbian user overlay for this selection."""
     sel = _validate(selection)
@@ -456,7 +453,7 @@ def dts(selection):
     title = f"Meshtastic MUI: SPI{bus} ILI9488 + XPT2046 on Luckfox Lyra Zero W"
     description = (
         f"SPI{bus} using {', '.join(item['label'] for item in labels)}; "
-        f"D/C header {sel['dc']}, RST {sel['rst']}, BL {sel['bl']}."
+        f"D/C header {sel['dc']}, RST {sel['rst']}; meshtasticd drives BL {sel['bl']}."
     )
     return """/dts-v1/;
 /plugin/;
@@ -480,19 +477,6 @@ def dts(selection):
 {nodes}
 \t\t}};
 \t}};
-\tfragment@1 {{
-\t\ttarget-path = "/";
-\t\t__overlay__ {{
-\t\t\tlcd_backlight: lcd-backlight {{
-\t\t\t\tcompatible = "gpio-leds";
-\t\t\t\tbacklight {{
-\t\t\t\t\tlabel = "lcd-backlight";
-\t\t\t\t\tgpios = {bl};
-\t\t\t\t\tdefault-state = "on";
-\t\t\t\t}};
-\t\t\t}};
-\t\t}};
-\t}};
 }};
 """.format(
         title=title,
@@ -502,7 +486,6 @@ def dts(selection):
         num_cs=num_cs,
         pinctrl=pinctrl,
         nodes="\n".join(nodes),
-        bl=_gpio_cell(sel["bl"]),
     )
 
 
@@ -544,6 +527,9 @@ def config(selection):
     out.append(_map_lines(sel["dc"], 2).rstrip())
     out.append("  Reset:")
     out.append(_map_lines(sel["rst"], 2).rstrip())
+    # MUI switches the backlight off while its screen sleeps, and on again at a touch.
+    out.append("  Backlight:")
+    out.append(_map_lines(sel["bl"], 2).rstrip())
     if sel["touch"] == "lgfx":
         out.extend(
             [
@@ -866,6 +852,25 @@ def _overlay_error(exc):
     raise Refused(M("mui.dtc-failed", "The device tree compiler (dtc) failed: {detail}", detail=exc.detail)) from None
 
 
+def _release_backlight_led():
+    """Unbind the kernel's lcd-backlight LED, left by an earlier overlay, so meshtasticd can claim the line.
+
+    meshtasticd exits when a configured GPIO is busy. The new overlay has no LED, so this lasts.
+    """
+    if not (LEDS_GPIO / BACKLIGHT_LED).exists():
+        return
+    try:
+        (LEDS_GPIO / "unbind").write_text(BACKLIGHT_LED)
+    except OSError as exc:
+        raise Refused(
+            M(
+                "mui.backlight-busy",
+                "The kernel's backlight LED could not be released: {why}",
+                why=exc.strerror or str(exc),
+            )
+        ) from None
+
+
 def activate(selection):
     """Write the overlay, config, UI timeout and unit, then enable MUI; a restart applies the overlay."""
     sel = _validate(selection, check_binary=True)
@@ -892,8 +897,10 @@ def activate(selection):
     safeio.mkdir(FSDIR, mode=0o755)
     safeio.mkdir(FSDIR / "prefs", mode=0o755)
     # DeviceUIConfig: version=1, brightness=153, screen_timeout=0, alert_enabled=1, banner_enabled=1.
-    # The default 30 s timeout blanks the panel because this setup has no LGFX backlight control.
-    safeio.write(FSDIR / "prefs" / "uiconfig.proto", bytes.fromhex("0801109901180040014801"), 0o644)
+    # Written once only: the screen timeout and brightness are then MUI's own settings, on its screen.
+    uiconfig = FSDIR / "prefs" / "uiconfig.proto"
+    if not uiconfig.exists():
+        safeio.write(uiconfig, bytes.fromhex("0801109901180040014801"), 0o644)
     safeio.mkdir(JOURNALD_NAMESPACE.parent, mode=0o755)
     safeio.write(JOURNALD_NAMESPACE, journald(sel), 0o644)
     _apply_map_tiles(sel)
@@ -906,6 +913,7 @@ def activate(selection):
         _systemctl("disable", "--now", "meshtasticd.service")
     devices = _devices(sel)
     if devices["display"] and devices["touch"]:
+        _release_backlight_led()
         _systemctl("restart", UNIT)
     _save_state(sel, meshtasticd_enabled=package_enabled)
     radio = f"SimRadio on {sel['radio_spidev']}" if sel["radio_spidev"] else "SimRadio"

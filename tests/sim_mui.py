@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 T = Path(tempfile.mkdtemp(prefix="mui-"))
-for sub in ("boot/overlay-user", "state/control", "dt/__symbols__", "spi", "units", "bin"):
+for sub in ("boot/overlay-user", "state/control", "dt/__symbols__", "spi", "units", "bin", "drivers/leds-gpio"):
     (T / sub).mkdir(parents=True)
 (T / "boot_id").write_text("boot-one\n")
 (T / "tiles-root").mkdir()
@@ -29,6 +29,7 @@ os.environ.update(
     HUB_UNIT_DIR=str(T / "units"),
     HUB_MUI_JOURNALD=str(T / "journald@mui.conf"),
     HUB_MUI_TILES=str(T / "tiles-root"),
+    HUB_PLATFORM_DRIVERS=str(T / "drivers"),
 )
 sys.path.insert(0, str(REPO))
 from irate_box.msg import Refused
@@ -119,13 +120,13 @@ check(
     mui._cs_candidate(1, 37, avoid=0)["cs"] == 1 and mui._validate({})["_touch_cs"]["cs"] == 1,
 )
 check(
-    "the overlay names the selected bus, CS and backlight",
+    "the overlay names the selected bus and CS, and leaves the backlight to meshtasticd",
     "target = <&spi1>" in mui.dts(sel)
     and "&rm_io24_spi1_clk" in mui.dts(sel)
     and "&rm_io16_spi1_csn0" in mui.dts(sel)
     and "&rm_io28_spi1_csn1" in mui.dts(sel)
-    and "gpios = <&gpio1 25 0>" in mui.dts(sel)
-    and 'default-state = "on"' in mui.dts(sel),
+    and "gpio-leds" not in mui.dts(sel)
+    and "lcd-backlight" not in mui.dts(sel),
     mui.dts(sel),
 )
 cfg = mui.config(sel)
@@ -139,6 +140,11 @@ check(
     and "Module: sim" in cfg
     and "spidev: spidev0.0" in cfg
     and "Logging:\n  LogLevel: warn" in cfg,
+    cfg,
+)
+check(
+    "the config gives MUI the backlight, header 36 on gpiochip1 line 25",
+    "  Backlight:\n    pin: 36\n    gpiochip: 1\n    line: 25\n" in cfg,
     cfg,
 )
 check(
@@ -182,11 +188,12 @@ check(
     "target = <&spi0>" in mui.dts({"bus": 0, "radio_spidev": ""}),
 )
 check(
-    "a different DC/RST/BL is reflected in the config and overlay",
+    "a different DC/BL is reflected in the config",
     "pin: 12" in mui.config({"dc": 12})
     and "gpiochip: 0" in mui.config({"dc": 12})
     and "line: 14" in mui.config({"dc": 12})
-    and "gpios = <&gpio0 12 0>" in mui.dts({"bl": 18}),
+    and "  Backlight:\n    pin: 18\n    gpiochip: 0\n    line: 12\n" in mui.config({"bl": 18}),
+    mui.config({"bl": 18}),
 )
 real_snapshot = mui._snapshot
 mui._snapshot = lambda: {"header": [{"pin": 26, "used": True, "consumer": "ff120000.spi"}]}
@@ -311,6 +318,30 @@ check(
     mui.status()["spidev"]["touch"] == "spidev1.1" and mui.status()["devices"]["touch"] is True,
     mui.status(),
 )
+(T / "drivers" / "leds-gpio" / "lcd-backlight").mkdir()
+# MUI's own settings after a user changed the screen timeout on its screen: 128 s.
+kept = bytes.fromhex("080110990118" + "8001" + "40014801")
+(mui.FSDIR / "prefs" / "uiconfig.proto").write_bytes(kept)
+mui.activate(sel)
+check(
+    "  activating with the devices present releases the kernel's backlight LED before the restart",
+    (T / "drivers" / "leds-gpio" / "unbind").read_text() == "lcd-backlight" and ("restart", mui.UNIT) in calls,
+    calls,
+)
+check(
+    "  activating again keeps MUI's own screen timeout",
+    (mui.FSDIR / "prefs" / "uiconfig.proto").read_bytes() == kept,
+    (mui.FSDIR / "prefs" / "uiconfig.proto").read_bytes().hex(),
+)
+stuck = T / "leds-gpio-stuck"
+(stuck / "lcd-backlight").mkdir(parents=True)
+(stuck / "unbind").mkdir()  # writing to it fails, as a refused unbind would
+mui.LEDS_GPIO = stuck
+check(
+    "  a backlight LED that will not unbind is refused, not left to a crash-looping MUI",
+    refused(mui.activate, sel) == "mui.backlight-busy",
+)
+mui.LEDS_GPIO = T / "drivers" / "leds-gpio"
 mui.activate(sel)
 check(
     "  a second activation keeps the earlier meshtasticd record",
