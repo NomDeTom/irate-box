@@ -1,0 +1,13 @@
+link /sys/class/spi_master/spi0 /sys/devices/platform/ff120000.spi/spi_master/spi0
+link /sys/class/spi_master/spi1 /sys/devices/platform/ff130000.spi/spi_master/spi1
+link /sys/class/spi_master/spi2 /sys/devices/platform/ff488000.spi/spi_master/spi2
+link /sys/bus/i2c/devices/i2c-2 /sys/devices/platform/ff060000.i2c/i2c-2
+spi spi0.0 spi:spidev spidev
+spi spi1.0 spi:spidev spidev
+spi spi1.1 spi:spidev spidev
+spi spi2.0 spi:spi-nand spi-nand
+i2c 2-0014 gt911 
+i2c 2-0038 edt-ft5506 
+i2c 2-0045 dsi-backlight 
+i2c 2-005d gt9271 
+i2c i2c-2 rk3x-i2c 

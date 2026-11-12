@@ -248,6 +248,7 @@ check(
 )
 hardware._dtc = real_hardware_dtc
 env.write_text("verbosity=1\nuser_overlays=irate-box-watchdog\n")
+check("before activation, MUI claims no pin", mui.claims() == [], mui.claims())
 
 msg = mui.activate(sel)
 check(
@@ -269,6 +270,22 @@ check(
     and (mui.FSDIR / "maps" / "dummy" / "tile.png").is_file()
     and msg.get("id") == "mui.saved",
     (msg, env.read_text(), mui.UNIT_PATH.read_text() if mui.UNIT_PATH.is_file() else ""),
+)
+claimed = {item["pin"]: item["name"] for item in mui.claims()}
+check(
+    "once activated, the pin map is told MUI's pins by name",
+    claimed
+    == {
+        27: "SPI1 CLK",
+        29: "SPI1 MOSI",
+        31: "SPI1 MISO",
+        35: "Display CS",
+        37: "Touch CS",
+        26: "Display D/C",
+        28: "Display reset",
+        36: "Backlight",
+    },
+    claimed,
 )
 health.MUI_UNIT = mui.UNIT_PATH
 health.MUI_JOURNAL = mui.JOURNALD_NAMESPACE

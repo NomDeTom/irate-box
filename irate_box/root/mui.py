@@ -726,6 +726,36 @@ def _status_for(sel):
     }
 
 
+# The names the pin map gives MUI's pins: the SPI signals by their bus, the plain lines by what they do.
+CLAIM_NAMES = {
+    "clk": "SPI{bus} CLK",
+    "mosi": "SPI{bus} MOSI",
+    "miso": "SPI{bus} MISO",
+    "display_cs": "Display CS",
+    "touch_cs": "Touch CS",
+    "dc": "Display D/C",
+    "rst": "Display reset",
+    "bl": "Backlight",
+}
+
+
+def claims():
+    """[{pin, role, name, bus}] for the header pins MUI's saved selection holds while its overlay is in the boot
+    files, for the pin map; [] when MUI is off or its saved selection cannot be read."""
+    if not supported() or OVERLAY not in hardware.overlay_names(boot=BOOT):
+        return []
+    saved = _state().get("selection")
+    try:
+        sel = _normalize(saved if isinstance(saved, dict) else {})
+    except Refused:
+        return []
+    return [
+        {"pin": sel[role], "role": role, "name": name.format(bus=sel["bus"]), "bus": sel["bus"]}
+        for role, name in CLAIM_NAMES.items()
+        if isinstance(sel.get(role), int) and (role != "touch_cs" or sel.get("touch") == "lgfx")
+    ]
+
+
 def status(selection=None):
     """The live overlay/unit state, and the saved selection (or one supplied by the caller)."""
     state = _state()
