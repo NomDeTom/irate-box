@@ -83,6 +83,8 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "hw-status"}
       Every hardware part this box owns read again and published to control/hardware.json
       (hardware.py): the pages read that one file instead of waiting for a Box doctor scan.
+  {"id": ..., "action": "hw-current"}
+      The same, only when the file is not this boot's and this code's: the hub asks at its start.
   {"id": ..., "action": "hw-set", "choice": "<one of the Box doctor's hardware choices>"}
       One hardware setting (USB gadget, drive, LED, radios, clock, RTC, serial pins, watchdog) through
       the same gate the Box doctor uses, then the published hardware status again.
@@ -8304,6 +8306,14 @@ def hardware_status(_req):
     return hardware.publish()
 
 
+def hardware_current(_req):
+    """The hardware status published again only when it is not this boot's and this code's. The hub asks at its
+    start: this helper starts only for a request, so nothing else would after a boot or an update."""
+    if hardware.write_status_on_boot() is None:
+        return M("control.hardware.current", "The hardware status is current.")
+    return M("control.hardware.published", "The hardware status is up to date.")
+
+
 def hardware_set(req):
     """One hardware setting, checked and carried out by hardware.set(); the published status follows."""
     try:
@@ -9687,6 +9697,7 @@ ACTIONS = {
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
     "hw-status": hardware_status,
+    "hw-current": hardware_current,
     "hw-set": hardware_set,
     "pins": pins,
     "pins-gpio": pins_gpio,
