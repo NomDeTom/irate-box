@@ -70,7 +70,7 @@ header = [
     },
     {"pin": 36, "type": "gpio", "name": "GPIO0_C1", "chip": "gpiochip0", "line": 17, "used": False, "consumer": ""},
 ]
-lcdtouch.status = lambda: {"supported": True, "active": False}
+lcdtouch.status = lambda: {"supported": True, "enabled": True, "active": False}
 ownserial.status = lambda: {"supported": False, "on": False}
 (T / "state" / "control").mkdir(parents=True)
 (T / "state" / "control" / "pins.json").write_text(json.dumps({"header": header}))

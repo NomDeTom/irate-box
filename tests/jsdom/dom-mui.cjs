@@ -184,7 +184,7 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
   replace.checked = true;
   replace.dispatchEvent(new w.Event('change'));
   await wait(20);
-  check('ticking replace_radio enables Activate and keeps the warning visible', !d.getElementById('pins-mui-activate').disabled && !d.getElementById('pins-mui-radio-warning').hidden);
+  check('ticking replace_radio enables Activate, and the warning goes: the setting answers it', !d.getElementById('pins-mui-activate').disabled && d.getElementById('pins-mui-radio-warning').hidden);
   d.getElementById('pins-mui-activate').click();
   await wait(30);
   check('Activate asks before changing the boot files', !!d.querySelector('.aw-ask'));
@@ -217,6 +217,42 @@ const option = (id, value) => [...d.getElementById(id).options].find((o) => o.va
   d.querySelector('.aw-ask .action-btn.primary').click();
   await wait(100);
   check('Deactivate sends the action', posted.some((body) => body.action === 'mui-deactivate'), posted);
+  // A box with MUI running and SimRadio saved: a second page, read fresh, as after a reload.
+  const running = new JSDOM(html, { url: 'http://box/admin/#pins', runScripts: 'outside-only', virtualConsole: vc, pretendToBeVisual: true });
+  const saved = { ...defaults, replace_radio: true };
+  const runningState = {
+    pins: state.pins,
+    mui: { status: status({ unit_active: true, overlay_enabled: true, selection: saved }), options: { ...options, selection: saved } },
+    pending: 0,
+    results: [],
+  };
+  running.window.fetch = async (u) =>
+    new Response(JSON.stringify(u === '/admin/hardware' ? { pins: runningState.pins, assignments: [] } : runningState), { status: 200 });
+  running.window.eval(js);
+  await wait(150);
+  const rd = running.window.document;
+  const runningText = (id) => (rd.getElementById(id) || {}).textContent || '';
+  check(
+    'MUI running: the saved SimRadio setting is ticked, so no warning, and Activate is Apply',
+    rd.getElementById('pins-mui-replace-radio').checked && rd.getElementById('pins-mui-radio-warning').hidden
+      && runningText('pins-mui-activate') === 'Apply' && !rd.getElementById('pins-mui-activate').disabled,
+    [rd.getElementById('pins-mui-replace-radio').checked, runningText('pins-mui-activate')],
+  );
+  check(
+    '  the state says what runs where',
+    runningText('pins-mui-state') === 'Running: SimRadio on spidev0.0, display spidev1.0, touch spidev1.1.',
+    runningText('pins-mui-state'),
+  );
+  const clkOption = [...rd.getElementById('pins-mui-clk').options].find((o) => o.value === '27');
+  check(
+    '  a pin is offered by its map name, without the kernel\'s address or a reason when it can be used',
+    clkOption && clkOption.textContent === 'Pin 27 — GPIO1_B1',
+    clkOption && clkOption.textContent,
+  );
+  check(
+    '  backlight on pin 36: the MeshAdv-Pi HAT clash is said beside it',
+    !rd.getElementById('pins-mui-bl-warning').hidden && /MeshAdv-Pi HAT's IRQ/.test(runningText('pins-mui-bl-warning')),
+  );
   check('no page errors', errors.length === 0, errors);
   console.log(`failures: ${fails}`);
   process.exit(fails ? 1 : 0);

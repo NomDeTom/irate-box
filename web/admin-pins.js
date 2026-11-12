@@ -11,17 +11,23 @@
   let lastOverlay = null;
   let lastAssignments = new Map();
   let selectedPin = null;
+  let muiStatus = null;
   const gpioSay = (text, ok) => { const n = $('pins-gpio-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const say = (text, ok) => { const n = $('pins-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const ovSay = (text, ok) => { const n = $('pins-overlay-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   const dispSay = (text, ok) => { const n = $('pins-display-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
+  // The test card's fixed SPI1 overlay and MUI's own overlay hold the same pins: while MUI holds them, the test card
+  // waits, and says why.
+  const muiHolds = () => Boolean(muiStatus && (muiStatus.overlay_enabled || muiStatus.unit_active || muiStatus.pending));
   function overlayState(o) {
-    if (!o) return 'Read the pins to see the overlay.';
-    if (!o.supported) return 'This overlay is for the Luckfox Lyra Zero W only.';
-    if (o.on) return o.pending ? 'On, waiting for a restart.' : 'On, active.';
+    if (!o) return 'Read the pins to see the test card.';
+    if (!o.supported) return 'The test card is for the Luckfox Lyra Zero W only.';
+    if (!o.on && muiHolds()) return 'MUI holds these pins. Deactivate MUI to use the test card.';
+    if (o.on && (o.pending || !o.active)) return 'Overlay on, waiting for a restart.';
+    if (o.on && muiStatus && muiStatus.unit_active) return 'Overlay on. MUI is running on the panel, so the test waits.';
+    if (o.on) return o.display_on ? 'Overlay on. The test card is showing.' : 'Overlay on. The display is off.';
     if (o.enabled && !o.installed) return 'Enabled in the boot files, but the overlay file is missing.';
-    if (o.installed) return 'The overlay file is there, but it is not enabled.';
-    return 'Off.';
+    return 'Overlay off.';
   }
   function renderOverlay(o) {
     lastOverlay = o || null;
@@ -29,19 +35,14 @@
     const button = $('pins-overlay-toggle');
     if (state) state.textContent = overlayState(lastOverlay);
     if (button) {
-      button.disabled = !(lastOverlay && lastOverlay.supported);
+      button.disabled = !(lastOverlay && lastOverlay.supported) || (!lastOverlay.on && muiHolds());
       button.textContent = lastOverlay && lastOverlay.on ? 'Disable' : 'Enable';
     }
-    const displayState = $('pins-display-state');
     const displayButton = $('pins-display-toggle');
     const testButton = $('pins-test');
-    const ready = Boolean(lastOverlay && lastOverlay.supported && lastOverlay.on && lastOverlay.active);
-    if (displayState) {
-      if (!lastOverlay) displayState.textContent = 'Read the pins to see the display.';
-      else if (!lastOverlay.supported) displayState.textContent = 'This overlay is for the Luckfox Lyra Zero W only.';
-      else if (!ready) displayState.textContent = 'Enable the overlay and restart the box first.';
-      else displayState.textContent = lastOverlay.display_on ? 'On.' : 'Off.';
-    }
+    const ready = Boolean(
+      lastOverlay && lastOverlay.supported && lastOverlay.on && lastOverlay.active && !(muiStatus && muiStatus.unit_active),
+    );
     if (displayButton) {
       displayButton.disabled = !ready;
       displayButton.textContent = lastOverlay && lastOverlay.display_on ? 'Turn display off' : 'Turn display on';
@@ -50,7 +51,6 @@
   }
   let lastMui = null;
   let muiOptions = null;
-  let muiStatus = null;
   let muiPopulated = false;
   const MUI_ROLE_SELECTS = {
     clk: 'pins-mui-clk',
@@ -61,16 +61,6 @@
     dc: 'pins-mui-dc',
     rst: 'pins-mui-rst',
     bl: 'pins-mui-bl',
-  };
-  const MUI_ROLE_NAMES = {
-    clk: 'Clock',
-    mosi: 'MOSI',
-    miso: 'MISO',
-    display_cs: 'Display CS',
-    touch_cs: 'Touch CS',
-    dc: 'D/C',
-    rst: 'Reset',
-    bl: 'Backlight',
   };
   const muiSayText = (text, ok) => { const n = $('pins-mui-note'); n.textContent = text; n.classList.toggle('bad', !ok); n.hidden = !text; };
   function muiHeaderRow(pin) {
@@ -98,8 +88,11 @@
       option.dataset.usable = String(usable);
       option.dataset.why = reason;
       if (row.cs !== undefined) option.dataset.cs = String(row.cs);
-      const bits = [`Pin ${row.pin}`, row.name || '', row.rmio !== null && row.rmio !== undefined ? `RM_IO${row.rmio}` : ''];
-      option.textContent = `${bits.filter(Boolean).join(' — ')} (${reason})`;
+      // The pin by the name the map gives it; why only when it cannot be used. A pin MUI or the test card holds
+      // now is one this choice takes over, not a reason.
+      const header = muiHeaderRow(row.pin);
+      const name = header ? pinLabel(header) : row.name || '';
+      option.textContent = `Pin ${row.pin}${name ? ` — ${name}` : ''}${usable ? '' : ` (${reason})`}`;
       option.title = reason;
       return option;
     });
@@ -124,6 +117,7 @@
       log_destination: sel.log_destination || 'ram',
       map_tiles: sel.map_tiles || 'dummy',
       map_tiles_folder: sel.map_tiles_folder || '',
+      replace_radio: sel.replace_radio === true,
     };
   }
   function muiRebuild(initial) {
@@ -144,6 +138,7 @@
       }
     }
     $('pins-mui-touch-cs').disabled = touch === 'none';
+    $('pins-mui-replace-radio').checked = saved.replace_radio === true;
     $('pins-mui-log-level').value = saved.log_level || 'warn';
     $('pins-mui-log-destination').value = saved.log_destination || 'ram';
     $('pins-mui-map-tiles').value = saved.map_tiles || 'dummy';
@@ -176,30 +171,6 @@
     }
     return null;
   }
-  function muiDrawDiagram(sel) {
-    const host = $('pins-mui-diagram');
-    if (!host) return;
-    host.replaceChildren();
-    if (!muiOptions) return;
-    const table = document.createElement('table');
-    table.className = 'admin-table';
-    for (const role of Object.keys(MUI_ROLE_SELECTS)) {
-      if (sel.touch === 'none' && role === 'touch_cs') continue;
-      const pin = sel[role];
-      const row = muiHeaderRow(pin) || {};
-      const tr = document.createElement('tr');
-      const roleCell = document.createElement('th');
-      roleCell.textContent = MUI_ROLE_NAMES[role];
-      const pinCell = document.createElement('td');
-      pinCell.textContent = pin ? `Pin ${pin}` : '—';
-      pinCell.className = 'mui-selected';
-      const nameCell = document.createElement('td');
-      nameCell.textContent = [row.name, row.rmio !== null && row.rmio !== undefined ? `RM_IO${row.rmio}` : ''].filter(Boolean).join(' · ');
-      tr.append(roleCell, pinCell, nameCell);
-      table.append(tr);
-    }
-    host.append(table);
-  }
   function muiStateText() {
     if (!muiStatus) return 'Read the pins to see MUI.';
     if (!muiStatus.supported) return 'MUI is for the Luckfox Lyra Zero W only.';
@@ -208,7 +179,7 @@
       const radio = muiStatus.radio && muiStatus.radio.spidev ? `SimRadio on ${muiStatus.radio.spidev}` : 'SimRadio';
       const display = muiStatus.spidev && muiStatus.spidev.display ? muiStatus.spidev.display : 'the selected display';
       const touch = muiStatus.spidev && muiStatus.spidev.touch ? `, touch ${muiStatus.spidev.touch}` : '';
-      return `Running with ${radio}; display ${display}${touch}.`;
+      return `Running: ${radio}, display ${display}${touch}.`;
     }
     if (muiStatus.pending) return 'Saved, waiting for a restart.';
     if (muiStatus.overlay_enabled) return 'Enabled, waiting for the SPI devices.';
@@ -247,14 +218,20 @@
     );
     const configured = Boolean(muiStatus && muiStatus.radio && muiStatus.radio.configured);
     const warning = $('pins-mui-radio-warning');
-    if (warning) warning.hidden = !configured;
+    if (warning) warning.hidden = !configured || sel.replace_radio;
+    // Pin 36 is the MeshAdv-Pi HAT's IRQ on the Lyra's header: said beside the setting that takes it.
+    const blWarning = $('pins-mui-bl-warning');
+    if (blWarning) blWarning.hidden = !(muiOptions && muiOptions.supported && sel.bl === 36);
     const activate = $('pins-mui-activate');
     const deactivate = $('pins-mui-deactivate');
     const restart = $('pins-mui-restart');
     const supported = Boolean(muiOptions && muiStatus && muiStatus.supported);
     const binary = Boolean(muiStatus && muiStatus.binary_present);
     const folderMissing = sel.map_tiles === 'folder' && !sel.map_tiles_folder;
-    if (activate) activate.disabled = !supported || !binary || Boolean(dup) || csConflict || folderMissing || (configured && !sel.replace_radio);
+    if (activate) {
+      activate.disabled = !supported || !binary || Boolean(dup) || csConflict || folderMissing || (configured && !sel.replace_radio);
+      activate.textContent = muiHolds() ? 'Apply' : 'Activate';
+    }
     if (deactivate) {
       deactivate.disabled = !muiStatus || !(muiStatus.overlay_enabled || muiStatus.unit_active || muiStatus.pending);
     }
@@ -265,9 +242,10 @@
         ? 'Two roles use the same pin. Select different pins.'
         : csConflict
           ? 'Display and touch need different chip selects.'
-          : muiStateText();
+          : folderMissing
+            ? 'Select a tiles folder, or the dummy tile.'
+            : muiStateText();
     }
-    muiDrawDiagram(sel);
   }
   function renderMui(mui) {
     lastMui = mui || null;
@@ -335,37 +313,54 @@
     return data;
   }
 
-  function pinLabel(pin) {
-    if (pin.label) return pin.label;
-    return pin.name || (pin.gpio === null || pin.gpio === undefined ? 'power' : `GPIO${pin.gpio}`);
-  }
+  // Who wants a pin, by the feature's name on this page rather than the module's.
+  const SOURCE_NAMES = { mui: 'MUI', lcdtouch: 'test card', ownserial: 'own serial', pinhog: 'pin hog' };
+  // A process that holds lines through libgpiod, by the program a user knows.
+  const CONSUMER_NAMES = { portduino: 'meshtasticd' };
+  const sourceName = (item) => SOURCE_NAMES[item.source] || item.by || item.source || '';
   function assignmentFor(pin) {
     return pin && typeof pin.pin === 'number' ? lastAssignments.get(pin.pin) : null;
+  }
+  const isHeld = (assigned) => Boolean(assigned && (assigned.state === 'holding' || assigned.holding));
+  // A pin's name: what the feature that holds it calls it (SPI1 CLK, Display D/C), the pin-mux function's name
+  // (I2C2 SDA), then the pinout's own (GPIO0_A2). A bare consumer is not a name: it is the owner, below.
+  function pinLabel(pin) {
+    if (pin.type === 'gpio') {
+      const assigned = assignmentFor(pin);
+      if (assigned && assigned.state === 'active' && assigned.source !== 'pinhog' && assigned.role) return assigned.role;
+      if (pin.label && pin.label !== pin.consumer) return pin.label;
+    }
+    return pin.name || (pin.gpio === null || pin.gpio === undefined ? 'power' : `GPIO${pin.gpio}`);
+  }
+  // What holds a pin, in words: the feature, the devices on its bus (spidev0.0), or the program; for a free pin,
+  // the board's own role for it, when it has one.
+  function pinOwner(pin) {
+    if (pin.type !== 'gpio') return '';
+    const assigned = assignmentFor(pin);
+    if (isHeld(assigned) && assigned.source === 'pinhog') return 'pin hog';
+    if (assigned && assigned.state === 'conflict') {
+      return `${CONSUMER_NAMES[assigned.active_owner] || assigned.active_owner || 'another driver'}, wanted by ${sourceName(assigned)}`;
+    }
+    if (assigned && (assigned.state === 'active' || isHeld(assigned))) return sourceName(assigned);
+    if (pin.used) {
+      if (pin.owner) return pin.owner;
+      if (CONSUMER_NAMES[pin.consumer]) return CONSUMER_NAMES[pin.consumer];
+      if (pin.role) return pin.role;
+      // A function the pin mux named (I2C2 SDA) with nothing a user configures on its bus: its driver is the kernel's.
+      return pin.label && pin.label !== pin.consumer ? 'kernel' : pin.consumer || 'taken';
+    }
+    if (assigned && assigned.state !== 'removed') return `for ${sourceName(assigned)}`;
+    return pin.role ? `free · ${pin.role}` : 'free';
   }
   function pinState(pin) {
     if (pin.type !== 'gpio') return pin.type;
     const assigned = assignmentFor(pin);
     if (assigned && assigned.state === 'conflict') return 'conflict';
-    if (assigned && (assigned.state === 'holding' || assigned.holding)) return 'taken';
+    if (isHeld(assigned)) return 'taken';
     if (assigned && !pin.used) return 'assigned';
     return pin.used ? 'taken' : 'free';
   }
-  function pinDetails(pin) {
-    if (pin.type !== 'gpio') return pin.type === 'gnd' ? 'ground' : 'power';
-    const assigned = assignmentFor(pin);
-    const held = assigned && (assigned.state === 'holding' || assigned.holding);
-    const bits = [
-      held
-        ? `held by ${assigned.active_owner || assigned.role}`
-        : pin.used
-          ? pin.consumer || 'taken'
-          : assigned
-            ? `assigned ${assigned.role}`
-            : 'free',
-    ];
-    if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
-    return bits.join(' · ');
-  }
+  const pinDetails = (pin) => pinOwner(pin);
   function pinTypeClass(pin) {
     if (pin.type === '3v3') return 'pin-3v3';
     if (pin.type === '5v') return 'pin-5v';
@@ -386,19 +381,7 @@
   function pinTitle(pin) {
     const bits = [`Pin ${pin.pin}`, pinLabel(pin)];
     if (pin.type !== 'gpio') bits.push(pin.type === 'gnd' ? 'ground' : 'power');
-    else {
-      const assigned = assignmentFor(pin);
-      const held = assigned && (assigned.state === 'holding' || assigned.holding);
-      bits.push(
-        held
-          ? `held by ${assigned.active_owner || assigned.role}`
-          : pin.used
-            ? `taken by ${pin.consumer || 'a function'}`
-            : assigned
-              ? `assigned to ${assigned.role}`
-              : 'free',
-      );
-    }
+    else bits.push(pinOwner(pin));
     return bits.join(', ');
   }
   function pinSquare(pin) {
@@ -423,9 +406,9 @@
     if (!pin) return box;
     const name = document.createElement('span');
     name.textContent = pinLabel(pin);
-    const detail = document.createElement('small');
-    detail.textContent = pinDetails(pin);
-    box.append(name, detail);
+    box.append(name);
+    const owner = pinDetails(pin);
+    if (owner) box.append(Object.assign(document.createElement('small'), { textContent: owner }));
     return box;
   }
   function pinCard(pin) {
@@ -455,26 +438,47 @@
     map.querySelectorAll('.is-selected').forEach((node) => node.classList.remove('is-selected'));
     if (selectedPin) map.querySelectorAll(`[data-pin="${selectedPin.pin}"]`).forEach((node) => node.classList.add('is-selected'));
   }
-  // A pin selected on the header fills the card beside it: its state and what claims it, and, for a
-  // free pin, the choices below it.
+  // A pin selected on the header fills the card beside it: its names, what holds it and where the kernel has it,
+  // and, for a free pin, the choices below it.
+  function pinFacts(pin) {
+    const facts = [['Pin', String(pin.pin)], ['Name', pinLabel(pin)]];
+    if (pin.type !== 'gpio') {
+      facts.push(['Supply', pin.type === 'gnd' ? 'ground' : pin.type === '5v' ? '5 V' : '3.3 V']);
+      return facts;
+    }
+    if (pin.name && pin.name !== pinLabel(pin)) facts.push(['GPIO', pin.name]);
+    if (pin.rmio !== null && pin.rmio !== undefined) facts.push(['RM_IO', `RM_IO${pin.rmio}`]);
+    if (pin.chip) facts.push(['Line', `${pin.chip} line ${pin.line}`]);
+    facts.push(['Held by', pinOwner(pin)]);
+    if (pin.used && pin.consumer && pin.consumer !== pinOwner(pin)) facts.push(['Kernel claim', pin.consumer]);
+    if (pin.role) facts.push(['Board role', pin.role]);
+    return facts;
+  }
   function showPin(pin) {
     selectedPin = pin || null;
     markSelected();
     const note = $('pins-gpio-selected');
+    const detail = $('pins-gpio-detail');
     if (!note) return;
     if (!pin) {
       note.textContent = 'Select a pin on the map, or in the list below.';
-      note.classList.remove('bad');
+      if (detail) { detail.replaceChildren(); detail.hidden = true; }
       return;
+    }
+    if (detail) {
+      detail.replaceChildren(
+        ...pinFacts(pin).flatMap(([term, value]) => [
+          Object.assign(document.createElement('dt'), { textContent: term }),
+          Object.assign(document.createElement('dd'), { textContent: value }),
+        ]),
+      );
+      detail.hidden = false;
     }
     const state = pinState(pin);
     const assigned = assignmentFor(pin);
     const hog = assigned && assigned.source === 'pinhog' && !assigned.removed;
     const free = pin.type === 'gpio' && (state === 'free' || Boolean(hog));
-    note.textContent = free
-      ? `${pinTitle(pin)}. Read it once, or keep it set from boot, below.`
-      : `${pinTitle(pin)}. Select a free pin on the map, or in the list below, to read or keep one.`;
-    note.classList.toggle('bad', !free);
+    note.textContent = free ? 'Read it once, or keep it set from boot, below.' : 'Only a free pin can be read or set.';
     if (!free) return;
     const select = $('pins-gpio-pin');
     if (select && [...select.options].some((option) => option.value === String(pin.pin))) {
@@ -505,67 +509,10 @@
       map.append(row);
     }
   }
-  function drawRoles(header) {
-    const host = $('pins-roles');
-    host.replaceChildren();
-    const rows = (header || []).filter((pin) => pin.role);
-    if (!rows.length) {
-      host.append(Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: 'No fixed roles are recorded for this board.' }));
-      return;
-    }
-    const table = document.createElement('table');
-    table.className = 'admin-table';
-    const head = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    for (const title of ['Pin', 'Name', 'RM_IO', 'Board role']) {
-      const th = document.createElement('th');
-      th.textContent = title;
-      headRow.append(th);
-    }
-    head.append(headRow);
-    const body = document.createElement('tbody');
-    for (const pin of rows) {
-      const tr = document.createElement('tr');
-      for (const value of [String(pin.pin), pinLabel(pin), pin.rmio === null || pin.rmio === undefined ? '' : `RM_IO${pin.rmio}`, pin.role]) {
-        const td = document.createElement('td');
-        td.textContent = value;
-        tr.append(td);
-      }
-      body.append(tr);
-    }
-    table.append(head, body);
-    host.append(table);
-  }
-  function drawClaims(lines) {
-    const host = $('pins-claims');
-    host.replaceChildren();
-    const rows = (lines || []).filter((line) => line.used);
-    if (!rows.length) {
-      host.append(Object.assign(document.createElement('p'), { className: 'setting-desc', textContent: 'No GPIO line is claimed.' }));
-      return;
-    }
-    const table = document.createElement('table');
-    table.className = 'admin-table';
-    const head = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    for (const title of ['Chip', 'Line', 'Name', 'Claimed by', 'Direction']) {
-      const th = document.createElement('th');
-      th.textContent = title;
-      headRow.append(th);
-    }
-    head.append(headRow);
-    const body = document.createElement('tbody');
-    for (const line of rows) {
-      const tr = document.createElement('tr');
-      for (const value of [line.chip, String(line.line), line.name || '', line.consumer || line.name || 'claimed', line.direction || '']) {
-        const td = document.createElement('td');
-        td.textContent = value;
-        tr.append(td);
-      }
-      body.append(tr);
-    }
-    table.append(head, body);
-    host.append(table);
+  // The legend lists a state only when a pin is drawn in it: a key for a state no pin is in is one more thing to read.
+  function drawLegend(header) {
+    const states = new Set((header || []).map(pinState));
+    document.querySelectorAll('#pins-legend [data-state]').forEach((node) => { node.hidden = !states.has(node.dataset.state); });
   }
   function textOf(pins) {
     if (!pins || !pins.header || !pins.header.length) return '';
@@ -573,12 +520,12 @@
     const lines = [title, ''];
     const header = pins.header;
     const desc = (pin) => {
-      const bits = [pinLabel(pin)];
+      if (pin.type !== 'gpio') return pinLabel(pin);
+      const bits = [pinLabel(pin), pinOwner(pin)];
+      if (pin.name && pin.name !== pinLabel(pin)) bits.push(pin.name);
       if (pin.rmio !== null && pin.rmio !== undefined) bits.push(`RM_IO${pin.rmio}`);
-      if (pin.role) bits.push(pin.role);
-      if (pin.consumer) bits.push(pin.consumer);
-      else if (pin.type === 'gpio') bits.push('free');
-      return bits.join(' ');
+      if (pin.consumer && pin.consumer !== pinOwner(pin)) bits.push(pin.consumer);
+      return bits.join(' · ');
     };
     if (header.every((pin) => typeof pin.pin === 'number')) {
       const byPin = new Map(header.map((pin) => [pin.pin, pin]));
@@ -594,6 +541,13 @@
     } else {
       for (const pin of header) lines.push(`${pin.pin} ${desc(pin)}`);
     }
+    // Every other line in use, off the header: the card, the eMMC, the board's own LEDs and switches.
+    const onHeader = new Set(header.filter((pin) => pin.chip).map((pin) => `${pin.chip}:${pin.line}`));
+    const others = (pins.lines || []).filter((line) => line.used && !onHeader.has(`${line.chip}:${line.line}`));
+    if (others.length) {
+      lines.push('', 'Other lines in use');
+      for (const line of others) lines.push(`${line.chip} ${line.line} ${line.consumer || 'claimed'} ${line.direction || ''}`.trimEnd());
+    }
     return lines.join('\n');
   }
   function render(data) {
@@ -602,18 +556,22 @@
         .filter((item) => item && typeof item.pin === 'number')
         .map((item) => [item.pin, item]),
     );
-    renderOverlay(data && data.overlay);
-    renderMui(data && data.mui);
     const pins = data && data.pins;
+    if (pins) {
+      lastAt = pins.at || lastAt;
+      lastPins = pins;
+    }
+    renderMui(data && data.mui);
+    renderOverlay(data && data.overlay);
     $('pins-copy').disabled = true;
     if (!pins) { $('pins-board').textContent = 'Not read yet.'; return; }
-    lastAt = pins.at || lastAt;
-    lastPins = pins;
-    const when = `${pins.model || pins.board || 'this board'}, read ${pins.at ? new Date(pins.at * 1000).toLocaleString() : 'now'}.`;
+    const at = pins.at
+      ? new Date(pins.at * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : 'now';
+    const when = `${pins.model || pins.board || 'this board'}, read ${at}.`;
     $('pins-board').textContent = pins.note ? `${when} ${pins.note}` : when;
     drawHeader(pins.header || []);
-    drawClaims(pins.lines || []);
-    drawRoles(pins.header || []);
+    drawLegend(pins.header || []);
     fillPinChoices(pins.header || []);
     showPin(selectedPin ? pinByNumber(selectedPin.pin) : null);
     renderHogs((data && data.assignments) || []);
@@ -859,7 +817,8 @@
       button.disabled = false;
     }
   });
-  $('pins-scan').addEventListener('click', async () => {
+  // After a MUI change too: the map is then this read, not the one before the change.
+  async function readPins() {
     $('pins-scan').disabled = true;
     say('Reading the GPIO lines…', true);
     const before = lastAt;
@@ -867,7 +826,8 @@
       const reply = await post({ action: 'pins' });
       await wait(reply.id, before);
     } catch (err) { say(err.message || 'The pins could not be read.', false); $('pins-scan').disabled = false; }
-  });
+  }
+  $('pins-scan').addEventListener('click', readPins);
   $('pins-copy').addEventListener('click', async () => {
     if (!lastPins) return;
     const ok = await copyText(textOf(lastPins));
@@ -945,13 +905,20 @@
       muiSayText('meshtasticd has a real radio configured. Tick the SimRadio setting to replace it.', false);
       return;
     }
-    if (!(await AW.confirmHere('Activate MUI with these pins? This changes the boot files and the radio daemon; a restart applies it.', { anchor: button, label: 'Activate MUI' }))) return;
+    const applying = muiHolds();
+    const question = applying
+      ? 'Apply these MUI settings? A changed pin changes the boot files, and a restart applies it.'
+      : 'Activate MUI with these pins? This changes the boot files and the radio daemon; a restart applies it.';
+    if (!(await AW.confirmHere(question, { anchor: button, label: applying ? 'Apply' : 'Activate MUI' }))) return;
     button.disabled = true;
     muiSayText('Saving MUI…', true);
     try {
       const reply = await post({ action: 'mui-activate', selection });
       const done = await waitMui(reply.id);
-      if (done && done.ok) muiSayText(answerSaid(done) || 'MUI is saved.', true);
+      if (done && done.ok) {
+        muiSayText(answerSaid(done) || 'MUI is saved.', true);
+        readPins();
+      }
     } catch (err) {
       muiSayText(err.message || 'MUI could not be activated.', false);
       muiUpdate();
@@ -965,7 +932,10 @@
     try {
       const reply = await post({ action: 'mui-deactivate' });
       const done = await waitMui(reply.id);
-      if (done && done.ok) muiSayText(answerSaid(done) || 'MUI is off.', true);
+      if (done && done.ok) {
+        muiSayText(answerSaid(done) || 'MUI is off.', true);
+        readPins();
+      }
     } catch (err) {
       muiSayText(err.message || 'MUI could not be turned off.', false);
       muiUpdate();

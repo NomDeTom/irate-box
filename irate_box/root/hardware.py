@@ -69,6 +69,16 @@ def pins():
     return data
 
 
+def _optional_claims(name):
+    """A module's claims() when it is there and has one, or []: the pin map must draw without it."""
+    module = _optional(name)
+    try:
+        found = module.claims() if module is not None and hasattr(module, "claims") else []
+    except (OSError, ValueError):
+        return []
+    return [item for item in found if isinstance(item, dict) and isinstance(item.get("pin"), int)]
+
+
 def _optional(name):
     """A module this layer uses when it is there (pinhog, before its own stage), or None."""
     try:
@@ -77,8 +87,9 @@ def _optional(name):
         return None
 
 
-def _assignment(pin, role, by, source, row, active=False, tokens=(), own=()):
-    """One intended pin: idle when nothing claims it, active when the claim is ours, conflict when not."""
+def _assignment(pin, role, by, source, row, active=False, tokens=(), own=(), functions=()):
+    """One intended pin: idle when nothing claims it, active when the claim is ours, conflict when not. A pin-mux
+    function named in functions (spi1) is ours too, whichever controller address the kernel gives as consumer."""
     state = "idle"
     active_owner = ""
     mine = False
@@ -87,7 +98,7 @@ def _assignment(pin, role, by, source, row, active=False, tokens=(), own=()):
         function = " ".join(str(row.get(key) or "") for key in ("function", "group", "name")).lower()
         active_owner = consumer or str(row.get("function") or row.get("name") or "")
         mine = any(name in consumer for name in own)
-        if mine or any(token in consumer for token in tokens):
+        if mine or any(token in consumer for token in tokens) or any(token in function for token in functions):
             state = "active"
         elif not consumer and active and any(token in function for token in tokens):
             state = "active"
@@ -120,7 +131,9 @@ def assignments(include_pinhog=True):
     lcd = _module("lcdtouch")
     lcd_state = lcd.status()
     out = []
-    if lcd_state.get("supported"):
+    # The fixed SPI1 overlay's pins are its own only while it is in the boot files: otherwise MUI's overlay, or
+    # nothing, holds them, and a claim on them is no conflict.
+    if lcd_state.get("supported") and lcd_state.get("enabled"):
         out = [
             _assignment(
                 item.get("pin"),
@@ -135,6 +148,23 @@ def assignments(include_pinhog=True):
             for item in (getattr(lcd, "PINS", []) or [])
             if isinstance(item, dict) and isinstance(item.get("pin"), int)
         ]
+    taken = {item["pin"] for item in out}
+    for claim in _optional_claims("mui"):
+        if claim.get("pin") in taken:
+            continue
+        out.append(
+            _assignment(
+                claim["pin"],
+                claim.get("name") or claim.get("role") or "display",
+                "MUI",
+                "mui",
+                header.get(claim["pin"]),
+                active=True,
+                tokens=("portduino", "irate-box-mui"),
+                own=("portduino",),
+                functions=(f"spi{claim.get('bus')}",),
+            )
+        )
     serial = _module("ownserial").status()
     if serial.get("on"):
         for pin, role in ((8, "UART TX"), (10, "UART RX")):

@@ -91,17 +91,17 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       && /free/.test(pins[1].textContent),
     pins.map((p) => [p.className, p.textContent]),
   );
-  check('  the claims list names the function', /ff120000\.spi/.test(text('pins-claims')), text('pins-claims'));
+  check('  the tables of claims and roles are gone: the map and the selected pin carry them', !d.getElementById('pins-claims') && !d.getElementById('pins-roles'));
   // A known 40-pin header: left/right rows, then the table and the copyable text.
   const lyra = map(Date.now() / 1000);
   lyra.model = 'Luckfox Lyra Zero W';
   lyra.header = [
     { pin: 1, type: '3v3', name: '3V3_OUT', gpio: null, rmio: null, role: '', consumer: '', used: false },
     { pin: 2, type: '5v', name: 'VSYS', gpio: null, rmio: null, role: '', consumer: '', used: false },
-    { pin: 3, type: 'gpio', name: 'GPIO0_A0', gpio: 0, rmio: 0, role: 'TP+RTC', consumer: 'ff060000.i2c', used: true },
+    { pin: 3, type: 'gpio', name: 'GPIO0_A0', gpio: 0, chip: 'gpiochip0', line: 0, rmio: 0, role: 'TP+RTC', consumer: 'ff060000.i2c', label: 'I2C2 SDA', used: true },
     { pin: 4, type: '5v', name: 'VSYS', gpio: null, rmio: null, role: '', consumer: '', used: false },
     { pin: 5, type: 'gpio', name: 'GPIO0_A1', gpio: 5, rmio: 5, role: '', consumer: '', used: false },
-    { pin: 6, type: 'gpio', name: 'GPIO0_B6', gpio: 6, rmio: 6, role: '', consumer: '', used: false },
+    { pin: 6, type: 'gpio', name: 'GPIO0_C6', gpio: 22, rmio: 22, role: 'UART0 TX', consumer: '', used: false },
   ];
   state = { pins: lyra, pending: 0, results: [] };
   w.rkRenderPins(state);
@@ -109,8 +109,20 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const squares = [...d.querySelectorAll('#pins-map .pin-square')];
   check(
     'a known header: two pins a row, a narrow strip of squares down the middle',
-    rows.length === 3 && squares.length === 6 && /GPIO0_A0/.test(text('pins-map')) && /ff060000\.i2c · RM_IO0/.test(text('pins-map')),
+    rows.length === 3 && squares.length === 6 && /I2C2 SDA/.test(text('pins-map')),
     text('pins-map'),
+  );
+  const sideText = [...d.querySelectorAll('#pins-map .pin-side')].map((side) => side.textContent);
+  check(
+    '  each pin by its name and owner, not the kernel\'s address or RM_IO; power says nothing twice',
+    !/ff060000|RM_IO/.test(text('pins-map')) && sideText[0] === '3V3_OUT' && sideText[1] === 'VSYS'
+      && sideText[2] === 'I2C2 SDATP+RTC',
+    sideText,
+  );
+  check(
+    '  a free pin carries the board\'s role for it',
+    sideText[5] === 'GPIO0_C6free · UART0 TX' && sideText[4] === 'GPIO0_A1free',
+    sideText,
   );
   check(
     '  each square says its type: 3V3, 5V, taken and free, with a mark for e-paper',
@@ -122,11 +134,19 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   );
   // A pin selected on the header fills the card beside it.
   squares[4].click();
-  check('a free pin on the map: its card and the form name it', /Pin 5.*GPIO0_A1.*free\. Read it once/.test(text('pins-gpio-selected'))
-    && d.getElementById('pins-gpio-pin').value === '5' && squares[4].classList.contains('is-selected'), [text('pins-gpio-selected'), d.getElementById('pins-gpio-pin').value]);
+  check('a free pin on the map: its card and the form name it', /Read it once/.test(text('pins-gpio-selected'))
+    && /Pin5NameGPIO0_A1/.test(text('pins-gpio-detail')) && /Held byfree/.test(text('pins-gpio-detail'))
+    && d.getElementById('pins-gpio-pin').value === '5' && squares[4].classList.contains('is-selected'), [text('pins-gpio-selected'), text('pins-gpio-detail'), d.getElementById('pins-gpio-pin').value]);
   squares[2].click();
-  check('a taken pin: its card says so, and the free pin stays the one to act on', /Pin 3.*taken by ff060000\.i2c/.test(text('pins-gpio-selected'))
+  check('a taken pin: its card says so, and the free pin stays the one to act on', /Only a free pin/.test(text('pins-gpio-selected'))
     && d.getElementById('pins-gpio-pin').value === '5' && squares[2].classList.contains('is-selected') && !squares[4].classList.contains('is-selected'), text('pins-gpio-selected'));
+  check(
+    '  its details: the name, the pinout\'s GPIO, RM_IO, the line, the kernel\'s claim and the board role',
+    /NameI2C2 SDA/.test(text('pins-gpio-detail')) && /GPIOGPIO0_A0/.test(text('pins-gpio-detail'))
+      && /RM_IORM_IO0/.test(text('pins-gpio-detail')) && /Linegpiochip0 line 0/.test(text('pins-gpio-detail'))
+      && /Kernel claimff060000\.i2c/.test(text('pins-gpio-detail')) && /Board roleTP\+RTC/.test(text('pins-gpio-detail')),
+    text('pins-gpio-detail'),
+  );
   const sides = [...d.querySelectorAll('#pins-map .pin-side')];
   check(
     '  the words outward: the left side right-aligned, the right side left-aligned',
@@ -145,28 +165,24 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       d.querySelector(`#pins .pin-key.${name}`),
     ),
   );
+  const shown = [...d.querySelectorAll('#pins-legend [data-state]')].filter((node) => !node.hidden).map((node) => node.dataset.state);
   check(
-    '  the header does not mix in the board role; the roles table has it separately',
-    !/TP\+RTC/.test(text('pins-map')) && /TP\+RTC/.test(text('pins-roles')) && /GPIO0_A0/.test(text('pins-roles')),
-    [text('pins-map'), text('pins-roles')],
-  );
-  check(
-    '  in use now is a table of claims, not every pin again',
-    d.querySelectorAll('#pins-claims tbody tr').length === 1 && /ff120000\.spi/.test(text('pins-claims')),
-    text('pins-claims'),
+    '  the legend lists only the states drawn, with the mark each carries',
+    shown.join() === 'taken,taken' && /●/.test(d.querySelector('#pins-legend .pin-key.pin-taken').textContent),
+    shown,
   );
   check('  copy is offered once a map is drawn', !d.getElementById('pins-copy').disabled);
   // An assignment means a free pin is not free: assigned-idle is its own state, and a live stranger is a conflict.
   const assigned = map(Date.now() / 1000);
   assigned.header = [
     { pin: 5, type: 'gpio', name: 'GPIO0_A1', gpio: 5, rmio: 5, role: '', consumer: '', used: false },
-    { pin: 6, type: 'gpio', name: 'GPIO0_B6', gpio: 6, rmio: 6, role: '', consumer: '', used: false },
+    { pin: 6, type: 'gpio', name: 'GPIO0_B6', gpio: 6, rmio: 6, role: '', consumer: 'other-driver', used: true },
   ];
   w.rkRenderPins({
     pins: assigned,
     assignments: [
       { pin: 5, role: 'Display D/C', by: 'display', state: 'idle', source: 'lcdtouch' },
-      { pin: 6, role: 'UART TX', by: 'serial', state: 'conflict', source: 'ownserial' },
+      { pin: 6, role: 'UART TX', by: 'serial', state: 'conflict', source: 'ownserial', active_owner: 'other-driver' },
     ],
   });
   const states = [...d.querySelectorAll('#pins-map .pin-square')].filter((square) => !square.classList.contains('pin-empty'));
@@ -174,9 +190,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     'an assignment not in use: assigned, not free; a foreign claim: conflict',
     states[0].classList.contains('pin-assigned')
       && /○/.test(states[0].textContent)
-      && /assigned to Display D\/C/.test(states[0].title)
+      && /for test card/.test(states[0].title)
       && states[1].classList.contains('pin-conflict')
-      && /!/.test(states[1].textContent),
+      && /!/.test(states[1].textContent)
+      && /other-driver, wanted by own serial/.test(states[1].title),
     states.map((square) => [square.className, square.textContent, square.title]),
   );
   state = { ...state, pending: 1, results: [] };
@@ -210,7 +227,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   w.rkRenderPins(off);
   check(
     'the SPI1 overlay off: Enable offered',
-    /Off\./.test(text('pins-overlay-state')) && !d.getElementById('pins-overlay-toggle').disabled && /Enable/.test(text('pins-overlay-toggle')),
+    /Overlay off\./.test(text('pins-overlay-state')) && !d.getElementById('pins-overlay-toggle').disabled && /Enable/.test(text('pins-overlay-toggle')),
     [text('pins-overlay-state'), text('pins-overlay-toggle')],
   );
   d.getElementById('pins-overlay-toggle').click();
@@ -253,7 +270,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(700);
   check(
     '  off again: Enable offered',
-    /Off\./.test(text('pins-overlay-state')) && /Enable/.test(text('pins-overlay-toggle')),
+    /Overlay off\./.test(text('pins-overlay-state')) && /Enable/.test(text('pins-overlay-toggle')),
     [text('pins-overlay-state'), text('pins-overlay-toggle')],
   );
   // The display's own controls: on/off, and the one-minute test.
@@ -266,10 +283,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   w.rkRenderPins(activeOff);
   check(
     'display off: both display controls offered',
-    /Off\./.test(text('pins-display-state'))
+    /display is off/.test(text('pins-overlay-state'))
       && !d.getElementById('pins-display-toggle').disabled
       && !d.getElementById('pins-test').disabled,
-    [text('pins-display-state'), d.getElementById('pins-display-toggle').disabled],
+    [text('pins-overlay-state'), d.getElementById('pins-display-toggle').disabled],
   );
   posted.length = 0;
   d.getElementById('pins-display-toggle').click();
@@ -290,10 +307,10 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(700);
   check(
     '  on: Turn display off offered, the test still offered',
-    /On\./.test(text('pins-display-state'))
+    /test card is showing/.test(text('pins-overlay-state'))
       && /Turn display off/.test(text('pins-display-toggle'))
       && !d.getElementById('pins-test').disabled,
-    [text('pins-display-state'), text('pins-display-toggle')],
+    [text('pins-overlay-state'), text('pins-display-toggle')],
   );
   posted.length = 0;
   d.getElementById('pins-test').click();
@@ -314,9 +331,22 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     '  overlay not active: the display controls are disabled and say why',
     d.getElementById('pins-display-toggle').disabled
       && d.getElementById('pins-test').disabled
-      && /Enable the overlay/.test(text('pins-display-state')),
-    [text('pins-display-state'), d.getElementById('pins-display-toggle').disabled],
+      && /waiting for a restart/.test(text('pins-overlay-state')),
+    [text('pins-overlay-state'), d.getElementById('pins-display-toggle').disabled],
   );
+  // MUI's overlay holds the same pins: the test card waits, and says why.
+  w.rkRenderPins({
+    pins: fresh,
+    overlay: { supported: true, on: false, enabled: false, installed: true, active: false, pending: false },
+    mui: { status: { supported: true, overlay_enabled: true, unit_active: true, binary_present: true }, options: null },
+  });
+  check(
+    '  MUI holding the pins: Enable and the test wait, and the card says MUI holds them',
+    d.getElementById('pins-overlay-toggle').disabled && d.getElementById('pins-test').disabled
+      && /MUI holds these pins/.test(text('pins-overlay-state')),
+    text('pins-overlay-state'),
+  );
+  w.rkRenderPins({ ...activeOff, mui: null });
   // A free pin: read once, then keep it set as a pin hog pending a restart, then remove it.
   const gpioMap = map(Date.now() / 1000);
   gpioMap.header = [

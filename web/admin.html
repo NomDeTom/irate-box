@@ -6072,12 +6072,11 @@
           <div class="findings" id="housecall-findings"></div>
         </section>
 
-        <section class="admin-pane" id="pins" aria-label="Pin map" data-i18n-aria-label="admin.pins.aria-pin-map">
+        <section class="admin-pane" id="pins" aria-labelledby="pins-title">
+          <h2 id="pins-title" data-i18n="admin.pins.title">Pin map</h2>
           <p class="setting-desc" data-i18n="admin.pins.intro">
-            The box reads the GPIO lines with <code>gpioinfo</code> and, on a Rockchip board, the pin mux as well. The
-            header below is the board's 40-pin layout: a pin that a radio hat, a display, an I2C device or irate-box
-            already uses is marked taken, with the name of what claims it. A free pin is the one to select for a new
-            overlay.
+            The board's 40-pin header, read from the GPIO lines and the pin mux. Each pin shows what holds it. Select a
+            pin to see its details.
           </p>
           <div class="library-buttons">
             <button class="action-btn" type="button" id="pins-scan" data-i18n="admin.pins.read">Read the pins</button>
@@ -6085,20 +6084,21 @@
           </div>
           <p class="setting-desc action-note" id="pins-note" role="status" hidden></p>
           <p class="setting-desc" id="pins-board"></p>
-          <p class="pin-legend">
+          <p class="pin-legend" id="pins-legend">
             <span class="pin-key pin-3v3"></span><span data-i18n="admin.pins.legend-3v3">3.3 V</span>
             <span class="pin-key pin-5v"></span><span data-i18n="admin.pins.legend-5v">5 V</span>
             <span class="pin-key pin-gnd"></span><span data-i18n="admin.pins.legend-gnd">Ground</span>
             <span class="pin-key pin-free"></span><span data-i18n="admin.pins.legend-free">Free</span>
-            <span class="pin-key pin-assigned"></span><span data-i18n="admin.pins.legend-assigned">Assigned, not in use</span>
-            <span class="pin-key pin-taken"></span><span data-i18n="admin.pins.legend-taken">Taken</span>
-            <span class="pin-key pin-conflict"></span><span data-i18n="admin.pins.legend-conflict">Conflict</span>
+            <span class="pin-key pin-taken" data-state="taken">●</span><span data-state="taken" data-i18n="admin.pins.legend-taken">Taken</span>
+            <span class="pin-key pin-assigned" data-state="assigned">○</span><span data-state="assigned" data-i18n="admin.pins.legend-assigned">Assigned, not in use</span>
+            <span class="pin-key pin-conflict" data-state="conflict">!</span><span data-state="conflict" data-i18n="admin.pins.legend-conflict">Conflict</span>
           </p>
           <div class="pin-layout">
             <div class="pinheader" id="pins-map"></div>
             <div class="pin-overlay pin-gpio-card" id="pins-gpio">
-              <h3 data-i18n="admin.pins.gpio-title">Read or keep a pin</h3>
+              <h3 data-i18n="admin.pins.gpio-title">Read or set pin</h3>
               <p class="setting-desc" id="pins-gpio-selected" data-i18n="admin.pins.gpio-selected">Select a pin on the map, or in the list below.</p>
+              <dl class="pin-detail" id="pins-gpio-detail" hidden></dl>
               <p class="setting-desc" data-i18n="admin.pins.gpio-intro">
                 A free header pin can be read once, or held by a pin hog from boot: input with a pull, or
                 output high or low. A poll lasts one request. A hog is a boot-file change and applies at the
@@ -6140,28 +6140,15 @@
               <div id="pins-hogs"></div>
             </div>
           </div>
-          <div class="pin-overlay" id="pins-overlay">
-            <h3 data-i18n="admin.pins.overlay-title">SPI1 display and touch</h3>
-            <p class="setting-desc" data-i18n="admin.pins.overlay-intro">
-              A 3.5" SPI TFT and XPT2046 resistive touch on SPI1, clear of SPI0:
-              pins 27 (CLK), 29 (MOSI), 31 (MISO), 35 (display CS), 37 (touch CS), 26 (D/C),
-              28 (RST) and 36 (BL). Pin 28 was the proposed touch PEN, so PEN needs another free pin
-              when touch is wired. Pin 36 is the MeshAdv-Pi HAT's IRQ, so the HAT and the backlight
-              control cannot both be fitted. The overlay is applied at the next restart.
-            </p>
-            <p class="setting-desc" id="pins-overlay-state" data-i18n="admin.pins.overlay-state">Not read yet.</p>
-            <div class="library-buttons">
-              <button class="action-btn" type="button" id="pins-overlay-toggle" data-i18n="admin.pins.overlay-enable" disabled>Enable</button>
-            </div>
-            <p class="setting-desc action-note" id="pins-overlay-note" role="status" hidden></p>
-          </div>
           <div class="pin-overlay" id="pins-mui">
-            <h3 data-i18n="admin.pins.mui-title">Activate MUI</h3>
+            <h3 data-i18n="admin.pins.mui-title">MUI</h3>
             <p class="setting-desc" data-i18n="admin.pins.mui-intro">
-              Select the header pins for the SPI display and touch, then let the box build the matching overlay and
-              the per-host meshtasticd configuration. The overlay applies at the next restart. SPI0 stays free for a
-              radio. MUI itself uses SimRadio, and switches the backlight off while its screen sleeps.
+              meshtasticd's screen interface on a SPI display with touch. The box builds the overlay and meshtasticd's
+              configuration for the pins below. The overlay applies at the next restart. The backlight goes off while
+              the screen sleeps.
             </p>
+            <p class="setting-desc" id="pins-mui-state" role="status" data-i18n="admin.pins.mui-state">Not read yet.</p>
+            <h4 data-i18n="admin.pins.mui-pins">Pins</h4>
             <div class="pin-mui-form">
               <label class="setting-name" for="pins-mui-bus" data-i18n="admin.pins.mui-bus">Display bus</label>
               <select id="pins-mui-bus">
@@ -6189,6 +6176,12 @@
               <select id="pins-mui-rst"></select>
               <label class="setting-name" for="pins-mui-bl" data-i18n="admin.pins.mui-bl">Backlight</label>
               <select id="pins-mui-bl"></select>
+              <p class="setting-desc action-note bad pin-mui-aside" id="pins-mui-bl-warning" data-i18n="admin.pins.mui-bl-warning" hidden>
+                Pin 36 is the MeshAdv-Pi HAT's IRQ: that HAT and this backlight pin cannot both be fitted.
+              </p>
+            </div>
+            <h4 data-i18n="admin.pins.mui-options">Options</h4>
+            <div class="pin-mui-form">
               <label class="setting-name" for="pins-mui-log-level" data-i18n="admin.pins.mui-log-level">Log level</label>
               <select id="pins-mui-log-level">
                 <option value="warn" data-i18n="admin.pins.mui-log-warn">Warnings</option>
@@ -6200,63 +6193,53 @@
                 <option value="ram" data-i18n="admin.pins.mui-log-ram">RAM (default)</option>
                 <option value="card" data-i18n="admin.pins.mui-log-card">The card</option>
               </select>
+              <p class="setting-desc action-note bad pin-mui-aside" id="pins-mui-log-warning" data-i18n="admin.pins.mui-log-warning" hidden>
+                Debug logging writes about 100 lines a minute. On the card this wears it and fills the journal.
+              </p>
               <label class="setting-name" for="pins-mui-map-tiles" data-i18n="admin.pins.mui-map-tiles">Map tiles</label>
               <select id="pins-mui-map-tiles">
                 <option value="dummy" data-i18n="admin.pins.mui-map-dummy">Dummy tile (default)</option>
                 <option value="folder" data-i18n="admin.pins.mui-map-folder">Tiles folder</option>
               </select>
-              <span id="pins-mui-map-folder-box" hidden>
+              <span class="pin-mui-pair" id="pins-mui-map-folder-box" hidden>
                 <label class="setting-name" for="pins-mui-map-folder" data-i18n="admin.pins.mui-map-folder-path">Tiles folder</label>
                 <select id="pins-mui-map-folder"></select>
+                <span class="setting-desc pin-mui-aside" data-i18n="admin.pins.mui-map-note">
+                  A folder under /var/lib/hub/maps holding an offline z/x/y tile set.
+                </span>
               </span>
-            </div>
-            <p class="setting-desc" id="pins-mui-map-note" data-i18n="admin.pins.mui-map-note">
-              Tile folders are the folders root found under /var/lib/hub/maps. Put an offline z/x/y tile set in one.
-            </p>
-            <p class="setting-desc action-note bad" id="pins-mui-log-warning" data-i18n="admin.pins.mui-log-warning" hidden>
-              Debug logging writes about 100 lines a minute. On the card this wears it and fills the journal.
-            </p>
-            <p class="setting-desc" id="pins-mui-radio-setting">
-              <label for="pins-mui-replace-radio">
+              <span class="setting-name" data-i18n="admin.pins.mui-radio">Radio</span>
+              <label class="inline" for="pins-mui-replace-radio">
                 <input type="checkbox" id="pins-mui-replace-radio" />
-                <span data-i18n="admin.pins.mui-replace-radio">Replace the radio with a simulated one (SimRadio)</span>
+                <span data-i18n="admin.pins.mui-replace-radio">SimRadio in place of meshtasticd's radio</span>
               </label>
-            </p>
-            <p class="setting-desc action-note bad" id="pins-mui-radio-warning" data-i18n="admin.pins.mui-radio-warning" hidden>
-              meshtasticd has a real radio configured. Activating MUI stops it and uses SimRadio. Tick the setting
-              above to replace it.
-            </p>
-            <p class="setting-desc" id="pins-mui-state" data-i18n="admin.pins.mui-state">Not read yet.</p>
+              <p class="setting-desc action-note bad pin-mui-aside" id="pins-mui-radio-warning" data-i18n="admin.pins.mui-radio-warning" hidden>
+                meshtasticd has a real radio configured. MUI stops it and runs on SimRadio, so this needs ticking.
+              </p>
+            </div>
             <div class="library-buttons">
               <button class="action-btn" type="button" id="pins-mui-activate" data-i18n="admin.pins.mui-activate" disabled>Activate</button>
               <button class="action-btn" type="button" id="pins-mui-deactivate" data-i18n="admin.pins.mui-deactivate" disabled>Deactivate</button>
               <button class="action-btn" type="button" id="pins-mui-restart" data-i18n="admin.pins.mui-restart" hidden>Restart now</button>
             </div>
             <p class="setting-desc action-note" id="pins-mui-note" role="status" hidden></p>
-            <h4 data-i18n="admin.pins.mui-selected">Selected header pins</h4>
-            <div id="pins-mui-diagram"></div>
           </div>
-          <div class="pin-overlay" id="pins-display">
-            <h3 data-i18n="admin.pins.display-title">Display</h3>
-            <p class="setting-desc" data-i18n="admin.pins.display-intro">
-              Turn the panel on to the test card, or run the one-minute animation sequence. The test
-              turns the display off at the end. The panel keeps its picture only until the next restart.
+          <details class="pin-overlay" id="pins-testcard">
+            <summary data-i18n="admin.pins.testcard-title">Test card</summary>
+            <p class="setting-desc" data-i18n="admin.pins.testcard-intro">
+              A fixed SPI1 overlay for checking a panel's wiring without MUI: pins 27, 29, 31, 35 and 37 for SPI, 26 for
+              D/C, 28 for reset and 36 for the backlight. It applies at the next restart. The test card and the
+              one-minute animation turn the panel off at the end.
             </p>
-            <p class="setting-desc" id="pins-display-state" data-i18n="admin.pins.display-state">Not read yet.</p>
+            <p class="setting-desc" id="pins-overlay-state" role="status" data-i18n="admin.pins.overlay-state">Not read yet.</p>
             <div class="library-buttons">
+              <button class="action-btn" type="button" id="pins-overlay-toggle" data-i18n="admin.pins.overlay-enable" disabled>Enable</button>
               <button class="action-btn" type="button" id="pins-display-toggle" data-i18n="admin.pins.display-on" disabled>Turn display on</button>
               <button class="action-btn" type="button" id="pins-test" data-i18n="admin.pins.test" disabled>Run 1-minute test</button>
             </div>
+            <p class="setting-desc action-note" id="pins-overlay-note" role="status" hidden></p>
             <p class="setting-desc action-note" id="pins-display-note" role="status" hidden></p>
-          </div>
-          <h3 data-i18n="admin.pins.claims">In use now</h3>
-          <div id="pins-claims"></div>
-          <h3 data-i18n="admin.pins.board-roles">The board's fixed roles</h3>
-          <p class="setting-desc" data-i18n="admin.pins.roles-note">
-            These are the pinout's own names for these pins, not claims. A pin can carry one of these
-            functions only when an overlay enables it. Until then it stays free.
-          </p>
-          <div id="pins-roles"></div>
+          </details>
         </section>
 
         <section class="admin-pane" id="mock-controls" aria-labelledby="mock-controls-title">

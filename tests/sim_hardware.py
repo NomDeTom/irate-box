@@ -147,6 +147,57 @@ check(
     bypin[8]["role"] == "UART TX" and bypin[8]["state"] == "active" and bypin[10]["state"] == "idle",
     [bypin.get(n) for n in (8, 10)],
 )
+
+# MUI's pins, as the lyra-tft read them with MUI running (2026-11-11): the SPI1 lines by the controller's address,
+# D/C, reset and backlight by meshtasticd (portduino). The fixed SPI1 overlay is not in the boot files.
+from irate_box.root import mui
+
+real_lcd_status, real_claims = lcdtouch.status, mui.claims
+lcdtouch.status = lambda: {"supported": True, "on": False, "enabled": False, "installed": True, "active": False}
+mui.claims = lambda: [
+    {"pin": 27, "role": "clk", "name": "SPI1 CLK", "bus": 1},
+    {"pin": 26, "role": "dc", "name": "Display D/C", "bus": 1},
+    {"pin": 36, "role": "bl", "name": "Backlight", "bus": 1},
+    {"pin": 37, "role": "touch_cs", "name": "Touch CS", "bus": 1},
+]
+pins_mui = dict(pins)
+pins_mui["header"] = [
+    {
+        "pin": 27,
+        "type": "gpio",
+        "name": "GPIO1_B1",
+        "used": True,
+        "consumer": "ff130000.spi",
+        "group": "rm-io24-spi1-clk",
+    },
+    {"pin": 26, "type": "gpio", "name": "GPIO0_B1", "used": True, "consumer": "portduino"},
+    {"pin": 36, "type": "gpio", "name": "GPIO1_D1", "used": True, "consumer": "portduino"},
+    {"pin": 37, "type": "gpio", "name": "GPIO1_C3", "used": True, "consumer": "other-driver"},
+]
+(T / "state" / "control" / "pins.json").write_text(json.dumps(pins_mui))
+mui_pins = {item["pin"]: item for item in hardware.status()["assignments"]}
+check(
+    "assignments: the fixed SPI1 overlay out of the boot files assigns nothing",
+    not [item for item in mui_pins.values() if item["source"] == "lcdtouch"],
+    mui_pins,
+)
+check(
+    "  MUI's pins are MUI's, by name, whether the SPI controller or meshtasticd holds them",
+    mui_pins[27]["state"] == "active"
+    and mui_pins[27]["by"] == "MUI"
+    and mui_pins[27]["role"] == "SPI1 CLK"
+    and mui_pins[26]["state"] == "active"
+    and mui_pins[26]["holding"] is True
+    and mui_pins[26]["role"] == "Display D/C"
+    and mui_pins[36]["state"] == "active"
+    and mui_pins[36]["role"] == "Backlight",
+    [mui_pins.get(n) for n in (27, 26, 36)],
+)
+check(
+    "  a pin MUI wants that another driver holds is a conflict", mui_pins[37]["state"] == "conflict", mui_pins.get(37)
+)
+lcdtouch.status, mui.claims = real_lcd_status, real_claims
+(T / "state" / "control" / "pins.json").write_text(json.dumps(pins))
 check(
     "the display: on, waiting for a restart, its pixels and driver",
     data["display"] == {"supported": True, "on": True, "pending": True, "pixels": [480, 320], "driver": "ili9488"},

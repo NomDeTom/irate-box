@@ -198,6 +198,9 @@ SUNXI_GPIO_CHIP = {
     "1f02c00": "rpio",
 }
 GPIO_SYS = Path(os.environ.get("HUB_GPIO_SYS", "/sys/bus/gpio/devices"))
+SPI_MASTERS = Path(os.environ.get("HUB_SPI_MASTERS", "/sys/class/spi_master"))
+SPI_DEVICES = Path(os.environ.get("HUB_SPI_SYS", "/sys/bus/spi/devices"))
+I2C_DEVICES = Path(os.environ.get("HUB_I2C_SYS", "/sys/bus/i2c/devices"))
 CHIP_RE = re.compile(r"^gpiochip(\d+)\s+-\s+\d+\s+lines:")
 LINE_COUNT_RE = re.compile(r"^\s*line\s+\d+:")
 # libgpiod v2: name, direction, then an optional active-low and an optional consumer=… (quoted on the Pi, bare on the
@@ -398,22 +401,71 @@ def alias_for(owner, table=None, of_node=None):
     return ""
 
 
-def bus_occupant(bus):
-    """What sits on a SPI bus: its first device's modalias without the "spi:" prefix (spidev, spi-nand)."""
-    if not bus.lower().startswith("spi"):
-        return ""
+def _bus_number(base, prefix, owner):
+    """The Linux bus number of the controller at owner's address (ff120000.spi -> 0), or None."""
+    address = owner.split(".", 1)[0].lower()
+    if not address:
+        return None
     try:
-        devices = sorted(Path("/sys/bus/spi/devices").glob(f"{bus.lower()}.*"))
+        entries = sorted(base.glob(f"{prefix}*"))
     except OSError:
-        return ""
-    for device in devices:
+        return None
+    for entry in entries:
+        number = entry.name[len(prefix) :]
+        if not number.isdigit():
+            continue
         try:
-            modalias = (device / "modalias").read_text().strip()
+            target = str(entry.resolve(strict=True)).lower()
         except OSError:
             continue
-        if modalias.startswith("spi:"):
-            return modalias[4:]
-    return ""
+        if f"/{address}." in target:
+            return int(number)
+    return None
+
+
+def bus_devices(owner, signal=""):
+    """What sits on the bus a pin's controller drives, by the names a user configures: spidev0.0, or an I2C
+    device's own name (pcf8563). Only a device with a driver bound counts: a device-tree entry for a panel
+    that is not fitted is not on the bus. A chip select names only its own device. "" when nothing is."""
+    kind = owner.rsplit(".", 1)[-1].lower() if "." in owner else ""
+    names = []
+    if kind == "spi":
+        bus = _bus_number(SPI_MASTERS, "spi", owner)
+        if bus is None:
+            return ""
+        cs = re.fullmatch(r"cs(\d+)", signal.lower())
+        try:
+            devices = sorted(SPI_DEVICES.glob(f"spi{bus}.*"))
+        except OSError:
+            return ""
+        for device in devices:
+            index = device.name.split(".", 1)[1]
+            if cs and index != cs.group(1):
+                continue
+            if not (device / "driver").exists():
+                continue
+            try:
+                modalias = (device / "modalias").read_text().strip()
+            except OSError:
+                continue
+            driver = modalias[4:] if modalias.startswith("spi:") else modalias
+            names.append(f"spidev{bus}.{index}" if driver == "spidev" else driver)
+    elif kind == "i2c":
+        bus = _bus_number(I2C_DEVICES, "i2c-", owner)
+        if bus is None:
+            return ""
+        try:
+            devices = sorted(I2C_DEVICES.glob(f"{bus}-*"))
+        except OSError:
+            return ""
+        for device in devices:
+            if not (device / "driver").exists():
+                continue
+            try:
+                names.append((device / "name").read_text().strip())
+            except OSError:
+                continue
+    return ", ".join(name for name in names if name)
 
 
 def name_for(claim, table=None, of_node=None):
@@ -424,9 +476,7 @@ def name_for(claim, table=None, of_node=None):
         parts = found.group(1).split("-")
         bus = parts[0].upper()
         signal = "-".join(parts[1:]).upper().replace("CSN", "CS")
-        name = f"{bus} {signal}".strip()
-        occupant = bus_occupant(bus)
-        return f"{name} ({occupant})" if occupant else name
+        return f"{bus} {signal}".strip()
     alias = alias_for(claim.get("owner") or "", table, of_node=of_node)
     if alias:
         return alias.upper()
@@ -647,6 +697,8 @@ def snapshot(board=None):
             row["label"] = name_for(
                 {"owner": row["consumer"], "function": row.get("function", ""), "group": row.get("group", "")}, table
             )
+            signal = (row["label"].split(" ", 1) + [""])[1] if row["label"] != row["consumer"] else ""
+            row["owner"] = bus_devices(row["consumer"], signal)
     return {
         "board": board,
         "model": model_name,
