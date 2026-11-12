@@ -605,15 +605,8 @@
     if (!host) return;
     const hogs = assignments.filter((item) => item && item.source === 'pinhog' && typeof item.pin === 'number');
     host.replaceChildren();
-    if (!hogs.length) {
-      host.append(
-        Object.assign(document.createElement('p'), {
-          className: 'setting-desc',
-          textContent: 'No pin is held by a pin hog.',
-        }),
-      );
-      return;
-    }
+    // No hog: nothing to list. A hog's pin is marked "pin hog" on the map, and this table appears with the first.
+    if (!hogs.length) return;
     const table = document.createElement('table');
     table.className = 'admin-table';
     const head = document.createElement('thead');

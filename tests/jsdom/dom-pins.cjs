@@ -172,6 +172,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     shown,
   );
   check('  copy is offered once a map is drawn', !d.getElementById('pins-copy').disabled);
+  check('  no pin hog: the card lists nothing, rather than saying there is none', text('pins-hogs') === '', text('pins-hogs'));
   // An assignment means a free pin is not free: assigned-idle is its own state, and a live stranger is a conflict.
   const assigned = map(Date.now() / 1000);
   assigned.header = [

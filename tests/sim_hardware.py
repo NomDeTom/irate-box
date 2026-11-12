@@ -270,6 +270,12 @@ real_status = hardware.status
 hardware.status = lambda: (_ for _ in ()).throw(AssertionError("read again"))
 check("this boot's file is not read again on a later helper start", hardware.write_status_on_boot() is None)
 hardware.status = real_status
+# An update without a restart: the file is this boot's, but the old code wrote it (no digest, or another one).
+stale = json.loads(hardware.STATUS.read_text())
+stale.pop("code")
+hardware.STATUS.write_text(json.dumps(stale))
+check("  a file the code before an update wrote is read again", hardware.write_status_on_boot() is not None)
+check("  and carries this code's digest", json.loads(hardware.STATUS.read_text())["code"] == hardware.code_digest())
 
 print(f"failures: {fails}")
 sys.exit(1 if fails else 0)
