@@ -11,6 +11,7 @@ starts, after a hardware action, and when a page asks, and the pages read the pu
 Nothing here touches the hardware itself. The one write is the status file. Stdlib only.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -342,7 +343,7 @@ SECTIONS = (
 
 def status():
     """Every section, merged, with a section that failed named in errors rather than taking the rest down."""
-    out = {"at": time.time(), "boot_id": boot_id(), "errors": []}
+    out = {"at": time.time(), "boot_id": boot_id(), "code": code_digest(), "errors": []}
     for name, reader in SECTIONS:
         try:
             out[name] = reader()
@@ -360,13 +361,36 @@ def write_status(data=None):
     return data
 
 
+# The modules whose answers make up the document. An update to any of them changes what the page is told (a pin's
+# owner, which claims are conflicts), so a file written by the code before it is not this code's answer.
+CODE = ("hardware", "pinmap", "mui", "lcdtouch", "pinhog", "ownserial", "crashwatch", "usbgadget", "led")
+
+
+def code_digest():
+    """A short digest of the installed code that writes the document."""
+    digest = hashlib.sha256()
+    here = Path(__file__).resolve().parent
+    for name in CODE:
+        try:
+            digest.update((here / f"{name}.py").read_bytes())
+        except OSError:
+            digest.update(name.encode())
+    return digest.hexdigest()[:16]
+
+
 def status_is_current_boot():
-    """The published file is this boot's, so a root helper start need not read the parts again."""
+    """The published file is this boot's and this code's, so a root helper start need not read the parts again. An
+    update without a restart leaves the old code's file behind: its claims and names are not this code's."""
     try:
         data = json.loads(STATUS.read_text())
     except (OSError, ValueError):
         return False
-    return isinstance(data, dict) and data.get("boot_id") == boot_id() and bool(data.get("at"))
+    return (
+        isinstance(data, dict)
+        and data.get("boot_id") == boot_id()
+        and data.get("code") == code_digest()
+        and bool(data.get("at"))
+    )
 
 
 def write_status_on_boot():

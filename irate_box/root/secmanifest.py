@@ -140,6 +140,7 @@ _PATH_ACTIONS = {
         "writes": ["control/rescue.json", "control/rescue-confirm.json", "boot/uboot-env"],
     },
     "hw-status": {"reads": [], "writes": ["control/hardware.json"]},
+    "hw-current": {"reads": [], "writes": ["control/hardware.json"]},
     "hw-set": {
         "reads": [],
         "writes": [

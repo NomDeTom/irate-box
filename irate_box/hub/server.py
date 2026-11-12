@@ -9291,6 +9291,12 @@ def clear_on_new_boot(boot_id_path=Path("/proc/sys/kernel/random/boot_id")):
 if __name__ == "__main__":
     for what in clear_on_new_boot():
         print(f"New boot: cleared the {what}, as set on /admin")
+    # The hub starts after a boot and after an update; the root helper only for a request. Asked now, it publishes
+    # the hardware status again when the file is another boot's or another code's, before a page reads it.
+    try:
+        control_request({"action": "hw-current"})
+    except OSError as exc:
+        print(f"hardware status: not asked for at start: {exc}")
     CLOCK.start()
     # The mesh heard through the box's MQTT broker: decoded with the owner's channel keys.
     MESH.start()
