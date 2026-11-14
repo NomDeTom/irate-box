@@ -1675,6 +1675,56 @@ check(
     == "The hotspot did not move to channel 6 with the link: The hotspot did not start: no channel.",
 )
 
+
+# Associated but answering nothing, the hotspot left on the old channel (lyra-drv, 2026-11-14 19:48: wlan0 roamed
+# to channel 11, ap0 stayed on 6, ten minutes with no frame either way; back within 15 s of the move).
+def stalled_link(box):
+    link = U.Link("wlan0", U.validate({}))
+    link.up, link.answers, link.obs, link.roamed_at = True, False, {"hold_until": 0}, 1000
+    done = []
+    link.actor = type("A", (), {"do": lambda self, step: done.append(step) or "", "remember": lambda self: None})()
+    return link, done
+
+
+_real_follow = U._follow
+box = Box()
+box.chan["wlan0"] = 6
+U._follow = follower(box)
+link, done = stalled_link(box)
+link.act(1060, ["reconnect"], dict)
+check(
+    "a link that answers nothing, the hotspot on another channel: the hotspot moved, the reconnect left for the next check",
+    box.moves == ["wlan0"]
+    and done == []
+    and any(e["kind"] == "held" and "just moved" in e["text"] for e in link.w.events)
+    and any(e["text"].startswith("The hotspot moved to channel 6") for e in link.w.events),
+    (box.moves, done, [e["text"] for e in link.w.events]),
+)
+link.act(1120, ["reconnect"], dict)
+check(
+    "  still answering nothing on one channel: the reconnect taken",
+    done == ["reconnect"] and box.moves == ["wlan0"],
+    (box.moves, done),
+)
+box = Box()
+box.chan["wlan0"] = 6
+U._follow = follower(box)
+link, done = stalled_link(box)
+link.act(1010, ["reconnect"], dict)
+check(
+    "  the roam only 10 s ago: not moved yet, the reconnect taken as decided",
+    not box.moves and done == ["reconnect"],
+    (box.moves, done),
+)
+box = Box()
+box.chan["wlan0"] = 6
+U._follow = follower(box)
+link, done = stalled_link(box)
+link.obs["hold_until"] = 5000
+link.act(1060, [], dict)
+check("  while the owner holds repairs: not moved", not box.moves, box.moves)
+U._follow = _real_follow
+
 # 11. A WiFi radio with no device: no network tool is asked, and the outage's cause is the radio.
 calls = []
 _real_net, _real_backend, _real_gw, _real_ans, _real_up = (

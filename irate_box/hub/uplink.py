@@ -2226,7 +2226,8 @@ class HotspotFollow:
     another channel than the link's is behind every recorded stall. Moved once the link has held its channel for
     FOLLOW_STEADY with no WiFi join under way, so a link that roams back in the meantime is left to settle.
     The move is root/ap.py's follow(), as the dispatcher's (hub_control ap-follow), which holds the move
-    interval once and also says the move on the Network page."""
+    interval once and also says the move on the Network page. Checked with the link answering, and with it
+    associated but answering nothing: the split starves the link, and the move comes before any repair."""
 
     def __init__(self, record=None, channels=None, joining=None, move=None):
         self.record = record or _ap_record
@@ -2234,6 +2235,7 @@ class HotspotFollow:
         self.joining = joining or _wifi_joining
         self.move = move or _ap_follow
         self.seen = {}  # link -> (its channel, since when), while the hotspot is on another
+        self.moved_at = None  # the check at which this follower last moved the hotspot to the link's channel
 
     def check(self, iface, now, roamed_at=None):
         """One line of what was done, or "" (nothing to do, or not yet). roamed_at: the link's last roam, if seen."""
@@ -2263,6 +2265,7 @@ class HotspotFollow:
         code, out = self.move(iface)
         if self.channels().get(hotspot) == link_channel:
             self.seen.pop(iface, None)
+            self.moved_at = now
             return f"The hotspot moved to channel {link_channel} with the link (it was on {hotspot_channel})."
         why = out.strip()[-160:] if code and out.strip() else "it is still on another channel"
         return f"The hotspot did not move to channel {link_channel} with the link: {why}."
@@ -2783,6 +2786,21 @@ class Link:
                 said = _follow.check(self.iface, now, self.roamed_at)
                 if said:
                     w.log(now, "result", said)
+        elif self.up and self.answers is False and self.kind == "wifi" and not self.dry:
+            # Associated but nothing answers: on an AIC8800 a hotspot left on another channel after a roam can
+            # starve the link of air time, with no frame either way until the hotspot moves to the link's
+            # channel. The move comes before any repair; once made, this round's steps wait for the next
+            # check to say whether the link answers now.
+            if self.obs.get("hold_until", 0) <= now:
+                said = _follow.check(self.iface, now, self.roamed_at)
+                if said:
+                    w.log(now, "result", said)
+                if _follow.moved_at == now:
+                    for step in actions:
+                        w.hold_taken(
+                            now, step, "the hotspot has just moved to the link's channel: the next check first"
+                        )
+                    actions = []
         for step in actions:
             notify.watchdog()  # a step can take minutes; the watchdog round is between steps, not per loop
             if step == "pin":
