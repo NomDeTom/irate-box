@@ -1131,6 +1131,24 @@ class Watch:
         g = self.eff.get("give_up")
         return bool(g) and o.get("cause") in NET_CAUSES and now - o["since"] >= g
 
+    def _rejoin_after_own_reset(self, now, obs, o, can):
+        """Once the driver's own reset has had its time and the link is still down: reconnect now, and count the
+        repeat gap afresh. Without this the next try waits out a gap that grew before the reset (lyra-bench,
+        2026-11-11: the radio was back in seconds, the link 19 min later). Only once a reconnect has been
+        tried in this outage: before that, the ladder's first step comes anyway."""
+        eff = self.eff
+        if (
+            "reconnect" not in o["done"]
+            or "reconnect" not in can
+            or "reconnect" not in eff["steps"]
+            or self._radio_first(o)
+            or self._held(now, obs, "reconnect")
+        ):
+            return False
+        o["gap"] = eff["repeat"]
+        o["next_reconnect"] = now + max(o["gap"], 30) if eff["repeat"] else None
+        return True
+
     def _radio_first(self, o):
         """A failed radio, and the owner's choice to reset it at once rather than climb the ladder."""
         return o.get("cause") == "radio" and self.eff["on_wedge"] in ("radio", "reboot")
@@ -1149,6 +1167,7 @@ class Watch:
             if not o.get("own_reset"):
                 o["own_reset"] = True
                 self.log(now, "info", f"The radio's driver reset it itself {human(own)} ago: left to it to come back.")
+            o["after_own_reset"] = True
             return []
         if self._paused(now, obs):
             return []
@@ -1163,6 +1182,17 @@ class Watch:
                     "It starts again when the network returns. The Network page setting Network unavailable: retry period sets how long it tries.",
                 )
             return []
+        if o.pop("after_own_reset", False) and self._rejoin_after_own_reset(now, obs, o, can):
+            act = self._reconnect_as(o, can)
+            self.log(
+                now,
+                "repair",
+                f"Reconnect{', locked to the strongest access point' if act == 'pin' else ''}: the radio's driver"
+                f" reset it itself, and the link is still down ({human(now - o['since'])} down).",
+                "reconnect",
+                "auto",
+            )
+            return [act]
         # The owner's choice (on_wedge "radio" or "reboot"): reconnecting and restarting can't mend a
         # failed radio, and on some drivers they make it worse, so straight to the radio reset if the
         # level reaches it; with "reboot", a reboot when it is still not back RADIO_WAIT after that.

@@ -1835,6 +1835,41 @@ try:
         any(x == "radio" and t >= 90 for t, x in acts),
         acts,
     )
+    # lyra-bench, 2026-11-11: joining had failed for an hour, so the repeat gap had grown to an hour. The driver's
+    # own reset brought the radio back in seconds, but the next reconnect waited out that gap (the link came
+    # back 19 min later, at once on that reconnect). Now a reconnect comes when the driver's time is up.
+    w = U.Watch(U.effective(U.validate({"pace": "gentle", "reach": "reboot"})))
+    acts = []
+    for t in range(0, 8000, 10):
+        own = t - 5000 if 5000 <= t < 5090 else None
+        obs = {
+            "link": False,
+            "drops": [],
+            "can": {"reconnect", "restart", "radio", "reboot"},
+            "guests": 0,
+            "uptime": 1e9,
+            "wedged": None,
+            "driver_reset": own,
+            "cause": "join",
+        }
+        acts += [(t, x) for x in w.tick(t, obs)]
+    before = [t for t, x in acts if x == "reconnect" and t < 5000]
+    after = [t for t, x in acts if x == "reconnect" and t >= 5000]
+    check(
+        "  joining failing for over an hour, the gap grown to an hour: no step during the driver's 90 s",
+        before == [320, 1220, 3620] and not any(5000 <= t < 5090 for t, _ in acts),
+        acts,
+    )
+    check(
+        "  the driver's own reset over and the link still down: a reconnect at once (not at 7220), then the gap afresh (900 s)",
+        after[:2] == [5090, 5990],
+        (after, [(e["at"], e["text"]) for e in w.events if e["at"] >= 5000]),
+    )
+    check(
+        "  said in plain words",
+        any(e["at"] == 5090 and "driver reset it itself, and the link is still down" in e["text"] for e in w.events),
+        [(e["at"], e["text"]) for e in w.events if e["at"] >= 5000],
+    )
     (_net / "wlan0").mkdir()
     calls.clear()
     obs = link.look(1060, chosen, Watcher())
