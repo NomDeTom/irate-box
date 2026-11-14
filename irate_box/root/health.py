@@ -6621,8 +6621,10 @@ def check_crashwatch(now=None):
         )
     )
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
+    # On by default, so "on" counts only where there is a watchdog: a kernel with none has the setting and no dog.
+    watchdog_on = s["watchdog"] and bool(wd or pending)
     said = ([M("crash-hang.panic", "The box restarts after a kernel panic or lockup.")] if s["panic"] else []) + (
-        [M("crash-hang.watchdog", "A watchdog restarts the box if it freezes.")] if s["watchdog"] else []
+        [M("crash-hang.watchdog", "A watchdog restarts the box if it freezes.")] if watchdog_on else []
     )
     if s["watchdog"] and pending:
         said.append(M("crash-hang.pending", "The board's watchdog starts working after the next restart."))
@@ -6636,7 +6638,7 @@ def check_crashwatch(now=None):
         )
     elif not wd:
         said.append(M("crash-hang.no-watchdog", "This kernel has no watchdog: neither the board's own nor softdog."))
-    on = s["panic"] or s["watchdog"]
+    on = s["panic"] or watchdog_on
     out.append(
         finding(
             "crash-hang",
@@ -6751,8 +6753,8 @@ def setting_groups(s, wd):
                         if wd == "switched-off"
                         else M(
                             "hs.watchdog.confirm",
-                            "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy "
-                            "work that starves systemd for that long would restart too.",
+                            "A watchdog restarts the box when it stops answering for a minute. A box doing heavy "
+                            "work that starves systemd for that long restarts too.",
                         ),
                     },
                 ],
