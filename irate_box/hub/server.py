@@ -2848,9 +2848,19 @@ def queue_action(payload):
 
 
 def library_snapshot():
-    snap = librarian.snapshot()
-    # An app the librarian handed to the root helper: what became of it.
+    # An app the librarian handed to the root helper: what became of it. A pending id is looked
+    # up by its own file too, not only among the newest results, so an answer older than that
+    # window is still folded in (settle_pending) rather than leaving the entry waiting for ever.
     results = {r.get("id"): r for r in control_results(30)}
+    for entry in librarian.load_status().values():
+        if not isinstance(entry, dict):
+            continue
+        rid = entry.get("pending")
+        if rid and rid not in results:
+            found = control_result(rid)
+            if found:
+                results[rid] = found
+    snap = librarian.snapshot(results)
     for entry in snap["status"].values():
         if entry.get("pending"):
             entry["install_result"] = results.get(entry["pending"])
@@ -3357,6 +3367,18 @@ def control_results(limit=10):
         except (OSError, ValueError):
             pass
     return out
+
+
+def control_result(rid):
+    """One root helper result by id, whether or not it is among the newest control_results;
+    None for an id that is not a result's name or a file that has gone."""
+    rid = str(rid or "")
+    if not rid.isalnum():
+        return None
+    try:
+        return json.loads((CONTROL_RESULTS / f"{rid}.json").read_text())
+    except (OSError, ValueError):
+        return None
 
 
 MESHTASTICD = "meshtasticd.service"  # sampled for its trends where installed; not one of the hub's services
