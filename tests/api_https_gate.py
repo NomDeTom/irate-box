@@ -106,6 +106,14 @@ try:
             p.unlink()
         return out
 
+    # The hub's own start asks root for a current hardware status; that request is the hub's, not a page's.
+    startup = queued()
+    check(
+        "the hub's start asks root for a current hardware status, and nothing else",
+        [item["action"] for item in startup] == ["hw-current"],
+        startup,
+    )
+
     gated = [
         (
             "/admin/update",

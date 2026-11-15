@@ -24,10 +24,13 @@ irate-box-crashwatch.service runs this as root (`crashwatch.py run`), always: sm
               or stopping without shutting down), goes into the watchers' one record too
               (hub/watchlog.py), beside the uplink watchdog's; a filed failure or crash carries its
               lines (watchers.log).
-  A hang      the kernel itself freezing, which nothing in user space can act on. Two choices, off by
+  A hang      the kernel itself freezing, which nothing in user space can act on. Two choices, on by
               default, each the owner's (box doctor): reboot on a kernel panic, oops or lockup
-              (kernel.panic and its kin); and a watchdog (the board's own, or the kernel's softdog
-              where it has none) that systemd keeps fed, so a frozen system restarts by itself.
+              (kernel.panic and its kin); and a watchdog (the board's own, switched on with a boot overlay
+              where its device tree leaves it off, else the kernel's softdog) that systemd keeps fed, so a
+              frozen system restarts by itself. Put in place when crash watch starts (apply_hang), unless the
+              owner has chosen off. A Luckfox Lyra Zero W's image ships with both off, so a kernel that
+              locks up stays frozen until someone switches the power off and on.
 
   A supply    the board's voltage where it measures it: a Raspberry Pi's rpi_volt (and
               vcgencmd get_throttled), or an INA219/INA226 on I2C. An undervoltage is noted
@@ -107,8 +110,8 @@ KEEP_CRASHES = 30
 WATCHDOG_SEC = 60  # RuntimeWatchdogSec: how long a frozen system can stop feeding the watchdog
 DEFAULT = {
     "snapshots": True,
-    "panic": False,
-    "watchdog": False,
+    "panic": True,
+    "watchdog": True,
     "undervoltage": True,
     "undervoltage_mv": UNDERVOLTAGE_MV,
     "power_action": "log",
@@ -137,6 +140,7 @@ AIC_ERR = re.compile(r"cmd queue crashed|cmd_mgr_queue cmd timed-out|check cmdqu
 DRIVER_RESET = re.compile(r"aic8800: firmware not answering: resetting the device")
 DRIVER_GRACE = 90
 HANG_SYSCTL = {"kernel.panic": "10", "kernel.panic_on_oops": "1", "kernel.softlockup_panic": "1"}
+CHOSEN = ("panic", "watchdog")  # settings whose saved value counts only once the owner has set it
 
 
 # --- settings ----------------------------------------------------------------------------------
@@ -148,9 +152,13 @@ def load_settings():
     except (OSError, ValueError):
         raw = {}
     out = dict(DEFAULT)
+    # The hang settings are the owner's once chosen on the doctor (CHOSEN): a value saved beside the others
+    # before they were on by default is the old default, not a choice, and gives way to the new one.
+    chosen = [k for k in raw.get("chosen", []) if k in CHOSEN] if isinstance(raw.get("chosen"), list) else []
     for k in ("snapshots", "panic", "watchdog", "undervoltage"):
-        if isinstance(raw.get(k), bool):
+        if isinstance(raw.get(k), bool) and (k not in CHOSEN or k in chosen):
             out[k] = raw[k]
+    out["chosen"] = chosen
     if raw.get("undervoltage_mv") in UNDERVOLTAGE_OPTIONS:
         out["undervoltage_mv"] = raw["undervoltage_mv"]
     if raw.get("power_action") in POWER_ACTIONS:
@@ -1041,16 +1049,17 @@ def power_events():
 
 
 def watchdog_device():
-    """'hardware' when the board has a watchdog of its own, 'softdog' when the kernel can give one,
-    'switched-off' when the board has one its device tree leaves disabled and Armbian's user overlays can
-    switch on, else None."""
+    """'hardware' when the board has a watchdog of its own, 'switched-off' when the board has one its device
+    tree leaves disabled and Armbian's user overlays can switch on, 'softdog' when the kernel can give one,
+    else None. The board's own first: softdog is a kernel timer, and a kernel locked up on every core never
+    runs it, where the SoC's watchdog resets the board regardless."""
     if any((SYS / "class/watchdog").glob("watchdog*")) and not _softdog_loaded():
         return "hardware"
+    if _dt_watchdog() and (BOOT / "armbianEnv.txt").is_file() and shutil.which("dtc"):
+        return "switched-off"
     r = subprocess.run(["modinfo", "softdog"], capture_output=True, text=True)  # noqa: TID251
     if r.returncode == 0 or _softdog_loaded():
         return "softdog"
-    if _dt_watchdog() and (BOOT / "armbianEnv.txt").is_file() and shutil.which("dtc"):
-        return "switched-off"
     return None
 
 
@@ -1221,9 +1230,11 @@ def set_option(key, value):
     elif key == "panic" and value in ("on", "off"):
         msg = set_panic(value == "on")
         s["panic"] = value == "on"
+        s["chosen"] = sorted(set(s["chosen"]) | {"panic"})
     elif key == "watchdog" and value in ("on", "off"):
         msg = set_watchdog(value == "on")
         s["watchdog"] = value == "on"
+        s["chosen"] = sorted(set(s["chosen"]) | {"watchdog"})
     elif key == "undervoltage" and value in ("on", "off"):
         s["undervoltage"] = value == "on"
         msg = (
@@ -1282,6 +1293,22 @@ def set_option(key, value):
         raise Refused(M("crashwatch-set.unknown", "Crash watch has no setting {key} {value}.", key=key, value=value))
     save_settings(s)
     return msg
+
+
+def apply_hang(settings=None):
+    """The hang settings put in place where they are on (the default, or the owner's) but not yet written:
+    at crash watch's start, so a box installed or updated with them on by default has them without anyone
+    flipping a switch. Written once; an owner's off is left to set_option. Returns what was done, as lines."""
+    s = settings or load_settings()
+    done = []
+    if s["panic"] and not SYSCTL.exists():
+        done.append(render(set_panic(True)))
+    if s["watchdog"] and not SYSTEMD_CONF.exists():
+        try:
+            done.append(render(set_watchdog(True)))
+        except Refused as exc:  # no watchdog here: the doctor says so (crash-hang.no-watchdog)
+            done.append(str(exc))
+    return done
 
 
 def undo_all():
@@ -1359,6 +1386,11 @@ def run(once=False):
             print(f"crashwatch: {said}", file=sys.stderr)
     except (OSError, ValueError) as exc:
         print(f"crashwatch: the old radio setting not carried over: {exc}", file=sys.stderr)
+    try:
+        for line in apply_hang(settings):
+            print(f"crashwatch: {line}", file=sys.stderr)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"crashwatch: the hang settings not put in place: {exc}", file=sys.stderr)
     watch = RadioWatch(log)
     chip_watch = ChipWatch(log)
     keeper = SnapshotKeeper()

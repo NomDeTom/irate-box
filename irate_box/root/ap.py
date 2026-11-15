@@ -1,11 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 NomDeTom
-"""The hotspot, applied: what the root helper writes and runs for a plan from hub/apmode.py: a
-second interface `ap0` when the hotspot shares the radio with the box's WiFi link
-(`iw dev <link> interface add ap0 type __ap`), the radio's own interface when it has one to itself;
-a NetworkManager connection on it with the address 192.168.4.1/24 (which the box's certificate
-authority permits); and the box's own dnsmasq bound to that interface alone, handing out
+"""The hotspot, applied: what the root helper writes and runs for a plan from hub/apmode.py: the
+interface `ap0`, always, added on the radio (`iw dev <radio> interface add ap0 type __ap`); a
+NetworkManager connection on it with the address 192.168.4.1/24 (which the box's certificate
+authority permits); and the box's own dnsmasq answering on that address alone, handing out
 .10 to .200 and answering every name with 192.168.4.1, so whatever a guest types reaches the hub.
+
+ap* carries the hotspot and nothing else; wlan* carries WiFi links and never the hotspot. A radio
+the hotspot has to itself (rung 1), or takes from the link (rung 4), is held while it does: its own
+interface out of NetworkManager's hands and down, so nothing joins a network on it meanwhile, and
+given back after. A driver that can't add a second interface has that interface renamed ap0 for as
+long, and its name given back after. NetworkManager's drop-in (nm_rules) makes it so for every
+profile, whoever made it: a client profile with no interface of its own can't be activated on ap*,
+nor the hotspot on wlan*.
 Forwarding stays off: nothing passes between the guests and the box's other networks (guests'
 onward internet is a separate, owner-consented choice, not made here).
 
@@ -22,7 +29,7 @@ from irate_box.msg import M, Refused
 from irate_box.root import secmanifest
 
 CONNECTION = "irate-box-ap"
-SHARED_IFACE = "ap0"
+SHARED_IFACE = apmode.HOTSPOT_IFACE
 KEYFILE = "/etc/NetworkManager/system-connections/irate-box-ap.nmconnection"
 DNSMASQ_CONF = "/etc/hub/ap-dnsmasq.conf"
 DNSMASQ_UNIT = "irate-box-ap-dns.service"
@@ -33,6 +40,26 @@ DEFAULT_SSID = hotspot.DEFAULT_SSID
 HOSTAPD_CONF = "/etc/hub/ap-hostapd.conf"
 HOSTAPD_UNIT = "irate-box-ap-hostapd.service"
 HOSTAPD_BIN = Path(os.environ.get("HUB_HOSTAPD_BIN", "/usr/sbin/hostapd"))
+NM_RULES = Path(os.environ.get("HUB_NM_CONF_D", "/etc/NetworkManager/conf.d")) / "zz-80-irate-box-ap.conf"
+HOLDS_RADIO = ("own-radio", "choose")  # the plans whose radio is the hotspot's alone while it runs
+
+
+def nm_rules():
+    """NetworkManager's drop-in: ap* activates only the hotspot's connection, wlan* never it. By name: the
+    hotspot's keyfile has had that id from the first, so a hotspot set up by an older version stays allowed."""
+    return "\n".join(
+        [
+            "# Written by irate-box (root/ap.py): ap* carries only the hotspot, wlan* never it. Edits are overwritten.",
+            "[device-irate-box-hotspot]",
+            f"match-device=interface-name:{SHARED_IFACE[:2]}*",
+            f"allowed-connections=id:{CONNECTION}",
+            "",
+            "[device-irate-box-client]",
+            "match-device=interface-name:wlan*",
+            f"allowed-connections=except:id:{CONNECTION}",
+            "",
+        ]
+    )
 
 
 def per_account(plan, settings, caps, binary=None):
@@ -111,8 +138,10 @@ def hostapd_conf(plan, settings, ssid=None, country=None, second_ssid=None):
     _, net = nets[0]
     lines = [
         "# Written by irate-box (root/ap.py): the hotspot through hostapd. Edits are overwritten.",
-        validate.config_line("interface", ap_iface(plan)),
+        validate.config_line("interface", SHARED_IFACE),
         "driver=nl80211",
+        # hostapd_cli's socket, for a channel switch in place (root/ap.py's follow); hostapd creates the folder.
+        "ctrl_interface=/run/hostapd",
         validate.config_line("hw_mode", "a" if plan.get("band") == "5 GHz" else "g"),
         validate.config_line("channel", str(int(plan["channel"]))),
         "wmm_enabled=1",
@@ -151,9 +180,24 @@ def hostapd_unit():
     )
 
 
+def legacy(plan):
+    """A plan recorded by a version before every hotspot ran on ap0 (it names no hotspot_iface): one with the radio
+    to itself ran on the radio's own interface, with nothing held or renamed. Still the truth for a hotspot it
+    started, until the hotspot is started again."""
+    return bool(plan) and "hotspot_iface" not in plan
+
+
 def ap_iface(plan):
-    """The interface the hotspot runs on: its own when the radio is its alone, else ap0 beside the link."""
-    return plan["iface"] if plan["kind"] == "own-radio" or plan.get("drops_uplink") else SHARED_IFACE
+    """The interface the hotspot runs on: ap0, whichever radio it is on; for a legacy plan, where that version put
+    it (the radio's own interface when it had the radio to itself)."""
+    if legacy(plan):
+        return plan["iface"] if plan.get("kind") == "own-radio" or plan.get("drops_uplink") else SHARED_IFACE
+    return SHARED_IFACE
+
+
+def holds_radio(plan):
+    """Whether the hotspot has its radio to itself while it runs (rung 1, or rung 4 with the link given up)."""
+    return not legacy(plan) and (plan.get("kind") in HOLDS_RADIO or bool(plan.get("drops_uplink")))
 
 
 def _names(settings, ssid=None, second_ssid=None):
@@ -186,7 +230,7 @@ def keyfile(plan, settings, ssid=None, second_ssid=None):
         "[connection]",
         f"id={CONNECTION}",
         "type=wifi",
-        f"interface-name={ap_iface(plan)}",
+        f"interface-name={SHARED_IFACE}",
         "autoconnect=true",
         "autoconnect-priority=-10",
         "",
@@ -216,12 +260,14 @@ def keyfile(plan, settings, ssid=None, second_ssid=None):
 
 
 def dnsmasq_conf(plan):
-    """The box's dnsmasq for the hotspot alone: DHCP for guests, and every name answered with the hub."""
+    """The box's dnsmasq for the hotspot alone: DHCP for guests, and every name answered with the hub. On the
+    hotspot's address, not its interface: should ap0 ever carry another network's address, nothing there is
+    answered (DHCP goes with the address's interface)."""
     first, last = NETWORK.network_address + DHCP_FIRST, NETWORK.network_address + DHCP_LAST
     return "\n".join(
         [
             "# Written by irate-box (root/ap.py): DHCP and DNS on the hotspot only. Edits are overwritten.",
-            validate.config_line("interface", ap_iface(plan)),
+            validate.config_line("listen-address", apmode.ADDRESS),
             "bind-dynamic",
             "except-interface=lo",
             "no-resolv",
@@ -237,14 +283,37 @@ def dnsmasq_conf(plan):
     )
 
 
+def hold_steps(plan):
+    """A radio the hotspot has to itself: its own interface out of NetworkManager's hands and down, so nothing
+    joins a network on it (and the driver has room for ap0). Nothing for a radio it shares with the link."""
+    if not holds_radio(plan):
+        return []
+    radio = plan["iface"]
+    nm = [] if plan.get("backend") == "hostapd" else [["nmcli", "device", "set", radio, "managed", "no"]]
+    return [*nm, ["ip", "link", "set", radio, "down"]]
+
+
+def add_step(plan):
+    return ["iw", "dev", plan["iface"], "interface", "add", SHARED_IFACE, "type", "__ap"]
+
+
+def rename_steps(plan):
+    """For a driver that can't add ap0 to a radio the hotspot holds: the radio's own interface named ap0."""
+    return [["ip", "link", "set", plan["iface"], "name", SHARED_IFACE]]
+
+
 def up_steps(plan):
     """The commands that bring the hotspot up, in order (the files written first). Refuses a plan
     that waits on the owner, or has no channel."""
     if plan.get("needs_choice") or plan["kind"] == "none" or not plan.get("channel"):
         raise Refused(M("ap.plan.no-start", "This plan does not start a hotspot. {plan}", plan=plan.get("text", "")))
-    steps, iface = [], ap_iface(plan)
-    if iface == SHARED_IFACE:
-        steps.append(["iw", "dev", plan["iface"], "interface", "add", SHARED_IFACE, "type", "__ap"])
+    return [*hold_steps(plan), add_step(plan), *start_steps(plan)]
+
+
+def start_steps(plan):
+    """The commands after ap0 is there: the access point and its DHCP and DNS."""
+    iface = SHARED_IFACE
+    steps = []
     if plan.get("backend") == "hostapd":
         # No NetworkManager: the address set by hand, hostapd runs the access point.
         if plan.get("drops_uplink") and plan.get("uplink"):
@@ -261,10 +330,7 @@ def up_steps(plan):
             ["systemctl", "restart", DNSMASQ_UNIT],
         ]
         return steps
-    if iface == SHARED_IFACE:
-        steps.append(["nmcli", "device", "set", SHARED_IFACE, "managed", "yes"])
-    if plan.get("drops_uplink") and plan.get("uplink"):
-        steps.append(["nmcli", "device", "disconnect", plan["uplink"]])
+    steps.append(["nmcli", "device", "set", SHARED_IFACE, "managed", "yes"])
     steps += [
         ["nmcli", "connection", "reload"],
         ["nmcli", "connection", "up", CONNECTION],
@@ -274,19 +340,45 @@ def up_steps(plan):
 
 
 def down_steps(plan):
-    """The commands that take it down again, leaving the box's own links as they were."""
-    if plan.get("backend") == "hostapd":
+    """The commands that take it down again, leaving the box's own links as they were: ap0 removed (or, renamed
+    from the radio's own interface, given its name back), a radio it held given back. A legacy plan comes down as
+    that version brought it up: its address off the interface it was on, ap0 removed only where it made one."""
+    hostapd = plan.get("backend") == "hostapd"
+    if legacy(plan):
+        iface = ap_iface(plan)
+        if hostapd:
+            steps = [
+                ["systemctl", "stop", DNSMASQ_UNIT],
+                ["systemctl", "stop", HOSTAPD_UNIT],
+                ["ip", "addr", "del", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", iface],
+            ]
+        else:
+            steps = [["systemctl", "stop", DNSMASQ_UNIT], ["nmcli", "connection", "down", CONNECTION]]
+        if iface == SHARED_IFACE:
+            steps.append(["iw", "dev", SHARED_IFACE, "del"])
+        if plan.get("drops_uplink") and plan.get("uplink"):
+            steps.append(["nmcli", "device", "connect", plan["uplink"]])
+        return steps
+    if hostapd:
         steps = [
             ["systemctl", "stop", DNSMASQ_UNIT],
             ["systemctl", "stop", HOSTAPD_UNIT],
-            ["ip", "addr", "flush", "dev", ap_iface(plan)],
+            ["ip", "addr", "flush", "dev", SHARED_IFACE],
         ]
     else:
         steps = [["systemctl", "stop", DNSMASQ_UNIT], ["nmcli", "connection", "down", CONNECTION]]
-    if ap_iface(plan) == SHARED_IFACE:
+    radio = plan.get("renamed_from")
+    if radio:
+        steps += [["ip", "link", "set", SHARED_IFACE, "down"], ["ip", "link", "set", SHARED_IFACE, "name", radio]]
+    elif plan.get("iface") != SHARED_IFACE:  # ap0 the radio's own interface: never deleted
         steps.append(["iw", "dev", SHARED_IFACE, "del"])
-    if plan.get("drops_uplink") and plan.get("uplink"):
-        steps.append(["nmcli", "device", "connect", plan["uplink"]])
+    if holds_radio(plan):
+        radio = plan["iface"]
+        steps.append(
+            ["ip", "link", "set", radio, "up"] if hostapd else ["nmcli", "device", "set", radio, "managed", "yes"]
+        )
+        if plan.get("drops_uplink") and plan.get("uplink") and not hostapd:
+            steps.append(["nmcli", "device", "connect", plan["uplink"]])
     return steps
 
 
@@ -332,6 +424,7 @@ LINK_FILE = "10-irate-box-ap.link"
 CODE = Path(os.environ.get("HUB_CODE_DIR", "/opt/irate-box"))
 TRY_WAIT = 20  # seconds the hotspot must hold its own channel in the try
 DEADMAN = 300  # seconds before a hotspot that took the box's link undoes itself
+MOVE_INTERVAL = 300  # seconds between two moves of a following hotspot, unless the owner sets it lower
 
 
 def _load(path, default):
@@ -407,7 +500,16 @@ def boot_unit():
 
 def refresh_units():
     """The hotspot's units brought up to this version's text, for each one already written here (an
-    update changes them; only a hotspot set up again would otherwise). Their names, for a restart."""
+    update changes them; only a hotspot set up again would otherwise). Their names, for a restart.
+    Also where an update's install reads the two old capability stores into the record (radiocaps.py)."""
+    from irate_box.hub import netinv
+    from irate_box.root import radiocaps
+
+    if not radiocaps.STORE.exists():
+        try:
+            radiocaps.migrate(netinv.scan())
+        except (OSError, ValueError):
+            pass
     changed = []
     for name, text in ((DNSMASQ_UNIT, dnsmasq_unit()), (HOSTAPD_UNIT, hostapd_unit()), (BOOT_UNIT, boot_unit())):
         path = UNITS / name
@@ -418,7 +520,29 @@ def refresh_units():
             continue
         _put(path, text)
         changed.append(name)
+    rec = _load(RECORD, {})
+    conf = Path(DNSMASQ_CONF)
+    if rec.get("up") and rec.get("plan") and conf.exists() and conf.read_text() != dnsmasq_conf(rec["plan"]):
+        # The running hotspot's DHCP and DNS in this version's form: restarted by the install, as its unit would be.
+        _put(conf, dnsmasq_conf(rec["plan"]))
+        if DNSMASQ_UNIT not in changed:
+            changed.append(DNSMASQ_UNIT)
     return changed
+
+
+def refresh_nm_rules(only_if_set_up=False):
+    """NetworkManager's drop-in (nm_rules) in this version's form; with only_if_set_up, only where a hotspot was
+    set up through NetworkManager (its keyfile is there). Whether it changed: NetworkManager then reads its
+    configuration again (`nmcli general reload conf`), which applies it to every device at once."""
+    if only_if_set_up and not Path(KEYFILE).exists():
+        return False
+    try:
+        if NM_RULES.read_text() == nm_rules():
+            return False
+    except OSError:
+        pass
+    _put(NM_RULES, nm_rules())
+    return True
 
 
 def boot(run, inv, settings, ssid=None):
@@ -502,7 +626,9 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
     none, is returned without starting anything. On a failed step, what was done is undone."""
     owner = owner or {}
     ssid, second_ssid = _names(settings, ssid)
-    plan = apmode.plan(inv, inv.get("ap") or [], owner, _load(TRIED, {}))
+    from irate_box.root import radiocaps
+
+    plan = apmode.plan(inv, inv.get("ap") or [], owner, radiocaps.stored_by_phy(inv))
     if plan.get("needs_choice") or plan["kind"] == "none":
         return plan
     if plan.get("backend") == "hostapd" and not _hostapd_present(inv):
@@ -510,9 +636,23 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
     old = _load(RECORD, {})
     if old.get("up"):
         _run_all(run, down_steps(old["plan"]), check=False)
+    was = old.get("plan") or old.get("last_plan") or {}
+    if plan.get("iface") == SHARED_IFACE and was.get("renamed_from"):
+        # Planned from a look taken while the radio's own interface was named ap0: its own name again now (or still
+        # ap0, should the name not have come back: then the plan names it and nothing deletes it).
+        own = was["renamed_from"]
+        plan = dict(plan, iface=own if run("ip", "link", "show", own).returncode == 0 else SHARED_IFACE)
+    if plan.get("iface") == SHARED_IFACE and not was.get("renamed_from"):
+        raise Refused(
+            M(
+                "ap.radio-named-ap0",
+                "The radio's own interface is named ap0, and the box has no record of its name before. "
+                "Restart the box, then enable the hotspot again.",
+            )
+        )
     if plan.get("backend") == "hostapd":
-        # Following the link's channel needs NetworkManager's hook: here a following hotspot takes the
-        # link's channel when it starts (and after a reboot), not when the link roams.
+        # hostapd gets a control socket, so the watchdog's follower can move a following hotspot by channel
+        # switch (follow() below) as it does on NetworkManager's boxes; the dispatcher hook is NetworkManager's.
         _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, inv.get("country"), second_ssid), 0o600)
         units = {DNSMASQ_UNIT: dnsmasq_unit(), HOSTAPD_UNIT: hostapd_unit()}
     else:
@@ -525,17 +665,32 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
             _put(unit, text)
             run("systemctl", "daemon-reload")
     _put(DISPATCHER, dispatcher_hook(), 0o755)
-    if ap_iface(plan) == SHARED_IFACE:
-        link = LINKS / LINK_FILE
-        if not link.exists() or link.read_text() != link_file():
-            _put(link, link_file())
-            run("udevadm", "control", "--reload")
+    link = LINKS / LINK_FILE
+    if not link.exists() or link.read_text() != link_file():
+        _put(link, link_file())
+        run("udevadm", "control", "--reload")
+    if NM_RULES.parent.parent.exists() and refresh_nm_rules():
+        # Wherever NetworkManager is installed, even on the hostapd route: it must not take ap0 for a client.
+        run("nmcli", "general", "reload", "conf")
     boot = UNITS / BOOT_UNIT
     if not boot.exists() or boot.read_text() != boot_unit():
         _put(boot, boot_unit())
         run("systemctl", "daemon-reload")
+    up_steps(plan)  # a plan that can't start is refused here, before anything runs
+    rest = start_steps(plan)
     try:
-        _run_all(run, up_steps(plan))
+        _run_all(run, hold_steps(plan))
+        added = run(*add_step(plan))
+        if added.returncode != 0:
+            if not holds_radio(plan):
+                raise RuntimeError(f"{' '.join(add_step(plan))}: {(added.stderr or added.stdout or '').strip()[-200:]}")
+            # The driver offers no second interface: the radio's own takes the name while the hotspot holds it.
+            _run_all(run, rename_steps(plan))
+            plan = dict(plan, renamed_from=plan["iface"])
+        if plan.get("backend") == "hostapd":
+            # hostapd runs ap0, NetworkManager (where it runs at all) keeps off it.
+            run("nmcli", "device", "set", SHARED_IFACE, "managed", "no")
+        _run_all(run, rest)
     except RuntimeError:
         _run_all(run, down_steps(plan), check=False)
         raise
@@ -561,13 +716,21 @@ def start(run, inv, settings, owner=None, ssid=None, keyfile_path=None, conf_pat
 
 
 def stop(run):
+    """Off. The plan is kept as last_plan: should a renamed radio not get its name back, a later start or remove()
+    still knows ap0 is the radio's own interface, and names it back rather than deleting it."""
     rec = _load(RECORD, {})
+    plan = rec.get("plan") or rec.get("last_plan") or {}
     if rec.get("up"):
         _run_all(run, down_steps(rec["plan"]), check=False)
     run("systemctl", "stop", "irate-box-ap-deadman.timer")
     run("systemctl", "disable", BOOT_UNIT)
     DISPATCHER.unlink(missing_ok=True)
-    _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time()}))
+    _put(RECORD, json.dumps({"up": False, "owner": rec.get("owner") or {}, "since": time.time(), "last_plan": plan}))
+    own = plan.get("renamed_from")
+    if own and run("ip", "link", "show", SHARED_IFACE).returncode == 0 and run("ip", "link", "show", own).returncode:
+        return (
+            f"The hotspot is off, but the radio's interface is still named {SHARED_IFACE}, not {own}. Restart the box."
+        )
     return "The hotspot is off."
 
 
@@ -584,8 +747,18 @@ def remove(run):
         run("systemctl", "disable", "--now", unit)
     run("nmcli", "connection", "down", CONNECTION)
     run("nmcli", "connection", "delete", CONNECTION)
+    rec = _load(RECORD, {})
+    plan = rec.get("plan") or rec.get("last_plan") or {}
+    if legacy(plan) and plan.get("backend") == "hostapd" and ap_iface(plan) != SHARED_IFACE:
+        run("ip", "addr", "del", f"{apmode.ADDRESS}/{NETWORK.prefixlen}", "dev", ap_iface(plan))
     if run("ip", "link", "show", SHARED_IFACE).returncode == 0:
-        run("iw", "dev", SHARED_IFACE, "del")
+        if plan.get("renamed_from"):  # the radio's own interface: its name back, never deleted
+            run("ip", "link", "set", SHARED_IFACE, "down")
+            run("ip", "link", "set", SHARED_IFACE, "name", plan["renamed_from"])
+        else:
+            run("iw", "dev", SHARED_IFACE, "del")
+    if holds_radio(plan) and plan.get("iface"):
+        run("nmcli", "device", "set", plan["iface"], "managed", "yes")
     for f in (
         Path(KEYFILE),
         Path(DNSMASQ_CONF),
@@ -595,12 +768,14 @@ def remove(run):
         UNITS / HOSTAPD_UNIT,
         DISPATCHER,
         LINKS / LINK_FILE,
+        NM_RULES,
         RECORD,
         TRIED,
     ):
         f.unlink(missing_ok=True)
     run("systemctl", "daemon-reload")
     run("udevadm", "control", "--reload")
+    run("nmcli", "general", "reload", "conf")
     run("nmcli", "connection", "reload")
     problems = [
         f"{unit} is {state}"
@@ -636,7 +811,9 @@ def try_own_channel(run, inv, settings, ssid=None, wait=TRY_WAIT, sleep=time.sle
     """Rung 2 or 3, tried on this box: the hotspot up on a channel other than the link's, held for a
     while with the link still up there? Recorded per radio; the hotspot left running as the plan
     then says. Returns (worked, plan)."""
-    plan = apmode.plan(inv, inv.get("ap") or [], {}, {})
+    from irate_box.root import radiocaps
+
+    plan = apmode.plan(inv, inv.get("ap") or [], {}, radiocaps.stored_by_phy(inv))
     if plan["kind"] != "own-channel":
         return None, plan
     link = plan.get("uplink")
@@ -656,20 +833,104 @@ def try_own_channel(run, inv, settings, ssid=None, wait=TRY_WAIT, sleep=time.sle
         sleep(wait)
         now = channels_now(run)
         worked = now.get(ap_iface(plan)) == other and now.get(link) == link_ch and link_ch is not None
-    tried = _load(TRIED, {})
-    tried[plan["phy"]] = worked
-    _put(TRIED, json.dumps(tried))
+    from irate_box.root import radiocaps
+
+    radio = next((r for r in inv.get("radios") or [] if r.get("phy") == plan["phy"]), {})
+    radiocaps.record_test(
+        radio,
+        "own-channel",
+        worked,
+        "The hotspot held a channel of its own beside the link."
+        if worked
+        else "The hotspot did not hold a channel of its own beside the link.",
+    )
     return worked, start(run, inv, settings, owner, ssid)
 
 
+def move_interval():
+    """Seconds between two moves of a following hotspot: the owner's setting in /etc/hub/uplink.json, else 300."""
+    try:
+        from irate_box.hub import uplink
+
+        return max(30, int(uplink.load_settings().get("hotspot_move", MOVE_INTERVAL)))
+    except (OSError, ValueError, TypeError):
+        return MOVE_INTERVAL
+
+
+def channel_switch(run, plan, new, wait=3, sleep=time.sleep):
+    """Switch the running hotspot to `new`'s channel in place, and check it moved. Returns (ok, why)."""
+    iface = ap_iface(plan)
+    cli = "hostapd_cli" if plan.get("backend") == "hostapd" else "wpa_cli"
+    try:
+        out = run(cli, "-i", iface, "chan_switch", "5", str(int(new["freq"])), "ht")
+    except OSError as exc:
+        return False, str(exc)[-160:]
+    if out.returncode != 0:
+        why = (out.stderr or out.stdout or "").strip()
+        return False, why[-160:] if why else f"{cli} refused the channel switch"
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if channels_now(run).get(iface) == new["channel"]:
+            if plan.get("backend") != "hostapd":
+                try:
+                    status = run("wpa_cli", "-i", iface, "status")
+                except OSError as exc:
+                    return False, str(exc)[-160:]
+                said = (status.stdout or "") if status.returncode == 0 else ""
+                if "wpa_state=COMPLETED" not in said or "mode=AP" not in said:
+                    return False, "The hotspot did not stay up after the channel switch"
+            return True, ""
+        sleep(1)
+    return False, "The hotspot did not move to the new channel"
+
+
+def _retune_files(plan, settings, ssid, second_ssid, country):
+    if plan.get("backend") == "hostapd":
+        _put(Path(HOSTAPD_CONF), hostapd_conf(plan, settings, ssid, country, second_ssid), 0o600)
+    else:
+        _put(Path(KEYFILE), keyfile(plan, settings, ssid, second_ssid), 0o600)
+
+
+def _mark_moved(plan, method):
+    rec = _load(RECORD, {})
+    if not rec.get("up"):
+        return
+    rec["plan"] = dict(rec.get("plan") or {}, channel=plan["channel"], freq=plan.get("freq"), band=plan.get("band"))
+    rec["moved_at"] = time.time()
+    rec["moved_by"] = method
+    _put(RECORD, json.dumps(rec))
+
+
 def follow(run, inv, settings, iface, ssid=None):
-    """The dispatcher's call when a link comes up: a hotspot that follows the link moves to its channel.
-    (moved, note): whether it moved, and what happened in words."""
+    """A following hotspot moves to the link's channel: in place by channel switch where the radio has it,
+    else by starting the hotspot again. Both triggers (NetworkManager's dispatcher and the watchdog's
+    follower) come here, so the move interval is obeyed by both. (moved, note): whether it moved, and what
+    happened in words."""
     rec = _load(RECORD, {})
     if not rec.get("up") or not (rec.get("plan") or {}).get("follows_uplink") or rec["plan"].get("uplink") != iface:
         return False, "The hotspot has no link to follow."
-    plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, _load(TRIED, {}))
+    from irate_box.root import radiocaps
+
+    plan = apmode.plan(inv, inv.get("ap") or [], rec.get("owner") or {}, radiocaps.stored_by_phy(inv))
     if plan.get("channel") == rec["plan"].get("channel"):
         return False, f"The hotspot is still on channel {plan.get('channel')}."
+    now, hold = time.time(), move_interval()
+    moved_at = rec.get("moved_at") or 0
+    if moved_at and now - moved_at < hold:
+        return False, f"The hotspot moved {round(now - moved_at)} s ago; it moves again after {hold} s."
+    radio = next((r for r in inv.get("radios") or [] if r.get("iface") == iface), {})
+    csa = (radiocaps.rows(radio, radiocaps.stored(radio)).get("csa") or {}).get("value")
+    if csa == "yes":
+        ssid, second_ssid = _names(settings, ssid)
+        ok, why = channel_switch(run, rec["plan"], plan)
+        if ok:
+            _retune_files(plan, settings, ssid, second_ssid, inv.get("country"))
+            _mark_moved(plan, "switch")
+            return True, f"The hotspot moved to channel {plan['channel']} with the link (channel switch)."
+        radiocaps.record_learned(radio, "csa", "no", f"The channel switch failed: {why}.")
+        fallback = " (restarted: channel switch failed)"
+    else:
+        fallback = ""
     start(run, inv, settings, rec.get("owner") or {}, ssid)
-    return True, f"The hotspot moved to channel {plan.get('channel')} with the link."
+    _mark_moved(plan, "restart")
+    return True, f"The hotspot moved to channel {plan['channel']} with the link{fallback}."

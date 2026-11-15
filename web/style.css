@@ -306,6 +306,14 @@ summary + .view-switch {
 .kit-offer ~ .setting-desc {
   margin-top: 0.2rem !important;
 }
+/* The hotspot's move interval: its own group under the security section's footer. */
+#hs-move-fields {
+  margin-top: 0.7rem;
+  gap: 0.7rem;
+}
+#hs-move-fields .setting-desc {
+  margin-top: 0;
+}
 /* Network recovery's own groups. */
 .up-steps + .up-box-only {
   margin-top: 0.4rem;
@@ -3212,6 +3220,31 @@ body.drop > section + section {
 }
 .net-section .net-conditions {
   margin-top: 0.35rem;
+}
+/* A radio's capabilities (radiocaps.py) as a terse table: the value, its source, and a test only where none answers. */
+.net-caps {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.net-caps th,
+.net-caps td {
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid var(--border);
+}
+.net-caps thead th {
+  color: var(--muted);
+  font-weight: 600;
+  border-top: 0;
+}
+.net-caps td:first-child {
+  white-space: nowrap;
+}
+.net-caps .radio-test {
+  display: block;
+  margin-top: 0.2rem;
 }
 .net-device h4 .state {
   color: var(--muted);
@@ -6987,7 +7020,8 @@ label > .aw-onoff-box ~ .chip-group,
   padding: 0.6rem 0;
   border-top: 1px solid var(--border);
 }
-.pin-overlay h3 {
+/* body.admin h3's top margin spaces a heading from the text above it; a card's first heading has none above. */
+body.admin .pin-overlay h3 {
   margin-top: 0;
 }
 .pin-gpio-form {
@@ -7029,12 +7063,44 @@ label > .aw-onoff-box ~ .chip-group,
   }
 }
 
-#pins-mui-diagram .admin-table {
-  margin-top: 0.35rem;
+/* A note under a setting, in the setting's column; a label and its control that show and hide together. */
+.pin-mui-aside {
+  grid-column: 2;
+  margin: -0.4rem 0 0;
+}
+.pin-mui-pair {
+  display: contents;
+}
+.pin-mui-pair[hidden] {
+  display: none;
+}
+@media (max-width: 30rem) {
+  .pin-mui-aside {
+    grid-column: 1;
+  }
+}
+#pins-mui h4 {
+  margin: 1.4rem 0 0.3rem;
 }
 
-#pins-mui-diagram .mui-selected {
-  font-weight: 700;
+/* The selected pin's details, in the card beside the header. */
+.pin-detail {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.15rem 0.6rem;
+  margin: 0.3rem 0 0.6rem;
+  font-size: 0.85rem;
+}
+.pin-detail dt {
+  color: var(--muted);
+}
+.pin-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#pins-testcard summary {
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* The header and the card for the pin selected on it, side by side where there is room. */
@@ -7193,6 +7259,22 @@ label > .aw-onoff-box ~ .chip-group,
 }
 .pin-key.pin-conflict {
   background: var(--pin-conflict, #ef4444);
+}
+/* A state's key carries the mark its pins carry, so the mark is explained where the colour is. */
+.pin-key[data-state] {
+  width: 1rem;
+  height: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.pin-key[hidden],
+.pin-legend [hidden] {
+  display: none;
 }
 
 

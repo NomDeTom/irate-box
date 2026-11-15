@@ -1024,20 +1024,19 @@ check(
 check("  back on another network: not a roam, a miss", U.sort_drops(pairs, eff_i, False)[0] == [100.0, 300.0, 500.0])
 
 
-def roaming_night(ignore, every=300, hours=3, gw_fail_at=()):
-    """A roam every `every` s (a 4 s blip), gentle pace, sensitivity 3; the gateway failing at the given checks."""
+def roaming_night(ignore, every=300, hours=3, gw_fail_at=(), long_at=()):
+    """A roam every `every` s (a 4 s blip), gentle pace, sensitivity 3; the gateway failing at the given checks;
+    a 60 s loss of the link (no roam: past `blip`) ending at each check in long_at."""
     eff = U.effective(C("gentle/reboot", ignore_roams=ignore))
     w = U.Watch(eff)
     acts = []
     for t in range(0, hours * 3600, 120):
         pairs = [(float(b), b + 4.0) for b in range(t - 120 + 7, t, every) if b > 0 and (b - 7) % every == 0]
-        drops, _ = U.sort_drops(pairs, eff, True)
-        acts += [
-            (t, a)
-            for a in w.tick(
-                1000 + t, {"link": True, "gateway": t not in gw_fail_at, "drops": [1000 + d for d in drops], "can": ALL}
-            )
-        ]
+        pairs += [(t - 70.0, t - 10.0)] if t in long_at else []
+        drops, roams = U.sort_drops(pairs, eff, True)
+        obs = {"link": True, "gateway": t not in gw_fail_at, "drops": [1000 + d for d in drops], "can": ALL}
+        obs["roams"] = [1000 + d[0] for d in roams]
+        acts += [(t, a) for a in w.tick(1000 + t, obs)]
     return acts, w
 
 
@@ -1053,6 +1052,61 @@ check(
     any(x == "pin" or x == "reconnect" for _, x in a)
     and any(e["kind"] == "down" and "flaps" in e["text"] for e in w.events),
     a[:3],
+)
+check(
+    "  roams alone, the gateway answering: reconnects only, never a restart, a radio reset or a reboot (said once each)",
+    not any(x in ("restart", "radio", "reboot") for _, x in a)
+    and [e["step"] for e in w.events if e["kind"] == "held" and "every miss was a roam" in e["text"]]
+    == ["restart", "radio", "reboot"],
+    [(e["at"], e["text"]) for e in w.events if e["kind"] in ("repair", "held")],
+)
+a, w = roaming_night(False, long_at=(1200, 1320, 1440))
+check(
+    "  roams with real losses of the link among them (60 s, past the blip): not roams alone, so it climbs as before",
+    any(x in ("restart", "radio") for _, x in a),
+    [x for _, x in a],
+)
+a, w = roaming_night(False, gw_fail_at=(3600, 3720, 3840))
+check(
+    "  roams with the gateway failing too: the misses are not all roams, so the ladder climbs as before",
+    any(x in ("restart", "radio") for _, x in a),
+    [x for _, x in a],
+)
+
+
+def ladder_replay(rows, tell_roams, start, end, step=120):
+    """lyra-bench's real roams (2026-11-09 20:00 to 03:30, its ladder record, BSSIDs replaced), its settings that
+    night (gentle, reach reboot, sensitivity 3, roams counted), the gateway answering at every check (aic-monitor's
+    minute checks all said ok). Each roam row with a duration was a drop and back."""
+    eff = U.effective(C("gentle/reboot"))
+    w = U.Watch(eff)
+    blips = [(r["at"] - r["d"], r["at"]) for r in rows if r.get("k") == "roam" and r.get("d")]
+    acts = []
+    for t in range(int(start), int(end), step):
+        pairs = [p for p in blips if t - step < p[1] <= t]
+        drops, roams = U.sort_drops(pairs, eff, True)
+        obs = {"link": True, "gateway": True, "drops": drops, "can": ALL}
+        if tell_roams:
+            obs["roams"] = [d[0] for d in roams]
+        acts += [(t, x) for x in w.tick(t, obs)]
+    return acts, w
+
+
+_rows = [
+    json.loads(ln)
+    for ln in (Path(REPO) / "tests/fixtures/uplink-roams-lyra-bench-2026-11-09/ladder.jsonl").read_text().splitlines()
+]
+a, w = ladder_replay(_rows, False, 1794254400, 1794262000)
+check(
+    "lyra-bench's night replayed as the watchdog saw it then: on the ladder for roams, a restart and a radio reset",
+    "restart" in [x for _, x in a] and "radio" in [x for _, x in a],
+    a,
+)
+a, w = ladder_replay(_rows, True, 1794254400, 1794281400)
+check(
+    "  with the roams told apart: the same night, locked reconnects only",
+    a and all(x in ("pin", "reconnect") for _, x in a),
+    a,
 )
 a, w = roaming_night(True, gw_fail_at=(1200, 1320, 1440))
 check(
@@ -1525,6 +1579,21 @@ check(
     v["pace"] == "brisk" and w["per_iface"].get("wlan0", {}).get("pace") == "brisk",
     (v["pace"], w["per_iface"]),
 )
+move = U.validate({"hotspot_move": 600})
+check(
+    "the hotspot move interval: 300 s by default, the owner's number when set",
+    U.validate({})["hotspot_move"] == 300 and move["hotspot_move"] == 600,
+)
+try:
+    U.validate({"hotspot_move": 10})
+    bad_move = None
+except U.Refused as exc:
+    bad_move = exc
+check(
+    "  out of range: refused",
+    bad_move is not None and bad_move.message["id"] == "uplink.hotspot-move.range",
+    bad_move,
+)
 
 
 # A hotspot that follows its link's channel, after a roam (the dispatcher moves it only when the link comes up).
@@ -1569,17 +1638,22 @@ check(
     and said == "The hotspot moved to channel 6 with the link (it was on 11).",
     (box.moves, said),
 )
-box.chan["wlan0"] = 11  # roams back within the hold-off
+box.chan["wlan0"] = 1
+box.rec["moved_at"] = 1060  # the move ap.follow just made
 check(
-    "  a roam back within 5 minutes: not moved again yet",
-    f.check("wlan0", 1200, roamed_at=1150) == "" and box.moves == ["wlan0"],
+    "  inside ap.follow's move interval: quiet, not logged as a failure",
+    f.check("wlan0", 1100, roamed_at=1080) == "" and box.moves == ["wlan0"],
+    box.moves,
 )
+box.chan["wlan0"] = 11  # roams back
+box.rec["moved_at"] = 0
 check(
-    "  after the hold-off, with the link settled there: moved back",
-    f.check("wlan0", 1400, roamed_at=1150).startswith("The hotspot moved to channel 11")
+    "  a roam back: moved again at once; the move interval is ap.follow's own",
+    f.check("wlan0", 1200, roamed_at=1150).startswith("The hotspot moved to channel 11")
     and box.moves == ["wlan0", "wlan0"],
     box.moves,
 )
+check("  then nothing more: on its channel", f.check("wlan0", 1400) == "" and box.moves == ["wlan0", "wlan0"])
 box = Box(follows=False)
 box.chan["wlan0"] = 6
 f = follower(box)
@@ -1600,6 +1674,56 @@ check(
     f.check("wlan0", 5000, roamed_at=1000)
     == "The hotspot did not move to channel 6 with the link: The hotspot did not start: no channel.",
 )
+
+
+# Associated but answering nothing, the hotspot left on the old channel (lyra-drv, 2026-11-14 19:48: wlan0 roamed
+# to channel 11, ap0 stayed on 6, ten minutes with no frame either way; back within 15 s of the move).
+def stalled_link(box):
+    link = U.Link("wlan0", U.validate({}))
+    link.up, link.answers, link.obs, link.roamed_at = True, False, {"hold_until": 0}, 1000
+    done = []
+    link.actor = type("A", (), {"do": lambda self, step: done.append(step) or "", "remember": lambda self: None})()
+    return link, done
+
+
+_real_follow = U._follow
+box = Box()
+box.chan["wlan0"] = 6
+U._follow = follower(box)
+link, done = stalled_link(box)
+link.act(1060, ["reconnect"], dict)
+check(
+    "a link that answers nothing, the hotspot on another channel: the hotspot moved, the reconnect left for the next check",
+    box.moves == ["wlan0"]
+    and done == []
+    and any(e["kind"] == "held" and "just moved" in e["text"] for e in link.w.events)
+    and any(e["text"].startswith("The hotspot moved to channel 6") for e in link.w.events),
+    (box.moves, done, [e["text"] for e in link.w.events]),
+)
+link.act(1120, ["reconnect"], dict)
+check(
+    "  still answering nothing on one channel: the reconnect taken",
+    done == ["reconnect"] and box.moves == ["wlan0"],
+    (box.moves, done),
+)
+box = Box()
+box.chan["wlan0"] = 6
+U._follow = follower(box)
+link, done = stalled_link(box)
+link.act(1010, ["reconnect"], dict)
+check(
+    "  the roam only 10 s ago: not moved yet, the reconnect taken as decided",
+    not box.moves and done == ["reconnect"],
+    (box.moves, done),
+)
+box = Box()
+box.chan["wlan0"] = 6
+U._follow = follower(box)
+link, done = stalled_link(box)
+link.obs["hold_until"] = 5000
+link.act(1060, [], dict)
+check("  while the owner holds repairs: not moved", not box.moves, box.moves)
+U._follow = _real_follow
 
 # 11. A WiFi radio with no device: no network tool is asked, and the outage's cause is the radio.
 calls = []
@@ -1658,6 +1782,144 @@ try:
         "radio" in obs["can"] and "reboot" not in obs["can"],
         obs["can"],
     )
+    # The driver resetting its own device takes the interface away while it works (lyra-tft, 2026-11-09 12:09 and
+    # 23:04: the watchdog reset the radio on top of it in the same second).
+    _real_own = U.own_reset
+    U.own_reset = lambda driver=None: 2.0
+    calls.clear()
+    gone = U.Link("wlan0", chosen, dry=True)
+    gone.radio_seen = {"driver": "aic8800_fdrv", "usb": {"port": "1-1.1"}}
+    obs = gone.look(1000, chosen, Watcher())
+    check(
+        "  gone during the driver's own reset: no wedge, no cause yet, the reset's age passed on; still no tool asked",
+        obs["driver_reset"] == 2.0 and obs["wedged"] is None and obs["cause"] is None and calls == [],
+        (obs, calls),
+    )
+    # Decided on a look before the driver's reset began, taken after: read again as the step is taken.
+    done = []
+    gone.actor = type("A", (), {"do": lambda self, step: done.append(step) or "", "remember": lambda self: None})()
+    gone.w = U.Watch(U.effective(chosen))
+    gone.up = False
+    for step in ("restart", "radio", "reboot"):
+        gone.act(1000, [step], dict)
+    check(
+        "  a restart, radio reset or reboot decided just before the driver's own reset: held as it is taken (said so)",
+        done == [] and sum("left to it" in e["text"] and e["kind"] == "held" for e in gone.w.events) == 3,
+        (done, [e["text"] for e in gone.w.events]),
+    )
+    w2 = U.Watch(U.effective(U.validate({"pace": "brisk", "reach": "reboot"})), reboots=[500])
+    w2.outage = {"done": ["reconnect", "radio", "reboot"], "held": [], "radio_at": 1000, "radio_at_was": None}
+    w2.reboots.append(1000)
+    for _ in range(3):
+        w2.hold_taken(1000, "radio", "left to it")
+    w2.hold_taken(1000, "reboot", "left to it")
+    check(
+        "  held as taken: not counted as done, the radio reset's time put back, a reboot not counted against the day's",
+        w2.outage["done"] == ["reconnect"] and "radio_at" not in w2.outage and w2.reboots == [500],
+        (w2.outage, w2.reboots),
+    )
+    check(
+        "  and said once in the outage however often it comes due",
+        [e["step"] for e in w2.events if e["kind"] == "held"] == ["radio", "reboot"],
+        [(e["step"], e["text"]) for e in w2.events],
+    )
+    # End to end: a reboot decided by the ladder, held as it is taken, comes due again and is not counted.
+    w3 = U.Watch(U.effective(U.validate({"pace": "brisk", "reach": "reboot"})))
+    gone.w = w3
+    dead = {"link": False, "drops": [], "can": {"reconnect", "restart", "radio", "reboot"}, "guests": 0, "uptime": 1e9}
+    U.own_reset = lambda driver=None: 5.0
+    taken = []
+    for t in range(0, 2400, 30):
+        acts = w3.tick(10000 + t, dict(dead))
+        if "reboot" in acts:
+            taken.append(t)
+            gone.act(10000 + t, ["reboot"], dict)
+    check(
+        "  a reboot held as taken: tried again at the next look, never counted against the day's",
+        len(taken) > 1 and w3.reboots == [] and "reboot" not in done,
+        (taken, w3.reboots),
+    )
+    U.own_reset = lambda driver=None: None
+    asked = []
+    U.own_reset = lambda driver=None: asked.append(driver) or 2.0
+    cable = U.Link("eth0", chosen, dry=True)
+    cable.kind, cable.up = "ethernet", False
+    cable.actor = type("A", (), {"do": lambda self, step: done.append(step) or "", "remember": lambda self: None})()
+    cable.w = U.Watch(U.effective(chosen))
+    cable.act(1000, ["restart"], dict)
+    check(
+        "  a cable's restart: not held by a radio's reset (no radio of its own to wait for)",
+        done == ["restart"] and asked == [],
+        (done, asked),
+    )
+    done.clear()
+    gone.act(1000, ["radio"], dict)
+    check("  a WiFi link asks about its own driver's reset", asked == ["aic8800_fdrv"], asked)
+    U.own_reset = lambda driver=None: None
+    gone.act(1000, ["radio"], dict)
+    check("  with no reset of its own: taken", done == ["radio"], done)
+    U.own_reset = _real_own
+    w = U.Watch(U.effective(U.validate({"pace": "brisk", "reach": "reboot", "on_wedge": "reboot"})))
+    acts = []
+    for t in range(0, 300, 10):
+        own = t if t < 90 else None  # the driver's reset at 0; DRIVER_GRACE is 90 s
+        obs = {
+            "link": False,
+            "drops": [],
+            "can": {"radio"},
+            "guests": 0,
+            "uptime": 1e9,
+            "wedged": None if own is not None else "wlan0 has gone: its radio's driver did not bring it back",
+            "driver_reset": own,
+            "cause": None if own is not None else "radio",
+        }
+        acts += [(t, x) for x in w.tick(t, obs)]
+    check(
+        "  lyra-tft's settings (brisk, reboot, on_wedge reboot): no radio reset during the driver's 90 s",
+        not any(x == "radio" and t < 90 for t, x in acts)
+        and not any("looks wedged" in e["text"] for e in w.events if e["at"] < 90),
+        (acts, [(e["at"], e["text"]) for e in w.events]),
+    )
+    check(
+        "  still gone after it: the radio reset, as before",
+        any(x == "radio" and t >= 90 for t, x in acts),
+        acts,
+    )
+    # lyra-bench, 2026-11-11: joining had failed for an hour, so the repeat gap had grown to an hour. The driver's
+    # own reset brought the radio back in seconds, but the next reconnect waited out that gap (the link came
+    # back 19 min later, at once on that reconnect). Now a reconnect comes when the driver's time is up.
+    w = U.Watch(U.effective(U.validate({"pace": "gentle", "reach": "reboot"})))
+    acts = []
+    for t in range(0, 8000, 10):
+        own = t - 5000 if 5000 <= t < 5090 else None
+        obs = {
+            "link": False,
+            "drops": [],
+            "can": {"reconnect", "restart", "radio", "reboot"},
+            "guests": 0,
+            "uptime": 1e9,
+            "wedged": None,
+            "driver_reset": own,
+            "cause": "join",
+        }
+        acts += [(t, x) for x in w.tick(t, obs)]
+    before = [t for t, x in acts if x == "reconnect" and t < 5000]
+    after = [t for t, x in acts if x == "reconnect" and t >= 5000]
+    check(
+        "  joining failing for over an hour, the gap grown to an hour: no step during the driver's 90 s",
+        before == [320, 1220, 3620] and not any(5000 <= t < 5090 for t, _ in acts),
+        acts,
+    )
+    check(
+        "  the driver's own reset over and the link still down: a reconnect at once (not at 7220), then the gap afresh (900 s)",
+        after[:2] == [5090, 5990],
+        (after, [(e["at"], e["text"]) for e in w.events if e["at"] >= 5000]),
+    )
+    check(
+        "  said in plain words",
+        any(e["at"] == 5090 and "driver reset it itself, and the link is still down" in e["text"] for e in w.events),
+        [(e["at"], e["text"]) for e in w.events if e["at"] >= 5000],
+    )
     (_net / "wlan0").mkdir()
     calls.clear()
     obs = link.look(1060, chosen, Watcher())
@@ -1665,6 +1927,38 @@ try:
         "  the interface back: the normal look runs again",
         ("backend", "wlan0") in calls and obs["link"] is True and obs.get("cause") is None,
         (calls, obs),
+    )
+    # A short drop is a roam for the hold only when the link came back on another access point.
+    (_net / "wlan0" / "phy80211").mkdir()
+    seen = {"bssid": "aa:00:00:00:00:01"}
+    U.netinv.run = lambda *a, **k: (
+        (0, f"Connected to {seen['bssid']} (on wlan0)\n\tSSID: home\n\tfreq: 2412\n")
+        if a[:2] == ("iw", "dev") and a[-1] == "link"
+        else (0, "")
+    )
+
+    class Blips:
+        def __init__(self):
+            self.next = []
+
+        def take(self, *a, **k):
+            out, self.next = self.next, []
+            return out
+
+    bw = Blips()
+    roamer = U.Link("wlan0", chosen, dry=True)
+    roamer.look(2000, chosen, bw)
+    bw.next, seen["bssid"] = [(2050.0, 2054.0)], "aa:00:00:00:00:02"
+    moved = roamer.look(2060, chosen, bw)
+    bw.next = [(2110.0, 2114.0)]
+    stayed = roamer.look(2120, chosen, bw)
+    check(
+        "  a short drop back on another access point: a roam; back on the same one: a drop, not a roam",
+        moved["roams"] == [2050.0]
+        and moved["drops"] == [2050.0]
+        and stayed["roams"] == []
+        and stayed["drops"] == [2110.0],
+        (moved.get("roams"), moved.get("drops"), stayed.get("roams"), stayed.get("drops")),
     )
 finally:
     (
@@ -1692,6 +1986,41 @@ finally:
         _real_busy,
         _real_uptime,
     )
+
+# A radio reset by the watchdog teaches the capability record: back within RADIO_WAIT, or not.
+import tempfile
+
+from irate_box.root import radiocaps as RC
+
+RT = Path(tempfile.mkdtemp(prefix="uplink-caps-"))
+RC.STATE, RC.STORE = RT, RT / "radio-caps.json"
+wlink = U.Link("wlan0", C("persistent"))
+wlink.kind, wlink.dry, wlink.iface = "wifi", False, "wlan0"
+wlink.radio_seen = {"driver": "aic8800_fdrv", "usb": {"id": "a69c:88dc", "port": "1-1.1"}}
+wlink.reset_mine, wlink.reset_at = True, 1000.0
+wlink.up, wlink.answers = True, True
+wlink._learn_reset(1060.0)
+row = RC.stored({**wlink.radio_seen, "iface": "wlan0"})["reset-recovery"]
+check(
+    "a watchdog radio reset, the link back within RADIO_WAIT: learned reset-recovery yes",
+    row["value"] == "yes" and row["source"] == "learned" and "back 60 s" in row["detail"],
+    row,
+)
+wlink.reset_mine, wlink.reset_learned, wlink.reset_at = True, False, 2000.0
+wlink.up, wlink.answers = False, None
+wlink._learn_reset(2000.0 + U.RADIO_WAIT + 1)
+row = RC.stored({**wlink.radio_seen, "iface": "wlan0"})["reset-recovery"]
+check(
+    "  and not back within RADIO_WAIT: learned reset-recovery no, written once",
+    row["value"] == "no" and "not back" in row["detail"],
+    row,
+)
+wlink.reset_mine, wlink.reset_learned, wlink.reset_at = True, False, 3000.0
+wlink.dry = True
+wlink._learn_reset(3000.0 + U.RADIO_WAIT + 1)
+check(
+    "  a dry run learns nothing", RC.stored({**wlink.radio_seen, "iface": "wlan0"})["reset-recovery"]["value"] == "no"
+)
 
 print("\nfailures:", fails)
 sys.exit(1 if fails else 0)

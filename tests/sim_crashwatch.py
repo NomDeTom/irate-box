@@ -320,6 +320,45 @@ cw.subprocess = type(
         "SubprocessError": subprocess.SubprocessError,
     },
 )
+# On by default (2026-11-14; lyra-drv froze for four hours with both off): a box no owner has set
+# puts them in place when crash watch starts; an owner's off is kept.
+cw.SETTINGS.unlink(missing_ok=True)
+s = cw.load_settings()
+check("panic and watchdog: on by default", s["panic"] is True and s["watchdog"] is True and s["chosen"] == [], s)
+cw.save_settings({"snapshots": True, "panic": False, "watchdog": False})
+check(
+    "  a file saved with the old default (off, never chosen): on now",
+    cw.load_settings()["panic"] is True and cw.load_settings()["watchdog"] is True,
+    cw.load_settings(),
+)
+cw.SETTINGS.unlink(missing_ok=True)
+ran.clear()
+done = cw.apply_hang()
+check(
+    "  at crash watch's start: both put in place, said",
+    "kernel.panic = 10" in cw.SYSCTL.read_text()
+    and "RuntimeWatchdogSec=60" in cw.SYSTEMD_CONF.read_text()
+    and ["systemctl", "daemon-reexec"] in ran
+    and len(done) == 2,
+    (done, ran),
+)
+ran.clear()
+check("  the next start: nothing again", cw.apply_hang() == [] and ran == [], ran)
+cw.undo_all()
+cw.set_option("panic", "off")
+cw.set_option("watchdog", "off")
+s = cw.load_settings()
+check(
+    "  the owner's off: kept, and not put back at the next start",
+    s["panic"] is False
+    and s["watchdog"] is False
+    and s["chosen"] == ["panic", "watchdog"]
+    and cw.apply_hang() == []
+    and not cw.SYSCTL.exists()
+    and not cw.SYSTEMD_CONF.exists(),
+    s,
+)
+cw.SETTINGS.unlink(missing_ok=True)
 print(cw.set_option("panic", "on"))
 check(
     "panic on: written for the next boot and set now",
@@ -489,6 +528,16 @@ check(
     "a switched-off watchdog in the device tree, on Armbian with dtc: offered as one to switch on",
     cw.watchdog_device() == "switched-off",
 )
+_fake = cw.subprocess.run
+cw.subprocess.run = staticmethod(
+    lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "", "") if cmd[0] == "modinfo" else _fake(cmd, **kw)
+)
+check(
+    "  with softdog there too: the board's own first (softdog never runs on a kernel locked up on every core)",
+    cw.watchdog_device() == "switched-off",
+)
+cw.subprocess.run = staticmethod(_fake)
+cw.set_option("watchdog", "off")  # the owner's off: the doctor offers the board's watchdog
 f = {x["id"]: x for x in health.check_crashwatch(now=now)}
 wdg = {x["key"]: x for x in health.doctor_settings()["groups"]}["watchdog"]
 check(
@@ -540,6 +589,14 @@ check(
 (DTD / "watchdog@ff260000" / "status").write_bytes(b"okay\0")
 (DTD / "watchdog@ff268000" / "status").write_bytes(b"okay\0")
 check("  no switched-off node: no watchdog to offer", cw.watchdog_device() is None)
+cw.SETTINGS.unlink(missing_ok=True)  # on by default
+cw.set_option("panic", "off")
+hang = {x["id"]: x for x in health.check_crashwatch(now=now)}["crash-hang"]
+check(
+    "  the watchdog on by default with none to run: not said to restart the box, and the doctor says there is none",
+    hang["summary"]["id"] == "crash-hang.none" and "crash-hang.no-watchdog" in msg_ids(hang),
+    hang,
+)
 cw.shutil = shutil  # the stub above stood in for which() only
 
 # --- the WiFi chip gone, and the owner's choice to reset for it (the Lyra, 2026-11-04) ---

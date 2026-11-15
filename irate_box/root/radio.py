@@ -175,13 +175,17 @@ def _journal_reset(run=_run, grace=DRIVER_GRACE):
     return at
 
 
-def driver_reset(run=_run):
+def driver_reset(run=_run, driver=None):
     """(marker, age): the last reset a radio's driver made of its own device, `marker` telling one
     reset from the next and `age` its seconds ago; (None, None) when there was none. From sysfs
-    (recovered_at, with recoveries in the marker), else from the kernel's journal."""
+    (recovered_at, with recoveries in the marker), else from the kernel's journal. With `driver`,
+    that driver's alone: another radio's reset says nothing about this one."""
     up = _uptime()
     best = (None, None)
-    for p in sorted(SYS.glob("module/*/parameters/recovered_at")):
+    pattern = (
+        f"module/{driver.replace('-', '_')}/parameters/recovered_at" if driver else "module/*/parameters/recovered_at"
+    )
+    for p in sorted(SYS.glob(pattern)):
         try:
             at = int(p.read_text().strip())
             n = (p.parent / "recoveries").read_text().strip()
@@ -191,7 +195,7 @@ def driver_reset(run=_run):
             age = max(up - at, 0.0)
             if best[1] is None or age < best[1]:
                 best = (f"{p.parts[-3]}:{n}:{at}", age)
-    if best[0] is not None or any(SYS.glob("module/*/parameters/recovered_at")):
+    if best[0] is not None or any(SYS.glob(pattern)):
         return best
     at = _journal_reset(run)
     if at is None or up is None:

@@ -1,0 +1,139 @@
+{"at": 1794255762.9, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794255900, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794256365.1, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794256200, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794256666.2, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794256666.1, "i": "wlan0", "k": "down", "t": "Dropped or missed 3 times within 30 min: on the ladder while it flaps."}
+{"at": 1794256500, "i": "wlan0", "k": "m", "n": 3, "th": 3}
+{"at": 1794256973.0, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect, locked to the strongest access point (20 min flapping)."}
+{"at": 1794256980.7, "b": "aa:00:00:00:00:01", "c": 11, "d": 2.4, "i": "wlan0", "k": "roam"}
+{"at": 1794256800, "i": "wlan0", "k": "m", "n": 4, "th": 3}
+{"at": 1794257281.9, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794257344.0, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794257100, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794257400, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794257880.3, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect again, locked to the strongest access point (35 min flapping; next in 30 min)."}
+{"at": 1794257886.9, "b": "aa:00:00:00:00:01", "c": 11, "d": 2.3, "i": "wlan0", "k": "roam"}
+{"at": 1794257700, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794258188.0, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794258000, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794258474.0, "b": "auto", "i": "wlan0", "k": "repair", "s": "restart", "t": "Restart the network service (45 min flapping)."}
+{"at": 1794258482.2, "b": "aa:00:00:00:00:01", "c": 11, "d": 4.2, "i": "wlan0", "k": "roam"}
+{"at": 1794258300, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794258806.5, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794258600, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794259107.6, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794258900, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794259200, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794259500, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794259800, "i": "wlan0", "k": "m", "n": 4, "th": 3}
+{"at": 1794260271.5, "b": "auto", "i": "wlan0", "k": "repair", "s": "radio", "t": "Reset the radio (75 min flapping)."}
+{"at": 1794260283.1, "b": "aa:00:00:00:00:01", "c": 11, "d": 6.1, "i": "wlan0", "k": "roam"}
+{"at": 1794260100, "i": "wlan0", "k": "m", "n": 3, "th": 3}
+{"at": 1794260622.2, "i": "wlan0", "k": "up", "t": "Steady again: fewer than 3 misses within 30 min (tried: reconnect, restart the network service, reset the radio)."}
+{"at": 1794260658.9, "k": "start", "last": 1794260645.3, "t": "Watching again (the watchdog restarted)."}
+{"at": 1794266799.7, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794266996.0, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794266700, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794267297.1, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794267297.0, "i": "wlan0", "k": "down", "t": "Dropped or missed 3 times within 30 min: on the ladder while it flaps."}
+{"at": 1794267000, "i": "wlan0", "k": "m", "n": 3, "th": 3}
+{"at": 1794267328.2, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794267608.1, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect, locked to the strongest access point (13 min flapping)."}
+{"at": 1794267300, "i": "wlan0", "k": "m", "n": 4, "th": 3}
+{"at": 1794267613.7, "b": "aa:00:00:00:00:02", "c": 11, "d": 2.5, "i": "wlan0", "k": "roam"}
+{"at": 1794267914.8, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794267600, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794267900, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794268509.3, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect again, locked to the strongest access point (28 min flapping; next in 30 min)."}
+{"at": 1794268200, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794268514.7, "b": "aa:00:00:00:00:01", "c": 11, "d": 2.4, "i": "wlan0", "k": "roam"}
+{"at": 1794268613.3, "k": "start", "last": 1794268608.1, "t": "Watching again (the watchdog restarted)."}
+{"at": 1794268815.9, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794268800, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794269100, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794269418.1, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794269649.2, "k": "start", "last": 1794269629.6, "t": "Watching again (the watchdog restarted)."}
+{"at": 1794269719.2, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794269700, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794270020.3, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794270000, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794270300, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794270622.5, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794270622.4, "i": "wlan0", "k": "down", "t": "Dropped or missed 3 times within 30 min: on the ladder while it flaps."}
+{"at": 1794270600, "i": "wlan0", "k": "m", "n": 3, "th": 3}
+{"at": 1794270923.6, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794270923.5, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect, locked to the strongest access point (20 min flapping)."}
+{"at": 1794270927.3, "b": "aa:00:00:00:00:01", "c": 11, "d": 1.2, "i": "wlan0", "k": "roam"}
+{"at": 1794270900, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794271200, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794271529.4, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794271591.6, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794271500, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794271836.3, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect again, locked to the strongest access point (35 min flapping; next in 30 min)."}
+{"at": 1794271841.3, "b": "aa:00:00:00:00:01", "c": 11, "d": 2.4, "i": "wlan0", "k": "roam"}
+{"at": 1794271800, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794272100, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794272423.1, "b": "auto", "i": "wlan0", "k": "repair", "s": "restart", "t": "Restart the network service (45 min flapping)."}
+{"at": 1794272430.0, "d": 4.3, "i": "wlan0", "k": "roam"}
+{"at": 1794272451.8, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794272400, "i": "wlan0", "k": "m", "n": 7, "th": 3}
+{"at": 1794272700, "i": "wlan0", "k": "m", "n": 7, "th": 3}
+{"at": 1794273000, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794273355.1, "b": "aa:00:00:00:00:03", "c": 6, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794273300, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794273656.2, "i": "wlan0", "k": "cause", "s": "join", "t": "Why it is down: the network is in range, but joining it fails. What can help: reconnecting (and once a restart of the network service), never a radio reset or a reboot."}
+{"at": 1794273658.4, "d": 0.4, "i": "wlan0", "k": "roam"}
+{"at": 1794273660.6, "b": "aa:00:00:00:00:03", "c": 6, "d": 0.3, "i": "wlan0", "k": "roam"}
+{"at": 1794273658.6, "i": "wlan0", "k": "up", "t": "Back after 66 min (tried: reconnect, restart the network service)."}
+{"at": 1794273600, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794273961.7, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794273900, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794274322.6, "b": "aa:00:00:00:00:03", "c": 6, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794274200, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794274623.8, "i": "wlan0", "k": "down", "t": "Link lost (4 missed checks within 30 min)."}
+{"at": 1794274623.8, "i": "wlan0", "k": "cause", "s": "join", "t": "Why it is down: the network is in range, but joining it fails. What can help: reconnecting (and once a restart of the network service), never a radio reset or a reboot."}
+{"at": 1794274641.0, "b": "aa:00:00:00:00:01", "c": 11, "d": 0, "i": "wlan0", "k": "roam"}
+{"at": 1794274641.0, "i": "wlan0", "k": "up", "t": "Back after 11 min (tried: nothing)."}
+{"at": 1794274500, "i": "wlan0", "k": "m", "n": 4, "th": 3}
+{"at": 1794277512.1, "b": "aa:00:00:00:00:03", "c": 6, "d": 0, "i": "wlan0", "k": "roam"}
+{"at": 1794277200, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794277527.7, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794277527.6, "i": "wlan0", "k": "down", "t": "Dropped or missed 3 times within 30 min: on the ladder while it flaps."}
+{"at": 1794277500, "i": "wlan0", "k": "m", "n": 3, "th": 3}
+{"at": 1794277843.1, "b": "auto", "i": "wlan0", "k": "repair", "s": "reconnect", "t": "Reconnect, locked to the strongest access point (6 min flapping)."}
+{"at": 1794277848.0, "b": "aa:00:00:00:00:02", "c": 11, "d": 2.4, "i": "wlan0", "k": "roam"}
+{"at": 1794277861.0, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794277800, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794278162.1, "b": "aa:00:00:00:00:03", "c": 6, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794278100, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794278463.6, "i": "wlan0", "k": "cause", "s": "join", "t": "Why it is down: the network is in range, but joining it fails. What can help: reconnecting (and once a restart of the network service), never a radio reset or a reboot."}
+{"at": 1794278480.9, "b": "aa:00:00:00:00:01", "c": 11, "d": 0, "i": "wlan0", "k": "roam"}
+{"at": 1794278480.9, "i": "wlan0", "k": "up", "t": "Back after 16 min (tried: reconnect)."}
+{"at": 1794278627.5, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794278400, "i": "wlan0", "k": "m", "n": 8, "th": 3}
+{"at": 1794278928.7, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794278700, "i": "wlan0", "k": "m", "n": 2, "th": 3}
+{"at": 1794279229.8, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794279231.8, "i": "wlan0", "k": "down", "t": "Dropped or missed 3 times within 30 min: on the ladder while it flaps."}
+{"at": 1794279000, "i": "wlan0", "k": "m", "n": 3, "th": 3}
+{"at": 1794279336.4, "b": "auto", "i": "wlan0", "k": "repair", "s": "restart", "t": "Restart the network service (12 min flapping)."}
+{"at": 1794279343.7, "d": 4.4, "i": "wlan0", "k": "roam"}
+{"at": 1794279366.7, "b": "aa:00:00:00:00:02", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794279300, "i": "wlan0", "k": "m", "n": 5, "th": 3}
+{"at": 1794279667.8, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794279600, "i": "wlan0", "k": "m", "n": 6, "th": 3}
+{"at": 1794279969.0, "b": "aa:00:00:00:00:03", "c": 6, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794280029.0, "b": "aa:00:00:00:00:01", "c": 11, "d": 0.0, "i": "wlan0", "k": "roam"}
+{"at": 1794280208.4, "i": "wlan0", "k": "cause", "s": "join", "t": "Why it is down: the network is in range, but joining it fails. What can help: reconnecting (and once a restart of the network service), never a radio reset or a reboot."}
+{"at": 1794279900, "i": "wlan0", "k": "m", "n": 8, "th": 3}
+{"at": 1794280226.3, "i": "wlan0", "k": "cause", "s": "absent", "t": "Why it is down: the network is not in range (the radio scans, and does not see it). What can help: reconnecting, never a radio reset or a reboot."}
+{"at": 1794280235.3, "i": "wlan0", "k": "cause", "s": "join", "t": "Why it is down: the network is in range, but joining it fails. What can help: reconnecting (and once a restart of the network service), never a radio reset or a reboot."}
+{"at": 1794280282.8, "b": "aa:00:00:00:00:03", "c": 6, "d": 0.3, "i": "wlan0", "k": "roam"}
+{"at": 1794280300.2, "i": "wlan0", "k": "up", "t": "Back after 28 min (tried: restart the network service)."}
+{"at": 1794280200, "i": "wlan0", "k": "m", "n": 20, "th": 3}
+{"at": 1794280584.0, "b": "aa:00:00:00:00:01", "c": 1, "d": 0.1, "i": "wlan0", "k": "roam"}
+{"at": 1794280500, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794280800, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794281100, "i": "wlan0", "k": "m", "n": 1, "th": 3}
+{"at": 1794281400, "i": "wlan0", "k": "m", "n": 1, "th": 3}

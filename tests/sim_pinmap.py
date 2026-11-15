@@ -107,13 +107,58 @@ check(
     and pinmap.name_for({"owner": "ff120000.spi", "group": "rm-io10-spi0-csn0"}, LYRA_ALIASES) == "SPI0 CS0"
     and pinmap.name_for({"owner": "ff060000.i2c", "group": "rm-io0-i2c2-sda"}, LYRA_ALIASES) == "I2C2 SDA",
 )
-real_occupant = pinmap.bus_occupant
-pinmap.bus_occupant = lambda bus: "spidev"
-check(
-    "  what sits on the bus is added: SPI0 CS0 (spidev)",
-    pinmap.name_for({"owner": "ff120000.spi", "group": "rm-io10-spi0-csn0"}, LYRA_ALIASES) == "SPI0 CS0 (spidev)",
+
+
+def fake_buses(text):
+    """A /sys tree with the SPI masters, SPI devices and I2C devices a box listed (tests/fixtures/sysfs-buses-*)."""
+    root = Path(tempfile.mkdtemp(prefix="sysfs-buses-"))
+    masters, spi, i2c = root / "class/spi_master", root / "bus/spi/devices", root / "bus/i2c/devices"
+    for folder in (masters, spi, i2c):
+        folder.mkdir(parents=True)
+    for line in text.splitlines():
+        kind, name, *rest = line.split(" ")
+        if kind == "link":
+            target = root / rest[0].lstrip("/").removeprefix("sys/")
+            target.mkdir(parents=True, exist_ok=True)
+            (masters if "spi_master" in name else i2c).joinpath(Path(name).name).symlink_to(target)
+        elif kind in ("spi", "i2c"):
+            device = (spi if kind == "spi" else i2c) / name
+            if device.is_symlink():
+                continue
+            device.mkdir()
+            (device / ("modalias" if kind == "spi" else "name")).write_text(rest[0] + "\n")
+            if len(rest) > 1 and rest[1]:
+                (device / "driver").mkdir()
+    return masters, spi, i2c
+
+
+real_buses = pinmap.SPI_MASTERS, pinmap.SPI_DEVICES, pinmap.I2C_DEVICES
+pinmap.SPI_MASTERS, pinmap.SPI_DEVICES, pinmap.I2C_DEVICES = fake_buses(
+    (Path(__file__).parent / "fixtures/sysfs-buses-lyra-tft.txt").read_text()
 )
-pinmap.bus_occupant = real_occupant
+check(
+    "  a SPI pin's owner is the spidev a user configures, found by the controller's address",
+    pinmap.bus_devices("ff120000.spi", "MOSI") == "spidev0.0"
+    and pinmap.bus_devices("ff130000.spi", "CLK") == "spidev1.0, spidev1.1"
+    and pinmap.bus_devices("ff488000.spi", "CLK") == "spi-nand",
+    [pinmap.bus_devices(owner, "CLK") for owner in ("ff120000.spi", "ff130000.spi", "ff488000.spi")],
+)
+check(
+    "  a chip select names only its own device",
+    pinmap.bus_devices("ff130000.spi", "CS0") == "spidev1.0"
+    and pinmap.bus_devices("ff130000.spi", "CS1") == "spidev1.1",
+)
+check(
+    "  an I2C device with no driver bound (a touch panel not fitted) is not named; an unknown controller is empty",
+    pinmap.bus_devices("ff060000.i2c", "SDA") == ""
+    and pinmap.bus_devices("ff999999.spi", "CLK") == ""
+    and pinmap.bus_devices("portduino") == "",
+)
+(pinmap.I2C_DEVICES / "2-0051").mkdir()
+(pinmap.I2C_DEVICES / "2-0051/name").write_text("pcf8563\n")
+(pinmap.I2C_DEVICES / "2-0051/driver").mkdir()
+check("  a bound I2C device is named by its own name", pinmap.bus_devices("ff060000.i2c", "SDA") == "pcf8563")
+pinmap.SPI_MASTERS, pinmap.SPI_DEVICES, pinmap.I2C_DEVICES = real_buses
 check(
     "  the alias names an owner with no group, through its of_node where the addresses differ",
     pinmap.alias_for("3f201000.serial", PI_ALIASES, of_node="serial@7e201000") == "serial1"
@@ -227,26 +272,26 @@ check(
 
 def snapshot_with(text, claims=None, has_debugfs=True, table=None):
     """snapshot() against a stand-in gpioinfo and pinmux-pins."""
-    real_run, real_pinmux, real_aliases, real_occupant, real_model = (
+    real_run, real_pinmux, real_aliases, real_devices, real_model = (
         pinmap.run,
         pinmap.pinmux_claims,
         pinmap.aliases,
-        pinmap.bus_occupant,
+        pinmap.bus_devices,
         pinmap.model,
     )
     pinmap.run = lambda *a, **k: __import__("subprocess").CompletedProcess(a, 0, text, "")
     pinmap.pinmux_claims = lambda: (claims or {}, has_debugfs)
     pinmap.aliases = lambda: table or {}
-    pinmap.bus_occupant = lambda bus: ""
+    pinmap.bus_devices = lambda owner, signal="": "spidev0.0" if owner == "ff120000.spi" else ""
     pinmap.model = lambda: "Luckfox Lyra Zero W"
     try:
         return pinmap.snapshot("lyra")
     finally:
-        pinmap.run, pinmap.pinmux_claims, pinmap.aliases, pinmap.bus_occupant, pinmap.model = (
+        pinmap.run, pinmap.pinmux_claims, pinmap.aliases, pinmap.bus_devices, pinmap.model = (
             real_run,
             real_pinmux,
             real_aliases,
-            real_occupant,
+            real_devices,
             real_model,
         )
 
@@ -257,7 +302,8 @@ check(
     len(whole["lines"]) == 160
     and whole["note"] == ""
     and next(row for row in whole["lines"] if row["chip"] == "gpiochip0" and row["line"] == 6)["used"]
-    and next(row for row in whole["header"] if row["pin"] == 19)["label"] == "SPI0 MOSI",
+    and next(row for row in whole["header"] if row["pin"] == 19)["label"] == "SPI0 MOSI"
+    and next(row for row in whole["header"] if row["pin"] == 19)["owner"] == "spidev0.0",
     whole["note"],
 )
 without = snapshot_with(LYRA, {}, has_debugfs=False)

@@ -19,6 +19,7 @@
     "5"
    ],
    "namespace": true,
+   "summary": "Its whole-device reset sends it back to USB storage mode; its WiFi reset comes back in about 4 s.",
    "source": {
     "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
     "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",
@@ -72,6 +73,7 @@
     "2.4"
    ],
    "hotspot_channel": "link",
+   "summary": "Built into the Luckfox Lyra Zero W. Its hotspot follows the link's channel: a second channel can stall its firmware.",
    "source": {
     "name": "NomDeTom/aic8800d80, branch irate/box: the community driver (shenmintao/aic8800d80) with the firmware-stall recovery",
     "url": "https://github.com/NomDeTom/aic8800d80/tree/irate/box",

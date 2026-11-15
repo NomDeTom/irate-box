@@ -70,6 +70,9 @@ function page(running) {
   check('waiting to be kept: said, and Keep it', /Join the hotspot network and open the hub\. Then select Keep hotspot settings\./.test(t(d.getElementById('ap-state'))) && !d.getElementById('ap-confirm').hidden);
   d.getElementById('ap-confirm').click(); await wait();
   check('  Keep it: asked', p.posted.some((b) => b.action === 'confirm'));
+  run = { up: true, plan: { rung: 1, kind: 'own-radio', iface: 'wlan0', hotspot_iface: 'ap0', channel: 40, needs_choice: false, text: 'The hotspot has a radio to itself.' }, radios, owner: {}, confirmed: true, note: '' };
+  p = page(() => run); await wait(400); d = p.d;
+  check('a radio to itself: said as running on ap0, on that radio (not on wlan0)', /^On on ap0, on the radio of wlan0, channel 40\./.test(t(d.getElementById('ap-state'))), t(d.getElementById('ap-state')));
   check('no page errors', !p.errors.length, p.errors.join(' | '));
 
   // The Hotspot status card: switched on with no radio serving it is said as down, not as "Not running"; switched off

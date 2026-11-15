@@ -45,28 +45,26 @@ plan = {"kind": "own-radio", "iface": "wlan0", "band": "2.4 GHz", "channel": 6}
 settings = {"mode": "open"}
 dns = ap.dnsmasq_conf(plan)
 check(
-    "dnsmasq: the interface and DHCP lines as written by the writer",
-    "interface=wlan0" in dns and "dhcp-range=192.168.4.10,192.168.4.200,255.255.255.0,12h" in dns,
+    "dnsmasq: the hotspot's address and DHCP lines as written by the writer",
+    "listen-address=192.168.4.1" in dns and "dhcp-range=192.168.4.10,192.168.4.200,255.255.255.0,12h" in dns,
     dns,
 )
-refused(
-    "dnsmasq: an interface with a newline refused",
-    ap.dnsmasq_conf,
-    {"kind": "own-radio", "iface": "wlan0\ndhcp-authoritative", "band": "2.4 GHz", "channel": 6},
+dns = ap.dnsmasq_conf({"kind": "own-radio", "iface": "wlan0\ndhcp-authoritative", "band": "2.4 GHz", "channel": 6})
+check(
+    "dnsmasq: the plan's radio never reaches the file (a name with a newline included)",
+    "wlan0" not in dns and dns.count("dhcp-authoritative") == 1,
+    dns,
 )
 conf = ap.hostapd_conf(plan, settings, "Irate-Box", "GB")
 check(
-    "hostapd: the dynamic lines as written by the writer",
-    "interface=wlan0" in conf and "channel=6" in conf and "country_code=GB" in conf and "ssid2=" in conf,
+    "hostapd: the dynamic lines as written by the writer, on ap0 whatever the radio",
+    "interface=ap0" in conf and "channel=6" in conf and "country_code=GB" in conf and "ssid2=" in conf,
     conf,
 )
-refused(
-    "hostapd: an interface with a newline refused",
-    ap.hostapd_conf,
-    {"kind": "own-radio", "iface": "wlan0\nssid2=00", "band": "2.4 GHz", "channel": 6},
-    settings,
-    "Irate-Box",
+conf = ap.hostapd_conf(
+    {"kind": "own-radio", "iface": "wlan0\nssid2=00", "band": "2.4 GHz", "channel": 6}, settings, "Irate-Box"
 )
+check("hostapd: the plan's radio never reaches the file", "wlan0" not in conf and "ssid2=00" not in conf, conf)
 
 # The password is checked on the NetworkManager route too, where root reads the settings from state.
 refused(

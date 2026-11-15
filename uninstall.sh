@@ -81,10 +81,25 @@ else
 	done
 	nmcli connection down irate-box-ap >/dev/null 2>&1 || true
 	nmcli connection delete irate-box-ap >/dev/null 2>&1 || true
-	ip link show ap0 >/dev/null 2>&1 && iw dev ap0 del 2>/dev/null
+	# A radio whose own interface was renamed ap0 (a driver with no second interface) gets its name back, never deleted.
+	renamed="$(sed -n 's/.*"renamed_from": *"\([A-Za-z0-9_.-]*\)".*/\1/p' "$ETC"/ap.json 2>/dev/null | head -n 1)"
+	radio="$(sed -n 's/.*"iface": *"\([A-Za-z0-9_.-]*\)".*/\1/p' "$ETC"/ap.json 2>/dev/null | head -n 1)"
+	if ip link show ap0 >/dev/null 2>&1; then
+		if [ -n "$renamed" ]; then
+			ip link set ap0 down 2>/dev/null && ip link set ap0 name "$renamed" 2>/dev/null
+		elif [ "$radio" != ap0 ]; then
+			iw dev ap0 del 2>/dev/null
+		fi
+	fi
+	# A radio the hotspot held (out of NetworkManager's hands while it ran): given back.
+	if [ -n "$radio" ] && [ "$radio" != ap0 ]; then
+		nmcli device set "$radio" managed yes >/dev/null 2>&1 || true
+	fi
 	rm -f /etc/NetworkManager/system-connections/irate-box-ap.nmconnection /etc/NetworkManager/dispatcher.d/90-irate-box-ap \
+		/etc/NetworkManager/conf.d/zz-80-irate-box-ap.conf \
 		/etc/systemd/network/10-irate-box-ap.link "$UNITDIR"/irate-box-ap.service "$UNITDIR"/irate-box-ap-dns.service \
 		"$UNITDIR"/irate-box-ap-hostapd.service "$ETC"/ap-dnsmasq.conf "$ETC"/ap-hostapd.conf "$ETC"/ap.json "$ETC"/ap-tried.json
+	nmcli general reload conf >/dev/null 2>&1 || true
 	systemctl daemon-reload
 	if systemctl is-active --quiet irate-box-ap-dns.service || systemctl is-active --quiet irate-box-ap-hostapd.service ||
 		nmcli -t -f NAME connection show --active 2>/dev/null | grep -qx irate-box-ap || ip link show ap0 >/dev/null 2>&1; then

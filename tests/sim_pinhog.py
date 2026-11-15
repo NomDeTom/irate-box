@@ -75,7 +75,7 @@ header = [
 ]
 (T / "state" / "control" / "pins.json").write_text(json.dumps({"header": header}))
 pinmap.snapshot = lambda: {"header": header}
-lcdtouch.status = lambda: {"supported": True, "active": False}
+lcdtouch.status = lambda: {"supported": True, "enabled": True, "active": False}
 ownserial.status = lambda: {"supported": False, "on": False}
 
 compiled = []

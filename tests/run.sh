@@ -108,6 +108,7 @@ run sim_shared_text.py
 run sim_store_edges.py
 run sim_store_app_scope.py
 run sim_radiotests.py
+run sim_radiocaps.py
 run sim_roaming.py
 run sim_backup.py
 run sim_declared_services.py

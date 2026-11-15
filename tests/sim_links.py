@@ -54,7 +54,7 @@ check(
     "kinds: WiFi, a cable (and a tethered phone's USB link), a cellular modem as other",
     [U.link_kind(i) for i in ("wlan0", "eth0", "usb0", "wwan0")] == ["wifi", "ethernet", "ethernet", "other"],
 )
-c = U.candidate_links({"wlan0": "managed", "ap0": "AP"})
+c = U.candidate_links({"wlan0": "managed", "ap0": "AP"}, ipv4={})
 check(
     "the links that could carry the box: not the loopback, the hotspot's radio or a bridge",
     c == {"eth0": "ethernet", "usb0": "ethernet", "wlan0": "wifi", "wwan0": "other"},
@@ -69,20 +69,23 @@ def S(**kw):
 
 
 W = lambda *a, **k: set(U.watched_links(*a, **k))  # noqa: E731  which links, whatever how
+check("the default: every link", W(S(), "eth0", c) == {"eth0", "usb0", "wlan0", "wwan0"} and S()["watch_new"] == "all")
+U_ = lambda **k: S(watch_new="uplink", **k)  # noqa: E731
 check(
-    "the route's link (the default): eth0 holds the route, so eth0 only: the Pi's case, wlan0 unwatched",
-    W(S(), "eth0", c) == {"eth0"},
+    "the route's link: eth0 holds the route, so eth0 only: the Pi's case, wlan0 unwatched",
+    W(U_(), "eth0", c) == {"eth0"},
 )
-check("  wlan0 set to be watched too: both", W(S(watch={"wlan0": True}), "eth0", c) == {"eth0", "wlan0"})
+check("  wlan0 set to be watched too: both", W(U_(watch={"wlan0": True}), "eth0", c) == {"eth0", "wlan0"})
 check(
     "  the route's link set not to be watched: not watched even holding the route",
-    W(S(watch={"eth0": False}), "eth0", c) == set(),
+    W(U_(watch={"eth0": False}), "eth0", c) == set(),
 )
 check(
     "  a link in trouble stays watched when the route moves off it",
-    W(S(), "eth0", c, troubled={"wlan0"}) == {"eth0", "wlan0"},
+    W(U_(), "eth0", c, troubled={"wlan0"}) == {"eth0", "wlan0"},
 )
-check("  no route, nothing watched yet: the first WiFi client", W(S(), None, c) == {"wlan0"})
+check("  no route, nothing watched yet: the first WiFi client", W(U_(), None, c) == {"wlan0"})
+check("  a route through ap0 (a client on the hotspot's interface): never watched", W(U_(), "ap0", c) == set())
 check(
     "every link: all of them but one set not to be",
     W(S(watch_new="all", watch={"wwan0": False}), "eth0", c) == {"eth0", "usb0", "wlan0"},
@@ -108,7 +111,7 @@ check(
 )
 check(
     "  a link in trouble keeps how it was watched when the route moves off it",
-    H(S(), "usb0", c, troubled={"eth0": "full"}) == {"usb0": "full", "eth0": "full"}
+    H(U_(), "usb0", c, troubled={"eth0": "full"}) == {"usb0": "full", "eth0": "full"}
     and H(S(watch_new="look"), "eth0", c, troubled={"wlan0": "look"})["wlan0"] == "look",
 )
 
@@ -119,6 +122,7 @@ hw = {
     "usb0": {"mac": "aa:aa:aa:aa:aa:aa", "path": "usb:1-1.4:1.0"},
 }
 saved = S(
+    watch_new="uplink",
     watch={"enx0": True, "eth9": False},
     watch_hw={
         "enx0": {"mac": "00:11:22:33:44:55", "path": "usb:1-1.1:1.0"},
@@ -169,7 +173,7 @@ check(
     "an interface chosen before: that one watched, no other",
     (S(iface="wlan0")["watch"], S(iface="wlan0")["watch_new"]) == ({"wlan0": True}, "none"),
 )
-check("  'auto' before: the route's link", S(iface="auto")["watch_new"] == "uplink" and S()["watch"] == {})
+check("  'auto' before: every link, the default now", S(iface="auto")["watch_new"] == "all" and S()["watch"] == {})
 check(
     "  saved again with the new choices: kept as they are",
     S(watch={"eth0": True}, watch_new="all")["watch_new"] == "all",
@@ -189,8 +193,9 @@ for bad in (
         check(f"  {bad if len(str(bad)) < 60 else 'too many links'} refused", True)
 check(
     "said: which links are watched",
-    U.watching_words(S(watch={"wlan0": True, "eth0": False}))
-    == "the link holding the box's route and wlan0 (never eth0)",
+    U.watching_words(S(watch_new="uplink", watch={"wlan0": True, "eth0": False}))
+    == "the link holding the box's route and wlan0 (never eth0)"
+    and U.watching_words(S(watch={"wlan0": True, "eth0": False})) == "every link (never eth0)",
 )
 check(
     "  and the new choices in the settings' words when not the default",
@@ -553,7 +558,7 @@ check(
         "wlan0": {"mac": None, "path": "usb:wlan0"},
     }
     and said["id"] == "control.uplink.saved"
-    and said["args"]["links"] == "the link holding the box's route, eth0 and gone0 (never wlan0)",
+    and said["args"]["links"] == "every link (never wlan0)",
     (kept.get("watch_hw"), said),
 )
 
@@ -623,5 +628,41 @@ check(
 )
 check("  neither for a USB or SDIO device, nor a name that isn't a PCI address", radio._bus_target("nothere") is None)
 
+# --- the box's own networks, and links with no gateway of their own ---
+U.SYS_NET = Path(tempfile.mkdtemp(prefix="links-own-")) / "class/net"
+gadget = U.SYS_NET.parent.parent / "bus" / "gadget"
+gadget.mkdir(parents=True)
+iface("wlan0", wifi=True)
+iface("ap0", wifi=True)
+iface("eth0", carrier=True)
+iface("eth1", carrier=True)
+iface("eth2", carrier=True)
+iface("usb0")
+(U.SYS_NET / "usb0" / "device" / "subsystem").symlink_to(gadget)
+own = U.candidate_links(
+    {"wlan0": "managed", "ap0": "managed"},
+    ipv4={"eth0": ("auto", ""), "eth1": ("manual", ""), "eth2": ("shared", ""), "wlan0": ("auto", "")},
+)
+check(
+    "the box's own networks never links: ap0 even as a client, a USB gadget's cable, a connection shared out",
+    own == {"eth0": "ethernet", "eth1": "ethernet", "wlan0": "wifi"},
+    own,
+)
+check("  a fixed address with no gateway set: judged by its link alone", U.GATEWAYLESS == {"eth1"}, U.GATEWAYLESS)
+check(
+    "  the watchdog's own choice of link never ap0",
+    U.own_network("ap0") and U.own_network("usb0") and not U.own_network("wlan0"),
+)
+real_nm_ipv4 = U.nm_ipv4
+U.nm_ipv4 = lambda: None  # NetworkManager not answering
+U.candidate_links({"wlan0": "managed", "ap0": "managed"})
+check("  NetworkManager not answering: what was known is kept", U.GATEWAYLESS == {"eth1"}, U.GATEWAYLESS)
+U.nm_ipv4 = real_nm_ipv4
+lk = U.Link("eth1", S())
+lk.up, lk.answers, lk.gw = True, True, None
+check("  a gateway-less link that is up counts as working (it holds a step that reaches every link)", lk.healthy())
+lk2 = U.Link("eth0", S())
+lk2.up, lk2.answers, lk2.gw = True, False, None
+check("  a link whose gateway is missing does not", not lk2.healthy())
 print("ok" if not fails else f"{fails} failure(s)")
 sys.exit(1 if fails else 0)

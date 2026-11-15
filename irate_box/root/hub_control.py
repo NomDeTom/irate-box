@@ -83,6 +83,8 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "hw-status"}
       Every hardware part this box owns read again and published to control/hardware.json
       (hardware.py): the pages read that one file instead of waiting for a Box doctor scan.
+  {"id": ..., "action": "hw-current"}
+      The same, only when the file is not this boot's and this code's: the hub asks at its start.
   {"id": ..., "action": "hw-set", "choice": "<one of the Box doctor's hardware choices>"}
       One hardware setting (USB gadget, drive, LED, radios, clock, RTC, serial pins, watchdog) through
       the same gate the Box doctor uses, then the published hardware status again.
@@ -181,7 +183,7 @@ carried out, answered in control/results/<id>.json, and deleted. Nothing else is
   {"id": ..., "action": "other-ap", "uuid": "...", "do": "remove"|"leave"|"undo"|"forget"}
       A hotspot profile that is not irate-box's (root/otherap.py): removed (kept for undo), or left
       and no longer listed.
-  {"id": ..., "action": "radio-test", "iface": "wlan0", "exp": "follows-roam"|"radio-reset"|"driver-reset"}
+  {"id": ..., "action": "radio-test", "iface": "wlan0", "exp": "follows-roam"|"radio-reset"|"driver-reset"|"own-channel"}
       An experiment on one of the box's radios (root/radiotests.py), refused while guests are on the
       hotspot; its answer kept per radio and driver version.
   {"id": ..., "action": "app-install", "app": "draw|mermaid|serial|room", "zip": "<staged bundle>"}
@@ -3645,6 +3647,9 @@ def _recorded_source(repo):
         ) from None
 
 
+CHECK_FRESH = 600  # seconds a check's answer is reused by a download, without asking the source again
+
+
 def _check_for_update(progress):
     """Bring the cache up to the recorded branch and work out what is new: two steps.
     Returns (state for update.json, install options)."""
@@ -3906,7 +3911,10 @@ def update_fetch(req):
         cached = (UPDATE_SRC / ".git").is_dir() and run(
             "git", "-C", str(UPDATE_SRC), "rev-parse", "--short=7", "HEAD"
         ).stdout.strip()
-        if state.get("up_to_date") or not cached or cached != state.get("available"):
+        # The cache is reused only straight after a check (Check, then Download): an older check's answer is
+        # asked again, or a box that once downloaded a version would keep verifying it after main moved on.
+        stale = time.time() - (state.get("fetched") or 0) > CHECK_FRESH
+        if state.get("up_to_date") or not cached or cached != state.get("available") or stale:
             progress.add_steps(2)
             state, opts = _check_for_update(progress)
         else:
@@ -7703,6 +7711,17 @@ def _ap_owner(req):
     return out
 
 
+def _ap_caps():
+    """The capability record's stored rows, by phy, for the page's preview of the plan (radiocaps.py)."""
+    from irate_box.root import radiocaps
+
+    try:
+        inv = json.loads((CONTROL / "netinv.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return radiocaps.stored_by_phy(inv)
+
+
 def _ap_record_status(plan=None, note=""):
     """ap.json, for the Network page: the note in English (a message said there as it is)."""
     note = render(note)
@@ -7716,7 +7735,7 @@ def _ap_record_status(plan=None, note=""):
                 "confirmed": rec.get("confirmed", True),
                 "since": rec.get("since"),
                 "owner": rec.get("owner") or {},
-                "tried": ap._load(ap.TRIED, {}),
+                "caps": _ap_caps(),
                 "note": note,
                 "at": time.time(),
             }
@@ -8285,6 +8304,14 @@ def wifi_country(req):
 def hardware_status(_req):
     """Every hardware part read again and published to control/hardware.json (hardware.py)."""
     return hardware.publish()
+
+
+def hardware_current(_req):
+    """The hardware status published again only when it is not this boot's and this code's. The hub asks at its
+    start: this helper starts only for a request, so nothing else would after a boot or an update."""
+    if hardware.write_status_on_boot() is None:
+        return M("control.hardware.current", "The hardware status is current.")
+    return M("control.hardware.published", "The hardware status is up to date.")
 
 
 def hardware_set(req):
@@ -9670,6 +9697,7 @@ ACTIONS = {
     "housecall-unpair": housecall_unpair,
     "net-scan": net_scan,
     "hw-status": hardware_status,
+    "hw-current": hardware_current,
     "hw-set": hardware_set,
     "pins": pins,
     "pins-gpio": pins_gpio,

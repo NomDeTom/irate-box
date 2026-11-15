@@ -2282,6 +2282,131 @@ def check_hotspot():
     return out
 
 
+def _wifi_modes():
+    """{iface: "client" | "ap"} for each WiFi interface whose mode can be read: `iw dev`'s type, else the mode of
+    NetworkManager's active connection on it (a box with no iw)."""
+    from irate_box.hub import netinv
+
+    modes = {}
+    got = run("iw", "dev")
+    for iface, info in netinv.parse_iw_dev(got.stdout or "" if got.returncode == 0 else "").items():
+        kind = {"managed": "client", "AP": "ap"}.get(info.get("type"))
+        if kind:
+            modes[iface] = kind
+    act = run("nmcli", "-t", "-f", "DEVICE,TYPE,NAME", "connection", "show", "--active")
+    for line in (act.stdout or "").splitlines() if act.returncode == 0 else []:
+        dev, kind, name = (line.split(":", 2) + ["", ""])[:3]
+        if dev in modes or kind != "802-11-wireless":
+            continue
+        mode = run("nmcli", "-g", "802-11-wireless.mode", "connection", "show", name.replace("\\:", ":"))
+        modes[dev] = "ap" if (mode.stdout or "").strip() == "ap" else "client"
+    return modes
+
+
+def check_wifi_roles():
+    """ap* carries only the hotspot and wlan* only WiFi links (root/ap.py): a client on ap* (the box's link where its
+    hotspot belongs), an access point on wlan*, and, while the hotspot runs through NetworkManager, the drop-in that
+    keeps it so (ap.nm_rules)."""
+    from irate_box.root import ap
+
+    title = M("wifi-roles.title", "WiFi interface roles")
+    out = []
+    modes = _wifi_modes()
+    for iface, mode in sorted(modes.items()):
+        if iface.startswith("ap") and mode == "client":
+            out.append(
+                finding(
+                    "wifi-roles:" + iface,
+                    title,
+                    "problem",
+                    M("wifi-roles.client-on-ap", "{iface} is joined to a network as a client.", iface=iface),
+                    M(
+                        "wifi-roles.client-on-ap.why",
+                        "{iface} is the hotspot's interface. While a client holds it, the hotspot is down.",
+                        iface=iface,
+                    ),
+                    M("hotspot.toggle.fix", "On Network, Hotspot, switch the hotspot off and on again."),
+                    commands=["nmcli -t -f NAME,DEVICE connection show --active"],
+                    go=GO_HOTSPOT,
+                )
+            )
+        elif iface.startswith("wlan") and mode == "ap":
+            out.append(
+                finding(
+                    "wifi-roles:" + iface,
+                    title,
+                    "warn",
+                    M("wifi-roles.ap-on-wlan", "{iface} is an access point.", iface=iface),
+                    M(
+                        "wifi-roles.ap-on-wlan.why",
+                        "irate-box runs its hotspot on ap0 and keeps wlan* for WiFi links. "
+                        "This access point is not irate-box's.",
+                    ),
+                    commands=["nmcli -t -f NAME,DEVICE connection show --active"],
+                )
+            )
+    rec = ap._load(ap.RECORD, {})
+    plan = rec.get("plan") or {}
+    if rec.get("up") and plan.get("backend") != "hostapd":
+        try:
+            current = ap.NM_RULES.read_text() == ap.nm_rules()
+        except OSError:
+            current = False
+        if not current:
+            out.append(
+                finding(
+                    "wifi-roles:rules",
+                    title,
+                    "warn",
+                    M(
+                        "wifi-roles.rules",
+                        "NetworkManager's rule for the hotspot's interface is missing or out of date.",
+                    ),
+                    M(
+                        "wifi-roles.rules.why",
+                        "Without it, a WiFi profile that names no interface can take ap0 from the hotspot.",
+                    ),
+                    M("hotspot.toggle.fix", "On Network, Hotspot, switch the hotspot off and on again."),
+                    commands=[f"cat {ap.NM_RULES}"],
+                    go=GO_HOTSPOT,
+                )
+            )
+    if rec.get("up") and plan.get("kind") in ("own-channel", "follow") and plan.get("backend") != "hostapd":
+        # A shared radio's ap0 is kept for the hotspot by the drop-in alone, and NetworkManager reads
+        # allowed-connections from 1.34 on; before, the file is accepted and does nothing.
+        got = run("nmcli", "-t", "-f", "VERSION", "general")
+        parts = re.findall(r"\d+", (got.stdout or "").strip())[:2] if got.returncode == 0 else []
+        if len(parts) == 2 and (int(parts[0]), int(parts[1])) < (1, 34):
+            out.append(
+                finding(
+                    "wifi-roles:nm-version",
+                    title,
+                    "warn",
+                    M(
+                        "wifi-roles.nm-version",
+                        "NetworkManager {version} does not apply the rule that keeps ap0 for the hotspot.",
+                        version=(got.stdout or "").strip(),
+                    ),
+                    M(
+                        "wifi-roles.nm-version.why",
+                        "The hotspot shares its radio with the WiFi link. A WiFi profile that names no interface can "
+                        "take ap0 from the hotspot. NetworkManager 1.34 and later apply the rule.",
+                    ),
+                    commands=["nmcli -t -f VERSION general"],
+                )
+            )
+    if modes and not out:
+        out.append(
+            finding(
+                "wifi-roles",
+                title,
+                "ok",
+                M("wifi-roles.ok", "ap* carries only the hotspot and wlan* only WiFi links."),
+            )
+        )
+    return out
+
+
 def check_hotspot_per_account():
     """While the hotspot is on: whether it could give each account a WiFi password of its own (ap.per_account).
     Information for the administrator's choice, never a problem."""
@@ -6496,8 +6621,10 @@ def check_crashwatch(now=None):
         )
     )
     wd, pending = st.get("watchdog_device"), st.get("watchdog_pending")
+    # On by default, so "on" counts only where there is a watchdog: a kernel with none has the setting and no dog.
+    watchdog_on = s["watchdog"] and bool(wd or pending)
     said = ([M("crash-hang.panic", "The box restarts after a kernel panic or lockup.")] if s["panic"] else []) + (
-        [M("crash-hang.watchdog", "A watchdog restarts the box if it freezes.")] if s["watchdog"] else []
+        [M("crash-hang.watchdog", "A watchdog restarts the box if it freezes.")] if watchdog_on else []
     )
     if s["watchdog"] and pending:
         said.append(M("crash-hang.pending", "The board's watchdog starts working after the next restart."))
@@ -6511,7 +6638,7 @@ def check_crashwatch(now=None):
         )
     elif not wd:
         said.append(M("crash-hang.no-watchdog", "This kernel has no watchdog: neither the board's own nor softdog."))
-    on = s["panic"] or s["watchdog"]
+    on = s["panic"] or watchdog_on
     out.append(
         finding(
             "crash-hang",
@@ -6626,8 +6753,8 @@ def setting_groups(s, wd):
                         if wd == "switched-off"
                         else M(
                             "hs.watchdog.confirm",
-                            "Let a watchdog restart the box when it stops answering for a minute? A box doing heavy "
-                            "work that starves systemd for that long would restart too.",
+                            "A watchdog restarts the box when it stops answering for a minute. A box doing heavy "
+                            "work that starves systemd for that long restarts too.",
                         ),
                     },
                 ],
@@ -7913,6 +8040,9 @@ def check_watchdogs_alive(now=None):
 # box's files, and when it does find damage it names the card.
 UPDATE_SRC = Path(os.environ.get("HUB_UPDATE_DIR", "/var/cache/irate-box/src"))
 PACKAGE_CHECK = CONTROL / "package-check.json"
+DPKG_STATUS = Path(
+    os.environ.get("HUB_DPKG_STATUS", "/var/lib/dpkg/status")
+)  # changes with every package installed or removed
 # What the box boots and serves with: install.sh's own package list and nginx, the base system, and the network.
 STARTUP_PACKAGES = (
     "systemd",
@@ -8306,21 +8436,41 @@ def _package_cache():
     return data if isinstance(data, dict) else {}
 
 
+def _dpkg_state():
+    """When dpkg's list of packages last changed: an install, upgrade or removal makes a kept answer stale."""
+    try:
+        return DPKG_STATUS.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 def _write_package_cache(findings):
     from irate_box.root import safeio
 
     safeio.mkdir(CONTROL, mode=0o755)
-    safeio.write(PACKAGE_CHECK, json.dumps({"at": time.time(), "boot": _boot_id(), "findings": findings}, indent=1))
+    safeio.write(
+        PACKAGE_CHECK,
+        json.dumps(
+            {"at": time.time(), "boot": _boot_id(), "dpkg": _dpkg_state(), "findings": findings},
+            indent=1,
+        ),
+    )
 
 
 def check_package_files(quick=False):
     """Package files and irate-box's own tree (notes: box-doctor-hardening-plan Part 1, step 1). The weekly full run
     verifies every package and the tree; a quick run, after a boot, verifies the startup packages and their
-    dependencies once, keeping that boot's answer for the runs from /admin. Both read only, and the timer's run is
+    dependencies once, keeping that boot's answer for the runs from /admin until a package changes. Both read only, and the timer's run is
     already at low priority and idle I/O, so neither delays a service."""
     if quick:
         cached = _package_cache()
-        if cached.get("boot") == _boot_id() and isinstance(cached.get("findings"), list):
+        # That boot's answer, while no package has changed since: an update or a toolkit installed in the same
+        # boot is verified afresh.
+        if (
+            cached.get("boot") == _boot_id()
+            and cached.get("dpkg") == _dpkg_state()
+            and isinstance(cached.get("findings"), list)
+        ):
             return cached["findings"]
         packages = startup_packages()
         found = _package_findings(_dpkg_verify(packages), packages)
@@ -9205,6 +9355,7 @@ def scan(quick=False):
         check_uplink,
         check_inventory,
         check_hotspot,
+        check_wifi_roles,
         check_hotspot_per_account,
         check_wifi_stalls,
         check_wifi_gone,

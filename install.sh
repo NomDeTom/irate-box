@@ -3388,6 +3388,11 @@ if [ -n "$ap_changed" ]; then
 		case "$u" in irate-box-ap.service) ;; *) systemctl try-restart "$u" || true ;; esac
 	done
 fi
+# Where the hotspot runs through NetworkManager: ap* carries only it, wlan* never it (root/ap.py nm_rules),
+# applied to every device by a configuration reload, no restart.
+if PYTHONPATH="$CODE" python3 -c "from irate_box.root import ap; raise SystemExit(0 if ap.refresh_nm_rules(only_if_set_up=True) else 1)"; then
+	nmcli general reload conf 2>/dev/null || true
+fi
 
 cat >/etc/systemd/system/irate-box-secdoctor.timer <<EOF
 [Unit]
