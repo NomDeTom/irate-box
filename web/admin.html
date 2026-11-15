@@ -274,73 +274,77 @@
             View installed and available apps. Select an app to change its
             access, tile, settings, updates or installation.
           </p>
-          <div id="quick-installer" class="quick-installer"></div>
-          <div class="inv-tools">
-            <label data-i18n="admin.app-inventory.label-search-apps"
-              >Search apps
-              <input
-                type="search"
-                id="inv-q"
-                placeholder="name or type"
-                aria-label="Search apps"
-                data-i18n-aria-label="admin.app-inventory.aria-search-apps"
-                data-i18n-placeholder="admin.app-inventory.placeholder-name-type"
-            /></label>
-            <div
-              class="view-switch inv-filter"
-              role="group"
-              aria-label="Which apps"
-              data-i18n-aria-label="admin.app-inventory.aria-apps"
-            >
-              <button
-                class="view-switch-btn active"
-                type="button"
-                data-inv="all"
-                aria-pressed="true"
-                data-i18n="admin.app-inventory.btn-all"
-              >
-                All
-              </button>
-              <button
-                class="view-switch-btn"
-                type="button"
-                data-inv="installed"
-                aria-pressed="false"
-                data-i18n="admin.app-inventory.btn-installed"
-              >
-                Installed
-              </button>
-              <button
-                class="view-switch-btn"
-                type="button"
-                data-inv="available"
-                aria-pressed="false"
-                data-i18n="admin.app-inventory.btn-available"
-              >
-                Available
-              </button>
-              <button
-                class="view-switch-btn"
-                type="button"
-                data-inv="not-installed"
-                aria-pressed="false"
-                data-i18n="admin.app-inventory.btn-not-installed"
-              >
-                Not installed
-              </button>
-              <button
-                class="view-switch-btn"
-                type="button"
-                data-inv="builtin"
-                aria-pressed="false"
-                data-i18n="admin.app-inventory.btn-built"
-              >
-                Built in
-              </button>
+          <div class="inv-layout">
+            <div class="inv-main">
+              <div class="inv-tools">
+                <label data-i18n="admin.app-inventory.label-search-apps"
+                  >Search apps
+                  <input
+                    type="search"
+                    id="inv-q"
+                    placeholder="name or type"
+                    aria-label="Search apps"
+                    data-i18n-aria-label="admin.app-inventory.aria-search-apps"
+                    data-i18n-placeholder="admin.app-inventory.placeholder-name-type"
+                /></label>
+                <div
+                  class="view-switch inv-filter"
+                  role="group"
+                  aria-label="Which apps"
+                  data-i18n-aria-label="admin.app-inventory.aria-apps"
+                >
+                  <button
+                    class="view-switch-btn active"
+                    type="button"
+                    data-inv="all"
+                    aria-pressed="true"
+                    data-i18n="admin.app-inventory.btn-all"
+                  >
+                    All
+                  </button>
+                  <button
+                    class="view-switch-btn"
+                    type="button"
+                    data-inv="installed"
+                    aria-pressed="false"
+                    data-i18n="admin.app-inventory.btn-installed"
+                  >
+                    Installed
+                  </button>
+                  <button
+                    class="view-switch-btn"
+                    type="button"
+                    data-inv="available"
+                    aria-pressed="false"
+                    data-i18n="admin.app-inventory.btn-available"
+                  >
+                    Available
+                  </button>
+                  <button
+                    class="view-switch-btn"
+                    type="button"
+                    data-inv="not-installed"
+                    aria-pressed="false"
+                    data-i18n="admin.app-inventory.btn-not-installed"
+                  >
+                    Not installed
+                  </button>
+                  <button
+                    class="view-switch-btn"
+                    type="button"
+                    data-inv="builtin"
+                    aria-pressed="false"
+                    data-i18n="admin.app-inventory.btn-built"
+                  >
+                    Built in
+                  </button>
+                </div>
+              </div>
+              <ul class="inv-list" id="inv-list" aria-live="polite"></ul>
+              <p class="setting-desc" id="inv-note"></p>
             </div>
+            <div id="quick-installer" class="quick-installer"></div>
           </div>
-          <ul class="inv-list" id="inv-list" aria-live="polite"></ul>
-          <p class="setting-desc" id="inv-note"></p>
         </section>
 
         <section class="admin-pane" id="addons" aria-labelledby="addons-title">

@@ -19083,7 +19083,58 @@ function quickState(data) {
     results: Array.isArray(out.results) ? out.results : [],
   };
 }
-function renderQuickInstaller(rows) {
+function quickChosen() {
+  return new Map(quickQueue.items.map((item) => [quickKey(item), item]));
+}
+// One change to the queue, saved at once, then both the list and the queue redrawn: the buttons on the
+// apps' lines say whether each item is in the queue, and the queue pane is the same list.
+function quickChange(change) {
+  const chosen = quickChosen();
+  change(chosen);
+  quickQueue.items = [...chosen.values()];
+  // The redraw replaces the pressed button; keyboard focus goes back to its successor on the same line.
+  const pressed = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.queueKey : null;
+  quickSave(quickQueue.items).then((data) => {
+    quickQueue = quickState(data);
+    renderInventory();
+    if (pressed) {
+      const again = [...document.querySelectorAll("#inv-list [data-queue-key]")].find((b) => b.dataset.queueKey === pressed);
+      if (again) again.focus();
+    }
+  });
+}
+function quickAddDocs(chosen, docs) {
+  for (const doc of docs) {
+    chosen.set(`book:${doc.book}`, quickDocItem(doc));
+    if (docState(doc).kiwixReady === false)
+      chosen.set("addon:wiki", { kind: "addon", id: "wiki", title: "Kiwix" });
+  }
+}
+// An app's own button on its line, or one of its docs' beside it. A second press takes it back out.
+function quickAddButton(item, text, label, add, cls = "") {
+  const chosen = quickChosen().has(quickKey(item));
+  const button = el("button", {
+    type: "button",
+    className: `chip${cls ? ` ${cls}` : ""}${chosen ? " on" : ""}`,
+    textContent: chosen ? (item.kind === "book" ? text.replace(/: add to queue$/, ": in the queue") : "In the queue") : text,
+  });
+  button.setAttribute(
+    "aria-label",
+    `${label}: ${chosen ? "in the queue" : "add to queue"}`,
+  );
+  button.dataset.queueKey = quickKey(item);
+  button.addEventListener("click", () =>
+    quickChange((map) => {
+      if (map.has(quickKey(item))) map.delete(quickKey(item));
+      else {
+        map.set(quickKey(item), item);
+        if (add) add(map);
+      }
+    }),
+  );
+  return button;
+}
+function renderQuickInstaller() {
   const box = document.getElementById("quick-installer");
   if (!box || !AL.apps()) return;
   quickQueue = quickState(quickQueue);
@@ -19098,76 +19149,6 @@ function renderQuickInstaller(rows) {
       box.contains(range.commonAncestorContainer))
   )
     return;
-  const installed = new Set(
-    rows
-      .filter((row) => row.state === "installed" || row.state === "builtin")
-      .map((row) => row.id),
-  );
-  const candidates = rows.filter(
-    (row) =>
-      !installed.has(row.id) &&
-      ["app", "addon", "local"].includes(row.kind) &&
-      !row.group,
-  );
-  const chosen = new Map(quickQueue.items.map((item) => [quickKey(item), item]));
-  const chips = [];
-  for (const row of candidates) {
-    const m = (AL.apps() || []).find((x) => x.id === row.id) || {};
-    const appItem = { kind: quickKind(row), id: row.id, title: row.name };
-    const appChip = el(
-      "button",
-      {
-        type: "button",
-        className: `chip${chosen.has(quickKey(appItem)) ? " on" : ""}`,
-        textContent: chosen.has(quickKey(appItem))
-          ? `${row.name}: in the queue`
-          : `${row.name}: add to queue`,
-      },
-    );
-    appChip.addEventListener("click", () => {
-      const item = appItem;
-      if (chosen.has(quickKey(item))) chosen.delete(quickKey(item));
-      else {
-        chosen.set(quickKey(item), item);
-        if (quickQueue.settings.docs_with_app)
-          for (const doc of docsOf(m)) {
-            chosen.set(`book:${doc.book}`, quickDocItem(doc));
-            if (docState(doc).kiwixReady === false)
-              chosen.set("addon:wiki", { kind: "addon", id: "wiki", title: "Kiwix" });
-          }
-      }
-      quickQueue.items = [...chosen.values()];
-      quickSave(quickQueue.items).then((data) => {
-        quickQueue = quickState(data);
-        renderQuickInstaller(rows);
-      });
-    });
-    chips.push(appChip);
-    for (const doc of docsOf(m)) {
-      const item = quickDocItem(doc);
-      const chip = el("button", {
-        type: "button",
-        className: `chip docs${chosen.has(quickKey(item)) ? " on" : ""}`,
-        textContent: chosen.has(quickKey(item))
-          ? `${doc.title}: in the queue`
-          : `${doc.title} (${doc.size_mb} MB): add to queue`,
-      });
-      chip.addEventListener("click", () => {
-        if (chosen.has(quickKey(item))) chosen.delete(quickKey(item));
-        else {
-          chosen.set(quickKey(item), item);
-          if (docState(doc).kiwixReady === false)
-            chosen.set("addon:wiki", { kind: "addon", id: "wiki", title: "Kiwix" });
-        }
-        quickQueue.items = [...chosen.values()];
-        quickSave(quickQueue.items).then((data) => {
-          quickQueue = data;
-          renderQuickInstaller(rows);
-        });
-      });
-      chips.push(chip);
-    }
-  }
   const known = quickQueue.items.reduce(
     (total, item) => total + (item.kind === "book" ? item.size_mb || 0 : 0),
     0,
@@ -19175,13 +19156,9 @@ function renderQuickInstaller(rows) {
   const list = el("ol", { className: "quick-queue" });
   for (const item of quickQueue.items) {
     const out = el("button", { type: "button", className: "small", textContent: "Take out" });
-    out.addEventListener("click", () => {
-      quickQueue.items = quickQueue.items.filter((x) => quickKey(x) !== quickKey(item));
-      quickSave(quickQueue.items).then((data) => {
-        quickQueue = quickState(data);
-        renderQuickInstaller(rows);
-      });
-    });
+    out.addEventListener("click", () =>
+      quickChange((map) => map.delete(quickKey(item))),
+    );
     const state = quickQueue.results.find((r) => quickKey(r.item) === quickKey(item));
     const line =
       quickQueue.current && quickKey(quickQueue.current) === quickKey(item)
@@ -19210,7 +19187,7 @@ function renderQuickInstaller(rows) {
       tick.addEventListener("change", () => {
         if (tick.checked) quickTicks.add(quickKey(item));
         else quickTicks.delete(quickKey(item));
-        renderQuickInstaller(rows);
+        renderQuickInstaller();
       });
       row.append(el("label", { className: "setting" }, tick, el("span", { className: "setting-desc", textContent: ` ${item.consent}` })));
     }
@@ -19222,7 +19199,7 @@ function renderQuickInstaller(rows) {
     postJSON("/admin/queue", { action: "settings", docs_with_app: docsWith.checked, metered: !!settings.metered })
       .then((data) => {
         quickQueue = quickState(data);
-        renderQuickInstaller(rows);
+        renderInventory();
       });
   });
   // A consent waits for its own tick, not the whole queue: the other items install now and it stays.
@@ -19241,7 +19218,7 @@ function renderQuickInstaller(rows) {
     postJSON("/admin/queue", { action: "install", ticks })
       .then((data) => {
         quickQueue = quickState(data);
-        renderQuickInstaller(rows);
+        renderInventory();
         pollQuick();
       })
       .catch((error) => {
@@ -19250,14 +19227,13 @@ function renderQuickInstaller(rows) {
         AW.setBusy(install, false);
       });
   });
-  AW.redrawIfChanged(box, JSON.stringify([quickQueue, rows]), () => [
+  AW.redrawIfChanged(box, JSON.stringify([quickQueue]), () => [
     el("h3", { textContent: "Quick installer" }),
     el("p", {
       className: "setting-desc",
       textContent:
-        "Select apps and their known docs. Apps and add-ons go first, then the books, each as its own request.",
+        "Add apps and their known docs from the list, then press Install queued. Apps and add-ons go first, then the books, each as its own request.",
     }),
-    el("div", { className: "quick-chips" }, ...chips),
     el(
       "label",
       { className: "setting" },
@@ -19284,7 +19260,7 @@ function pollQuick() {
   getJSON("/admin/queue")
     .then((data) => {
       quickQueue = quickState(data);
-      renderQuickInstaller(inventoryRows());
+      renderInventory();
       if (data.running) setTimeout(pollQuick, 3000);
     })
     .catch(() => {})
@@ -19295,7 +19271,7 @@ function pollQuick() {
 getJSON("/admin/queue")
   .then((data) => {
     quickQueue = quickState(data);
-    renderQuickInstaller(inventoryRows());
+    renderInventory();
     if (data.running) pollQuick();
   })
   .catch(() => {});
@@ -19305,7 +19281,8 @@ function renderInventory() {
   if (!list || !AL.apps()) return;
   const q = document.getElementById("inv-q").value.trim().toLowerCase();
   const all = inventoryRows();
-  renderQuickInstaller(all);
+  renderQuickInstaller();
+  const manifests = AL.apps();
   const want = (row) =>
     invShow === "all" ||
     row.state === invShow ||
@@ -19317,8 +19294,47 @@ function renderInventory() {
       (!q || `${row.name} ${INV_KIND[row.kind]}`.toLowerCase().includes(q)),
   );
   list.replaceChildren(
-    ...shown.map((row) =>
-      el(
+    ...shown.map((row) => {
+      const m = manifests.find((x) => x.id === row.id);
+      // Only an app, add-on or web add-on that is not here gets the queue's buttons: the app's own, then
+      // one per known doc (with its size) on the same line. Installed and built-in lines have none.
+      const canQueue =
+        !row.group &&
+        ["app", "addon", "local"].includes(row.kind) &&
+        row.state !== "installed" &&
+        row.state !== "builtin";
+      const actions = canQueue
+        ? el(
+            "span",
+            { className: "inv-actions" },
+            quickAddButton(
+              { kind: quickKind(row), id: row.id, title: row.name },
+              "Add to queue",
+              row.name,
+              (map) => {
+                if (quickQueue.settings.docs_with_app)
+                  quickAddDocs(map, docsOf(m));
+              },
+            ),
+            ...docsOf(m).map((doc) =>
+              quickAddButton(
+                quickDocItem(doc),
+                `${doc.title} (${doc.size_mb} MB): add to queue`,
+                `${doc.title} (${doc.size_mb} MB)`,
+                (map) => {
+                  if (docState(doc).kiwixReady === false)
+                    map.set("addon:wiki", {
+                      kind: "addon",
+                      id: "wiki",
+                      title: "Kiwix",
+                    });
+                },
+                "docs",
+              ),
+            ),
+          )
+        : null;
+      return el(
         "li",
         { className: "inv-row" },
         el("a", { className: "inv-name", href: row.href, textContent: row.name }),
@@ -19326,6 +19342,7 @@ function renderInventory() {
           className: "inv-kind",
           textContent: INV_KIND[row.kind] || row.kind,
         }),
+        actions,
         el(
           "span",
           { className: "inv-facts" },
@@ -19339,8 +19356,8 @@ function renderInventory() {
             el("span", { className: "inv-fact bad", textContent: t }),
           ),
         ),
-      ),
-    ),
+      );
+    }),
   );
   document.getElementById("inv-note").textContent = shown.length
     ? `${shown.length} of ${all.length} shown.`
