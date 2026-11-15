@@ -285,11 +285,30 @@ setTimeout(() => {
     check('  the relay without a tile is listed, not installed, and says it has no home tile', /Not installed/.test(line('Whiteboard relay').textContent)
       && line('Whiteboard relay').querySelector('a').getAttribute('href') === '#page-app-room');
     check('  an add-on whose state is unknown says so', /Installation status unavailable/.test(t('#inv-list')[0]));
+    const mermaidLine = line('Mermaid');
     check(
-      'Quick installer: an uninstalled app and its known docs are chips',
-      /Mermaid: add to queue/.test(t('#quick-installer')[0]) && /Mermaid docs \(12 MB\): add to queue/.test(t('#quick-installer')[0]),
+      'All apps: a not-installed app\'s line carries its Add to queue button and its docs\' button',
+      !!mermaidLine.querySelector('.inv-actions button') && /^Add to queue$/.test(mermaidLine.querySelector('.inv-actions button').textContent)
+        && [...mermaidLine.querySelectorAll('.inv-actions button')].some((b) => /Mermaid docs \(12 MB\): add to queue/.test(b.textContent)),
+      mermaidLine && mermaidLine.textContent,
+    );
+    check(
+      '  an installed app\'s line and a built-in\'s carry none',
+      !line('Excalidraw').querySelector('.inv-actions button') && !line('File drop').querySelector('.inv-actions button'),
+      JSON.stringify({ excalidraw: line('Excalidraw') && line('Excalidraw').textContent, drop: line('File drop') && line('File drop').textContent }),
+    );
+    check(
+      '  the old chip cluster is gone: the queue pane draws no chips',
+      !d.querySelector('#quick-installer .chip, #quick-installer .quick-chips'),
       t('#quick-installer')[0],
     );
+    {
+      const add = mermaidLine.querySelector('.inv-actions button');
+      add.click();
+      check('  a click puts the app in the hub\'s queue', queueData.items.some((x) => x.kind === 'app' && x.id === 'mermaid'), JSON.stringify(queueData.items));
+      add.click();
+      check('  a second click takes it back out', !queueData.items.some((x) => x.kind === 'app' && x.id === 'mermaid'), JSON.stringify(queueData.items));
+    }
     check(
       '  an app with known docs says so on its line and its page',
       /Docs: Mermaid docs added/.test(line('Mermaid').textContent)
@@ -640,8 +659,9 @@ setTimeout(() => {
     [...d.querySelectorAll('#app-install-irc button')].find((b) => b.textContent === 'Uninstall add-on').click();
     check('Remove on the IRC page sends the existing removal request', posted.some((post) => post[0] === '/admin/addons'
       && post[1].addon === 'irc' && post[1].on === false));
-    const docChip = [...d.querySelectorAll('#quick-installer .chip.docs')].find((b) => /Mermaid docs/.test(b.textContent));
-    check('Quick installer: a docs chip without its app', !!docChip, t('#quick-installer')[0]);
+    const docChip = [...d.querySelectorAll('#inv-list .inv-actions .chip.docs')].find((b) => /Mermaid docs/.test(b.textContent));
+    check('All apps: a docs button on its app\'s line, without its app', !!docChip,
+      t('#inv-list')[0]);
     if (docChip) docChip.click();
 
     {

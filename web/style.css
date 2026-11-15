@@ -212,7 +212,7 @@ h2 {
 .admin-pane > p + :is(.net-card, .setting, .settings, .aw-block, .source-grid) {
   margin-top: 1rem;
 }
-.admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .quick-chips, .admin-meter) {
+.admin-pane > p + :is(.tab-set, .security-cards, .update-cards, .admin-meter) {
   margin-top: 1rem;
 }
 .admin-pane > :is(.setting, .settings, .net-card, .aw-block, .git-card, .lib-card, .attention) + p.setting-desc {
@@ -276,13 +276,6 @@ body.admin .admin-pane summary + h3 {
 }
 .admin-pane > h3 + p.setting-desc {
   margin-top: 0;
-}
-/* The quick installer's chips and the setting under them. */
-.quick-chips {
-  margin-top: 1rem;
-}
-.quick-chips + .setting {
-  margin-top: 1rem;
 }
 /* An app's maintenance cards keep the card gap. */
 .app-updates + .app-install {
@@ -380,6 +373,10 @@ summary + .view-switch {
 .quick-installer > :first-child,
 .appearance-box > :first-child {
   margin-top: 0;
+}
+/* The queue pane's words, then its settings and its list. */
+.quick-installer > p + :is(.setting, .quick-queue) {
+  margin-top: 1rem;
 }
 .appearance-box {
   margin-top: 0.7rem;
@@ -2325,6 +2322,36 @@ body.about h3 {
 .memory-readout {
   min-height: 2.5em;
   font-variant-numeric: tabular-nums;
+}
+/* All apps: the list to click down, and the queue it fills beside it; on a narrow page the queue sits under
+   the list. A not-installed line's own buttons sit on that line, after its name and kind. */
+.inv-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+  gap: 1rem 1.5rem;
+  align-items: start;
+  margin-top: 0.7rem;
+}
+.inv-main {
+  min-width: 0;
+}
+.inv-layout > .quick-installer {
+  margin-top: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.inv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+@media (max-width: 60rem) {
+  .inv-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .inv-tools {
   display: flex;

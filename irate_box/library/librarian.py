@@ -792,7 +792,8 @@ def update_app(src, cand, entry, mode):
     the bundle into APP_STAGING; for "update", also queue it for the root helper (using the
     fetched one when it is still the newest)."""
     installed = installed_app(src["name"])
-    entry["current"] = _current_build(installed or {}, installed)
+    meta = installed or {}
+    entry["current"] = _current_build(meta, installed)
     staged = APP_STAGING / f"{src['name']}.zip"
     if _same_build(meta, cand):
         entry.pop("fetched", None)
