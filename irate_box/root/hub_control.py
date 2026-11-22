@@ -6639,6 +6639,82 @@ def security_deep_audit(req):
     return line
 
 
+def _security_module_remove(stem):
+    """Remove the package that loads one dynamic nginx module, if root's own scan still finds it unused."""
+    unused = {m["stem"]: m for m in secdoctor._unused_modules(secdoctor._read(secdoctor.NGINX_CONF) or "")}
+    module = unused.get(stem)
+    if not module:
+        raise Refused(
+            M(
+                "control.security.module-gone",
+                "That module is no longer loaded, or the web server's configuration now uses it. Run the doctor again.",
+            )
+        )
+    found = run("dpkg-query", "-S", f"*/{module['module']}", timeout=30)
+    packages = sorted(
+        {
+            line.split(":", 1)[0]
+            for line in found.stdout.splitlines()
+            if line.split(":", 1)[0].startswith("libnginx-mod-")
+        }
+    )
+    if not packages:
+        raise Refused(
+            M(
+                "control.security.module-no-package",
+                "This module does not come from a libnginx-mod package, so the Security page cannot remove it.",
+            )
+        )
+    package = packages[0]
+    removed = run("apt-get", "remove", "-y", "-q", "--no-install-recommends", package, timeout=300)
+    if removed.returncode:
+        detail = ((removed.stderr or removed.stdout).strip().splitlines() or ["apt-get failed"])[-1][:200]
+        raise Refused(
+            M(
+                "control.security.module-remove-failed",
+                "The box could not remove {package}: {detail}",
+                package=package,
+                detail=detail,
+            )
+        )
+    run("systemctl", "reload", "nginx", timeout=60)
+    return M(
+        "control.security.module-removed",
+        "The box removed {package}. nginx reloaded without it.",
+        package=package,
+    )
+
+
+def _security_stale_restart():
+    """Restart every service root's own /proc scan now finds running a library an update replaced."""
+    units = sorted(secdoctor.stale_code()["services"])
+    if not units:
+        raise Refused(
+            M(
+                "control.security.stale-gone",
+                "No service is running replaced code now. Run the doctor again.",
+            )
+        )
+    failed = []
+    for unit in units:
+        restarted = run("systemctl", "restart", unit, timeout=120)
+        if restarted.returncode:
+            failed.append(unit)
+    if failed:
+        raise Refused(
+            M(
+                "control.security.stale-failed",
+                "The box could not restart {units}.",
+                units=", ".join(failed),
+            )
+        )
+    return M(
+        "control.security.stale-restarted",
+        "The box restarted {n} services that were running replaced code.",
+        n=len(units),
+    )
+
+
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
@@ -6659,6 +6735,16 @@ def security_fix(req):
         }
     except (OSError, ValueError, KeyError, TypeError):
         offered = set()
+    try:
+        audit = json.loads(safeio.read_own(AUDIT_STATE))
+        offered |= {
+            a["choice"]
+            for step in audit.get("steps", [])
+            for f in step.get("findings", [])
+            for a in f.get("actions", [])
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     # The update pattern's chips and buttons are a closed set of their own, always there on Updates.
     pattern = choice in (
         "security-check",
@@ -6683,14 +6769,23 @@ def security_fix(req):
                 "This action is no longer available. Run the checks again. Then select an action from the new results.",
             )
         )
+    audit_action = choice == "stale-restart" or choice.startswith("module-remove:")
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
-        msg = security.fix(choice, SECURITY_LOG)
+        if choice == "stale-restart":
+            msg = _security_stale_restart()
+        elif choice.startswith("module-remove:"):
+            msg = _security_module_remove(choice.split(":", 1)[1])
+        else:
+            msg = security.fix(choice, SECURITY_LOG)
     finally:
-        _write_security(security.scan())
-        if choice.startswith(("os-", "board-")):
-            osupdates.kinds_report()
+        if audit_action:
+            secdoctor.write_report(secdoctor.audit(), AUDIT_STATE)
+        else:
+            _write_security(security.scan())
+            if choice.startswith(("os-", "board-")):
+                osupdates.kinds_report()
     return msg
 
 

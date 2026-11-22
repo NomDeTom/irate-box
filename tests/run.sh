@@ -133,6 +133,8 @@ run sim_secdoctor_manifest.py
 run sim_secdoctor_missing.py
 run sim_secdoctor_sandbox.py
 run sim_front_sandbox.py
+run sim_secdoctor_stale.py
+run sim_pin_advisories.py
 run sim_secdoctor_kernel_features.py
 run sim_ap_refresh.py
 run sim_helper_busy.py

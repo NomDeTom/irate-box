@@ -1,0 +1,5 @@
+7dc9ecaf5000-7dc9ecaf6000 r--p 00000000 08:30 2439904                    /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)
+7dc9ecaf6000-7dc9ecaf7000 r-xp 00001000 08:30 2439904                    /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)
+7dc9ecaf7000-7dc9ecaf8000 r--p 00002000 08:30 2439904                    /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)
+7dc9ecaf8000-7dc9ecaf9000 r--p 00002000 08:30 2439904                    /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)
+7dc9ecaf9000-7dc9ecafa000 rw-p 00003000 08:30 2439904                    /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)

@@ -39,7 +39,7 @@ import time
 import traceback
 from pathlib import Path
 
-from irate_box.finding import current, finding
+from irate_box.finding import action, current, finding
 from irate_box.msg import M, named, when
 from irate_box.root import kernelinfo, secdoctor_xref
 
@@ -51,6 +51,7 @@ HUB_USER = os.environ.get("HUB_USER", "hub")
 CI_USER = "hubci"
 CONTROL = STATE / "control"
 NGINX_CONF = Path(os.environ.get("HUB_NGINX_CONF", "/etc/nginx/conf.d/irate-box.conf"))
+NGINX_MODULES = Path(os.environ.get("HUB_NGINX_MODULES", "/etc/nginx/modules-enabled"))
 PROC = Path(os.environ.get("HUB_PROC_DIR", "/proc"))
 SYS_FS = Path(os.environ.get("HUB_SYSCTL_DIR", "/proc/sys"))
 SUDOERS = Path(os.environ.get("HUB_SUDOERS", "/etc/sudoers"))
@@ -1294,6 +1295,105 @@ XFF_WHY = M(
 
 FRONT_UNITS = {"nginx": "nginx.service", "caddy": "caddy.service"}
 
+# What a loaded dynamic module's directives look like in a configuration. A module whose directives are
+# absent is loaded but not used (an unknown module is reported too: the hub's config uses no directive of it).
+MODULE_TRIGGERS = {
+    "mail": re.compile(r"(?m)^\s*mail\s*\{"),
+    "stream": re.compile(r"(?m)^\s*stream\s*\{"),
+    "http_v2": re.compile(r"(?m)^\s*http2\b"),
+    "http_v3": re.compile(r"(?m)^\s*(?:http3|quic)\b"),
+    "http_ssl": re.compile(r"\bssl_(?:certificate|protocols)\b"),
+    "http_geoip": re.compile(r"\bgeoip_(?:country|city|org|isp)\b"),
+    "http_image_filter": re.compile(r"\bimage_filter\b"),
+    "http_perl": re.compile(r"(?m)^\s*perl\b"),
+    "http_xslt_filter": re.compile(r"\bxslt_(?:stylesheet|param|types)\b"),
+    "http_brotli_filter": re.compile(r"\bbrotli\b"),
+    "http_brotli_static": re.compile(r"\bbrotli_static\b"),
+    "http_headers_more_filter": re.compile(r"\bmore_(?:set|add|clear)_headers?\b"),
+    "http_gzip_static": re.compile(r"\bgzip_static\b"),
+    "http_gunzip": re.compile(r"\bgunzip\b"),
+    "http_dav": re.compile(r"\bdav_methods\b"),
+    "http_auth_pam": re.compile(r"\bauth_pam\b"),
+    "http_secure_link": re.compile(r"\bsecure_link\b"),
+    "http_subs_filter": re.compile(r"\bsub_filter\b"),
+    "http_addition": re.compile(r"\badd_(?:before|after)_body\b"),
+    "http_echo": re.compile(r"\becho\b"),
+    "http_fancyindex": re.compile(r"\bfancyindex\b"),
+    "http_lua": re.compile(r"\b(?:content|access|rewrite)_by_lua\b"),
+}
+
+
+def _loaded_modules(directory=None):
+    """[{stem, module, file}] for every load_module in the enabled modules folder."""
+    out = []
+    try:
+        paths = sorted(Path(directory or NGINX_MODULES).glob("*.conf"))
+    except OSError:
+        return out
+    for path in paths:
+        for line in (_read(path) or "").splitlines():
+            match = re.match(r"\s*load_module\s+(\S+);", line)
+            if not match:
+                continue
+            module = Path(match.group(1)).name
+            stem = re.sub(r"^ngx_", "", re.sub(r"_module\.so.*$", "", module))
+            out.append({"stem": stem, "module": module, "file": path.name})
+    return out
+
+
+def _unused_modules(config_text):
+    """The loaded modules whose directives the configuration never uses."""
+    return [
+        module
+        for module in _loaded_modules()
+        if not (MODULE_TRIGGERS.get(module["stem"]) and MODULE_TRIGGERS[module["stem"]].search(config_text or ""))
+    ]
+
+
+def _front_modules():
+    """A finding for each nginx module the hub's configuration does not use."""
+    unused = _unused_modules(_read(NGINX_CONF) or "")
+    if not unused:
+        return []
+    return [
+        finding(
+            "front-modules",
+            M("front.modules.title", "nginx modules"),
+            "warn",
+            M(
+                "front.modules.unused",
+                "nginx loads {n} modules that the hub's configuration does not use.",
+                n=len(unused),
+            ),
+            M(
+                "front.modules.why",
+                "A module adds code to the web server that a flaw in it can reach. The hub's configuration uses "
+                "none of it.",
+            ),
+            M(
+                "front.modules.fix",
+                "Remove the package that loads each module, unless another site on this nginx uses it.",
+            ),
+            actions=[
+                action(
+                    f"module-remove:{module['stem']}",
+                    M(
+                        "front.modules.remove",
+                        "Remove {module}",
+                        module=module["stem"],
+                    ),
+                    confirm=M(
+                        "front.modules.remove.confirm",
+                        "Remove the package that loads {module}? Another site on this nginx may use it.",
+                        module=module["stem"],
+                    ),
+                )
+                for module in unused
+            ],
+            evidence=[f"{module['stem']} ({module['file']})" for module in unused],
+        )
+    ]
+
 
 def _front_sandbox(kind):
     """The front's own unit: whether the sandbox lines irate-box writes are there."""
@@ -1344,6 +1444,118 @@ def _front_sandbox(kind):
             evidence=evidence,
         )
     ]
+
+
+def _unit_of(pid):
+    """The service unit a process belongs to, from /proc/PID/cgroup."""
+    text = _read(PROC / str(pid) / "cgroup") or ""
+    for line in text.splitlines():
+        match = re.search(r"/([A-Za-z0-9@_.:-]+\.service)(?:/|$)", line)
+        if match:
+            return match.group(1)
+    return None
+
+
+def stale_code():
+    """{'services': {unit: [{pid, path}]}, 'box': [{pid, path, why}]} from /proc/*/maps.
+
+    A mapped file under /usr marked (deleted) is a library an update replaced while the process kept the old one.
+    PID 1, dbus, the C library and a process outside a service need a restart of the box, not of one unit."""
+    services, box = {}, []
+    try:
+        pids = sorted((p for p in PROC.glob("[0-9]*") if p.name.isdigit()), key=lambda p: int(p.name))
+    except OSError:
+        return {"services": {}, "box": []}
+    for pid_dir in pids:
+        text = _read(pid_dir / "maps")
+        if not text or " (deleted)" not in text:
+            continue
+        pid = int(pid_dir.name)
+        unit = _unit_of(pid)
+        seen = set()
+        for line in text.splitlines():
+            match = re.search(r"\s(/\S+) \(deleted\)$", line)
+            if not match or not match.group(1).startswith("/usr/"):
+                continue
+            path = match.group(1)
+            if path in seen:
+                continue
+            seen.add(path)
+            if pid == 1:
+                box.append({"pid": pid, "path": path, "why": "pid1"})
+            elif unit and unit.startswith("dbus"):
+                box.append({"pid": pid, "path": path, "why": "dbus"})
+            elif re.search(r"/libc(?:-\d|\.so)", path):
+                box.append({"pid": pid, "path": path, "why": "libc"})
+            elif unit:
+                services.setdefault(unit, []).append({"pid": pid, "path": path})
+            else:
+                box.append({"pid": pid, "path": path, "why": "no-unit"})
+    return {"services": services, "box": box}
+
+
+def step_stale(ctx):
+    """Services still running a library an update replaced on disk."""
+    found = stale_code()
+    out = []
+    for unit, entries in sorted(found["services"].items()):
+        libs = sorted({e["path"] for e in entries})
+        out.append(
+            finding(
+                f"stale-{re.sub(r'[^a-z0-9]+', '-', unit.removesuffix('.service'))}",
+                named(unit.removesuffix(".service"), M("stale.role", "service")),
+                "warn",
+                M(
+                    "stale.service",
+                    "{unit} is still running code that an update replaced.",
+                    unit=unit,
+                ),
+                M(
+                    "stale.service.why",
+                    "A security update replaces a library on disk. The running process keeps the old one until it "
+                    "restarts, so the fix does not protect it.",
+                ),
+                M("stale.service.fix", "Restart the service."),
+                actions=[action("stale-restart", M("stale.service.action", "Restart the service"))],
+                evidence=[f"{unit}: {path}" for path in libs],
+            )
+        )
+    if found["box"]:
+        reasons = {e["why"] for e in found["box"]}
+        out.append(
+            finding(
+                "stale-box",
+                M("stale.box.title", "A restart of the box is needed"),
+                "warn",
+                M(
+                    "stale.box",
+                    "The system itself, or a process outside a service, is still running code that an update replaced.",
+                ),
+                M(
+                    "stale.box.why",
+                    "These processes cannot be restarted one at a time: PID 1, dbus, the C library most programs "
+                    "share, or a process in no service. The fix on disk protects the box only after a restart.",
+                ),
+                M("stale.box.fix", "Restart the box."),
+                notes=[
+                    M(
+                        "stale.box.which",
+                        "The code found: {reasons}.",
+                        reasons=", ".join(
+                            {
+                                "pid1": "PID 1",
+                                "dbus": "dbus",
+                                "libc": "the C library",
+                                "no-unit": "a process in no service",
+                            }[reason]
+                            for reason in sorted(reasons)
+                        ),
+                    )
+                ],
+                evidence=[f"{e['path']} (PID {e['pid']})" for e in found["box"]],
+            )
+        )
+    return out
 
 
 def step_front(ctx):
@@ -1592,6 +1804,7 @@ def step_front(ctx):
                 ],
             )
         )
+    out += _front_modules()
     out += _front_sandbox("nginx")
     return out
 
@@ -8321,6 +8534,11 @@ STEPS = [
         "units",
         M("step.units", "Service sandboxing and the build unit"),
         step_units,
+    ),
+    (
+        "stale-code",
+        M("step.stale", "Services running code an update replaced"),
+        step_stale,
     ),
     (
         "addons",

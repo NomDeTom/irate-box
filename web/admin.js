@@ -5322,6 +5322,18 @@ function renderAudit(audit, busy, data) {
                   })
                 : null,
               ...(finding.status !== "ok" ? (finding.commands || []).map(copyBox) : []),
+              ...(finding.status !== "ok"
+                ? (finding.actions || []).map((action) =>
+                    el("button", {
+                      type: "button",
+                      className: "action-btn",
+                      dataset: { wait: `secscan:${finding.id}:${action.choice || action.label}` },
+                      textContent: action.label,
+                      disabled: busy,
+                      onclick: (event) => secFix(finding.id, action, event.currentTarget),
+                    }),
+                  )
+                : []),
             ),
           ),
         ),
