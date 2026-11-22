@@ -31,14 +31,16 @@ def releases(name):
 read = {pin["name"]: pin for pin in pins.read_pins(REPO)}
 check(
     "the pins are read from the files that hold them",
-    read["SilverBullet"]["version"] == "2.11.1"
+    read["SilverBullet"]["version"] == "2.12.1"
     and read["ttyd"]["version"] == "1.7.7"
     and read["ESP Web Tools"]["version"] == "10.4.0"
     and read["jsdom"]["version"] == "22.1.0",
     {name: pin["version"] for name, pin in read.items()},
 )
 
-silverbullet = pins.assessment(read["SilverBullet"], releases("silverbullet"))
+# The pin before #754, against the release notes as they stood then: the case the watch exists for.
+sb_old = dict(read["SilverBullet"], version="2.11.1")
+silverbullet = pins.assessment(sb_old, releases("silverbullet"))
 check(
     "SilverBullet 2.11.1: behind 2.12.1, flagged by its release notes",
     silverbullet["behind"]
@@ -54,6 +56,13 @@ check(
     silverbullet["releases"],
 )
 
+current = pins.assessment(read["SilverBullet"], releases("silverbullet"))
+check(
+    "SilverBullet as pinned now (2.12.1): the latest, so nothing to flag",
+    not current["behind"] and not current["flagged"],
+    current,
+)
+
 ttyd = pins.assessment(read["ttyd"], releases("ttyd"))
 check(
     "ttyd 1.7.7: the latest, so nothing to flag",
@@ -65,11 +74,11 @@ check(
     not pins.assessment(dict(read["ttyd"], version="1.7.6"), releases("ttyd"))["flagged"],
 )
 
-body = pins.issue_body(read["SilverBullet"], silverbullet)
+body = pins.issue_body(sb_old, silverbullet)
 check(
     "the issue names the tool and both versions, with the matching line and its link",
-    "SilverBullet 2.11.1" in pins.issue_title(read["SilverBullet"], silverbullet)
-    and "2.12.1" in pins.issue_title(read["SilverBullet"], silverbullet)
+    "SilverBullet 2.11.1" in pins.issue_title(sb_old, silverbullet)
+    and "2.12.1" in pins.issue_title(sb_old, silverbullet)
     and "dot-prefixed" in body
     and "https://github.com/silverbulletmd/silverbullet/releases/tag/2.12.1" in body,
     body,
@@ -94,7 +103,7 @@ def fake_github(path, token=None, body=None, method=None):
 original = pins.github
 pins.github = fake_github
 try:
-    pins.sync("o/r", "t", [read["SilverBullet"]], lambda pin, token: silverbullet)
+    pins.sync("o/r", "t", [sb_old], lambda pin, token: silverbullet)
     check(
         "a later run updates the open issue, it does not open another",
         any(method == "PATCH" and path.endswith("/issues/7") for method, path, _ in calls)
