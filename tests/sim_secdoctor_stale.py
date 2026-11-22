@@ -5,6 +5,7 @@ module files, a captured maps file with a deleted libssl is reported against its
 before they change anything. python3 tests/sim_secdoctor_stale.py"""
 
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -59,40 +60,50 @@ check(
     modules,
 )
 
-# Stage 5: a real capture of a process's maps with its libssl deleted, and its real cgroup line.
-maps = (REPO / "tests/fixtures/proc-maps-deleted-libssl.txt").read_text()
-for pid, unit, text in (
-    (1234, "nginx.service", maps),
-    (
-        4321,
-        "nginx.service",
-        "7f00-7f01 r-xp 00000000 08:30 1 /usr/lib/x86_64-linux-gnu/libc.so.6 (deleted)\n",
-    ),
-    (1, None, maps),
-):
-    d = PROC / str(pid)
+# Stage 5: the captured maps and cgroups from lyra-bench, a real armv7l box after its security updates.
+capture = (REPO / "tests/fixtures/proc-maps-deleted-lyra-bench.txt").read_text()
+for section in re.split(r"(?m)^### ", capture)[1:]:
+    head, _, rest = section.partition("\n")
+    ident = re.search(r"pid=(\d+)", head)
+    if not ident or "## maps" not in rest:
+        continue
+    maps = rest.split("## maps (deleted lines)\n", 1)[1].split("## cgroup\n", 1)[0]
+    cgroup = rest.split("## cgroup\n", 1)[1].strip().splitlines()[0]
+    pid = ident.group(1)
+    d = PROC / pid
     d.mkdir()
-    (d / "maps").write_text(text)
-    (d / "cgroup").write_text(f"0::/system.slice/{unit}\n" if unit else "0::/init.scope\n")
+    (d / "maps").write_text(maps)
+    (d / "cgroup").write_text(cgroup + "\n")
 
 found = sd.stale_code()
 check(
-    "a service with deleted libssl is found, once per unit",
-    list(found["services"]) == ["nginx.service"]
-    and {e["path"] for e in found["services"]["nginx.service"]} == {"/usr/lib/x86_64-linux-gnu/libssl.so.3"},
-    found,
+    "the real capture: the three services still on replaced libraries are found",
+    set(found["services"]) == {"NetworkManager.service", "wpa_supplicant.service", "systemd-logind.service"},
+    sorted(found["services"]),
 )
 check(
-    "  PID 1 and a deleted C library need the box restarted instead",
-    {e["why"] for e in found["box"]} == {"pid1", "libc"},
-    found["box"],
+    "  each names the executable libraries, not locale-archive (data) or /dev/zero (shared memory)",
+    any(e["path"].endswith("/libssl.so.3") for e in found["services"]["NetworkManager.service"])
+    and any(e["path"].endswith("/libpcre2-8.so.0.14.0") for e in found["services"]["systemd-logind.service"])
+    and not any(
+        "locale-archive" in e["path"] or "/dev/zero" in e["path"] for es in found["services"].values() for e in es
+    ),
+    found["services"],
+)
+check(
+    "  a deleted C library also asks for a restart of the box",
+    {e["why"] for e in found["box"]} == {"libc"} and "nginx.service" not in found["services"],
+    found,
 )
 stale = {f["id"]: f for f in sd.step_stale({})}
 check(
-    "the doctor reports the service and offers a restart",
-    stale["stale-nginx"]["status"] == "warn"
-    and [a["choice"] for a in stale["stale-nginx"]["actions"]] == ["stale-restart"]
-    and "stale.service.why" in message_ids(stale["stale-nginx"]),
+    "the doctor reports each service and offers a restart",
+    {"stale-networkmanager", "stale-wpa-supplicant", "stale-systemd-logind"} <= set(stale)
+    and all(
+        stale[fid]["actions"][0]["choice"] == "stale-restart"
+        for fid in ("stale-networkmanager", "stale-wpa-supplicant", "stale-systemd-logind")
+    )
+    and "stale.service.why" in message_ids(stale["stale-networkmanager"]),
     stale,
 )
 check(

@@ -1384,7 +1384,7 @@ def _front_modules():
                     ),
                     confirm=M(
                         "front.modules.remove.confirm",
-                        "Remove the package that loads {module}? Another site on this nginx may use it.",
+                        "Remove the package that loads {module}? Another site on this nginx can use it.",
                         module=module["stem"],
                     ),
                 )
@@ -1450,7 +1450,7 @@ def _unit_of(pid):
     """The service unit a process belongs to, from /proc/PID/cgroup."""
     text = _read(PROC / str(pid) / "cgroup") or ""
     for line in text.splitlines():
-        match = re.search(r"/([A-Za-z0-9@_.:-]+\.service)(?:/|$)", line)
+        match = re.search(r"/([A-Za-z0-9@_.:-]+\.service)(?:/|\Z)", line)
         if match:
             return match.group(1)
     return None
@@ -1474,22 +1474,26 @@ def stale_code():
         unit = _unit_of(pid)
         seen = set()
         for line in text.splitlines():
-            match = re.search(r"\s(/\S+) \(deleted\)$", line)
-            if not match or not match.group(1).startswith("/usr/"):
+            match = re.search(r"^\S+\s+(\S+)\s+\S+\s+\S+\s+\S+\s+(/\S+) \(deleted\)\Z", line)
+            if not match:
                 continue
-            path = match.group(1)
+            perms, path = match.groups()
+            # Only executable mappings of a shared object or a binary are code. locale-archive is data,
+            # and /dev/zero (deleted) is nginx's own shared memory, which is normal.
+            if "x" not in perms or not path.startswith("/usr/"):
+                continue
             if path in seen:
                 continue
             seen.add(path)
+            if unit:
+                services.setdefault(unit, []).append({"pid": pid, "path": path})
             if pid == 1:
                 box.append({"pid": pid, "path": path, "why": "pid1"})
             elif unit and unit.startswith("dbus"):
                 box.append({"pid": pid, "path": path, "why": "dbus"})
             elif re.search(r"/libc(?:-\d|\.so)", path):
                 box.append({"pid": pid, "path": path, "why": "libc"})
-            elif unit:
-                services.setdefault(unit, []).append({"pid": pid, "path": path})
-            else:
+            elif not unit:
                 box.append({"pid": pid, "path": path, "why": "no-unit"})
     return {"services": services, "box": box}
 
@@ -1502,7 +1506,7 @@ def step_stale(ctx):
         libs = sorted({e["path"] for e in entries})
         out.append(
             finding(
-                f"stale-{re.sub(r'[^a-z0-9]+', '-', unit.removesuffix('.service'))}",
+                f"stale-{re.sub(r'[^a-z0-9]+', '-', unit.removesuffix('.service').lower()).strip('-')}",
                 named(unit.removesuffix(".service"), M("stale.role", "service")),
                 "warn",
                 M(
