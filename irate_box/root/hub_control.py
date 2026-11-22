@@ -6639,6 +6639,145 @@ def security_deep_audit(req):
     return line
 
 
+def _security_module_remove(stem):
+    """Remove the package that loads one dynamic nginx module, if root's own scan still finds it unused."""
+    unused = {m["stem"]: m for m in secdoctor._unused_modules(secdoctor._read(secdoctor.NGINX_CONF) or "")}
+    module = unused.get(stem)
+    if not module:
+        raise Refused(
+            M(
+                "control.security.module-gone",
+                "That module is no longer loaded, or the web server's configuration now uses it. Run the doctor again.",
+            )
+        )
+    found = run("dpkg-query", "-S", f"*/{module['module']}", timeout=30)
+    packages = sorted(
+        {
+            line.split(":", 1)[0]
+            for line in found.stdout.splitlines()
+            if line.split(":", 1)[0].startswith("libnginx-mod-")
+        }
+    )
+    if not packages:
+        raise Refused(
+            M(
+                "control.security.module-no-package",
+                "This module does not come from a libnginx-mod package, so the Security page cannot remove it.",
+            )
+        )
+    package = packages[0]
+    # apt removes whatever depends on the package too: only module packages (and nginx-extras, which only
+    # gathers them) may go with it.
+    planned = run("apt-get", "-s", "remove", package, timeout=120)
+    going = re.findall(r"(?m)^Remv (\S+)", planned.stdout or "")
+    others = sorted(p for p in going if not (p.startswith("libnginx-mod-") or p == "nginx-extras"))
+    if planned.returncode or others:
+        raise Refused(
+            M(
+                "control.security.module-takes-more",
+                "Removing {package} would also remove {others}, so the Security page leaves it.",
+                package=package,
+                others=", ".join(others) or "packages apt could not list",
+            )
+        )
+    removed = run("apt-get", "remove", "-y", "-q", "--no-install-recommends", package, timeout=300)
+    if removed.returncode:
+        detail = ((removed.stderr or removed.stdout).strip().splitlines() or ["apt-get failed"])[-1][:200]
+        raise Refused(
+            M(
+                "control.security.module-remove-failed",
+                "The box could not remove {package}: {detail}",
+                package=package,
+                detail=detail,
+            )
+        )
+    run("systemctl", "reload", "nginx", timeout=60)
+    return M(
+        "control.security.module-removed",
+        "The box removed {package}. nginx reloaded without it.",
+        package=package,
+    )
+
+
+def _security_front_restart():
+    """Restart the web server in front, so the sandbox its unit now declares takes effect."""
+    unit = "caddy.service" if _web_server() == "caddy" else "nginx.service"
+    restarted = run("systemctl", "restart", "--no-block", unit, timeout=60)
+    if restarted.returncode:
+        detail = ((restarted.stderr or restarted.stdout).strip().splitlines() or ["systemctl failed"])[-1][:200]
+        raise Refused(
+            M(
+                "control.security.front-failed",
+                "The box could not restart {unit}: {detail}",
+                unit=unit,
+                detail=detail,
+            )
+        )
+    return M("control.security.front-restarted", "The box restarted {unit}.", unit=unit)
+
+
+def _security_clock_makestep():
+    """Step the clock now, if chrony is running and the last scan still finds apt refusing a list."""
+    if run("systemctl", "is-active", "chrony.service", timeout=30).stdout.strip() != "active":
+        raise Refused(
+            M(
+                "control.security.clock-no-chrony",
+                "chrony is not running. Set the clock on the Clock page.",
+            )
+        )
+    if not secdoctor.clock_behind():
+        raise Refused(
+            M("control.security.clock-ok", "The clock is no longer behind. Run the doctor again."),
+        )
+    stepped = run("chronyc", "makestep", timeout=60)
+    if stepped.returncode:
+        detail = ((stepped.stderr or stepped.stdout).strip().splitlines() or ["chronyc failed"])[-1][:200]
+        raise Refused(M("control.security.clock-failed", "The box could not step the clock: {detail}", detail=detail))
+    return M("control.security.clock-stepped", "The box stepped the clock to its time source.")
+
+
+def _security_stale_restart(unit):
+    """Restart one service, if root's own /proc scan still lists it and one restart is safe."""
+    if not re.fullmatch(r"[A-Za-z0-9@_.:-]+\.service", unit or ""):
+        raise Refused(M("control.security.stale-bad-unit", "That is not a service name."))
+    if not secdoctor.restartable(unit):
+        raise Refused(
+            M(
+                "control.security.stale-unsafe",
+                "{unit} cannot be restarted on its own: restart the box instead.",
+                unit=unit,
+            )
+        )
+    if unit not in secdoctor.stale_code()["services"]:
+        raise Refused(
+            M(
+                "control.security.stale-gone",
+                "{unit} is no longer running replaced code. Run the doctor again.",
+                unit=unit,
+            )
+        )
+    command = ["systemctl", "restart"]
+    if unit in ("nginx.service", "caddy.service") or unit.startswith("irate-box"):
+        command.append("--no-block")
+    command.append(unit)
+    restarted = run(*command, timeout=120)
+    if restarted.returncode:
+        detail = ((restarted.stderr or restarted.stdout).strip().splitlines() or ["systemctl failed"])[-1][:200]
+        raise Refused(
+            M(
+                "control.security.stale-failed",
+                "The box could not restart {unit}: {detail}",
+                unit=unit,
+                detail=detail,
+            )
+        )
+    return M(
+        "control.security.stale-restarted",
+        "The box restarted {unit}.",
+        unit=unit,
+    )
+
+
 def security_fix(req):
     choice = str(req.get("choice", ""))
     if not re.fullmatch(r"[a-z-]+(:[A-Za-z0-9@_][A-Za-z0-9@._-]*)?", choice):
@@ -6659,6 +6798,16 @@ def security_fix(req):
         }
     except (OSError, ValueError, KeyError, TypeError):
         offered = set()
+    try:
+        audit = json.loads(safeio.read_own(AUDIT_STATE))
+        offered |= {
+            a["choice"]
+            for step in audit.get("steps", [])
+            for f in step.get("findings", [])
+            for a in f.get("actions", [])
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     # The update pattern's chips and buttons are a closed set of their own, always there on Updates.
     pattern = choice in (
         "security-check",
@@ -6683,14 +6832,29 @@ def security_fix(req):
                 "This action is no longer available. Run the checks again. Then select an action from the new results.",
             )
         )
+    audit_action = choice in ("clock-makestep", "front-restart") or choice.startswith(
+        ("stale-restart:", "module-remove:")
+    )
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
-        msg = security.fix(choice, SECURITY_LOG)
+        if choice.startswith("stale-restart:"):
+            msg = _security_stale_restart(choice.split(":", 1)[1])
+        elif choice == "clock-makestep":
+            msg = _security_clock_makestep()
+        elif choice == "front-restart":
+            msg = _security_front_restart()
+        elif choice.startswith("module-remove:"):
+            msg = _security_module_remove(choice.split(":", 1)[1])
+        else:
+            msg = security.fix(choice, SECURITY_LOG)
     finally:
-        _write_security(security.scan())
-        if choice.startswith(("os-", "board-")):
-            osupdates.kinds_report()
+        if audit_action:
+            secdoctor.write_report(secdoctor.audit(), AUDIT_STATE)
+        else:
+            _write_security(security.scan())
+            if choice.startswith(("os-", "board-")):
+                osupdates.kinds_report()
     return msg
 
 

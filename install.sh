@@ -1496,6 +1496,36 @@ EOF
 Requires=irate-box-nginx-recover.service
 After=irate-box-nginx-recover.service
 EOF
+	# The front is the one process on the box that takes a request from anyone on the hotspot.
+	# It writes only its logs, its body and proxy temp files, its pid, and the Unix sockets the
+	# apps listen on under /run. Reading the rest of the system is left alone.
+	NGINX_SANDBOX=/etc/systemd/system/nginx.service.d/irate-box-sandbox.conf
+	nginx_sandbox_was="$(sha256sum "$NGINX_SANDBOX" 2>/dev/null | cut -d' ' -f1 || true)"
+	cat <<EOF | write_if_changed /etc/systemd/system/nginx.service.d/irate-box-sandbox.conf 644
+[Service]
+ProtectSystem=strict
+ReadWritePaths=/var/log/nginx /var/lib/nginx /run
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=yes
+EOF
+	[ "$nginx_sandbox_was" = "$(sha256sum "$NGINX_SANDBOX" 2>/dev/null | cut -d' ' -f1)" ] || NGINX_SANDBOX_CHANGED=1
 	exec {NGINX_LOCK_FD}>"$ETC/.front.lock"
 	flock -x "$NGINX_LOCK_FD"
 	export HUB_FRONT_LOCK_FD="$NGINX_LOCK_FD"
@@ -1857,6 +1887,13 @@ nginx_serves_port() {
 		f != ours && index(f, etc) != 1 && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
 		END { exit !found }'
 }
+# Whether a unit's running main process has the sandbox the unit file declares: the same test the
+# Security doctor uses (NoNewPrivs in /proc/<MainPID>/status).
+unit_sandbox_running() {
+	local pid
+	pid="$(systemctl show "$1" -pMainPID --value 2>/dev/null)"
+	[ -n "$pid" ] && [ "$pid" != 0 ] && grep -q '^NoNewPrivs:[[:space:]]*1$' "/proc/$pid/status" 2>/dev/null
+}
 nginx_prepare() {
 	HUB_CODE_DIR="$CODE" HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_APPS_DIR="$APPS" \
 	HUB_NGINX_LOGINS="$NGINX_LOGINS" HUB_UNCLAIMED_FILE="$UNCLAIMED_MARK" HUB_NGINX_FRONT="$NGINX_FRONT" HUB_NGINX_VIA="$NGINX_VIA" \
@@ -2109,6 +2146,32 @@ if [ "$WEB" = caddy ]; then
 		# Not the package's "caddy run --environ": it prints the environment, these secrets with it, to the journal.
 		ExecStart=
 		ExecStart=$(command -v caddy || echo /usr/bin/caddy) run --config /etc/caddy/Caddyfile
+	EOF
+	# The same sandbox as nginx's drop-in, with Caddy's own data folder: it saves its live
+	# configuration there, and it connects to the same app sockets under /run. Go needs no W^X, so no
+	# MemoryDenyWriteExecute.
+	cat <<-EOF | write_if_changed /etc/systemd/system/caddy.service.d/irate-box-sandbox.conf 644
+		[Service]
+		ProtectSystem=strict
+		ReadWritePaths=/var/lib/caddy /run
+		ProtectHome=yes
+		PrivateTmp=yes
+		PrivateDevices=yes
+		NoNewPrivileges=yes
+		ProtectKernelTunables=yes
+		ProtectKernelModules=yes
+		ProtectKernelLogs=yes
+		ProtectControlGroups=yes
+		ProtectClock=yes
+		ProtectHostname=yes
+		RestrictNamespaces=yes
+		RestrictRealtime=yes
+		RestrictSUIDSGID=yes
+		LockPersonality=yes
+		RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+		CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
+		SystemCallFilter=@system-service
+		SystemCallArchitectures=native
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi
@@ -3613,9 +3676,18 @@ for u in "${units[@]}"; do
 	fi
 	systemctl restart "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
+if [ "$WEB" = caddy ] && systemctl is-active --quiet caddy && ! unit_sandbox_running caddy.service; then
+	systemctl restart caddy || problem "caddy did not restart with its sandbox: journalctl -u caddy -n 30"
+fi
 if [ "$WEB" = nginx ]; then
 	nginx_prepare seal "$NGINX_TRANSACTION" "$nginx_bundle" "$NGINX_SITE"
 	nginx_prepare finish "$NGINX_TRANSACTION" "$nginx_bundle"
+	# The drop-in is part of the process, not the configuration: a reload would keep the old one. The
+	# file may already be right from a failed run whose restart never happened, so the running process
+	# decides as well.
+	if [ "${NGINX_SANDBOX_CHANGED:-0}" = 1 ] || ! unit_sandbox_running nginx.service; then
+		systemctl restart nginx || problem "nginx did not restart with its sandbox: journalctl -u nginx -n 30"
+	fi
 	NGINX_TRANSACTION=""
 	flock -u "$NGINX_LOCK_FD"
 	exec {NGINX_LOCK_FD}>&-
@@ -3791,6 +3863,12 @@ if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
 	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.recommended fresh | sed 's/^/    /' ||
 		problem "could not apply the recommended settings (Box doctor offers them)"
 fi
+# Automatic security updates: a box with no pattern recorded gets the default (daily, install). An owner's
+# choice, from a preset or the Updates page, is kept.
+say "Automatic security updates"
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.security default-pattern |
+	sed 's/^/    /' || problem "could not set the default automatic security updates (Updates offers it)"
+
 # The durability dial, at a first install: longevity, balanced or full (presets.d/, root/presets.py).
 if [ "$FIRST_INSTALL" = 1 ] && [ -n "$DURABILITY" ]; then
 	say "The durability preset: $DURABILITY"

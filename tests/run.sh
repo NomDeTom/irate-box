@@ -65,6 +65,7 @@ run sim_write_checked.py
 run write_guard.py
 run subprocess_guard.py
 run regex_anchor_guard.py
+run config_surface_guard.py
 run sim_retain.py
 run sim_nand_health.py
 run sim_led.py
@@ -127,10 +128,14 @@ run sim_card_genuine.py
 run housecall_guard.py
 run sim_restore.py
 run sim_clock_sources.py
+run sim_clock_behind.py
 run sim_secdoctor_accounts.py
 run sim_secdoctor_manifest.py
 run sim_secdoctor_missing.py
 run sim_secdoctor_sandbox.py
+run sim_front_sandbox.py
+run sim_secdoctor_stale.py
+run sim_pin_advisories.py
 run sim_secdoctor_kernel_features.py
 run sim_ap_refresh.py
 run sim_helper_busy.py

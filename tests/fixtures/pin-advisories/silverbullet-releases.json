@@ -1,0 +1,23 @@
+[
+  {
+    "tag_name": "2.12.1",
+    "name": "2.12.1",
+    "body": "* Security: the filesystem API refuses access to dot-prefixed files and directories, consistent with space listings.\r\n* Fix: HTTP file validators respect `If-None-Match` precedence, and file reads and conditional writes tolerate proxies that weaken or transform ETags.\r\n* Fix: YAML data blocks split only on standalone `---` lines; X-Ray includes attributes added during indexing.\r\n* Fix: `system.reboot()` preserves external edits and clears cached widgets. Reopening a page restores a remembered scroll position of zero.\r\n* Fix: the [[Runtime API]] returns JSON for query rows, null values, dates and other Lua values without serialization crashes, and remains usable after the client reloads its UI.\r\n* SLIQ errors offer more specific explanations for common mistakes.\r\n* Public spaces expose `robots.txt` and a sitemap of content pages, with canonical URLs and descriptions in the initial HTML. Metadata pages are excluded from the sitemap and marked `noindex`; encoded page names render correctly, frontmatter is hidden, and missing pages return HTTP 404. Read-only spaces show a \u201cPage not found\u201d view with a link home.\r\n* Client builds remove stale bundle chunks and omit source maps from release binaries.",
+    "html_url": "https://github.com/silverbulletmd/silverbullet/releases/tag/2.12.1",
+    "published_at": "2026-10-12T06:28:07Z"
+  },
+  {
+    "tag_name": "2.12.0",
+    "name": "2.12.0",
+    "body": "[Release post](https://no.silverbullet.md/2-12)",
+    "html_url": "https://github.com/silverbulletmd/silverbullet/releases/tag/2.12.0",
+    "published_at": "2026-10-06T07:42:36Z"
+  },
+  {
+    "tag_name": "2.11.1",
+    "name": "2.11.1",
+    "body": "* Fix (Windows): Git operations for revision history no longer open a terminal window and steal focus.\r\n* Fix: HTML, CSS, and JavaScript files in a space open directly again, restoring print preview libraries that serve generated HTML from `/.fs/`.\r\n* Fix: X-Ray and lint tooltips remain readable when dark mode follows the system setting, including when that setting changes while SilverBullet is open.\r\n* Git connection checks now allow more time for large repositories and detect an existing remote's default branch when a new space connects.\r\n* `identity.mentions(recipient, options)` exposes the Mention Inbox data to Space Lua and the CLI.\r\n* More non-Markdown documents can now be edited (with syntax highlighting in case of source code) in the editor. Media can also be played now: audio, video, and PDF documents open in native in-editor viewers. Do not ask for fancy editing features, SB shall not devolve in to a general purpose code editor! (famous last words)\r\n* Files and folders can be dragged onto the file tree to upload them.\r\n\r\nThere is no stable SB+ release associated with this one, since we're going through an Electron transition there. You can try the edge builds if you want to try SB+ with these changes https://silverbullet.plus/download (scroll to the bottom)",
+    "html_url": "https://github.com/silverbulletmd/silverbullet/releases/tag/2.11.1",
+    "published_at": "2026-09-22T15:20:58Z"
+  }
+]

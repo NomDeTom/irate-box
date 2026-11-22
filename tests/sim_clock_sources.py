@@ -328,7 +328,11 @@ class FakeSock:
 real_socket = clock.socket.socket
 clock.socket.socket = lambda *a: FakeSock()
 fake_rtc = types.SimpleNamespace(
-    load_config=lambda: {"chip": "ds3231", "mode": "user"}, read_module=lambda cfg: (1792040000, None, [])
+    load_config=lambda: {"chip": "ds3231", "mode": "user"},
+    read_module=lambda cfg: (1792040000, None, []),
+    save=lambda: msg.M("rtc.test.saved", "saved"),
+    chrony_reference=lambda: "RTC",
+    ntp_synced=lambda: False,
 )
 sys.modules["irate_box.root.rtc"] = fake_rtc
 real_rtc = root_pkg.rtc

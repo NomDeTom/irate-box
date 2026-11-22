@@ -1,0 +1,16 @@
+[
+  {
+    "tag_name": "1.7.7",
+    "name": "1.7.7",
+    "body": "This release fixes version detection when not building from git repo (#1339), you don't need to update if you don't mind it.\r\n\r\n# Changelog\r\n\r\n- Bump to 1.7.7 (40e79c706be14029b391f369bee6613c31667abb)\r\n- cmake: add static version back (62f44f827a4f21c7601b56d109acc2b96a8cd16b)\r\n\r\nThe release action now checks the version bump, it will fail if I forget to bump version in `CMakeLists.txt`.",
+    "html_url": "https://github.com/tsl0922/ttyd/releases/tag/1.7.7",
+    "published_at": "2024-03-30T03:18:34Z"
+  },
+  {
+    "tag_name": "1.7.6",
+    "name": "1.7.6",
+    "body": "This release fixes that 1.7.5 reports incorrect version (#1337), you don't need to update if you don't mind it.\r\n\r\n> [!Note]\r\n> Support for `cmake < 3.12.0` is dropped in this release.\r\n\r\n# Changelog\r\n\r\n- workflow: update actions packages (#1316) (89fb69b4806a30143ffecd18738df7a1ef4213dc)\r\n- cmake: get version from git ref (e5fd3f60e5d5cf28190d288bc13e0117d69ff493)",
+    "html_url": "https://github.com/tsl0922/ttyd/releases/tag/1.7.6",
+    "published_at": "2024-03-29T01:41:08Z"
+  }
+]

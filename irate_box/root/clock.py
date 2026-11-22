@@ -17,7 +17,10 @@ Two ways, the owner's choice:
 The clock module (rtc.py) sets the time at boot whichever service runs. With chrony it is a source as well: chrony
 has no RTC driver of its own (Debian's 4.6 has PPS, SOCK, SHM and PHC), so irate-box-rtc-feed.service (`clock feed`)
 reads the module every 4 s, by its kernel driver or irate-box's own, and sends chrony the offset over the SOCK
-driver's socket: chrony polls it every 16 s, so each poll has several samples. Its delay is large, so chrony uses it only while GPS and the network are silent.
+driver's socket: chrony polls it every 16 s, so each poll has several samples. It is not only a last resort: with few
+network or GPS samples chrony can select it (seen on lyra-tft, where it stepped the clock back six days). So when a
+synchronised system clock disagrees with the module by more than 2 s, the feed sets the module from the system clock
+before sending another sample, and it sends no sample when the two are more than an hour apart.
 
 What the image had is kept in RECORD the first time anything is changed (its daemon, whether timesyncd was
 installed and enabled, chrony.conf's text), and Restore (undo) puts all of it back: our files gone, chrony.conf as it
@@ -582,6 +585,7 @@ def feed(every=FEED_EVERY, once=False):
 
     s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     layout = sock_layout()
+    logged = None
     while True:
         cfg = rtc.load_config()
         if cfg:
@@ -591,8 +595,36 @@ def feed(every=FEED_EVERY, once=False):
                 epoch = None
             if epoch:
                 now = time.time()
+                offset = epoch + 0.5 - now
+                # A synchronised system clock that is not the module has won. Do not let the module pull
+                # it back: set the module first, and send no sample from the old reading.
+                if abs(offset) > 2 and rtc.chrony_reference() not in (None, "", "RTC") and rtc.ntp_synced():
+                    try:
+                        said = render(rtc.save())
+                    except Exception as exc:  # noqa: BLE001 - a write that fails this time may work next
+                        said = str(exc)
+                    lines = [said]
+                    if abs(offset) > 3600:
+                        lines.append(
+                            render(
+                                M(
+                                    "clock.feed.refused",
+                                    "The clock module is more than an hour from the system clock. "
+                                    "The feed sent no sample.",
+                                )
+                            )
+                        )
+                    # Once per change, not every pass: a write that keeps failing would fill the journal.
+                    if lines != logged:
+                        print("\n".join(lines), flush=True)
+                        logged = lines
+                    if once:
+                        return
+                    time.sleep(every)
+                    continue
+                logged = None
                 try:
-                    s.sendto(sample(now, epoch + 0.5 - now, layout), str(FEED_SOCK))
+                    s.sendto(sample(now, offset, layout), str(FEED_SOCK))
                 except OSError:
                     pass  # chronyd not up yet: it makes the socket when it starts
         if once:

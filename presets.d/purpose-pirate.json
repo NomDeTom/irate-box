@@ -47,9 +47,9 @@
     },
     {
       "type": "choice",
-      "choice": "autoupdate-set:24-0",
+      "choice": "autoupdate-set:24-2",
       "label": "Security updates",
-      "why": "Check daily and flag what is found; the box is often offline"
+      "why": "Check daily and install what is found"
     },
     {
       "type": "access",

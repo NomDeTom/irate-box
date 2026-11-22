@@ -230,8 +230,10 @@ _LIST_DIRECTIVES = frozenset(
     }
 )
 _UNIT_RE = re.compile(
-    r"cat >/etc/systemd/system/([^\s]+?) <<-?'?([A-Za-z_][A-Za-z0-9_]*)'?\n"
-    r"(.*?)\n[ \t]*\2[ \t]*(?:\n|$)",
+    r"cat >/etc/systemd/system/(?P<path>[^\s]+?) <<-?'?(?P<eof1>[A-Za-z_][A-Za-z0-9_]*)'?\n"
+    r"(?P<body1>.*?)\n[ \t]*(?P=eof1)[ \t]*(?:\n|$)"
+    r"|cat <<-?'?(?P<eof2>[A-Za-z_][A-Za-z0-9_]*)'? \| write_if_changed /etc/systemd/system/(?P<path2>[^\s]+) [0-7]+\n"
+    r"(?P<body2>.*?)\n[ \t]*(?P=eof2)[ \t]*(?:\n|$)",
     re.S,
 )
 _URL_RE = re.compile(r"https?://([A-Za-z0-9._~%+-]+)", re.I)
@@ -324,7 +326,8 @@ def units(tree):
         sandboxes[name] = found.group(1) if found else ""
     out = {}
     for found in _UNIT_RE.finditer(text):
-        name, _, body = found.groups()
+        name = found.group("path") or found.group("path2")
+        body = found.group("body1") if found.group("path") else found.group("body2")
         body = body.replace("$HUB_SANDBOX", sandboxes["HUB_SANDBOX"]).replace(
             "$ROOT_SANDBOX", sandboxes["ROOT_SANDBOX"]
         )

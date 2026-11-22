@@ -465,6 +465,35 @@ security.TIMER_DROPIN = T / "systemd"
 six = T / "systemd" / "apt-daily.timer.d" / "52irate-box.conf"
 (T / "systemctl-log").unlink(missing_ok=True)
 (T / "apt-log").unlink(missing_ok=True)
+if "autoupdate" in security.load_record():
+    security.fix("autoupdate-undo", None)
+said_default = security.apply_default_pattern(None)
+rec_default = security.load_record()["autoupdate"]
+check(
+    "no record: the installer applies daily, install",
+    (rec_default["often"], rec_default["act"]) == (24, 2)
+    and 'APT::Periodic::Unattended-Upgrade "1";' in conf.read_text()
+    and "install -y unattended-upgrades" in (T / "apt-log").read_text(),
+    said_default,
+)
+security.fix("autoupdate-set:6-1", None)
+check(
+    "  an owner's choice: the default leaves it alone",
+    security.apply_default_pattern(None) is None
+    and (security.load_record()["autoupdate"]["often"], security.load_record()["autoupdate"]["act"]) == (6, 1),
+)
+security.fix("autoupdate-undo", None)
+security.fix("autoupdate-set:24-1", None)
+rec = security.load_record()
+rec.pop("autoupdate", None)
+security.save_record(rec)
+check(
+    "  an irate-box-written file with no record is the owner's choice too",
+    security.apply_default_pattern(None) is None
+    and 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text(),
+)
+conf.unlink(missing_ok=True)
+(T / "apt-log").unlink(missing_ok=True)
 said_ = security.fix("autoupdate-set:6-2", None)
 check(
     "every 6 hours, install: unattended-upgrades installed, apt's periodic work on in our own file, the timers every 6 h",
