@@ -170,6 +170,41 @@ with mock.patch.object(hub_control, "run", fake_run):
         calls,
     )
 
+
+# apt-get -s prints one "Remv <package> [<version>]" line for each package it would remove.
+def simulating(removes):
+    def fake(*cmd, **kw):
+        calls.append(cmd)
+        if cmd[:2] == ("apt-get", "-s"):
+            out = "".join(f"Remv {p} [1.26.3-3+deb13u11]\n" for p in removes)
+            return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+        return fake_run(*cmd, **kw)
+
+    return fake
+
+
+calls.clear()
+with mock.patch.object(hub_control, "run", simulating(["libnginx-mod-mail", "nginx-extras"])):
+    said = hub_control._security_module_remove("mail")
+check(
+    "a removal that takes only module packages and nginx-extras goes ahead",
+    said["id"] == "control.security.module-removed"
+    and ("apt-get", "remove", "-y", "-q", "--no-install-recommends", "libnginx-mod-mail") in calls,
+    calls,
+)
+calls.clear()
+try:
+    with mock.patch.object(hub_control, "run", simulating(["libnginx-mod-mail", "nginx"])):
+        hub_control._security_module_remove("mail")
+    check("a removal that would take nginx itself is refused", False)
+except hub_control.Refused as exc:
+    check(
+        "a removal that would take nginx itself is refused, before apt removes anything",
+        exc.message["id"] == "control.security.module-takes-more"
+        and not any(c[:3] == ("apt-get", "remove", "-y") for c in calls),
+        calls,
+    )
+
 calls.clear()
 with (
     mock.patch.object(hub_control, "run", fake_run),

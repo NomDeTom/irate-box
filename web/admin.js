@@ -5330,7 +5330,18 @@ function renderAudit(audit, busy, data) {
                       dataset: { wait: `secscan:${finding.id}:${action.choice || action.label}` },
                       textContent: action.label,
                       disabled: busy,
-                      onclick: (event) => secFix(finding.id, action, event.currentTarget),
+                      onclick: async (event) => {
+                        const button = event.currentTarget;
+                        if (
+                          action.confirm &&
+                          !(await AW.confirmHere(said(action.confirm), {
+                            anchor: button,
+                            label: said(action.label),
+                          }))
+                        )
+                          return;
+                        secFix(finding.id, action, button);
+                      },
                     }),
                   )
                 : []),

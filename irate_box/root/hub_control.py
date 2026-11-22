@@ -6666,6 +6666,20 @@ def _security_module_remove(stem):
             )
         )
     package = packages[0]
+    # apt removes whatever depends on the package too: only module packages (and nginx-extras, which only
+    # gathers them) may go with it.
+    planned = run("apt-get", "-s", "remove", package, timeout=120)
+    going = re.findall(r"(?m)^Remv (\S+)", planned.stdout or "")
+    others = sorted(p for p in going if not (p.startswith("libnginx-mod-") or p == "nginx-extras"))
+    if planned.returncode or others:
+        raise Refused(
+            M(
+                "control.security.module-takes-more",
+                "Removing {package} would also remove {others}, so the Security page leaves it.",
+                package=package,
+                others=", ".join(others) or "packages apt could not list",
+            )
+        )
     removed = run("apt-get", "remove", "-y", "-q", "--no-install-recommends", package, timeout=300)
     if removed.returncode:
         detail = ((removed.stderr or removed.stdout).strip().splitlines() or ["apt-get failed"])[-1][:200]

@@ -603,17 +603,21 @@ def feed(every=FEED_EVERY, once=False):
                         said = render(rtc.save())
                     except Exception as exc:  # noqa: BLE001 - a write that fails this time may work next
                         said = str(exc)
-                    if said != logged:
-                        print(said, flush=True)
-                        logged = said
+                    lines = [said]
                     if abs(offset) > 3600:
-                        refused = M(
-                            "clock.feed.refused",
-                            "The clock module is more than an hour from the system clock. The feed sent no sample.",
+                        lines.append(
+                            render(
+                                M(
+                                    "clock.feed.refused",
+                                    "The clock module is more than an hour from the system clock. "
+                                    "The feed sent no sample.",
+                                )
+                            )
                         )
-                        if render(refused) != logged:
-                            print(render(refused), flush=True)
-                            logged = render(refused)
+                    # Once per change, not every pass: a write that keeps failing would fill the journal.
+                    if lines != logged:
+                        print("\n".join(lines), flush=True)
+                        logged = lines
                     if once:
                         return
                     time.sleep(every)
