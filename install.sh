@@ -507,18 +507,18 @@ WIKI_TLS_PORT=8492
 GIT_TLS_PORT=8493
 ROOM=/usr/share/hub/room
 ETC=/etc/hub
-SB_VERSION=2.11.1
+SB_VERSION=2.12.1
 # SilverBullet's release zips, as GitHub records them (the release's asset digests).
 # A new SB_VERSION needs these from: gh api repos/silverbulletmd/silverbullet/releases/tags/VERSION
-SB_SHA256_x86_64=82af0d5d008c377cdb4b49dbd21db0d21f8d14619efa40b0fdeae1dce778d018
-SB_SHA256_aarch64=4ca826b88431fcbe8d4c8f4d7d3f8cc3b076d42f724a40b6dc4d45a676d9dd87
-SB_SHA256_armv7=fb27b0cf7af3d95d03ccfbeb25c4260ce5228d6b8402d531f84535bafbe25855
+SB_SHA256_x86_64=0ea5c0575021de354b79bf53fb85f170aca93e228b5593959869ff8841dbb1d3
+SB_SHA256_aarch64=33000b6f7c879d04d3c72f0bb2e3c79b6f51e829c43f1f95ce1fa24b937a10e2
+SB_SHA256_armv7=4a2f720664d6fd33651307c3471859636542ca18dc47b976deeccbf0ece62244
 # Its manual (the repository's docs/ at the release's commit), packed reproducibly by library/sbdocs.py:
 # the commit, and the sha256 of the tar the pack holds. A new SB_VERSION needs both:
 #   gh api repos/silverbulletmd/silverbullet/git/ref/tags/VERSION --jq .object.sha
 #   ./irate-box sbdocs fetch COMMIT /tmp/d.tar.gz && ./irate-box sbdocs sum /tmp/d.tar.gz
-SB_DOCS_COMMIT=1340f7369e782a9c99e898de75cd588051fdb7cd
-SB_DOCS_SHA256=ebc4f8134b98d8a21596f874b580c71f75ed6e3801d69534ea68bff3f493f280
+SB_DOCS_COMMIT=4d5eac537a8f1032cab994d8c9e8149eb0f0fbb7
+SB_DOCS_SHA256=25ab83912c36298b2520afff22f2bb9143ac4a5d50cda605c163b8e68bcb2898
 SB_DOCS_NAME="silverbullet-docs-$SB_VERSION.tar.gz"
 TTYD_VERSION=1.7.7
 # ESP Web Tools (ESPHome's install button, Apache-2.0), the light web flasher's engine: npm's tarball,
