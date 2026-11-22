@@ -3556,9 +3556,10 @@ def refresh_lists(log_path):
 
 
 def apply_default_pattern(updates_log=None):
-    """A box with no automatic-update record gets the default pattern (daily, install). An owner's choice stays."""
+    """A box with no automatic-update record gets the default pattern (daily, install). An owner's choice stays,
+    including one whose record was lost: the file the Updates page wrote is the choice too."""
     rec = load_record()
-    if "autoupdate" in rec:
+    if "autoupdate" in rec or AUTOUPDATE_CONF.is_file():
         return None
     return fix(f"autoupdate-set:{DEFAULT_PATTERN[0]}-{DEFAULT_PATTERN[1]}", updates_log)
 

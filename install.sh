@@ -1887,6 +1887,13 @@ nginx_serves_port() {
 		f != ours && index(f, etc) != 1 && $1 == "listen" { a = $2; sub(/;$/, "", a); sub(/.*:/, "", a); if (a == p) found = 1 }
 		END { exit !found }'
 }
+# Whether a unit's running main process has the sandbox the unit file declares: the same test the
+# Security doctor uses (NoNewPrivs in /proc/<MainPID>/status).
+unit_sandbox_running() {
+	local pid
+	pid="$(systemctl show "$1" -pMainPID --value 2>/dev/null)"
+	[ -n "$pid" ] && [ "$pid" != 0 ] && grep -q '^NoNewPrivs:[[:space:]]*1$' "/proc/$pid/status" 2>/dev/null
+}
 nginx_prepare() {
 	HUB_CODE_DIR="$CODE" HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" HUB_APPS_DIR="$APPS" \
 	HUB_NGINX_LOGINS="$NGINX_LOGINS" HUB_UNCLAIMED_FILE="$UNCLAIMED_MARK" HUB_NGINX_FRONT="$NGINX_FRONT" HUB_NGINX_VIA="$NGINX_VIA" \
@@ -3669,11 +3676,16 @@ for u in "${units[@]}"; do
 	fi
 	systemctl restart "$u" || problem "$u did not start: journalctl -u $u -n 30"
 done
+if [ "$WEB" = caddy ] && systemctl is-active --quiet caddy && ! unit_sandbox_running caddy.service; then
+	systemctl restart caddy || problem "caddy did not restart with its sandbox: journalctl -u caddy -n 30"
+fi
 if [ "$WEB" = nginx ]; then
 	nginx_prepare seal "$NGINX_TRANSACTION" "$nginx_bundle" "$NGINX_SITE"
 	nginx_prepare finish "$NGINX_TRANSACTION" "$nginx_bundle"
-	# The drop-in is part of the process, not the configuration: a reload would keep the old one.
-	if [ "${NGINX_SANDBOX_CHANGED:-0}" = 1 ]; then
+	# The drop-in is part of the process, not the configuration: a reload would keep the old one. The
+	# file may already be right from a failed run whose restart never happened, so the running process
+	# decides as well.
+	if [ "${NGINX_SANDBOX_CHANGED:-0}" = 1 ] || ! unit_sandbox_running nginx.service; then
 		systemctl restart nginx || problem "nginx did not restart with its sandbox: journalctl -u nginx -n 30"
 	fi
 	NGINX_TRANSACTION=""

@@ -483,6 +483,16 @@ check(
     and (security.load_record()["autoupdate"]["often"], security.load_record()["autoupdate"]["act"]) == (6, 1),
 )
 security.fix("autoupdate-undo", None)
+security.fix("autoupdate-set:24-1", None)
+rec = security.load_record()
+rec.pop("autoupdate", None)
+security.save_record(rec)
+check(
+    "  an irate-box-written file with no record is the owner's choice too",
+    security.apply_default_pattern(None) is None
+    and 'APT::Periodic::Download-Upgradeable-Packages "1";' in conf.read_text(),
+)
+conf.unlink(missing_ok=True)
 (T / "apt-log").unlink(missing_ok=True)
 said_ = security.fix("autoupdate-set:6-2", None)
 check(

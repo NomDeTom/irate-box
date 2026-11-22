@@ -93,9 +93,11 @@ for unit, paths, wx in (
     check(f"uninstall.sh removes {unit}", unit in UNINSTALL)
 
 check(
-    "the drop-in is written only when its text changed, and an nginx restart applies it",
+    "the drop-in is written only when its text changed, and the running process decides a restart too",
     "write_if_changed /etc/systemd/system/nginx.service.d/irate-box-sandbox.conf" in INSTALL
     and "NGINX_SANDBOX_CHANGED" in INSTALL
+    and "unit_sandbox_running nginx.service" in INSTALL
+    and "unit_sandbox_running caddy.service" in INSTALL
     and "systemctl restart nginx" in INSTALL,
 )
 
