@@ -1496,6 +1496,32 @@ EOF
 Requires=irate-box-nginx-recover.service
 After=irate-box-nginx-recover.service
 EOF
+	# The front is the one process on the box that takes a request from anyone on the hotspot.
+	# It writes only its logs, its body and proxy temp files, its pid, and the Unix sockets the
+	# apps listen on under /run. Reading the rest of the system is left alone.
+	cat >/etc/systemd/system/nginx.service.d/irate-box-sandbox.conf <<EOF
+[Service]
+ProtectSystem=strict
+ReadWritePaths=/var/log/nginx /var/lib/nginx /run
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+EOF
 	exec {NGINX_LOCK_FD}>"$ETC/.front.lock"
 	flock -x "$NGINX_LOCK_FD"
 	export HUB_FRONT_LOCK_FD="$NGINX_LOCK_FD"
@@ -2109,6 +2135,31 @@ if [ "$WEB" = caddy ]; then
 		# Not the package's "caddy run --environ": it prints the environment, these secrets with it, to the journal.
 		ExecStart=
 		ExecStart=$(command -v caddy || echo /usr/bin/caddy) run --config /etc/caddy/Caddyfile
+	EOF
+	# The same sandbox as nginx's drop-in, with Caddy's own data folder: it saves its live
+	# configuration there, and it connects to the same app sockets under /run.
+	cat >/etc/systemd/system/caddy.service.d/irate-box-sandbox.conf <<-EOF
+		[Service]
+		ProtectSystem=strict
+		ReadWritePaths=/var/lib/caddy /run
+		ProtectHome=yes
+		PrivateTmp=yes
+		PrivateDevices=yes
+		NoNewPrivileges=yes
+		ProtectKernelTunables=yes
+		ProtectKernelModules=yes
+		ProtectKernelLogs=yes
+		ProtectControlGroups=yes
+		ProtectClock=yes
+		ProtectHostname=yes
+		RestrictNamespaces=yes
+		RestrictRealtime=yes
+		RestrictSUIDSGID=yes
+		LockPersonality=yes
+		RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+		CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
+		SystemCallFilter=@system-service
+		SystemCallArchitectures=native
 	EOF
 	# The Caddyfile turns the admin API off, so "systemctl reload caddy" fails; restart instead.
 fi

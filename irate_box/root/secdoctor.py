@@ -1292,6 +1292,60 @@ XFF_WHY = M(
 )
 
 
+FRONT_UNITS = {"nginx": "nginx.service", "caddy": "caddy.service"}
+
+
+def _front_sandbox(kind):
+    """The front's own unit: whether the sandbox lines irate-box writes are there."""
+    unit = FRONT_UNITS.get(kind)
+    if not unit:
+        return []
+    props = _show(unit, "LoadState", "ProtectSystem", "NoNewPrivileges")
+    if props.get("LoadState") != "loaded":
+        return []
+    strict = props.get("ProtectSystem") == "strict"
+    no_new = props.get("NoNewPrivileges") == "yes"
+    title = M("front.sandbox.title", "Web server sandboxing")
+    evidence = [
+        f"{unit}: ProtectSystem={props.get('ProtectSystem') or 'not set'}",
+        f"{unit}: NoNewPrivileges={props.get('NoNewPrivileges') or 'not set'}",
+    ]
+    if strict and no_new:
+        return [
+            finding(
+                "front-sandbox",
+                title,
+                "ok",
+                M(
+                    "front.sandbox.set",
+                    "The web server's unit has the sandbox lines irate-box writes.",
+                ),
+                evidence=evidence,
+            )
+        ]
+    return [
+        finding(
+            "front-sandbox",
+            title,
+            "warn",
+            M(
+                "front.sandbox.weak",
+                "The web server's unit is missing its sandbox lines.",
+            ),
+            M(
+                "front.sandbox.why",
+                "The web server takes a request from anyone on the hotspot. Without these lines, a flaw in it "
+                "reaches more of the box than it needs.",
+            ),
+            M(
+                "front.sandbox.fix",
+                "Run the installer again. It writes the sandbox lines for the web server.",
+            ),
+            evidence=evidence,
+        )
+    ]
+
+
 def step_front(ctx):
     """The front's part in the hub's defences (smuggling, body size, X-Forwarded-For, the /admin gate): how it is set up."""
     directives, note = ctx["front"], ctx["front_note"]
@@ -1538,6 +1592,7 @@ def step_front(ctx):
                 ],
             )
         )
+    out += _front_sandbox("nginx")
     return out
 
 
@@ -1726,6 +1781,7 @@ def step_front_caddy(ctx):
                 commands=["admin off"],
             )
         )
+    out += _front_sandbox("caddy")
     return out
 
 

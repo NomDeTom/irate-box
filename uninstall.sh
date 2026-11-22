@@ -258,7 +258,7 @@ if [ -f "$CODE/irate_box/root/rtc.py" ]; then
 fi
 
 say "Removing unit files and drop-ins"
-rm -f "$UNITDIR/irate-box-nginx-recover.service" "$UNITDIR/nginx.service.d/irate-box-recovery.conf"
+rm -f "$UNITDIR/irate-box-nginx-recover.service" "$UNITDIR/nginx.service.d/irate-box-recovery.conf" "$UNITDIR/nginx.service.d/irate-box-sandbox.conf"
 rmdir "$UNITDIR/nginx.service.d" 2>/dev/null || true
 rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-git,irate-box-uplink,irate-box-crashwatch,irate-box-memory-guard,irate-box-led,irate-box-rfkill,irate-box-usb-gadget,irate-box-hardware}.service \
 	"$UNITDIR"/irate-box-git.socket "$UNITDIR"/irate-box-ci.{path,service} \
@@ -270,6 +270,7 @@ rm -f "$UNITDIR"/{irate-box,kiwix,silverbullet,ttyd,excalidraw-room,irate-box-gi
 	"$UNITDIR"/irate-box-notebooks.{path,service} "$UNITDIR"/irate-box-notebook@.service \
 	"$UNITDIR"/irate-box-nm-check.service \
 	"$UNITDIR/caddy.service.d/irate-box.conf" \
+	"$UNITDIR/caddy.service.d/irate-box-sandbox.conf" \
 	"$UNITDIR/syncthing@$HUB_USER.service.d/irate-box.conf" "$UNITDIR/ngircd.service.d/irate-box.conf" \
 	"$UNITDIR/inspircd.service.d/irate-box.conf"
 rmdir "$UNITDIR/caddy.service.d" "$UNITDIR/syncthing@$HUB_USER.service.d" "$UNITDIR/ngircd.service.d" "$UNITDIR/inspircd.service.d" 2>/dev/null || true
