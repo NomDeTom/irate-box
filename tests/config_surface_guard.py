@@ -17,6 +17,34 @@ from irate_box.root import tls
 PLAN = "/home/user/notes-sync/irate-box/plans/cve-hardening-plan.md"
 WHY = f"The feature widens the attack surface and must be turned on deliberately, with {PLAN} updated."
 
+
+def statements(text):
+    """(block path, directive) for the config's semicolon-ended directives, comments removed."""
+    text = re.sub(r"#[^\n]*", "", text)
+    stack, out, buf = [], [], ""
+    for ch in text:
+        if ch == "{":
+            stack.append(" ".join(buf.split()))
+            buf = ""
+        elif ch == "}":
+            if stack:
+                stack.pop()
+            buf = ""
+        elif ch == ";":
+            out.append((tuple(stack), " ".join(buf.split())))
+            buf = ""
+        else:
+            buf += ch
+    return out
+
+
+def http_directives(text):
+    """The directive names Debian's nginx.conf sets inside its http block."""
+    return {
+        line.split()[0] for block, line in statements(text) if len(block) == 1 and block[0] == "http" and line.split()
+    }
+
+
 fails = 0
 
 
@@ -68,10 +96,22 @@ check(
 )
 
 nginx = configs["config/irate-box.nginx"]
+per_server = [
+    line for block, line in statements(nginx) if block and block[-1] == "server" and line == "server_tokens off"
+]
+http_level = [line for block, line in statements(nginx) if not block and line.startswith("server_tokens")]
 check(
-    "nginx's version is hidden once, at http level",
-    len(re.findall(r"(?m)^server_tokens off;$", nginx)) == 1 and not re.search(r"(?m)^\s+server_tokens off;$", nginx),
-    "server_tokens off should be at http level only; server blocks inherit it",
+    "server_tokens is set in each server block, and not at http level",
+    len(per_server) == 11 and not http_level,
+    f"per-server {len(per_server)}, http-level {http_level}",
+)
+trixie = (REPO / "tests/fixtures/nginx-trixie.conf").read_text()
+already = http_directives(trixie)
+shipped = {line.split()[0] for block, line in statements(nginx) if not block and line.split()} - {"include"}
+check(
+    "the shipped config repeats no http-level directive Debian's nginx.conf already sets",
+    not (shipped & already),
+    f"duplicated at http level: {sorted(shipped & already)}",
 )
 
 print(f"failures: {fails}")

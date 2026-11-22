@@ -1489,7 +1489,7 @@ def _unit_of(pid):
 
 
 RESTART_UNSAFE = re.compile(
-    r"^(?:dbus|systemd-logind|NetworkManager|wpa_supplicant|systemd-networkd|iwd|hostapd|user@|.*getty@)",
+    r"^(?:dbus|systemd-logind|NetworkManager|wpa_supplicant|systemd-networkd|iwd|hostapd|user@|.*getty@|irate-box-usb-gadget)",
     re.I,
 )
 
@@ -1545,38 +1545,41 @@ def step_stale(ctx):
     """Services still running a library an update replaced on disk."""
     found = stale_code()
     out = []
-    for unit, entries in sorted(found["services"].items()):
-        libs = sorted({e["path"] for e in entries})
-        out.append(
-            finding(
-                f"stale-{re.sub(r'[^a-z0-9]+', '-', unit.removesuffix('.service').lower()).strip('-')}",
-                named(unit.removesuffix(".service"), M("stale.role", "service")),
-                "warn",
-                M(
-                    "stale.service",
-                    "{unit} is still running code that an update replaced.",
-                    unit=unit,
-                ),
-                M(
-                    "stale.service.why",
-                    "A security update replaces a library on disk. The running process keeps the old one until it "
-                    "restarts, so the fix does not protect it.",
-                ),
-                M("stale.service.fix", "Restart the service."),
-                actions=[
-                    action(
-                        f"stale-restart:{unit}",
-                        M("stale.service.action", "Restart the service"),
-                        confirm=M(
-                            "stale.service.confirm",
-                            "Restart {unit}? The service is unavailable until it answers again.",
-                            unit=unit,
-                        ),
-                    )
-                ],
-                evidence=[f"{unit}: {path}" for path in libs],
+    # A box that needs a restart anyway: one finding, with the restartable services named in it. Twenty
+    # per-service warnings beside it would bury the one action that matters.
+    if not found["box"]:
+        for unit, entries in sorted(found["services"].items()):
+            libs = sorted({e["path"] for e in entries})
+            out.append(
+                finding(
+                    f"stale-{re.sub(r'[^a-z0-9]+', '-', unit.removesuffix('.service').lower()).strip('-')}",
+                    named(unit.removesuffix(".service"), M("stale.role", "service")),
+                    "warn",
+                    M(
+                        "stale.service",
+                        "{unit} is still running code that an update replaced.",
+                        unit=unit,
+                    ),
+                    M(
+                        "stale.service.why",
+                        "A security update replaces a library on disk. The running process keeps the old one until it "
+                        "restarts, so the fix does not protect it.",
+                    ),
+                    M("stale.service.fix", "Restart the service."),
+                    actions=[
+                        action(
+                            f"stale-restart:{unit}",
+                            M("stale.service.action", "Restart the service"),
+                            confirm=M(
+                                "stale.service.confirm",
+                                "Restart {unit}? The service is unavailable until it answers again.",
+                                unit=unit,
+                            ),
+                        )
+                    ],
+                    evidence=[f"{unit}: {path}" for path in libs],
+                )
             )
-        )
     if found["box"]:
         reasons = {e["why"] for e in found["box"]}
         out.append(
@@ -1611,7 +1614,12 @@ def step_stale(ctx):
                         ),
                     )
                 ],
-                evidence=[f"{e['path']} (PID {e['pid']})" for e in found["box"]],
+                evidence=[f"{e['path']} (PID {e['pid']})" for e in found["box"]]
+                + [
+                    f"{unit}: {path}"
+                    for unit, entries in sorted(found["services"].items())
+                    for path in sorted({e["path"] for e in entries})
+                ],
             )
         )
     return out

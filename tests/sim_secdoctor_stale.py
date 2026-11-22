@@ -111,11 +111,34 @@ check(
     and any(e["why"] == "no-unit" and e["pid"] == 7001 for e in found["box"]),
     found,
 )
-stale = {f["id"]: f for f in sd.step_stale({})}
+with mock.patch.object(
+    sd,
+    "stale_code",
+    lambda: {"services": {"foo.service": [{"pid": 7000, "path": "/usr/lib/libssl.so.3"}]}, "box": []},
+):
+    stale = {f["id"]: f for f in sd.step_stale({})}
 check(
-    "  its finding offers its own unit to restart",
+    "  a restartable service with no box restart needed offers its own unit",
     [a["choice"] for a in stale["stale-foo"]["actions"]] == ["stale-restart:foo.service"],
     stale,
+)
+with mock.patch.object(
+    sd,
+    "stale_code",
+    lambda: {
+        "services": {"cron.service": [{"pid": 7002, "path": "/usr/lib/libssl.so.3"}]},
+        "box": [{"pid": 1, "path": "/usr/lib/libc.so.6", "why": "libc"}],
+    },
+):
+    stale = {f["id"]: f for f in sd.step_stale({})}
+check(
+    "when a box restart is needed, one finding names the restartable services instead",
+    list(stale) == ["stale-box"] and any("cron.service" in line for line in stale["stale-box"]["evidence"]),
+    stale,
+)
+check(
+    "the USB gadget is never restarted alone; its link is the administrator's way in",
+    not sd.restartable("irate-box-usb-gadget.service"),
 )
 
 
@@ -168,8 +191,13 @@ for unit, services in (
         with mock.patch.object(sd, "stale_code", lambda services=services: {"services": services, "box": []}):
             hub_control._security_stale_restart(unit)
         check(f"  {unit} (listed: {bool(services)}) is refused", False)
-    except hub_control.Refused:
-        check(f"  {unit} (listed: {bool(services)}) is refused", True)
+    except hub_control.Refused as exc:
+        said = exc.message["id"] if is_message(exc.message) else ""
+        check(
+            f"  {unit} (listed: {bool(services)}) is refused as unsafe",
+            said == "control.security.stale-unsafe",
+            said,
+        )
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

@@ -6726,19 +6726,19 @@ def _security_stale_restart(unit):
     """Restart one service, if root's own /proc scan still lists it and one restart is safe."""
     if not re.fullmatch(r"[A-Za-z0-9@_.:-]+\.service", unit or ""):
         raise Refused(M("control.security.stale-bad-unit", "That is not a service name."))
-    if unit not in secdoctor.stale_code()["services"]:
-        raise Refused(
-            M(
-                "control.security.stale-gone",
-                "{unit} is no longer running replaced code. Run the doctor again.",
-                unit=unit,
-            )
-        )
     if not secdoctor.restartable(unit):
         raise Refused(
             M(
                 "control.security.stale-unsafe",
                 "{unit} cannot be restarted on its own: restart the box instead.",
+                unit=unit,
+            )
+        )
+    if unit not in secdoctor.stale_code()["services"]:
+        raise Refused(
+            M(
+                "control.security.stale-gone",
+                "{unit} is no longer running replaced code. Run the doctor again.",
                 unit=unit,
             )
         )
