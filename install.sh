@@ -3842,6 +3842,12 @@ if [ "$FIRST_INSTALL" = 1 ] && [ "$KEEP_SYSTEM" = 0 ]; then
 	HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.recommended fresh | sed 's/^/    /' ||
 		problem "could not apply the recommended settings (Box doctor offers them)"
 fi
+# Automatic security updates: a box with no pattern recorded gets the default (daily, install). An owner's
+# choice, from a preset or the Updates page, is kept.
+say "Automatic security updates"
+HUB_STATE_DIR="$STATE" HUB_ETC_DIR="$ETC" PYTHONPATH="$CODE" python3 -m irate_box.root.security default-pattern |
+	sed 's/^/    /' || problem "could not set the default automatic security updates (Updates offers it)"
+
 # The durability dial, at a first install: longevity, balanced or full (presets.d/, root/presets.py).
 if [ "$FIRST_INSTALL" = 1 ] && [ -n "$DURABILITY" ]; then
 	say "The durability preset: $DURABILITY"

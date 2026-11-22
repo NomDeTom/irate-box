@@ -47,6 +47,11 @@ errors = [e for p in all_presets for e in presets.preset_errors(p, **known)]
 check("every entry is a setting, choice, add-on or toolkit the box accepts", not errors, errors)
 
 check(
+    "the pirate preset installs security updates daily",
+    "autoupdate-set:24-2" in {e.get("choice") for e in presets.get("pirate")["entries"]}
+    and "autoupdate-set:24-0" not in {e.get("choice") for e in presets.get("pirate")["entries"]},
+)
+check(
     "each preset has an order and every entry a why",
     all(isinstance(p.get("order"), int) for p in all_presets)
     and all(entry.get("why") for p in all_presets for entry in p["entries"]),

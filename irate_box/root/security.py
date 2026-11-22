@@ -938,7 +938,7 @@ APT_TIMERS = ("apt-daily.timer", "apt-daily-upgrade.timer")
 OFTEN = (0, 6, 24, 168)
 ACTS = (0, 1, 2)
 OFTEN_WORDS = {0: "by hand only", 6: "every 6 hours", 24: "every day", 168: "every week"}
-DEFAULT_PATTERN = (24, 0)  # the safe one
+DEFAULT_PATTERN = (24, 2)  # daily, install: the fix reaches a new box the moment it sees the internet
 # The three earlier choices, read as the pattern's.
 LEVELS_WAS = {"off": (0, 0), "download": (24, 1), "install": (24, 2)}
 # apt's periodic intervals are in days; "always" leaves the timing to the timers (apt.systemd.daily).
@@ -3555,6 +3555,14 @@ def refresh_lists(log_path):
         return _lists(log)
 
 
+def apply_default_pattern(updates_log=None):
+    """A box with no automatic-update record gets the default pattern (daily, install). An owner's choice stays."""
+    rec = load_record()
+    if "autoupdate" in rec:
+        return None
+    return fix(f"autoupdate-set:{DEFAULT_PATTERN[0]}-{DEFAULT_PATTERN[1]}", updates_log)
+
+
 def fix(choice, updates_log):
     """Carry out one of the page's offers. Returns a message; raises ValueError."""
     rec = load_record()
@@ -3666,6 +3674,9 @@ if __name__ == "__main__":
         sys.exit("run as root")
     if sys.argv[1:] == ["scan"]:
         print(json.dumps(scan(), indent=2))
+    elif sys.argv[1:] == ["default-pattern"]:
+        said = apply_default_pattern(STATE / "security-default.log")
+        print(render(said) if said else "Automatic security updates already have the owner's choice.")
     elif sys.argv[1:] == ["summary"]:
         # For the end of install.sh: what needs the owner's attention, one line each.
         for f in scan()["findings"]:
