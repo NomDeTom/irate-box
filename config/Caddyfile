@@ -24,6 +24,11 @@
 {
 	auto_https off
 	admin off
+	# HTTP/1.1 only, as nginx: HTTP/2 and HTTP/3 are features that widen the attack surface,
+	# and an owner who wants them turns them on here.
+	servers {
+		protocols h1
+	}
 }
 
 (irate_box_hub) {

@@ -90,6 +90,9 @@ include @VIA@;
 # password check on the hub, which also does at most two at once (accounts.py HASHES_AT_ONCE).
 limit_req_zone $binary_remote_addr zone=irate_box_account:1m rate=30r/m;
 
+# No server block announces nginx's version, the hub's on :80 above all: every visitor on the hotspot reaches it.
+server_tokens off;
+
 # The local add-ons' maps, per add-on id: off, login realm, Content-Security-Policy (the root
 # helper writes them from /etc/hub/access.json and the add-ons' manifests). Read by the add-on
 # server at the end of this file.
@@ -704,7 +707,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	client_max_body_size 1m;
 	absolute_redirect off;
 	include @ACCESS@;
@@ -812,7 +814,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	client_max_body_size 1m;
 	absolute_redirect off;
 	include @ACCESS@;
@@ -934,7 +935,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	client_max_body_size 1m;
 	absolute_redirect off;
 	include @ACCESS@;
@@ -1041,7 +1041,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	client_max_body_size 1m;
 	absolute_redirect off;
 	include @ACCESS@;
@@ -1162,7 +1161,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
 	location = /_irate_admin {
@@ -1224,7 +1222,6 @@ server {
 	disable_symlinks on;
 	autoindex off;
 	access_log off;
-	server_tokens off;
 	add_header X-Content-Type-Options nosniff always;
 	add_header Referrer-Policy no-referrer always;
 	add_header Cache-Control "no-cache" always;
@@ -1276,7 +1273,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
 	# Users mode (access.py): the session check an app's gate asks
@@ -1351,7 +1347,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
 	# Every header set again, as setting one drops the server's (Connection above all: see the notes' /_irate_user).
@@ -1407,7 +1402,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
 	# Users mode (access.py): the session check an app's gate asks
@@ -1489,7 +1483,6 @@ server {
 	server_name _;
 	access_log off;
 	gzip off;
-	server_tokens off;
 	absolute_redirect off;
 	include @ACCESS@;
 	# Users mode (access.py): the session check an app's gate asks
