@@ -5,7 +5,6 @@ reference (lyra-tft's real journal, tracking and sources), and the Security doct
 the action that steps the clock. python3 tests/sim_clock_behind.py"""
 
 import os
-import re
 import shutil
 import sys
 import tempfile
@@ -24,9 +23,10 @@ os.environ.update(
     HUB_UNIT_DIR=str(T / "systemd"),
 )
 sys.path.insert(0, str(REPO))
-from irate_box import msg
-from irate_box.root import clock, hub_control, secdoctor as sd
 import irate_box.root as root_pkg
+from irate_box import msg
+from irate_box.root import clock, hub_control
+from irate_box.root import secdoctor as sd
 
 fails = 0
 
@@ -132,14 +132,14 @@ check(
     "the doctor reports it with the action to step the clock",
     found["clock-behind"]["status"] == "warn"
     and [a["choice"] for a in found["clock-behind"]["actions"]] == ["clock-makestep"]
-    and "clock.behind.why" in {m["id"] for m in (found["clock-behind"]["summary"], found["clock-behind"]["why"])},
+    and "clock-sync.why" in {m["id"] for m in (found["clock-behind"]["summary"], found["clock-behind"]["why"])},
     found,
 )
 with mock.patch.object(sd, "clock_behind", lambda: behind), mock.patch.object(sd, "_sc", lambda *a: "inactive\n"):
     found = {f["id"]: f for f in sd.step_clock({})}
 check(
     "  without chrony, it points at the Clock page and offers no action",
-    found["clock-behind"]["actions"] == [] and found["clock-behind"]["fix"]["id"] == "clock.behind.fix.clock-page",
+    found["clock-behind"]["actions"] == [] and found["clock-behind"]["fix"]["id"] == "clock-sync.fix.clock-page",
     found,
 )
 

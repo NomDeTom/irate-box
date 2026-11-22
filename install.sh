@@ -1499,7 +1499,9 @@ EOF
 	# The front is the one process on the box that takes a request from anyone on the hotspot.
 	# It writes only its logs, its body and proxy temp files, its pid, and the Unix sockets the
 	# apps listen on under /run. Reading the rest of the system is left alone.
-	cat >/etc/systemd/system/nginx.service.d/irate-box-sandbox.conf <<EOF
+	NGINX_SANDBOX=/etc/systemd/system/nginx.service.d/irate-box-sandbox.conf
+	nginx_sandbox_was="$(sha256sum "$NGINX_SANDBOX" 2>/dev/null | cut -d' ' -f1 || true)"
+	cat <<EOF | write_if_changed /etc/systemd/system/nginx.service.d/irate-box-sandbox.conf 644
 [Service]
 ProtectSystem=strict
 ReadWritePaths=/var/log/nginx /var/lib/nginx /run
@@ -1521,7 +1523,9 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE
 SystemCallFilter=@system-service
 SystemCallArchitectures=native
+MemoryDenyWriteExecute=yes
 EOF
+	[ "$nginx_sandbox_was" = "$(sha256sum "$NGINX_SANDBOX" 2>/dev/null | cut -d' ' -f1)" ] || NGINX_SANDBOX_CHANGED=1
 	exec {NGINX_LOCK_FD}>"$ETC/.front.lock"
 	flock -x "$NGINX_LOCK_FD"
 	export HUB_FRONT_LOCK_FD="$NGINX_LOCK_FD"
@@ -2137,8 +2141,9 @@ if [ "$WEB" = caddy ]; then
 		ExecStart=$(command -v caddy || echo /usr/bin/caddy) run --config /etc/caddy/Caddyfile
 	EOF
 	# The same sandbox as nginx's drop-in, with Caddy's own data folder: it saves its live
-	# configuration there, and it connects to the same app sockets under /run.
-	cat >/etc/systemd/system/caddy.service.d/irate-box-sandbox.conf <<-EOF
+	# configuration there, and it connects to the same app sockets under /run. Go needs no W^X, so no
+	# MemoryDenyWriteExecute.
+	cat <<-EOF | write_if_changed /etc/systemd/system/caddy.service.d/irate-box-sandbox.conf 644
 		[Service]
 		ProtectSystem=strict
 		ReadWritePaths=/var/lib/caddy /run
@@ -3667,6 +3672,10 @@ done
 if [ "$WEB" = nginx ]; then
 	nginx_prepare seal "$NGINX_TRANSACTION" "$nginx_bundle" "$NGINX_SITE"
 	nginx_prepare finish "$NGINX_TRANSACTION" "$nginx_bundle"
+	# The drop-in is part of the process, not the configuration: a reload would keep the old one.
+	if [ "${NGINX_SANDBOX_CHANGED:-0}" = 1 ]; then
+		systemctl restart nginx || problem "nginx did not restart with its sandbox: journalctl -u nginx -n 30"
+	fi
 	NGINX_TRANSACTION=""
 	flock -u "$NGINX_LOCK_FD"
 	exec {NGINX_LOCK_FD}>&-

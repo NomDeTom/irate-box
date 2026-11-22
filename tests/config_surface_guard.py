@@ -34,6 +34,7 @@ NGINX = {
     "resolver": re.compile(r"(?m)^\s*resolver\b"),
     "mail": re.compile(r"(?m)^\s*mail\s*\{"),
     "stream": re.compile(r"(?m)^\s*stream\s*\{"),
+    "PCRE JIT": re.compile(r"(?m)^\s*pcre_jit\s+on\b"),
 }
 
 configs = {"config/irate-box.nginx": (REPO / "config/irate-box.nginx").read_text()}

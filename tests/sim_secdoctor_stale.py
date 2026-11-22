@@ -26,7 +26,8 @@ os.environ.update(
 sys.path.insert(0, str(REPO))
 from irate_box.finding import message_ids
 from irate_box.msg import is_message
-from irate_box.root import hub_control, secdoctor as sd
+from irate_box.root import hub_control
+from irate_box.root import secdoctor as sd
 
 fails = 0
 
@@ -77,39 +78,44 @@ for section in re.split(r"(?m)^### ", capture)[1:]:
 
 found = sd.stale_code()
 check(
-    "the real capture: the three services still on replaced libraries are found",
-    set(found["services"]) == {"NetworkManager.service", "wpa_supplicant.service", "systemd-logind.service"},
-    sorted(found["services"]),
+    "the real capture: NetworkManager, wpa_supplicant and systemd-logind are not restartable alone",
+    found["services"] == {} and {e["why"] for e in found["box"]} == {"unit", "libc"},
+    found,
 )
 check(
-    "  each names the executable libraries, not locale-archive (data) or /dev/zero (shared memory)",
-    any(e["path"].endswith("/libssl.so.3") for e in found["services"]["NetworkManager.service"])
-    and any(e["path"].endswith("/libpcre2-8.so.0.14.0") for e in found["services"]["systemd-logind.service"])
-    and not any(
-        "locale-archive" in e["path"] or "/dev/zero" in e["path"] for es in found["services"].values() for e in es
-    ),
-    found["services"],
+    "  their executable libraries are named, not locale-archive (data) or /dev/zero (shared memory)",
+    any(e["path"].endswith("/libssl.so.3") for e in found["box"])
+    and any(e["path"].endswith("/libpcre2-8.so.0.14.0") for e in found["box"])
+    and not any("locale-archive" in e["path"] or "/dev/zero" in e["path"] for e in found["box"]),
+    found["box"],
 )
+stale = {f["id"]: f for f in sd.step_stale({})}
 check(
-    "  a deleted C library also asks for a restart of the box",
-    {e["why"] for e in found["box"]} == {"libc"} and "nginx.service" not in found["services"],
+    "the doctor asks for a restart of the box, with no per-service action",
+    stale["stale-box"]["status"] == "warn" and not stale["stale-box"]["actions"] and len(stale) == 1,
+    stale,
+)
+
+# A service that can be restarted alone gets its own action; a user session never becomes a system service.
+(RPROC := PROC / "7000").mkdir()
+(RPROC / "maps").write_text("7f00-7f01 r-xp 00000000 08:30 1 /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)\n")
+(RPROC / "cgroup").write_text("0::/system.slice/foo.service\n")
+UPROC = PROC / "7001"
+UPROC.mkdir()
+(UPROC / "maps").write_text("7f02-7f03 r-xp 00000000 08:30 1 /usr/lib/x86_64-linux-gnu/libssl.so.3 (deleted)\n")
+(UPROC / "cgroup").write_text("0::/user.slice/user-1000.slice/user@1000.service/app.slice/foo.service\n")
+found = sd.stale_code()
+check(
+    "a restartable system service is listed, and a user@ service is not",
+    list(found["services"]) == ["foo.service"]
+    and any(e["why"] == "no-unit" and e["pid"] == 7001 for e in found["box"]),
     found,
 )
 stale = {f["id"]: f for f in sd.step_stale({})}
 check(
-    "the doctor reports each service and offers a restart",
-    {"stale-networkmanager", "stale-wpa-supplicant", "stale-systemd-logind"} <= set(stale)
-    and all(
-        stale[fid]["actions"][0]["choice"] == "stale-restart"
-        for fid in ("stale-networkmanager", "stale-wpa-supplicant", "stale-systemd-logind")
-    )
-    and "stale.service.why" in message_ids(stale["stale-networkmanager"]),
+    "  its finding offers its own unit to restart",
+    [a["choice"] for a in stale["stale-foo"]["actions"]] == ["stale-restart:foo.service"],
     stale,
-)
-check(
-    "  the box restart finding offers no action",
-    stale["stale-box"]["status"] == "warn" and not stale["stale-box"]["actions"],
-    stale["stale-box"],
 )
 
 
@@ -146,15 +152,24 @@ with (
     mock.patch.object(hub_control, "run", fake_run),
     mock.patch.object(sd, "stale_code", lambda: {"services": {"nginx.service": [{"pid": 1, "path": "/x"}]}, "box": []}),
 ):
-    said = hub_control._security_stale_restart()
+    said = hub_control._security_stale_restart("nginx.service")
 check(
-    "the restart action takes the unit from root's scan, not from the request",
-    ("systemctl", "restart", "nginx.service") in calls
-    and all(c[0] != "systemctl" or c[2] == "nginx.service" for c in calls)
+    "the restart action takes the unit only as a pointer, and starts it without blocking the page",
+    ("systemctl", "restart", "--no-block", "nginx.service") in calls
     and is_message(said)
     and said["id"] == "control.security.stale-restarted",
     calls,
 )
+for unit, services in (
+    ("NetworkManager.service", {}),
+    ("NetworkManager.service", {"NetworkManager.service": [{"pid": 1, "path": "/x"}]}),
+):
+    try:
+        with mock.patch.object(sd, "stale_code", lambda services=services: {"services": services, "box": []}):
+            hub_control._security_stale_restart(unit)
+        check(f"  {unit} (listed: {bool(services)}) is refused", False)
+    except hub_control.Refused:
+        check(f"  {unit} (listed: {bool(services)}) is refused", True)
 
 shutil.rmtree(T, ignore_errors=True)
 print(f"failures: {fails}")

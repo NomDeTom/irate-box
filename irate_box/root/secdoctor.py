@@ -1398,11 +1398,11 @@ def _front_modules():
 
 
 def _front_sandbox(kind):
-    """The front's own unit: whether the sandbox lines irate-box writes are there."""
+    """The front's unit and its running process: whether the sandbox lines irate-box writes are in force."""
     unit = FRONT_UNITS.get(kind)
     if not unit:
         return []
-    props = _show(unit, "LoadState", "ProtectSystem", "NoNewPrivileges")
+    props = _show(unit, "LoadState", "MainPID", "ProtectSystem", "NoNewPrivileges")
     if props.get("LoadState") != "loaded":
         return []
     strict = props.get("ProtectSystem") == "strict"
@@ -1412,7 +1412,33 @@ def _front_sandbox(kind):
         f"{unit}: ProtectSystem={props.get('ProtectSystem') or 'not set'}",
         f"{unit}: NoNewPrivileges={props.get('NoNewPrivileges') or 'not set'}",
     ]
-    if strict and no_new:
+    if not (strict and no_new):
+        return [
+            finding(
+                "front-sandbox",
+                title,
+                "warn",
+                M(
+                    "front.sandbox.weak",
+                    "The web server's unit is missing its sandbox lines.",
+                ),
+                M(
+                    "front.sandbox.why",
+                    "The web server takes a request from anyone on the hotspot. Without these lines, a flaw in it "
+                    "reaches more of the box than it needs.",
+                ),
+                M(
+                    "front.sandbox.fix",
+                    "Run the installer again. It writes the sandbox lines for the web server.",
+                ),
+                evidence=evidence,
+            )
+        ]
+    pid = props.get("MainPID")
+    status = _read(PROC / str(pid) / "status") if pid not in (None, "", "0") else ""
+    no_new_running = bool(re.search(r"(?m)^NoNewPrivs:\s+1$", status or ""))
+    seccomp_running = bool(re.search(r"(?m)^Seccomp:\s+2$", status or ""))
+    if no_new_running and seccomp_running:
         return [
             finding(
                 "front-sandbox",
@@ -1420,7 +1446,7 @@ def _front_sandbox(kind):
                 "ok",
                 M(
                     "front.sandbox.set",
-                    "The web server's unit has the sandbox lines irate-box writes.",
+                    "The web server's unit has the sandbox lines irate-box writes, and its running process has them.",
                 ),
                 evidence=evidence,
             )
@@ -1431,31 +1457,46 @@ def _front_sandbox(kind):
             title,
             "warn",
             M(
-                "front.sandbox.weak",
-                "The web server's unit is missing its sandbox lines.",
+                "front.sandbox.pending",
+                "The web server's sandbox is written, and takes effect when the web server restarts.",
             ),
             M(
-                "front.sandbox.why",
-                "The web server takes a request from anyone on the hotspot. Without these lines, a flaw in it "
-                "reaches more of the box than it needs.",
+                "front.sandbox.pending.why",
+                "A reload keeps the old process, with the old sandbox. Until it restarts, a flaw in the web server "
+                "reaches more of the box than the new unit lets it.",
             ),
-            M(
-                "front.sandbox.fix",
-                "Run the installer again. It writes the sandbox lines for the web server.",
-            ),
-            evidence=evidence,
+            M("front.sandbox.pending.fix", "Restart the web server."),
+            actions=[action("front-restart", M("front.sandbox.restart", "Restart the web server"))],
+            evidence=evidence
+            + [
+                f"the running process: NoNewPrivs={'1' if no_new_running else '0'}",
+                f"the running process: Seccomp={'2' if seccomp_running else '0'}",
+            ],
         )
     ]
 
 
 def _unit_of(pid):
-    """The service unit a process belongs to, from /proc/PID/cgroup."""
+    """The system service a process belongs to, from /proc/PID/cgroup, or None for a user session or PID 1."""
     text = _read(PROC / str(pid) / "cgroup") or ""
+    if any(mark in text for mark in ("/init.scope", "/user.slice", "/user@", "/session-")):
+        return None
     for line in text.splitlines():
-        match = re.search(r"/([A-Za-z0-9@_.:-]+\.service)(?:/|\Z)", line)
-        if match:
-            return match.group(1)
+        matches = re.findall(r"/([A-Za-z0-9@_.:-]+\.service)(?:/|\s*\Z)", line)
+        if matches:
+            return matches[-1]
     return None
+
+
+RESTART_UNSAFE = re.compile(
+    r"^(?:dbus|systemd-logind|NetworkManager|wpa_supplicant|systemd-networkd|iwd|hostapd|user@|.*getty@)",
+    re.I,
+)
+
+
+def restartable(unit):
+    """Whether one service can be restarted without taking the box's network or session with it."""
+    return bool(unit) and not RESTART_UNSAFE.match(unit.removesuffix(".service"))
 
 
 def stale_code():
@@ -1487,16 +1528,16 @@ def stale_code():
             if path in seen:
                 continue
             seen.add(path)
-            if unit:
+            if unit and restartable(unit):
                 services.setdefault(unit, []).append({"pid": pid, "path": path})
             if pid == 1:
                 box.append({"pid": pid, "path": path, "why": "pid1"})
-            elif unit and unit.startswith("dbus"):
-                box.append({"pid": pid, "path": path, "why": "dbus"})
             elif re.search(r"/libc(?:-\d|\.so)", path):
                 box.append({"pid": pid, "path": path, "why": "libc"})
             elif not unit:
                 box.append({"pid": pid, "path": path, "why": "no-unit"})
+            elif not restartable(unit):
+                box.append({"pid": pid, "path": path, "why": "unit", "unit": unit})
     return {"services": services, "box": box}
 
 
@@ -1522,7 +1563,17 @@ def step_stale(ctx):
                     "restarts, so the fix does not protect it.",
                 ),
                 M("stale.service.fix", "Restart the service."),
-                actions=[action("stale-restart", M("stale.service.action", "Restart the service"))],
+                actions=[
+                    action(
+                        f"stale-restart:{unit}",
+                        M("stale.service.action", "Restart the service"),
+                        confirm=M(
+                            "stale.service.confirm",
+                            "Restart {unit}? The service is unavailable until it answers again.",
+                            unit=unit,
+                        ),
+                    )
+                ],
                 evidence=[f"{unit}: {path}" for path in libs],
             )
         )
@@ -1539,8 +1590,9 @@ def step_stale(ctx):
                 ),
                 M(
                     "stale.box.why",
-                    "These processes cannot be restarted one at a time: PID 1, dbus, the C library most programs "
-                    "share, or a process in no service. The fix on disk protects the box only after a restart.",
+                    "These cannot be restarted one at a time: PID 1, dbus, the C library most programs share, a "
+                    "process in no service, a user session, or a service whose restart would take the network or "
+                    "the sign-in with it. The fix on disk protects the box only after a restart.",
                 ),
                 M("stale.box.fix", "Restart the box."),
                 notes=[
@@ -1553,6 +1605,7 @@ def step_stale(ctx):
                                 "dbus": "dbus",
                                 "libc": "the C library",
                                 "no-unit": "a process in no service",
+                                "unit": "a service whose restart would take the network or the login with it",
                             }[reason]
                             for reason in sorted(reasons)
                         ),
@@ -1621,29 +1674,29 @@ def step_clock(ctx):
         return []
     when, what = max(later)
     chrony = _sc("is-active", "chrony.service").strip() == "active"
-    title = M("clock.title", "Clock and security updates")
+    title = M("clock-sync.title", "Clock and security updates")
     return [
         finding(
             "clock-behind",
             title,
             "warn",
             M(
-                "clock.behind",
+                "clock-sync.behind",
                 "apt refused a list that is live only from {when}. The box's clock is behind.",
                 when=time.strftime("%Y-%m-%d %H:%M", time.gmtime(when)),
             ),
             M(
-                "clock.behind.why",
+                "clock-sync.why",
                 "apt refuses a signature that is not live yet, so no security update can install until the clock "
                 "is right.",
             ),
             M(
-                "clock.behind.fix",
+                "clock-sync.fix",
                 "Set the clock now.",
             )
             if chrony
-            else M("clock.behind.fix.clock-page", "Set the clock on the Clock page."),
-            actions=[action("clock-makestep", M("clock.behind.action", "Set the clock now"))] if chrony else [],
+            else M("clock-sync.fix.clock-page", "Set the clock on the Clock page."),
+            actions=[action("clock-makestep", M("clock-sync.action", "Set the clock now"))] if chrony else [],
             evidence=[what],
         )
     ]

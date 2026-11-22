@@ -6685,6 +6685,23 @@ def _security_module_remove(stem):
     )
 
 
+def _security_front_restart():
+    """Restart the web server in front, so the sandbox its unit now declares takes effect."""
+    unit = "caddy.service" if _web_server() == "caddy" else "nginx.service"
+    restarted = run("systemctl", "restart", "--no-block", unit, timeout=60)
+    if restarted.returncode:
+        detail = ((restarted.stderr or restarted.stdout).strip().splitlines() or ["systemctl failed"])[-1][:200]
+        raise Refused(
+            M(
+                "control.security.front-failed",
+                "The box could not restart {unit}: {detail}",
+                unit=unit,
+                detail=detail,
+            )
+        )
+    return M("control.security.front-restarted", "The box restarted {unit}.", unit=unit)
+
+
 def _security_clock_makestep():
     """Step the clock now, if chrony is running and the last scan still finds apt refusing a list."""
     if run("systemctl", "is-active", "chrony.service", timeout=30).stdout.strip() != "active":
@@ -6705,33 +6722,45 @@ def _security_clock_makestep():
     return M("control.security.clock-stepped", "The box stepped the clock to its time source.")
 
 
-def _security_stale_restart():
-    """Restart every service root's own /proc scan now finds running a library an update replaced."""
-    units = sorted(secdoctor.stale_code()["services"])
-    if not units:
+def _security_stale_restart(unit):
+    """Restart one service, if root's own /proc scan still lists it and one restart is safe."""
+    if not re.fullmatch(r"[A-Za-z0-9@_.:-]+\.service", unit or ""):
+        raise Refused(M("control.security.stale-bad-unit", "That is not a service name."))
+    if unit not in secdoctor.stale_code()["services"]:
         raise Refused(
             M(
                 "control.security.stale-gone",
-                "No service is running replaced code now. Run the doctor again.",
+                "{unit} is no longer running replaced code. Run the doctor again.",
+                unit=unit,
             )
         )
-    failed = []
-    for unit in units:
-        restarted = run("systemctl", "restart", unit, timeout=120)
-        if restarted.returncode:
-            failed.append(unit)
-    if failed:
+    if not secdoctor.restartable(unit):
+        raise Refused(
+            M(
+                "control.security.stale-unsafe",
+                "{unit} cannot be restarted on its own: restart the box instead.",
+                unit=unit,
+            )
+        )
+    command = ["systemctl", "restart"]
+    if unit in ("nginx.service", "caddy.service") or unit.startswith("irate-box"):
+        command.append("--no-block")
+    command.append(unit)
+    restarted = run(*command, timeout=120)
+    if restarted.returncode:
+        detail = ((restarted.stderr or restarted.stdout).strip().splitlines() or ["systemctl failed"])[-1][:200]
         raise Refused(
             M(
                 "control.security.stale-failed",
-                "The box could not restart {units}.",
-                units=", ".join(failed),
+                "The box could not restart {unit}: {detail}",
+                unit=unit,
+                detail=detail,
             )
         )
     return M(
         "control.security.stale-restarted",
-        "The box restarted {n} services that were running replaced code.",
-        n=len(units),
+        "The box restarted {unit}.",
+        unit=unit,
     )
 
 
@@ -6789,14 +6818,18 @@ def security_fix(req):
                 "This action is no longer available. Run the checks again. Then select an action from the new results.",
             )
         )
-    audit_action = choice in ("stale-restart", "clock-makestep") or choice.startswith("module-remove:")
+    audit_action = choice in ("clock-makestep", "front-restart") or choice.startswith(
+        ("stale-restart:", "module-remove:")
+    )
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
-        if choice == "stale-restart":
-            msg = _security_stale_restart()
+        if choice.startswith("stale-restart:"):
+            msg = _security_stale_restart(choice.split(":", 1)[1])
         elif choice == "clock-makestep":
             msg = _security_clock_makestep()
+        elif choice == "front-restart":
+            msg = _security_front_restart()
         elif choice.startswith("module-remove:"):
             msg = _security_module_remove(choice.split(":", 1)[1])
         else:

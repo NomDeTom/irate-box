@@ -3675,7 +3675,7 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["scan"]:
         print(json.dumps(scan(), indent=2))
     elif sys.argv[1:] == ["default-pattern"]:
-        said = apply_default_pattern(STATE / "security-default.log")
+        said = apply_default_pattern(AP_STATE.parent / "security-default.log")
         print(render(said) if said else "Automatic security updates already have the owner's choice.")
     elif sys.argv[1:] == ["summary"]:
         # For the end of install.sh: what needs the owner's attention, one line each.
