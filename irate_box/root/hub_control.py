@@ -6685,6 +6685,26 @@ def _security_module_remove(stem):
     )
 
 
+def _security_clock_makestep():
+    """Step the clock now, if chrony is running and the last scan still finds apt refusing a list."""
+    if run("systemctl", "is-active", "chrony.service", timeout=30).stdout.strip() != "active":
+        raise Refused(
+            M(
+                "control.security.clock-no-chrony",
+                "chrony is not running. Set the clock on the Clock page.",
+            )
+        )
+    if not secdoctor.clock_behind():
+        raise Refused(
+            M("control.security.clock-ok", "The clock is no longer behind. Run the doctor again."),
+        )
+    stepped = run("chronyc", "makestep", timeout=60)
+    if stepped.returncode:
+        detail = ((stepped.stderr or stepped.stdout).strip().splitlines() or ["chronyc failed"])[-1][:200]
+        raise Refused(M("control.security.clock-failed", "The box could not step the clock: {detail}", detail=detail))
+    return M("control.security.clock-stepped", "The box stepped the clock to its time source.")
+
+
 def _security_stale_restart():
     """Restart every service root's own /proc scan now finds running a library an update replaced."""
     units = sorted(secdoctor.stale_code()["services"])
@@ -6769,12 +6789,14 @@ def security_fix(req):
                 "This action is no longer available. Run the checks again. Then select an action from the new results.",
             )
         )
-    audit_action = choice == "stale-restart" or choice.startswith("module-remove:")
+    audit_action = choice in ("stale-restart", "clock-makestep") or choice.startswith("module-remove:")
     if choice in ("security-updates", "security-fetch", "security-check"):
         safeio.write(SECURITY_LOG, "")
     try:
         if choice == "stale-restart":
             msg = _security_stale_restart()
+        elif choice == "clock-makestep":
+            msg = _security_clock_makestep()
         elif choice.startswith("module-remove:"):
             msg = _security_module_remove(choice.split(":", 1)[1])
         else:

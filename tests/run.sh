@@ -128,6 +128,7 @@ run sim_card_genuine.py
 run housecall_guard.py
 run sim_restore.py
 run sim_clock_sources.py
+run sim_clock_behind.py
 run sim_secdoctor_accounts.py
 run sim_secdoctor_manifest.py
 run sim_secdoctor_missing.py

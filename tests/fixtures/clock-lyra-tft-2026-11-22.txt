@@ -1,0 +1,69 @@
+### journalctl -b -o short-monotonic (clock events), lyra-tft, boot of 2026-11-22 ~00:58 UTC real time
+[   18.493777] lyra-tft fake-hwclock[222]: Sun Nov 15 10:00:01 PM UTC 2026
+[   18.558423] lyra-tft irate-box[367]: system clock set from the module (+226 s)
+[   62.978425] lyra-tft chronyd[835]: Selected source 185.139.7.212 (2.debian.pool.ntp.org)
+[    0.000000] lyra-tft chronyd[835]: System clock wrong by 528729.923252 seconds
+[   62.979130] lyra-tft chronyd[835]: System clock was stepped by 528729.923252 seconds
+[   87.587760] lyra-tft chronyd[835]: Selected source 85.199.214.99 (2.debian.pool.ntp.org)
+[  103.590192] lyra-tft chronyd[835]: Can't synchronise: no selectable sources
+[  119.590871] lyra-tft chronyd[835]: Selected source RTC
+[528848.719657] lyra-tft chronyd[835]: System clock wrong by -528729.128520 seconds
+[  119.591371] lyra-tft chronyd[835]: System clock was stepped by -528729.128523 seconds
+[  127.618014] lyra-tft chronyd[835]: Can't synchronise: no majority
+[  128.022238] lyra-tft chronyd[835]: Detected falseticker RTC
+[  128.022319] lyra-tft chronyd[835]: Selected source 91.135.3.179 (2.debian.pool.ntp.org)
+[  128.022484] lyra-tft chronyd[835]: System clock wrong by 528729.105019 seconds
+[  128.202215] lyra-tft chronyd[835]: Detected falseticker RTC
+[  774.147874] lyra-tft chronyd[835]: Selected source 85.199.214.99 (2.debian.pool.ntp.org)
+[  775.071188] lyra-tft chronyd[835]: Detected falseticker RTC
+[ 2814.903160] lyra-tft chronyd[835]: System clock was stepped by 528522.421375 seconds
+### apt-get update warnings (before the fix)
+W: ... trixie-security InRelease: ... Verifying signature: Not live until 2026-11-21T00:23:04Z
+### chronyc -n tracking (after the fix)
+Reference ID    : 55C7D663 (85.199.214.99)
+Stratum         : 2
+Ref time (UTC)  : Sun Nov 22 01:45:08 2026
+System time     : 0.000035414 seconds slow of NTP time
+Last offset     : -0.000035489 seconds
+RMS offset      : 149328.718750000 seconds
+Frequency       : 44.118 ppm slow
+Residual freq   : +0.002 ppm
+Skew            : 0.808 ppm
+Root delay      : 0.025031067 seconds
+Root dispersion : 0.001543588 seconds
+Update interval : 515.6 seconds
+Leap status     : Normal
+### chronyc -n sources (after the fix)
+MS Name/IP address         Stratum Poll Reach LastRx Last sample               
+===============================================================================
+#? RTC                          10   4   377    18   +517ms[ +517ms] +/- 2000ms
+^+ 185.139.7.212                 2   9   377   415    +55us[  +17us] +/-   24ms
+^* 85.199.214.99                 1   9   377    85  -4682us[-4717us] +/-   17ms
+^+ 63.135.75.238                 1   9   377    23   +648us[ +648us] +/-   15ms
+^+ 91.135.3.179                  1   9   377    20   -662us[ -662us] +/-   15ms
+### chrony conf.d
+# Written by irate-box's Clock page (/admin). Change it there.
+# The kernel's clock kept in step, so other tools see the time as synchronised.
+rtcsync
+# The clock module, fed by irate-box-rtc-feed.service over this socket: one-second steps and a large
+# delay, so GPS and the network win whenever they answer; and stratum 10, so a box keeping its time from
+# its module alone serves it as stratum 11, below any network or GPS source, never as a reference.
+refclock SOCK /run/chrony.irate-box-rtc.sock refid RTC precision 1 delay 2 stratum 10
+### chronyc -n tracking (BEFORE the fix, 2026-11-22 ~01:37 UTC real time, box clock on 2026-11-15)
+Reference ID    : 55C7D663 (85.199.214.99)
+Stratum         : 2
+Ref time (UTC)  : Sun Nov 22 01:36:44 2026
+System time     : 528523.312500000 seconds slow of NTP time
+Last offset     : -0.000117850 seconds
+RMS offset      : 157406.296875000 seconds
+### chronyc -n sources (BEFORE the fix)
+MS Name/IP address         Stratum Poll Reach LastRx Last sample
+===============================================================================
+#x RTC                          10   4   377    16   +8812m[ +8812m] +/- 2000ms
+^+ 185.139.7.212                 2   8   377   206  -8192us[-8304us] +/-   25ms
+^* 85.199.214.99                 1   8   377   140  -8608us[-8726us] +/-   20ms
+^+ 63.135.75.238                 1   9   377    81  -2000us[-2000us] +/-   15ms
+^+ 91.135.3.179                  1   9   377    85    +14ms[  +14ms] +/-   30ms
+### timedatectl (BEFORE the fix)
+System clock synchronized: no
+NTP service: active

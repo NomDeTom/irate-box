@@ -50,6 +50,8 @@ SYSTEMD_ETC = Path(os.environ.get("HUB_SYSTEMD_ETC", "/etc/systemd"))
 HUB_USER = os.environ.get("HUB_USER", "hub")
 CI_USER = "hubci"
 CONTROL = STATE / "control"
+APT_LISTS = Path(os.environ.get("HUB_APT_LISTS", "/var/lib/apt/lists"))
+SECURITY_UPDATES_LOG = CONTROL / "security-updates.log"
 NGINX_CONF = Path(os.environ.get("HUB_NGINX_CONF", "/etc/nginx/conf.d/irate-box.conf"))
 NGINX_MODULES = Path(os.environ.get("HUB_NGINX_MODULES", "/etc/nginx/modules-enabled"))
 PROC = Path(os.environ.get("HUB_PROC_DIR", "/proc"))
@@ -1560,6 +1562,91 @@ def step_stale(ctx):
             )
         )
     return out
+
+
+NOT_LIVE = re.compile(r"Not live until (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)")
+
+
+def _when(text):
+    """An ISO time from apt's log or an InRelease Date header, as a timestamp, or None."""
+    from datetime import timezone
+    from email.utils import parsedate_to_datetime
+
+    iso = NOT_LIVE.search(text)
+    if iso:
+        try:
+            from datetime import datetime
+
+            return datetime.strptime(iso.group(1), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            return None
+    header = re.search(r"(?mi)^Date:\s*(.+)$", text)
+    if header:
+        try:
+            return parsedate_to_datetime(header.group(1)).timestamp()
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def clock_behind(now=None):
+    """[(when, what)]: apt's refused list times, and the newest security InRelease Date, later than the system clock."""
+    now = time.time() if now is None else now
+    later = []
+    log = _read(SECURITY_UPDATES_LOG) or ""
+    for line in log.splitlines():
+        if "Not live until" not in line:
+            continue
+        when = _when(line)
+        if when and when > now + 60:
+            later.append((when, line.strip()[:200]))
+    newest = None
+    try:
+        files = sorted(APT_LISTS.glob("*security*_InRelease"))
+    except OSError:
+        files = []
+    for path in files:
+        when = _when(_read(path) or "")
+        if when and (newest is None or when > newest[0]):
+            newest = (when, f"{path.name}: Date {time.strftime('%Y-%m-%d %H:%M', time.gmtime(when))} UTC")
+    if newest and newest[0] > now + 60:
+        later.append(newest)
+    return later
+
+
+def step_clock(ctx):
+    """The clock: a refused apt list is a security update that cannot install."""
+    later = clock_behind()
+    if not later:
+        return []
+    when, what = max(later)
+    chrony = _sc("is-active", "chrony.service").strip() == "active"
+    title = M("clock.title", "Clock and security updates")
+    return [
+        finding(
+            "clock-behind",
+            title,
+            "warn",
+            M(
+                "clock.behind",
+                "apt refused a list that is live only from {when}. The box's clock is behind.",
+                when=time.strftime("%Y-%m-%d %H:%M", time.gmtime(when)),
+            ),
+            M(
+                "clock.behind.why",
+                "apt refuses a signature that is not live yet, so no security update can install until the clock "
+                "is right.",
+            ),
+            M(
+                "clock.behind.fix",
+                "Set the clock now.",
+            )
+            if chrony
+            else M("clock.behind.fix.clock-page", "Set the clock on the Clock page."),
+            actions=[action("clock-makestep", M("clock.behind.action", "Set the clock now"))] if chrony else [],
+            evidence=[what],
+        )
+    ]
 
 
 def step_front(ctx):
@@ -8543,6 +8630,11 @@ STEPS = [
         "stale-code",
         M("step.stale", "Services running code an update replaced"),
         step_stale,
+    ),
+    (
+        "clock",
+        M("step.clock", "Clock and security updates"),
+        step_clock,
     ),
     (
         "addons",
